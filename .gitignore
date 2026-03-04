@@ -22,5 +22,8 @@ venv/
 node_modules/
 .next/
 
+# Documentation (generated, not tracked)
+docs/
+
 # OS
 .DS_Store
