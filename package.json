@@ -1,0 +1,9 @@
+{
+  "name": "job-hunter-agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/start.js",
+    "start:no-docker": "node scripts/start.js --no-docker"
+  }
+}

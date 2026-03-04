@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     4. Attach graph + checkpointer to app.state
     """
     settings = get_settings()
-    logger.info("Starting JobHunter gateway (debug=%s)", settings.debug)
+    logger.info("Starting JobHunter gateway (log_level=%s)", settings.LOG_LEVEL)
 
     # --- Build the LangGraph pipeline ---
     from backend.orchestrator.pipeline.graph import build_graph  # noqa: E402
@@ -37,9 +37,9 @@ async def lifespan(app: FastAPI):
     try:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-        checkpointer = AsyncPostgresSaver.from_conn_string(settings.postgres_dsn)
+        checkpointer = AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
         await checkpointer.setup()
-        logger.info("Using AsyncPostgresSaver (dsn=%s)", settings.postgres_dsn)
+        logger.info("Using AsyncPostgresSaver (dsn=%s...)", settings.DATABASE_URL[:40])
     except Exception as exc:
         logger.warning(
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
