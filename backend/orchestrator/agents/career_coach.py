@@ -198,3 +198,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
             "errors": [f"Career Coach agent failed: {str(e)}"],
             "agent_statuses": {"career_coach": "failed"},
         }
+
+
+# Alias for graph.py compatibility
+run = run_career_coach_agent

@@ -242,3 +242,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
             "errors": [f"scoring failed: {str(e)}"],
             "agent_statuses": {"scoring": "failed"},
         }
+
+
+# Alias for graph.py compatibility
+run = run_scoring_agent

@@ -56,6 +56,37 @@ class ATSType(str, Enum):
     UNKNOWN = "unknown"
 
 
+class FormFieldType(str, Enum):
+    TEXT = "text"
+    TEXTAREA = "textarea"
+    SELECT = "select"
+    CHECKBOX = "checkbox"
+    RADIO = "radio"
+    FILE = "file"
+    EMAIL = "email"
+    PHONE = "phone"
+    NUMBER = "number"
+    DATE = "date"
+    PASSWORD = "password"
+    HIDDEN = "hidden"
+    UNKNOWN = "unknown"
+
+
+# --- Form Field Model ---
+
+class FormField(BaseModel):
+    """A single form field detected on an ATS page."""
+    selector: str  # CSS selector to locate the element
+    field_type: FormFieldType = FormFieldType.TEXT
+    label: str = ""
+    name: str = ""  # HTML name attribute
+    placeholder: str = ""
+    required: bool = False
+    options: List[str] = Field(default_factory=list)  # For select/radio
+    current_value: str = ""
+    data_key: Optional[str] = None  # Mapped key in user_data
+
+
 # --- Request/Response Models ---
 
 class SearchConfig(BaseModel):

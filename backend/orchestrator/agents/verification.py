@@ -135,3 +135,7 @@ async def run_verification_agent(state: JobHunterState) -> dict:
         "agent_statuses": {"verification": agent_status},
         "errors": errors,
     }
+
+
+# Alias for graph.py compatibility
+run = run_verification_agent

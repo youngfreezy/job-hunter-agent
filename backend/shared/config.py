@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # --- Email ---
     RESEND_API_KEY: Optional[str] = None
 
+    # --- LangSmith ---
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: Optional[str] = None
+    LANGCHAIN_PROJECT: str = "job-hunter-agent"
+
     # --- Observability ---
     SENTRY_DSN: Optional[str] = None
     LOG_LEVEL: str = "INFO"
@@ -49,8 +54,12 @@ class Settings(BaseSettings):
     # --- Browser proxy (anti-detection) ---
     PROXY_URL: Optional[str] = None
 
+    # --- Feature flags ---
+    SIMULATE_DISCOVERY: bool = False  # True = use Claude-generated mock listings
+    SIMULATE_APPLICATIONS: bool = False  # True = skip real Playwright form filling
+
     model_config = {
-        "env_file": ".env",
+        "env_file": "../.env",
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

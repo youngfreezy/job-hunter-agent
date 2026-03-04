@@ -253,3 +253,7 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
         "agent_statuses": {"resume_tailor": agent_status},
         "errors": errors,
     }
+
+
+# Alias for graph.py compatibility
+run = run_resume_tailor_agent

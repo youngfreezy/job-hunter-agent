@@ -130,3 +130,7 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
             "errors": [f"Intake agent failed: {str(e)}"],
             "agent_statuses": {"intake": "failed"},
         }
+
+
+# Alias for graph.py compatibility
+run = run_intake_agent

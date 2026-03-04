@@ -2,14 +2,15 @@
 
 Pipeline stages:
     intake -> career_coach -> [HITL: review coached resume]
-           -> discovery (fan-out to 5 job boards) -> scoring
+           -> discovery (fan-out to 5 job boards via Send) -> scoring
            -> resume_tailor -> [HITL: review shortlist]
            -> application (loop with circuit breaker) -> verification
            -> reporting
 
-Architecture mirrors the mayo-clinic-validator graph: StateGraph with
-Send API for parallel dispatch, interrupt() for HITL checkpoints, and
-conditional edges for routing.
+Discovery uses real Playwright browser scraping across all boards in
+parallel (via Send API), with automatic fallback to Claude-simulated
+results if scraping fails.  Application uses Playwright for real form
+filling (configurable via SIMULATE_APPLICATIONS).
 """
 
 from __future__ import annotations
@@ -61,7 +62,7 @@ async def career_coach_node(state: JobHunterState) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# HITL checkpoint 1 – user reviews the coached resume
+# HITL checkpoint 1 -- user reviews the coached resume
 # ---------------------------------------------------------------------------
 
 
@@ -99,7 +100,7 @@ async def coach_review_gate(state: JobHunterState) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Discovery – parallel fan-out to 5 job boards via Send API
+# Discovery -- parallel fan-out to 5 job boards via Send API
 # ---------------------------------------------------------------------------
 
 
@@ -109,7 +110,14 @@ async def discovery_board_node(state: JobHunterState) -> dict:
     The ``board`` key is injected into the state slice by the Send dispatch.
     Each board's results are appended via the ``operator.add`` reducer on
     ``discovered_jobs``.
+
+    Internally calls the updated discovery agent which:
+    1. Attempts real Playwright scraping for the specified board
+    2. Falls back to Claude-simulated listings on failure
+    3. Returns discovered jobs to be merged via the reducer
     """
+    board = state.get("board", "unknown")
+    logger.info("Discovery board node invoked for board=%s", board)
     return await discovery.run(state)
 
 
@@ -117,7 +125,8 @@ def dispatch_discovery(state: JobHunterState) -> List[Send]:
     """Fan-out: dispatch one Send per job board.
 
     Each Send carries the full state plus an extra ``board`` key so the
-    discovery node knows which board to scrape.
+    discovery node knows which board to scrape.  All 5 boards run in
+    parallel via LangGraph's Send API.
     """
     sends = []
     for board in JOB_BOARDS:
@@ -127,6 +136,11 @@ def dispatch_discovery(state: JobHunterState) -> List[Send]:
                 {**state, "board": board},
             )
         )
+    logger.info(
+        "Dispatching discovery fan-out to %d boards: %s",
+        len(sends),
+        JOB_BOARDS,
+    )
     return sends
 
 
@@ -137,14 +151,23 @@ def dispatch_discovery(state: JobHunterState) -> List[Send]:
 
 async def scoring_node(state: JobHunterState) -> dict:
     """Score and rank all discovered jobs against the user profile."""
+    discovered = state.get("discovered_jobs", [])
+    logger.info(
+        "Scoring node received %d total discovered jobs from all boards",
+        len(discovered),
+    )
     return await scoring.run(state)
 
 
 def route_after_discovery(state: JobHunterState) -> str:
     """After discovery fan-in, always proceed to scoring."""
-    if not state.get("discovered_jobs"):
-        logger.warning("No jobs discovered – routing to reporting.")
+    discovered = state.get("discovered_jobs", [])
+    if not discovered:
+        logger.warning("No jobs discovered across any board -- routing to reporting.")
         return "reporting"
+    logger.info(
+        "Discovery complete: %d total jobs -- routing to scoring", len(discovered)
+    )
     return "scoring"
 
 
@@ -161,13 +184,13 @@ async def resume_tailor_node(state: JobHunterState) -> dict:
 def route_after_scoring(state: JobHunterState) -> str:
     """After scoring, proceed to resume tailoring."""
     if not state.get("scored_jobs"):
-        logger.warning("No scored jobs – routing to reporting.")
+        logger.warning("No scored jobs -- routing to reporting.")
         return "reporting"
     return "resume_tailor"
 
 
 # ---------------------------------------------------------------------------
-# HITL checkpoint 2 – user reviews the shortlist
+# HITL checkpoint 2 -- user reviews the shortlist
 # ---------------------------------------------------------------------------
 
 
@@ -212,7 +235,12 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
 
 
 async def application_node(state: JobHunterState) -> dict:
-    """Apply to the next job in the queue via browser automation."""
+    """Apply to jobs in the queue via browser automation (or simulation).
+
+    Uses real Playwright browser automation unless SIMULATE_APPLICATIONS
+    is enabled.  Each application attempt includes ATS detection, form
+    analysis, cover letter generation, and screenshot capture.
+    """
     return await application.run(state)
 
 
@@ -305,10 +333,13 @@ def build_graph(checkpointer=None):
     g.add_edge("career_coach", "coach_review")
 
     # 4. coach_review -> discovery fan-out (Send API)
+    #    dispatch_discovery() returns 5 Send("discovery", ...) objects,
+    #    one per job board.  LangGraph runs them in parallel and merges
+    #    via operator.add on discovered_jobs.
     g.add_conditional_edges(
         "coach_review",
         dispatch_discovery,
-        JOB_BOARDS,
+        ["discovery"],
     )
 
     # 5. discovery fan-in -> scoring (conditional in case 0 results)

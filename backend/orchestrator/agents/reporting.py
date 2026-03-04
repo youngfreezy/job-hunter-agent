@@ -208,3 +208,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
         "agent_statuses": {"reporting": agent_status},
         "errors": errors,
     }
+
+
+# Alias for graph.py compatibility
+run = run_reporting_agent
