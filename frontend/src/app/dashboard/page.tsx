@@ -1,0 +1,134 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+type SessionSummary = {
+  session_id: string;
+  status: string;
+  keywords: string[];
+  applications_submitted: number;
+  applications_failed: number;
+  created_at: string;
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  completed: "default",
+  applying: "secondary",
+  failed: "destructive",
+  paused: "outline",
+};
+
+export default function Dashboard() {
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // TODO: Replace with real API call
+    setLoading(false);
+    setSessions([]);
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-white dark:bg-zinc-950">
+      <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
+        <Link href="/" className="text-xl font-bold tracking-tight">JobHunter Agent</Link>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-zinc-500">test@example.com</span>
+          <Link href="/session/new">
+            <Button size="sm">New Session</Button>
+          </Link>
+        </div>
+      </nav>
+
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold">Dashboard</h1>
+            <p className="text-zinc-600 dark:text-zinc-400 mt-1">Your job hunting sessions</p>
+          </div>
+          <Link href="/session/new">
+            <Button>Start New Session</Button>
+          </Link>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-2xl font-bold">{sessions.length}</p>
+              <p className="text-sm text-zinc-500">Total Sessions</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-2xl font-bold">
+                {sessions.reduce((sum, s) => sum + s.applications_submitted, 0)}
+              </p>
+              <p className="text-sm text-zinc-500">Applications Sent</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-2xl font-bold">
+                {sessions.filter((s) => s.status === "completed").length}
+              </p>
+              <p className="text-sm text-zinc-500">Completed</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-2xl font-bold">Professional</p>
+              <p className="text-sm text-zinc-500">Current Plan</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Sessions list */}
+        {loading ? (
+          <p className="text-zinc-500">Loading sessions...</p>
+        ) : sessions.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-zinc-500 mb-4">No sessions yet. Start your first job hunt!</p>
+              <Link href="/session/new">
+                <Button>Start Session</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {sessions.map((s) => (
+              <Link key={s.session_id} href={`/session/${s.session_id}`}>
+                <Card className="hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors cursor-pointer">
+                  <CardContent className="py-4 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant={(STATUS_COLORS[s.status] as "default" | "secondary" | "destructive" | "outline") || "secondary"}>
+                          {s.status}
+                        </Badge>
+                        <span className="text-sm text-zinc-500">
+                          {new Date(s.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="font-medium">{s.keywords.join(", ")}</p>
+                    </div>
+                    <div className="text-right text-sm">
+                      <p><span className="text-green-600">{s.applications_submitted}</span> submitted</p>
+                      {s.applications_failed > 0 && (
+                        <p><span className="text-red-500">{s.applications_failed}</span> failed</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
