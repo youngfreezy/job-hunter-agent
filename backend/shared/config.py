@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from pydantic_settings import BaseSettings
+
+# Resolve project root (.env lives at the repo root)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -59,7 +63,7 @@ class Settings(BaseSettings):
     SIMULATE_APPLICATIONS: bool = False  # True = skip real Playwright form filling
 
     model_config = {
-        "env_file": "../.env",
+        "env_file": str(_PROJECT_ROOT / ".env"),
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }
