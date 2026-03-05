@@ -672,11 +672,11 @@ export default function SessionPage() {
                       const pct = typeof evt.progress === "number" ? evt.progress : undefined;
                       return (
                         <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors animate-fade-in-up">
-                          <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-16">{time}</span>
+                          <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-20 shrink-0">{time}</span>
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${AGENT_COLORS[label] || AGENT_COLORS.system}`}>
                             {label}
                           </span>
-                          <span className="text-sm text-foreground/80 flex-1">{evt.step}</span>
+                          <span className="text-sm text-foreground/80 flex-1 min-w-0 break-words">{evt.step}</span>
                           {pct !== undefined && pct >= 0 && (
                             <span className="text-[11px] font-mono text-muted-foreground ml-auto tabular-nums">{Math.round(pct)}%</span>
                           )}
@@ -693,11 +693,11 @@ export default function SessionPage() {
                       || evt.event;
                     return (
                       <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors animate-fade-in-up">
-                        <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-16">{time}</span>
+                        <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-20 shrink-0">{time}</span>
                         <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${AGENT_COLORS[agent] || AGENT_COLORS.system}`}>
                           {agent}
                         </span>
-                        <span className={`text-sm flex-1 ${evt.event === "error" ? "text-red-500 font-medium" : "text-foreground/80"}`}>{msg}</span>
+                        <span className={`text-sm flex-1 min-w-0 break-words ${evt.event === "error" ? "text-red-500 font-medium" : "text-foreground/80"}`}>{msg}</span>
                       </div>
                     );
                   })}
