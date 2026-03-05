@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { CircularProgress } from "@/components/ui/circular-progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { CoachPanel, type LinkedInProgress } from "@/components/CoachPanel";
+import { CoachPanel } from "@/components/CoachPanel";
+import { LinkedInUpdateButton, type LinkedInProgress } from "@/components/LinkedInUpdateButton";
 import { getSession, connectSSE, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision, listCheckpoints, rewindSession, resumeSession } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
@@ -854,6 +855,17 @@ export default function SessionPage() {
                 </TooltipProvider>
               </CardContent>
             </Card>
+          )}
+
+          {/* LinkedIn Update — standalone sidebar button */}
+          {session.coach_output?.linkedin_advice && session.coach_output.linkedin_advice.length > 0 && (
+            <LinkedInUpdateButton
+              sessionId={sessionId}
+              linkedinAdvice={session.coach_output.linkedin_advice}
+              linkedinUrl={session.linkedin_url}
+              linkedinProgress={linkedinProgress}
+              linkedinLoginRequired={linkedinLoginRequired}
+            />
           )}
 
           {/* Shortlist summary */}
