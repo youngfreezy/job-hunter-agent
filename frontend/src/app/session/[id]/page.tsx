@@ -265,7 +265,6 @@ export default function SessionPage() {
   const [sseKey, setSseKey] = useState(0);
   const [linkedinProgress, setLinkedinProgress] =
     useState<LinkedInProgress | null>(null);
-  const [linkedinLoginRequired, setLinkedinLoginRequired] = useState(false);
 
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const latestStatusRef = useRef("intake");
@@ -497,14 +496,10 @@ export default function SessionPage() {
       }
 
       // LinkedIn update SSE events
-      if (evt.event === "linkedin_login_required") {
-        setLinkedinLoginRequired(true);
-      }
       if (
         evt.event === "linkedin_update_progress" ||
         evt.event === "linkedin_update_complete"
       ) {
-        setLinkedinLoginRequired(false);
         setLinkedinProgress({
           step: String(evt.step || ""),
           section: String(evt.section || ""),
@@ -1183,7 +1178,6 @@ export default function SessionPage() {
                 linkedinAdvice={session.coach_output.linkedin_advice}
                 linkedinUrl={session.linkedin_url}
                 linkedinProgress={linkedinProgress}
-                linkedinLoginRequired={linkedinLoginRequired}
               />
             )}
 
@@ -1520,7 +1514,6 @@ export default function SessionPage() {
               sessionId={sessionId}
               linkedinUrl={session?.linkedin_url}
               linkedinProgress={linkedinProgress}
-              linkedinLoginRequired={linkedinLoginRequired}
             />
           )}
           <DialogFooter>

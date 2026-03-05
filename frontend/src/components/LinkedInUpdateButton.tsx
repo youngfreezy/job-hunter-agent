@@ -11,7 +11,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import type { LinkedInUpdate } from "@/lib/api";
-import { startLinkedInUpdate, confirmLinkedInLogin } from "@/lib/api";
+import { startLinkedInUpdate } from "@/lib/api";
 
 function parseAdviceToUpdates(advice: string[]): LinkedInUpdate[] {
   const sectionKeywords: Record<string, string[]> = {
@@ -73,7 +73,6 @@ interface LinkedInUpdateButtonProps {
   linkedinAdvice: string[];
   linkedinUrl?: string;
   linkedinProgress?: LinkedInProgress | null;
-  linkedinLoginRequired?: boolean;
 }
 
 export function LinkedInUpdateButton({
@@ -81,35 +80,24 @@ export function LinkedInUpdateButton({
   linkedinAdvice,
   linkedinUrl,
   linkedinProgress,
-  linkedinLoginRequired,
 }: LinkedInUpdateButtonProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<ModalStep>("review");
   const [proposedUpdates, setProposedUpdates] = useState<
     Array<LinkedInUpdate & { enabled: boolean }>
   >([]);
-  const [loginConfirming, setLoginConfirming] = useState(false);
   const [startingUpdate, setStartingUpdate] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Transition to login step when SSE says login is required
-  if (
-    linkedinLoginRequired &&
-    modalStep === "review" &&
-    modalOpen &&
-    startingUpdate
-  ) {
-    setModalStep("login");
-    setStartingUpdate(false);
-  }
-
-  // Transition to updating step when progress starts flowing
+  // Transition to updating step when progress starts flowing from backend
   if (
     linkedinProgress &&
     linkedinProgress.progress > 5 &&
-    modalStep === "login"
+    modalStep === "login" &&
+    startingUpdate
   ) {
     setModalStep("updating");
+    setStartingUpdate(false);
   }
 
   // Transition to done
@@ -129,7 +117,7 @@ export function LinkedInUpdateButton({
     setModalOpen(true);
   }, [linkedinAdvice]);
 
-  const handleConfirmAndStart = useCallback(async () => {
+  const handleOpenLinkedIn = useCallback(() => {
     const enabledUpdates = proposedUpdates.filter((u) => u.enabled);
     if (enabledUpdates.length === 0) {
       setError("Select at least one update to apply.");
@@ -137,9 +125,16 @@ export function LinkedInUpdateButton({
     }
 
     setError(null);
-    setStartingUpdate(true);
+    // Open LinkedIn in a new tab for the user to log in
+    window.open(linkedinUrl || "https://www.linkedin.com/login", "_blank");
+    setModalStep("login");
+  }, [proposedUpdates, linkedinUrl]);
 
+  const handleLoginConfirmed = useCallback(async () => {
+    setStartingUpdate(true);
+    setError(null);
     try {
+      const enabledUpdates = proposedUpdates.filter((u) => u.enabled);
       await startLinkedInUpdate(
         sessionId,
         enabledUpdates.map(({ section, content }) => ({ section, content })),
@@ -150,18 +145,6 @@ export function LinkedInUpdateButton({
       setStartingUpdate(false);
     }
   }, [sessionId, proposedUpdates, linkedinUrl]);
-
-  const handleLoginConfirmed = useCallback(async () => {
-    setLoginConfirming(true);
-    setError(null);
-    try {
-      await confirmLinkedInLogin(sessionId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to confirm login");
-    } finally {
-      setLoginConfirming(false);
-    }
-  }, [sessionId]);
 
   const toggleUpdate = (index: number) => {
     setProposedUpdates((prev) =>
@@ -264,8 +247,8 @@ export function LinkedInUpdateButton({
             {modalStep === "review" && (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Select which updates to apply. A browser will open to LinkedIn
-                  where you&apos;ll log in first.
+                  Select which updates to apply. LinkedIn will open in a new tab
+                  so you can log in first.
                 </p>
                 {proposedUpdates.map((update, i) => (
                   <label
@@ -299,10 +282,7 @@ export function LinkedInUpdateButton({
                   <Button variant="outline" onClick={() => setModalOpen(false)}>
                     Cancel
                   </Button>
-                  <Button
-                    onClick={handleConfirmAndStart}
-                    loading={startingUpdate}
-                  >
+                  <Button onClick={handleOpenLinkedIn}>
                     Open LinkedIn &amp; Continue
                   </Button>
                 </div>
@@ -324,15 +304,15 @@ export function LinkedInUpdateButton({
                 <div className="text-center space-y-2">
                   <h3 className="text-lg font-semibold">Log in to LinkedIn</h3>
                   <p className="text-sm text-muted-foreground max-w-sm">
-                    A browser window has opened to LinkedIn. Log in to your
-                    account there, then come back and click the button below.
+                    LinkedIn has opened in a new tab. Log in to your account
+                    there, then come back and click the button below.
                   </p>
                 </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 <Button
                   size="lg"
                   onClick={handleLoginConfirmed}
-                  loading={loginConfirming}
+                  loading={startingUpdate}
                   className="px-8"
                 >
                   I&apos;m Logged In — Start Updates

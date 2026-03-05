@@ -1365,21 +1365,3 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
     return {"status": "ok", "message": "LinkedIn update started — open the browser and log in"}
 
 
-@router.post("/{session_id}/linkedin-login-confirmed")
-async def confirm_linkedin_login(session_id: str):
-    """Signal that the user has logged into LinkedIn in the browser."""
-    try:
-        import redis.asyncio as aioredis
-        settings_val = get_settings()
-        redis_client = aioredis.from_url(settings_val.REDIS_URL)
-        await redis_client.set(f"linkedin:logged_in:{session_id}", "1", ex=600)
-        await redis_client.close()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to send login signal: {exc}")
-
-    await _emit(session_id, "status", {
-        "status": "linkedin_update",
-        "message": "Login confirmed — starting profile updates...",
-    })
-
-    return {"status": "ok", "message": "Login confirmed"}

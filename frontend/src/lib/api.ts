@@ -445,15 +445,3 @@ export async function startLinkedInUpdate(
   return res.json();
 }
 
-export async function confirmLinkedInLogin(
-  sessionId: string
-): Promise<{ status: string; message: string }> {
-  const res = await fetch(
-    `${API_BASE}/api/sessions/${sessionId}/linkedin-login-confirmed`,
-    {
-      method: "POST",
-    }
-  );
-  if (!res.ok) throw new Error(`Login confirmation failed: ${res.statusText}`);
-  return res.json();
-}
