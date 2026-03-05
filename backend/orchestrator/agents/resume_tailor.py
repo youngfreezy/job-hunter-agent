@@ -1,7 +1,12 @@
-"""Resume Tailor Agent -- customises the coached resume per job listing."""
+"""Resume Tailor Agent -- customises the coached resume per job listing.
+
+Tailors resumes concurrently in batches of CONCURRENCY to avoid blocking
+the event loop for too long with sequential LLM calls.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List
 
@@ -30,6 +35,7 @@ SONNET_MODEL = "claude-sonnet-4-6"
 OPUS_MODEL = "claude-sonnet-4-6"
 MAX_SELF_REFLECTION_RETRIES = 1
 FIT_SCORE_THRESHOLD = 70
+CONCURRENCY = 5  # Max parallel LLM calls for tailoring
 
 
 def _pick_model(is_top_tier: bool) -> str:
@@ -206,44 +212,51 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
 
         session_id = state.get("session_id", "")
         total_jobs = len(jobs_to_tailor)
+        completed_count = 0
 
-        for idx, sj in enumerate(jobs_to_tailor):
-            try:
-                pct = int((idx / total_jobs) * 100)
-                await emit_agent_event(session_id, "tailoring_progress", {
-                    "step": f"Tailoring resume for {sj.job.title} at {sj.job.company}...",
-                    "progress": pct,
-                    "current": idx + 1,
-                    "total": total_jobs,
-                })
+        # Process in concurrent batches to avoid blocking the event loop
+        for batch_start in range(0, total_jobs, CONCURRENCY):
+            batch = jobs_to_tailor[batch_start:batch_start + CONCURRENCY]
 
-                is_top_tier = sj.score >= top_20_threshold
-                model = _pick_model(is_top_tier)
-                llm = _build_llm(model)
+            pct = int((batch_start / total_jobs) * 100)
+            await emit_agent_event(session_id, "tailoring_progress", {
+                "step": f"Tailoring resumes {batch_start + 1}-{batch_start + len(batch)} of {total_jobs}...",
+                "progress": pct,
+                "current": batch_start + 1,
+                "total": total_jobs,
+            })
 
-                logger.info(
-                    "Tailoring for %s (%s) using %s",
-                    sj.job.id,
-                    sj.job.title,
-                    model,
-                )
+            async def _tailor_one(sj: ScoredJob) -> tuple:
+                """Tailor a single job, return (job_id, result_or_error)."""
+                try:
+                    is_top_tier = sj.score >= top_20_threshold
+                    model = _pick_model(is_top_tier)
+                    llm = _build_llm(model)
+                    logger.info("Tailoring for %s (%s) using %s", sj.job.id, sj.job.title, model)
+                    tailored = await _tailor_single(llm, base_resume, sj)
+                    return (sj.job.id, tailored, None)
+                except Exception as exc:
+                    return (sj.job.id, None, exc)
 
-                tailored = await _tailor_single(llm, base_resume, sj)
-                tailored_resumes[sj.job.id] = tailored
-                resume_scores[sj.job.id] = tailored.fit_score
+            results = await asyncio.gather(*[_tailor_one(sj) for sj in batch])
 
-                done_pct = int(((idx + 1) / total_jobs) * 100)
-                await emit_agent_event(session_id, "tailoring_progress", {
-                    "step": f"Tailored {idx + 1}/{total_jobs} resumes (fit score: {tailored.fit_score})",
-                    "progress": done_pct,
-                    "current": idx + 1,
-                    "total": total_jobs,
-                })
+            for job_id, tailored, exc in results:
+                if tailored:
+                    tailored_resumes[job_id] = tailored
+                    resume_scores[job_id] = tailored.fit_score
+                    completed_count += 1
+                else:
+                    error_msg = f"Failed to tailor resume for job {job_id}: {exc}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
-            except Exception as exc:
-                error_msg = f"Failed to tailor resume for job {sj.job.id}: {exc}"
-                logger.error(error_msg)
-                errors.append(error_msg)
+            done_pct = int(((batch_start + len(batch)) / total_jobs) * 100)
+            await emit_agent_event(session_id, "tailoring_progress", {
+                "step": f"Tailored {completed_count}/{total_jobs} resumes",
+                "progress": done_pct,
+                "current": batch_start + len(batch),
+                "total": total_jobs,
+            })
 
         status = "tailoring"
         agent_status = (

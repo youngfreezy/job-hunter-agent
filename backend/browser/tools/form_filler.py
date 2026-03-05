@@ -168,6 +168,30 @@ async def analyse_form(
     return instructions
 
 
+async def _dismiss_overlays(page: Any) -> None:
+    """Dismiss modal overlays that might intercept clicks on form fields."""
+    overlay_selectors = [
+        'div.modal__overlay--visible',
+        'div[class*="modal__overlay"]',
+        'div[class*="overlay"][class*="visible"]',
+        'button[aria-label="Dismiss"]',
+        'button[aria-label="Close"]',
+        'button[data-test-modal-close-btn]',
+    ]
+    for sel in overlay_selectors:
+        try:
+            el = await page.query_selector(sel)
+            if el and await el.is_visible():
+                # If it's a button, click it to dismiss; otherwise ignore
+                tag = await el.evaluate("el => el.tagName")
+                if tag == "BUTTON":
+                    await el.click()
+                    await page.wait_for_timeout(300)
+                    logger.info("Dismissed overlay via %s", sel)
+        except Exception:
+            continue
+
+
 async def fill_form(
     page: Any,
     instructions: List[Dict[str, Any]],
@@ -193,6 +217,9 @@ async def fill_form(
     skipped = 0
     errors: List[str] = []
 
+    # Dismiss any modal overlays before starting form fill
+    await _dismiss_overlays(page)
+
     for instr in instructions:
         selector = instr.get("selector", "")
         action = instr.get("action", "skip")
@@ -211,7 +238,12 @@ async def fill_form(
                 continue
 
             if action == "fill":
-                await el.click()
+                # Use force=True to bypass overlay interception (e.g. LinkedIn
+                # Easy Apply modal has a background overlay that intercepts).
+                try:
+                    await el.click(force=True)
+                except Exception:
+                    pass  # click failed, but fill below may still work
                 await el.fill("")
                 await el.fill(str(value))
                 filled += 1
@@ -222,9 +254,9 @@ async def fill_form(
 
             elif action == "check":
                 if str(value).lower() in ("true", "yes", "1"):
-                    await el.check()
+                    await el.check(force=True)
                 else:
-                    await el.uncheck()
+                    await el.uncheck(force=True)
                 filled += 1
 
             elif action == "upload":
@@ -236,7 +268,7 @@ async def fill_form(
                     skipped += 1
 
             elif action == "click":
-                await el.click()
+                await el.click(force=True)
                 filled += 1
 
             else:

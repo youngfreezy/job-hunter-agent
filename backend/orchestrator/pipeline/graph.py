@@ -168,13 +168,15 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     The user sees scored jobs + tailored resumes and selects which ones
     to actually apply to.
     """
+    # Only show the top 20 scored jobs (sorted by score desc) to the user.
+    all_scored = state.get("scored_jobs") or []
+    top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:20]
+
     human_input = interrupt(
         {
             "session_id": state["session_id"],
             "stage": "shortlist_review",
-            "scored_jobs": [
-                sj.model_dump() for sj in (state.get("scored_jobs") or [])
-            ],
+            "scored_jobs": [sj.model_dump() for sj in top_scored],
             "tailored_resumes": {
                 jid: tr.model_dump()
                 for jid, tr in (state.get("tailored_resumes") or {}).items()
@@ -191,6 +193,13 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     updates: dict = {}
     approved = human_input.get("approved_job_ids", [])
     if approved:
+        # Cap at 20 to avoid blocking the event loop with too many
+        # sequential LLM calls and massive checkpoint writes.
+        if len(approved) > 20:
+            logger.info(
+                "Capping approved jobs from %d to 20", len(approved)
+            )
+            approved = approved[:20]
         updates["application_queue"] = approved
     if human_input.get("feedback"):
         updates["human_messages"] = [human_input["feedback"]]
