@@ -5,15 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-type SessionSummary = {
-  session_id: string;
-  status: string;
-  keywords: string[];
-  applications_submitted: number;
-  applications_failed: number;
-  created_at: string;
-};
+import { listSessions, type SessionListItem } from "@/lib/api";
 
 const STATUS_COLORS: Record<string, string> = {
   completed: "default",
@@ -23,13 +15,14 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function Dashboard() {
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // TODO: Replace with real API call
-    setLoading(false);
-    setSessions([]);
+    listSessions()
+      .then(setSessions)
+      .catch((err) => console.error("Failed to load sessions:", err))
+      .finally(() => setLoading(false));
   }, []);
 
   return (

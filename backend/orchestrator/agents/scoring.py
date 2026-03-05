@@ -157,7 +157,6 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
             api_key=settings.ANTHROPIC_API_KEY,
             max_tokens=4096,
             temperature=0.0,  # deterministic scoring
-            model_kwargs={"response_format": {"type": "json_object"}},
         )
 
         all_scores: List[dict] = []

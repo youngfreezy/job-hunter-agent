@@ -66,7 +66,7 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
             model="claude-sonnet-4-6",
             api_key=settings.ANTHROPIC_API_KEY,
             temperature=0,
-            model_kwargs={"response_format": {"type": "json_object"}},
+            max_tokens=2048,
         )
 
         # -- Build the user message from available state fields -------------

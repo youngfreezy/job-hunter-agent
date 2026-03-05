@@ -42,11 +42,17 @@ type SessionData = {
 
 type SSEEvent = {
   event: string;
-  agent: string;
-  status: string;
-  message: string;
+  agent?: string;
+  status?: string;
+  message?: string;
   data?: Record<string, unknown>;
-  timestamp: string;
+  timestamp?: string;
+  jobs_found?: number;
+  scored_count?: number;
+  coach_output?: Record<string, unknown>;
+  agent_statuses?: Record<string, string>;
+  keywords?: string[];
+  locations?: string[];
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -79,20 +85,44 @@ export default function SessionPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
 
-  // Load session
+  // Load session — may 404 initially (pipeline hasn't checkpointed yet)
   useEffect(() => {
-    getSession(sessionId).then(setSession).catch(console.error);
+    getSession(sessionId)
+      .then((data) => setSession(data as unknown as SessionData))
+      .catch(() => {
+        // Session not in checkpointer yet — set a minimal placeholder
+        setSession({
+          session_id: sessionId,
+          status: "intake",
+          keywords: [],
+          scored_jobs: [],
+          applications_submitted: [],
+          applications_failed: [],
+          steering_mode: "status",
+          applications_used: 0,
+        });
+      });
   }, [sessionId]);
 
   // SSE connection
   useEffect(() => {
-    const cleanup = connectSSE(sessionId, (event: SSEEvent) => {
-      setEvents((prev) => [...prev, event]);
+    const cleanup = connectSSE(sessionId, (event) => {
+      const evt = event as unknown as SSEEvent;
 
-      // Update session status from events
-      if (event.status) {
-        setSession((prev) => prev ? { ...prev, status: event.status } : prev);
-      }
+      // Skip duplicate ping events
+      if (evt.event === "ping") return;
+
+      setEvents((prev) => [...prev, evt]);
+
+      // Update session from event data
+      setSession((prev) => {
+        if (!prev) return prev;
+        const updates: Partial<SessionData> = {};
+        if (evt.status) updates.status = evt.status;
+        if (evt.coach_output) updates.coach_output = evt.coach_output as SessionData["coach_output"];
+        if (Array.isArray(evt.keywords) && evt.keywords.length > 0) updates.keywords = evt.keywords;
+        return { ...prev, ...updates };
+      });
 
       // Auto-scroll events
       setTimeout(() => eventsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -109,7 +139,7 @@ export default function SessionPage() {
         setScreenshotUrl(`data:image/jpeg;base64,${data.image}`);
       }
       if (data.type === "chat" && data.message) {
-        setChatMessages((prev) => [...prev, { role: "agent", text: data.message }]);
+        setChatMessages((prev) => [...prev, { role: "agent", text: data.message as string }]);
       }
     });
     return cleanup;
@@ -202,15 +232,23 @@ export default function SessionPage() {
                   {events.length === 0 && (
                     <p className="text-zinc-400">Waiting for events...</p>
                   )}
-                  {events.map((evt, i) => (
-                    <div key={i} className="flex gap-2">
-                      <span className="text-zinc-400 text-xs whitespace-nowrap">
-                        {new Date(evt.timestamp).toLocaleTimeString()}
-                      </span>
-                      <Badge variant="secondary" className="text-xs">{evt.agent}</Badge>
-                      <span className={evt.event === "error" ? "text-red-500" : ""}>{evt.message}</span>
-                    </div>
-                  ))}
+                  {events.map((evt, i) => {
+                    const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : "";
+                    const agent = evt.agent || evt.event || "system";
+                    const msg = evt.message
+                      || (evt.event === "discovery" ? `Found ${evt.jobs_found ?? 0} jobs so far` : "")
+                      || (evt.event === "scoring" ? `Scored ${evt.scored_count ?? 0} jobs` : "")
+                      || (evt.event === "agent_complete" ? `${agent} completed` : "")
+                      || evt.status
+                      || evt.event;
+                    return (
+                      <div key={i} className="flex gap-2">
+                        <span className="text-zinc-400 text-xs whitespace-nowrap">{time}</span>
+                        <Badge variant="secondary" className="text-xs">{agent}</Badge>
+                        <span className={evt.event === "error" ? "text-red-500" : ""}>{msg}</span>
+                      </div>
+                    );
+                  })}
                   <div ref={eventsEndRef} />
                 </CardContent>
               </Card>

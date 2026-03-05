@@ -120,6 +120,26 @@ export async function startSession(params: {
   return res.json();
 }
 
+export interface SessionListItem {
+  session_id: string;
+  status: string;
+  keywords: string[];
+  locations: string[];
+  remote_only: boolean;
+  salary_min: number | null;
+  resume_text_snippet: string;
+  linkedin_url: string | null;
+  applications_submitted: number;
+  applications_failed: number;
+  created_at: string;
+}
+
+export async function listSessions(): Promise<SessionListItem[]> {
+  const res = await fetch(`${API_BASE}/api/sessions`);
+  if (!res.ok) throw new Error(`Failed to list sessions: ${res.statusText}`);
+  return res.json();
+}
+
 export async function getSession(sessionId: string): Promise<Record<string, unknown>> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`);
   if (!res.ok) throw new Error(`Failed to get session: ${res.statusText}`);
@@ -166,26 +186,40 @@ export function connectSSE(
 ): () => void {
   const es = createSSEConnection(sessionId);
 
-  const handler = (e: MessageEvent) => {
+  const EVENT_TYPES: SSEEventType[] = [
+    "status", "coaching", "discovery", "scoring", "tailoring",
+    "agent_complete", "hitl", "application_progress", "done", "error",
+  ];
+
+  for (const eventType of EVENT_TYPES) {
+    es.addEventListener(eventType, (e: Event) => {
+      try {
+        const me = e as MessageEvent;
+        const data = JSON.parse(me.data);
+        // Enrich with event type and timestamp so the UI can display them
+        onEvent({
+          ...data,
+          event: eventType,
+          timestamp: data.timestamp || new Date().toISOString(),
+        });
+      } catch {
+        // ignore parse errors
+      }
+    });
+  }
+
+  es.onmessage = (e: MessageEvent) => {
     try {
       const data = JSON.parse(e.data);
-      onEvent(data);
+      onEvent({
+        ...data,
+        event: data.event || "message",
+        timestamp: data.timestamp || new Date().toISOString(),
+      });
     } catch {
       // ignore parse errors
     }
   };
-
-  es.addEventListener("status", handler);
-  es.addEventListener("coaching", handler);
-  es.addEventListener("discovery", handler);
-  es.addEventListener("scoring", handler);
-  es.addEventListener("tailoring", handler);
-  es.addEventListener("agent_complete", handler);
-  es.addEventListener("hitl", handler);
-  es.addEventListener("application_progress", handler);
-  es.addEventListener("done", handler);
-  es.addEventListener("error", handler);
-  es.onmessage = handler;
 
   return () => es.close();
 }

@@ -3,34 +3,14 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { Formik, Form } from "formik";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { FormikInput } from "@/components/forms/FormikInput";
+import { loginSchema, loginInitialValues } from "@/lib/schemas/auth";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-
-    if (result?.error) {
-      setError("Invalid email or password");
-      setLoading(false);
-    } else {
-      window.location.href = "/dashboard";
-    }
-  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center px-4">
@@ -66,29 +46,35 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Email/password */}
-          <form onSubmit={handleEmailLogin} className="space-y-3">
-            <Input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <Input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            {error && (
-              <p className="text-sm text-red-500">{error}</p>
+          <Formik
+            initialValues={loginInitialValues}
+            validationSchema={loginSchema}
+            onSubmit={async (values, { setSubmitting }) => {
+              setError("");
+              const result = await signIn("credentials", {
+                email: values.email,
+                password: values.password,
+                redirect: false,
+              });
+              if (result?.error) {
+                setError("Invalid email or password");
+                setSubmitting(false);
+              } else {
+                window.location.href = "/dashboard";
+              }
+            }}
+          >
+            {({ isSubmitting }) => (
+              <Form className="space-y-3">
+                <FormikInput name="email" type="email" placeholder="Email" />
+                <FormikInput name="password" type="password" placeholder="Password" />
+                {error && <p className="text-sm text-red-500">{error}</p>}
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? "Signing in..." : "Sign In"}
+                </Button>
+              </Form>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
-            </Button>
-          </form>
+          </Formik>
 
           <p className="text-center text-sm text-zinc-500">
             Don&apos;t have an account?{" "}
