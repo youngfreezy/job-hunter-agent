@@ -301,6 +301,10 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     "Circuit breaker tripped after %d consecutive failures -- pausing",
                     consecutive_failures,
                 )
+                try:
+                    await shared_browser.stop()
+                except Exception:
+                    pass
                 return {
                     "applications_submitted": submitted,
                     "applications_failed": failed,

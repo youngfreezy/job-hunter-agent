@@ -7,11 +7,32 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listSessions, type SessionListItem } from "@/lib/api";
 
+const STATUS_LABELS: Record<string, string> = {
+  intake: "Starting",
+  coaching: "Coaching",
+  discovering: "Discovering",
+  scoring: "Scoring",
+  tailoring: "Tailoring",
+  applying: "Applying",
+  awaiting_coach_review: "Needs Review",
+  awaiting_review: "Needs Review",
+  paused: "Paused",
+  completed: "Completed",
+  failed: "Failed",
+};
+
 const STATUS_COLORS: Record<string, string> = {
   completed: "default",
   applying: "secondary",
   failed: "destructive",
   paused: "outline",
+  intake: "outline",
+  coaching: "secondary",
+  discovering: "secondary",
+  scoring: "secondary",
+  tailoring: "secondary",
+  awaiting_coach_review: "outline",
+  awaiting_review: "outline",
 };
 
 export default function Dashboard() {
@@ -124,7 +145,7 @@ export default function Dashboard() {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <Badge variant={(STATUS_COLORS[s.status] as "default" | "secondary" | "destructive" | "outline") || "secondary"}>
-                          {s.status}
+                          {STATUS_LABELS[s.status] || s.status}
                         </Badge>
                         <span className="text-sm text-zinc-500">
                           {new Date(s.created_at).toLocaleDateString()}

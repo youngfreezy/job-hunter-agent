@@ -167,14 +167,26 @@ async def apply_with_browser_use(
         # Check success via AgentHistoryList
         is_success = result.is_successful()
         final_text = str(result.final_result() or "")
+        final_lower = final_text.lower()
+
+        # Check for failure indicators FIRST — override is_successful()
+        failure_keywords = [
+            "404", "not found", "page could not be found", "no longer available",
+            "expired", "removed", "impossible", "unable to complete",
+            "cannot apply", "couldn't apply", "could not apply",
+            "no application form", "login wall", "captcha",
+        ]
+        has_failure = any(kw in final_lower for kw in failure_keywords)
+        if has_failure:
+            is_success = False
 
         # Also check for success keywords in case is_successful is unreliable
-        if not is_success:
+        if not is_success and not has_failure:
             success_keywords = [
                 "submitted", "success", "thank you", "application complete",
-                "applied", "confirmation", "received",
+                "applied", "confirmation",
             ]
-            is_success = any(kw in final_text.lower() for kw in success_keywords)
+            is_success = any(kw in final_lower for kw in success_keywords)
 
         if is_success:
             logger.info(

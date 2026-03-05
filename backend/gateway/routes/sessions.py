@@ -576,11 +576,109 @@ async def _event_generator(session_id: str, checkpointer=None, graph=None):
 # Routes
 # ---------------------------------------------------------------------------
 
+async def _load_sessions_from_db(checkpointer) -> Dict[str, dict]:
+    """Load session metadata from the checkpointer's Postgres table.
+
+    Queries for all distinct thread_ids and extracts metadata from their
+    initial input checkpoint (step=-1) and latest checkpoint.
+    """
+    pool = getattr(checkpointer, "_pool", None) or getattr(checkpointer, "conn", None)
+    if pool is None:
+        return {}
+
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                # Get initial input (step -1) and latest checkpoint for each session
+                await cur.execute("""
+                    WITH latest AS (
+                        SELECT DISTINCT ON (thread_id)
+                            thread_id,
+                            metadata::text as meta
+                        FROM checkpoints
+                        WHERE checkpoint_ns = ''
+                        ORDER BY thread_id, checkpoint_id DESC
+                    ),
+                    initial AS (
+                        SELECT
+                            thread_id,
+                            metadata::text as meta
+                        FROM checkpoints
+                        WHERE checkpoint_ns = ''
+                          AND metadata->>'source' = 'input'
+                    )
+                    SELECT
+                        l.thread_id,
+                        l.meta as latest_meta,
+                        i.meta as initial_meta
+                    FROM latest l
+                    LEFT JOIN initial i ON l.thread_id = i.thread_id
+                """)
+                rows = await cur.fetchall()
+
+        sessions: Dict[str, dict] = {}
+        for row in rows:
+            thread_id = row[0]
+            try:
+                latest = json.loads(row[1]) if row[1] else {}
+                initial = json.loads(row[2]) if row[2] else {}
+
+                # Extract input data from initial checkpoint
+                start_input = (initial.get("writes") or {}).get("__start__", {})
+
+                # Determine status from latest checkpoint writes
+                latest_writes = latest.get("writes") or {}
+                status = start_input.get("status", "unknown")
+                for _node_name, node_writes in latest_writes.items():
+                    if isinstance(node_writes, dict) and "status" in node_writes:
+                        status = node_writes["status"]
+
+                apps_submitted = 0
+                apps_failed = 0
+                for _node_name, node_writes in latest_writes.items():
+                    if isinstance(node_writes, dict):
+                        sub = node_writes.get("applications_submitted")
+                        fail = node_writes.get("applications_failed")
+                        if isinstance(sub, list):
+                            apps_submitted = len(sub)
+                        if isinstance(fail, list):
+                            apps_failed = len(fail)
+
+                sessions[thread_id] = {
+                    "session_id": thread_id,
+                    "status": status,
+                    "keywords": start_input.get("keywords", []),
+                    "locations": start_input.get("locations", []),
+                    "remote_only": start_input.get("remote_only", False),
+                    "salary_min": start_input.get("salary_min"),
+                    "resume_text_snippet": (start_input.get("resume_text") or "")[:200],
+                    "linkedin_url": start_input.get("linkedin_url"),
+                    "applications_submitted": apps_submitted,
+                    "applications_failed": apps_failed,
+                    "created_at": start_input.get("created_at", ""),
+                }
+            except Exception:
+                logger.debug("Failed to parse checkpoint for thread %s", thread_id, exc_info=True)
+
+        return sessions
+    except Exception:
+        logger.debug("Failed to load sessions from DB", exc_info=True)
+        return {}
+
+
 @router.get("")
-async def list_sessions():
-    """Return all sessions from the in-memory registry (newest first)."""
+async def list_sessions(request: Request):
+    """Return all sessions, merging in-memory registry with durable DB state."""
+    checkpointer = request.app.state.checkpointer
+
+    # Load persisted sessions from Postgres
+    db_sessions = await _load_sessions_from_db(checkpointer)
+
+    # Merge: in-memory registry takes precedence (has live status updates)
+    merged = {**db_sessions, **session_registry}
+
     sessions = sorted(
-        session_registry.values(),
+        merged.values(),
         key=lambda s: s.get("created_at", ""),
         reverse=True,
     )
