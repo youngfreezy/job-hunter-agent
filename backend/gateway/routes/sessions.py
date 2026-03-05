@@ -332,16 +332,26 @@ async def _run_pipeline(
         unregister_emitter(session_id)
 
 
-async def _resume_pipeline(session_id: str, graph: Any, resume_value: Any = None) -> None:
+async def _resume_pipeline(
+    session_id: str,
+    graph: Any,
+    resume_value: Any = None,
+    checkpoint_id: str | None = None,
+) -> None:
     """Resume the pipeline after an interrupt (coach review or shortlist review).
 
     Uses Command(resume=value) to provide the human input back to the
     interrupt() call that paused the graph.
+
+    If checkpoint_id is provided, resumes from that specific checkpoint
+    instead of the latest one (used for rewind).
     """
     # Ensure emitter is registered for this session
     register_emitter(session_id, _emit)
 
-    config = {"configurable": {"thread_id": session_id}}
+    config: dict = {"configurable": {"thread_id": session_id}}
+    if checkpoint_id:
+        config["configurable"]["checkpoint_id"] = checkpoint_id
 
     # Build the resume input — Command(resume=...) feeds the value back
     # to the interrupt() call that paused execution.
@@ -654,6 +664,43 @@ async def get_session(session_id: str, request: Request):
     raise HTTPException(status_code=404, detail="Session not found")
 
 
+@router.get("/{session_id}/checkpoints")
+async def list_checkpoints(session_id: str, request: Request):
+    """List all checkpoints for a session (for rewind UI)."""
+    checkpointer = request.app.state.checkpointer
+    config = {"configurable": {"thread_id": session_id}}
+
+    checkpoints = []
+    try:
+        async for cp in checkpointer.alist(config):
+            cv = {}
+            if hasattr(cp, "checkpoint") and isinstance(cp.checkpoint, dict):
+                cv = cp.checkpoint.get("channel_values", {})
+            elif isinstance(cp, dict):
+                cv = cp.get("channel_values", {})
+
+            cp_id = ""
+            if hasattr(cp, "config"):
+                cp_id = cp.config.get("configurable", {}).get("checkpoint_id", "")
+
+            status = cv.get("status", "unknown")
+            apps_submitted = len(cv.get("applications_submitted", []))
+            apps_failed = len(cv.get("applications_failed", []))
+            app_queue = len(cv.get("application_queue", []))
+
+            checkpoints.append({
+                "checkpoint_id": cp_id,
+                "status": status,
+                "applications_submitted": apps_submitted,
+                "applications_failed": apps_failed,
+                "application_queue": app_queue,
+            })
+    except Exception:
+        logger.exception("Failed to list checkpoints for session %s", session_id)
+
+    return {"checkpoints": checkpoints}
+
+
 @router.get("/{session_id}/stream")
 async def stream_session(session_id: str, request: Request):
     """SSE stream for real-time pipeline updates (with replay on reconnect)."""
@@ -831,3 +878,92 @@ async def submit_decision(session_id: str, body: SubmitDecisionRequest):
     })
 
     return {"status": "ok", "decision": body.decision}
+
+
+class RewindRequest(_BaseModel):
+    checkpoint_id: str
+    approved_job_ids: list[str] | None = None
+
+
+@router.post("/{session_id}/rewind")
+async def rewind_session(session_id: str, body: RewindRequest, request: Request):
+    """Rewind a session to a specific checkpoint and resume the pipeline.
+
+    This loads the graph state from the given checkpoint_id (which must be
+    at an interrupt) and resumes execution from there.
+    """
+    graph = request.app.state.graph
+    config = {
+        "configurable": {
+            "thread_id": session_id,
+            "checkpoint_id": body.checkpoint_id,
+        }
+    }
+
+    # Verify the checkpoint exists and is at an interrupt
+    try:
+        graph_state = await graph.aget_state(config)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Checkpoint not found: {exc}")
+
+    next_nodes = getattr(graph_state, "next", ()) or ()
+    if not next_nodes:
+        raise HTTPException(
+            status_code=400,
+            detail="Checkpoint is not at an interrupt — cannot resume from here",
+        )
+
+    # Determine which interrupt we're at and build the resume value
+    if "shortlist_review" in next_nodes:
+        channel_values = graph_state.values if hasattr(graph_state, "values") else {}
+        if body.approved_job_ids:
+            approved = body.approved_job_ids
+        else:
+            approved = channel_values.get("application_queue", [])
+
+        resume_value = {
+            "approved_job_ids": approved,
+            "feedback": "Rewind: resuming application phase",
+        }
+    elif "coach_review" in next_nodes:
+        resume_value = {"approved": True}
+    else:
+        resume_value = {}
+
+    # Clear old event log and start fresh for the resumed phase
+    event_logs[session_id] = []
+    sse_subscribers.setdefault(session_id, [])
+
+    # Update registry
+    if session_id not in session_registry:
+        session_registry[session_id] = {
+            "session_id": session_id,
+            "status": "applying",
+            "keywords": [],
+            "locations": [],
+            "remote_only": False,
+            "salary_min": None,
+            "resume_text_snippet": "",
+            "linkedin_url": None,
+            "applications_submitted": 0,
+            "applications_failed": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+    session_registry[session_id]["status"] = "applying"
+
+    await _emit(session_id, "status", {
+        "status": "applying",
+        "message": f"Rewound to checkpoint — resuming with {len(resume_value.get('approved_job_ids', []))} jobs",
+    })
+
+    # Resume the pipeline from the rewound checkpoint
+    asyncio.create_task(_resume_pipeline(
+        session_id, graph, resume_value=resume_value, checkpoint_id=body.checkpoint_id
+    ))
+
+    return {
+        "status": "ok",
+        "checkpoint_id": body.checkpoint_id,
+        "next_nodes": list(next_nodes),
+        "message": f"Resuming from {next_nodes}",
+    }

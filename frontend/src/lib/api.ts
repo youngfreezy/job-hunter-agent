@@ -97,6 +97,7 @@ export type SSEEventType =
   | "agent_complete"
   | "hitl"
   | "application_progress"
+  | "application_browser_action"
   | "verification_progress"
   | "reporting_progress"
   | "needs_intervention"
@@ -212,6 +213,37 @@ export async function resumeIntervention(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to resume intervention: ${res.status}`);
 }
 
+// ---------- Rewind ----------
+
+export interface Checkpoint {
+  checkpoint_id: string;
+  status: string;
+  applications_submitted: number;
+  applications_failed: number;
+  application_queue: number;
+}
+
+export async function listCheckpoints(sessionId: string): Promise<Checkpoint[]> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/checkpoints`);
+  if (!res.ok) throw new Error(`Failed to list checkpoints: ${res.statusText}`);
+  const data = await res.json();
+  return data.checkpoints;
+}
+
+export async function rewindSession(
+  sessionId: string,
+  checkpointId: string,
+  approvedJobIds?: string[]
+): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/rewind`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkpoint_id: checkpointId, approved_job_ids: approvedJobIds }),
+  });
+  if (!res.ok) throw new Error(`Failed to rewind session: ${res.statusText}`);
+  return res.json();
+}
+
 // ---------- SSE ----------
 
 export function createSSEConnection(sessionId: string): EventSource {
@@ -232,7 +264,7 @@ export function connectSSE(
     "status", "coaching", "coach_review", "coaching_progress", "discovery",
     "discovery_progress", "scoring", "scoring_progress", "tailoring",
     "tailoring_progress", "shortlist_review", "agent_complete", "hitl",
-    "application_progress", "verification_progress", "reporting_progress",
+    "application_progress", "application_browser_action", "verification_progress", "reporting_progress",
     "needs_intervention", "ready_to_submit", "done", "error",
   ];
 
@@ -247,6 +279,12 @@ export function connectSSE(
           event: eventType,
           timestamp: data.timestamp || new Date().toISOString(),
         });
+        // Close EventSource on terminal event to prevent auto-reconnect
+        // (EventSource auto-reconnects when the stream ends, causing
+        // infinite replay loops for completed/failed sessions)
+        if (eventType === "done") {
+          es.close();
+        }
       } catch {
         // ignore parse errors
       }

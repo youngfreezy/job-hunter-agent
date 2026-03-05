@@ -10,12 +10,11 @@ import asyncio
 import logging
 from typing import Any, Dict, List
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
-from backend.shared.config import get_settings
+from backend.shared.llm import build_llm as _shared_build_llm, invoke_with_retry
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import ScoredJob, TailoredResume
 
@@ -43,14 +42,8 @@ def _pick_model(is_top_tier: bool) -> str:
     return OPUS_MODEL if is_top_tier else SONNET_MODEL
 
 
-def _build_llm(model: str) -> ChatAnthropic:
-    settings = get_settings()
-    return ChatAnthropic(
-        model=model,
-        api_key=settings.ANTHROPIC_API_KEY,
-        max_tokens=4096,
-        temperature=0.3,
-    )
+def _build_llm(model: str):
+    return _shared_build_llm(model=model, max_tokens=4096, temperature=0.3)
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +88,7 @@ async def _tailor_single(
         SystemMessage(content=TAILOR_SYSTEM),
         HumanMessage(content=user_content),
     ]
-    result: TailorResult = await structured_llm.ainvoke(messages)
+    result: TailorResult = await invoke_with_retry(structured_llm, messages)
 
     fit_score = result.fit_score
     tailored_text = result.tailored_text
@@ -124,7 +117,7 @@ async def _tailor_single(
             SystemMessage(content=IMPROVE_SYSTEM),
             HumanMessage(content=improve_content),
         ]
-        retry_result: TailorResult = await structured_llm.ainvoke(retry_messages)
+        retry_result: TailorResult = await invoke_with_retry(structured_llm, retry_messages)
         fit_score = retry_result.fit_score
         tailored_text = retry_result.tailored_text
         changes_made = retry_result.changes_made

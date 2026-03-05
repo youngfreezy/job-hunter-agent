@@ -6,12 +6,11 @@ import json
 import logging
 from typing import List
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
-from backend.shared.config import get_settings
+from backend.shared.llm import build_llm as _shared_build_llm, invoke_with_retry, HAIKU_MODEL
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import ApplicationResult
 
@@ -30,17 +29,8 @@ class VerificationResult(BaseModel):
     details: List[VerificationDetail] = Field(default_factory=list)
     summary: str
 
-HAIKU_MODEL = "claude-haiku-4-5-20251001"
-
-
-def _build_llm() -> ChatAnthropic:
-    settings = get_settings()
-    return ChatAnthropic(
-        model=HAIKU_MODEL,
-        api_key=settings.ANTHROPIC_API_KEY,
-        max_tokens=1024,
-        temperature=0.0,
-    )
+def _build_llm():
+    return _shared_build_llm(model=HAIKU_MODEL, max_tokens=1024, temperature=0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +116,7 @@ async def run_verification_agent(state: JobHunterState) -> dict:
             ),
         ]
 
-        verification_result: VerificationResult = await structured_llm.ainvoke(messages)
+        verification_result: VerificationResult = await invoke_with_retry(structured_llm, messages)
 
         summary = verification_result.summary
         verified_count = verification_result.verified_count

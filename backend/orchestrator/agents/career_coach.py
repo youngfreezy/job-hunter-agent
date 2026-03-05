@@ -125,7 +125,10 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
 
     try:
         settings = get_settings()
-        client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        client = anthropic.AsyncAnthropic(
+            api_key=settings.ANTHROPIC_API_KEY,
+            max_retries=5,
+        )
 
         # -- Build user message from state ----------------------------------
         parts: list[str] = []

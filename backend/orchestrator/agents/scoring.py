@@ -11,11 +11,11 @@ import json
 import logging
 from typing import Any, Dict, List
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from backend.shared.config import settings
+from backend.shared.llm import build_llm, invoke_with_retry
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     JobListing,
@@ -164,13 +164,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
 
         # Step 3: Score each batch via LLM with structured output
         session_id = state.get("session_id", "")
-        llm = ChatAnthropic(
-            model=DEFAULT_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            max_tokens=4096,
-            temperature=0.0,  # deterministic scoring
-            timeout=120,
-        )
+        llm = build_llm(model=DEFAULT_MODEL, max_tokens=4096, temperature=0.0, timeout=120)
         structured_llm = llm.with_structured_output(ScoringBatchResult)
 
         all_scores: List[dict] = []
@@ -199,8 +193,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 "Score each job."
             )
 
-            result: ScoringBatchResult = await structured_llm.ainvoke(
-                [
+            result: ScoringBatchResult = await invoke_with_retry(structured_llm, [
                     SystemMessage(content=SCORING_SYSTEM_PROMPT),
                     HumanMessage(content=user_prompt),
                 ]

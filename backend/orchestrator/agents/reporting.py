@@ -6,12 +6,11 @@ import logging
 from datetime import datetime, timezone
 from typing import List
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
-from backend.shared.config import get_settings
+from backend.shared.llm import build_llm as _shared_build_llm, invoke_with_retry, HAIKU_MODEL
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     ApplicationResult,
@@ -25,17 +24,8 @@ logger = logging.getLogger(__name__)
 class NextStepsResult(BaseModel):
     next_steps: List[str] = Field(description="3-5 actionable next steps for the candidate")
 
-HAIKU_MODEL = "claude-haiku-4-5-20251001"
-
-
-def _build_llm() -> ChatAnthropic:
-    settings = get_settings()
-    return ChatAnthropic(
-        model=HAIKU_MODEL,
-        api_key=settings.ANTHROPIC_API_KEY,
-        max_tokens=1024,
-        temperature=0.4,
-    )
+def _build_llm():
+    return _shared_build_llm(model=HAIKU_MODEL, max_tokens=1024, temperature=0.4)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +150,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
                 SystemMessage(content=NEXT_STEPS_SYSTEM),
                 HumanMessage(content=session_context),
             ]
-            result: NextStepsResult = await structured_llm.ainvoke(messages)
+            result: NextStepsResult = await invoke_with_retry(structured_llm, messages)
             next_steps = result.next_steps
 
         except Exception as exc:
