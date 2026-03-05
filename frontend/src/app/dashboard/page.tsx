@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listSessions, type SessionListItem } from "@/lib/api";
 
@@ -50,39 +50,62 @@ export default function Dashboard() {
 
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-2xl font-bold">{sessions.length}</p>
-              <p className="text-sm text-zinc-500">Total Sessions</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-2xl font-bold">
-                {sessions.reduce((sum, s) => sum + s.applications_submitted, 0)}
-              </p>
-              <p className="text-sm text-zinc-500">Applications Sent</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-2xl font-bold">
-                {sessions.filter((s) => s.status === "completed").length}
-              </p>
-              <p className="text-sm text-zinc-500">Completed</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-2xl font-bold">Professional</p>
-              <p className="text-sm text-zinc-500">Current Plan</p>
-            </CardContent>
-          </Card>
+          {loading ? (
+            [1, 2, 3, 4].map((i) => (
+              <Card key={i}>
+                <CardContent className="pt-6">
+                  <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-2" />
+                  <div className="h-3 w-24 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-2xl font-bold">{sessions.length}</p>
+                  <p className="text-sm text-zinc-500">Total Sessions</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-2xl font-bold">
+                    {sessions.reduce((sum, s) => sum + s.applications_submitted, 0)}
+                  </p>
+                  <p className="text-sm text-zinc-500">Applications Sent</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-2xl font-bold">
+                    {sessions.filter((s) => s.status === "completed").length}
+                  </p>
+                  <p className="text-sm text-zinc-500">Completed</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-2xl font-bold">Professional</p>
+                  <p className="text-sm text-zinc-500">Current Plan</p>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
 
         {/* Sessions list */}
         {loading ? (
-          <p className="text-zinc-500">Loading sessions...</p>
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 flex items-center justify-between">
+                <div className="space-y-2">
+                  <div className="h-5 w-48 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+                  <div className="h-3 w-32 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />
+                </div>
+                <div className="h-6 w-20 bg-zinc-200 dark:bg-zinc-800 rounded-full animate-pulse" />
+              </div>
+            ))}
+          </div>
         ) : sessions.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">

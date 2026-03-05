@@ -37,6 +37,9 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    --cp-path: #2563eb;
+    --cp-trail: #e4e4e7;
+    --cp-text: #3f3f46;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -63,5 +66,19 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --cp-path: #60a5fa;
+    --cp-trail: #27272a;
+    --cp-text: #d4d4d8;
+  }
+}
+
+@keyframes spin-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.08);
   }
 }
