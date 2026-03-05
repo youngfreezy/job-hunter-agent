@@ -2,22 +2,22 @@
 
 Pipeline stages:
     intake -> career_coach -> [HITL: review coached resume]
-           -> discovery (fan-out to 5 job boards via Send) -> scoring
+           -> discovery (sequential, single browser) -> scoring
            -> resume_tailor -> [HITL: review shortlist]
            -> application (loop with circuit breaker) -> verification
            -> reporting
 
-Discovery uses real Playwright browser scraping across all boards in
-parallel (via Send API).  Application uses Playwright for form filling.
+Discovery scrapes all 5 job boards sequentially through a single shared
+browser process.  Application uses Playwright for form filling.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import List, Literal
+from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Send, interrupt
+from langgraph.types import interrupt
 
 from backend.orchestrator.agents import (
     application,
@@ -30,15 +30,12 @@ from backend.orchestrator.agents import (
     verification,
 )
 from backend.orchestrator.pipeline.state import JobHunterState
-from backend.shared.models.schemas import JobBoard
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-JOB_BOARDS: list[str] = [board.value for board in JobBoard]
 
 # Maximum consecutive application failures before the circuit breaker trips.
 MAX_CONSECUTIVE_FAILURES = 3
@@ -105,48 +102,14 @@ async def coach_review_gate(state: JobHunterState) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Discovery -- parallel fan-out to 5 job boards via Send API
+# Discovery -- sequential scraping through a single shared browser
 # ---------------------------------------------------------------------------
 
 
-async def discovery_board_node(state: JobHunterState) -> dict:
-    """Run discovery for a single job board.
-
-    The ``board`` key is injected into the state slice by the Send dispatch.
-    Each board's results are appended via the ``operator.add`` reducer on
-    ``discovered_jobs``.
-
-    Internally calls the updated discovery agent which:
-    1. Attempts real Playwright scraping for the specified board
-    2. Falls back to Claude-simulated listings on failure
-    3. Returns discovered jobs to be merged via the reducer
-    """
-    board = state.get("board", "unknown")
-    logger.info("Discovery board node invoked for board=%s", board)
+async def discovery_node(state: JobHunterState) -> dict:
+    """Scrape all job boards sequentially with a single browser process."""
+    logger.info("Discovery node invoked — scraping all boards sequentially")
     return await discovery.run(state)
-
-
-def dispatch_discovery(state: JobHunterState) -> List[Send]:
-    """Fan-out: dispatch one Send per job board.
-
-    Each Send carries the full state plus an extra ``board`` key so the
-    discovery node knows which board to scrape.  All 5 boards run in
-    parallel via LangGraph's Send API.
-    """
-    sends = []
-    for board in JOB_BOARDS:
-        sends.append(
-            Send(
-                "discovery",
-                {**state, "board": board},
-            )
-        )
-    logger.info(
-        "Dispatching discovery fan-out to %d boards: %s",
-        len(sends),
-        JOB_BOARDS,
-    )
-    return sends
 
 
 # ---------------------------------------------------------------------------
@@ -313,7 +276,7 @@ def build_graph(checkpointer=None):
     g.add_node("intake", intake_node)
     g.add_node("career_coach", career_coach_node)
     g.add_node("coach_review", coach_review_gate)
-    g.add_node("discovery", discovery_board_node)
+    g.add_node("discovery", discovery_node)
     g.add_node("scoring", scoring_node)
     g.add_node("resume_tailor", resume_tailor_node)
     g.add_node("shortlist_review", shortlist_review_gate)
@@ -332,17 +295,10 @@ def build_graph(checkpointer=None):
     # 3. career_coach -> HITL gate (coach review)
     g.add_edge("career_coach", "coach_review")
 
-    # 4. coach_review -> discovery fan-out (Send API)
-    #    dispatch_discovery() returns 5 Send("discovery", ...) objects,
-    #    one per job board.  LangGraph runs them in parallel and merges
-    #    via operator.add on discovered_jobs.
-    g.add_conditional_edges(
-        "coach_review",
-        dispatch_discovery,
-        ["discovery"],
-    )
+    # 4. coach_review -> discovery (single node, sequential scraping)
+    g.add_edge("coach_review", "discovery")
 
-    # 5. discovery fan-in -> scoring (conditional in case 0 results)
+    # 5. discovery -> scoring (conditional in case 0 results)
     g.add_conditional_edges(
         "discovery",
         route_after_discovery,

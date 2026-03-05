@@ -159,13 +159,9 @@ class BrowserManager:
             logger.debug("Context %s using proxy %s", ctx_id, effective_proxy)
 
         context = await self._browser.new_context(**ctx_options)
-
-        # Apply stealth init-script to every new page in this context
-        await context.add_init_script(
-            """
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            """
-        )
+        # Note: stealth JS is applied per-page via apply_stealth() in each
+        # scraper.  Do NOT use context.add_init_script here — it causes
+        # ERR_NAME_NOT_RESOLVED with patchright.
 
         self._contexts[ctx_id] = context
         logger.info(

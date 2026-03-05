@@ -214,14 +214,13 @@ def get_stealth_config() -> Dict[str, Any]:
 
 
 async def apply_stealth(page: Any) -> None:
-    """Inject stealth JavaScript patches into *page* to evade bot detection.
+    """Apply stealth settings to a page.
 
-    Should be called **before** navigating to any target URL so that the
-    overrides are in place when the page's own scripts run.
-
-    Parameters
-    ----------
-    page:
-        A Playwright ``Page`` object (from patchright or vanilla playwright).
+    Patchright already includes anti-detection patches at the browser level,
+    so we skip ``add_init_script`` which causes ``ERR_NAME_NOT_RESOLVED``
+    in patchright's Chromium build.  The stealth JS is kept in this module
+    for reference if we ever switch back to vanilla playwright.
     """
-    await page.add_init_script(_STEALTH_JS)
+    # Patchright handles webdriver, plugins, etc. at the browser level.
+    # Calling page.add_init_script() breaks DNS resolution in patchright.
+    pass
