@@ -144,11 +144,23 @@ export default function SessionPage() {
         return { ...prev, ...updates };
       });
 
-      // Open coach review modal when the pipeline pauses for review
+      // Open coach review modal when the pipeline pauses for review.
+      // Store the data always (for the sidebar), but only open the modal
+      // if the session is still awaiting review (not if replaying old events).
       if (evt.event === "coach_review" && evt.coach_output) {
         const co = evt.coach_output as unknown as CoachOutput;
         setCoachReviewData(co);
-        setCoachReviewOpen(true);
+        setSession((prev) => {
+          // Only auto-open if we're still at coaching/awaiting_coach_review
+          if (prev && (prev.status === "coaching" || prev.status === "awaiting_coach_review")) {
+            setCoachReviewOpen(true);
+          }
+          return prev;
+        });
+      }
+      // Close modal if pipeline has moved past coach review
+      if (evt.event === "status" && evt.status && evt.status !== "coaching" && evt.status !== "awaiting_coach_review") {
+        setCoachReviewOpen(false);
       }
 
       // Auto-scroll events
