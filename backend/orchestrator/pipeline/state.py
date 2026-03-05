@@ -25,6 +25,11 @@ def _merge_dicts(a: Dict, b: Dict) -> Dict:
     return {**a, **b}
 
 
+def _last_value(a: str, b: str) -> str:
+    """Last-write-wins reducer for fields set by parallel nodes."""
+    return b
+
+
 class JobHunterState(TypedDict):
     """Full state for the JobHunter Agent pipeline.
 
@@ -82,19 +87,9 @@ class JobHunterState(TypedDict):
     agent_statuses: Annotated[Dict[str, str], _merge_dicts]
 
     # --- HITL + Steering ---
-    status: Literal[
-        "intake",
-        "coaching",
-        "discovering",
-        "scoring",
-        "tailoring",
-        "awaiting_review",
-        "applying",
-        "paused",
-        "takeover",
-        "completed",
-        "failed",
-    ]
+    # Annotated with _last_value so parallel fan-out nodes (discovery)
+    # can each set status without conflicting.
+    status: Annotated[str, _last_value]
     human_messages: Annotated[List[str], operator.add]
     steering_mode: Literal["status", "screenshot", "takeover"]
 
