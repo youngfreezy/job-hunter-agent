@@ -8,9 +8,7 @@ Pipeline stages:
            -> reporting
 
 Discovery uses real Playwright browser scraping across all boards in
-parallel (via Send API), with automatic fallback to Claude-simulated
-results if scraping fails.  Application uses Playwright for real form
-filling (configurable via SIMULATE_APPLICATIONS).
+parallel (via Send API).  Application uses Playwright for form filling.
 """
 
 from __future__ import annotations
@@ -242,12 +240,7 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
 
 
 async def application_node(state: JobHunterState) -> dict:
-    """Apply to jobs in the queue via browser automation (or simulation).
-
-    Uses real Playwright browser automation unless SIMULATE_APPLICATIONS
-    is enabled.  Each application attempt includes ATS detection, form
-    analysis, cover letter generation, and screenshot capture.
-    """
+    """Apply to jobs in the queue via Playwright browser automation."""
     return await application.run(state)
 
 

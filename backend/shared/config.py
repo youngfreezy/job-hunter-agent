@@ -58,10 +58,6 @@ class Settings(BaseSettings):
     # --- Browser proxy (anti-detection) ---
     PROXY_URL: Optional[str] = None
 
-    # --- Feature flags ---
-    SIMULATE_DISCOVERY: bool = False  # True = use Claude-generated mock listings
-    SIMULATE_APPLICATIONS: bool = False  # True = skip real Playwright form filling
-
     model_config = {
         "env_file": str(_PROJECT_ROOT / ".env"),
         "env_file_encoding": "utf-8",
