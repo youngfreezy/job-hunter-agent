@@ -87,11 +87,13 @@ async def scrape_glassdoor(
 
         # Glassdoor search URL pattern
         params: Dict[str, str] = {"sc.keyword": query}
-        if location and location.lower() != "remote":
+        if search_config.remote_only:
+            # Remote filter — skip location so Glassdoor doesn't limit radius
+            params["remoteWorkType"] = "1"
+        elif location and location.lower() != "remote":
             params["locT"] = "C"
             params["locKeyword"] = location
-        if search_config.remote_only:
-            params["remoteWorkType"] = "1"
+            params["radius"] = "100"
 
         param_str = "&".join(f"{k}={v}" for k, v in params.items())
         search_url = f"{GLASSDOOR_JOBS}/jobs.htm?{param_str}"

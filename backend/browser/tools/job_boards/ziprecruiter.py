@@ -48,10 +48,12 @@ async def scrape_ziprecruiter(
         location = search_config.locations[0] if search_config.locations else ""
 
         params: Dict[str, str] = {"search": query}
-        if location and location.lower() != "remote":
-            params["location"] = location
         if search_config.remote_only:
+            # Remote filter — skip location so ZipRecruiter doesn't limit radius
             params["refine_by_location_type"] = "only_remote"
+        elif location and location.lower() != "remote":
+            params["location"] = location
+            params["radius"] = "100"
 
         param_str = "&".join(f"{k}={v}" for k, v in params.items())
         search_url = f"{ZIPRECRUITER_JOBS}?{param_str}"

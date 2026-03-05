@@ -110,10 +110,12 @@ async def scrape_linkedin(
         location = search_config.locations[0] if search_config.locations else ""
 
         params: Dict[str, str] = {"keywords": query, "trk": "public_jobs_jobs-search-bar_search-submit"}
-        if location:
-            params["location"] = location
         if search_config.remote_only:
-            params["f_WT"] = "2"  # LinkedIn remote filter
+            # Remote filter — skip location so LinkedIn doesn't limit radius
+            params["f_WT"] = "2"
+        elif location:
+            params["location"] = location
+            params["distance"] = "100"  # 100-mile radius
 
         param_str = "&".join(f"{k}={v}" for k, v in params.items())
         search_url = f"{LINKEDIN_JOBS}?{param_str}"
