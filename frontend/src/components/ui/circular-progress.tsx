@@ -10,10 +10,12 @@ interface CircularProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   strokeWidth?: number;
   /** Show percentage text in center */
   showValue?: boolean;
+  /** Pulse animation when actively progressing (default false) */
+  pulse?: boolean;
 }
 
 const CircularProgress = React.forwardRef<HTMLDivElement, CircularProgressProps>(
-  ({ value, size = 40, strokeWidth = 4, showValue = false, className, ...props }, ref) => {
+  ({ value, size = 40, strokeWidth = 4, showValue = false, pulse = false, className, ...props }, ref) => {
     const clamped = Math.max(0, Math.min(100, value));
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
@@ -22,7 +24,7 @@ const CircularProgress = React.forwardRef<HTMLDivElement, CircularProgressProps>
     return (
       <div
         ref={ref}
-        className={cn("relative inline-flex items-center justify-center", className)}
+        className={cn("relative inline-flex items-center justify-center", pulse && "animate-pulse", className)}
         style={{ width: size, height: size }}
         {...props}
       >

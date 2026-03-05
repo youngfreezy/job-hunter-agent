@@ -329,9 +329,9 @@ export default function SessionPage() {
       {/* Progress bar */}
       <div className="px-6 py-3 border-b border-zinc-100 dark:border-zinc-900">
         <div className="max-w-5xl mx-auto flex items-center gap-4">
-          <Progress value={progressPct} className="flex-1" />
+          <Progress value={progressPct} className={`flex-1 ${session.status !== "completed" && session.status !== "failed" ? "[&>div]:animate-progress-pulse" : ""}`} />
           {session.status !== "completed" && session.status !== "failed" ? (
-            <CircularProgress value={stepProgress} size={36} strokeWidth={3} showValue />
+            <CircularProgress value={stepProgress} size={36} strokeWidth={3} showValue pulse />
           ) : (
             <span className="text-xs text-zinc-500 whitespace-nowrap">
               {session.status === "completed" ? "Done" : "Failed"}

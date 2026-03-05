@@ -55,7 +55,16 @@ const config: Config = {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
-  		}
+  		},
+  		keyframes: {
+  			'progress-pulse': {
+  				'0%, 100%': { opacity: '1' },
+  				'50%': { opacity: '0.7' },
+  			},
+  		},
+  		animation: {
+  			'progress-pulse': 'progress-pulse 2s ease-in-out infinite',
+  		},
   	}
   },
   plugins: [require("tailwindcss-animate")],
