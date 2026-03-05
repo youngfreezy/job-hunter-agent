@@ -25,7 +25,7 @@ export function SessionWizard() {
   const [step, setStep] = useState(0);
   const [submitError, setSubmitError] = useState("");
 
-  const { formik, clearPersistedValues } = usePersistedFormik<SessionFormValues>({
+  const { formik } = usePersistedFormik<SessionFormValues>({
     persistKey: "session_wizard",
     initialValues: sessionInitialValues,
     validationSchema: stepSchemas[step],

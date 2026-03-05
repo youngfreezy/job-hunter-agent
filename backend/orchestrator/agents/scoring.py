@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 
 from backend.shared.config import settings
 from backend.shared.event_bus import emit_agent_event
@@ -22,6 +23,24 @@ from backend.shared.models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ScoreBreakdown(BaseModel):
+    keyword_match: int = Field(ge=0, le=100)
+    location_match: int = Field(ge=0, le=100)
+    salary_match: int = Field(ge=0, le=100)
+    experience_match: int = Field(ge=0, le=100)
+
+
+class JobScore(BaseModel):
+    job_id: str
+    score: int = Field(ge=0, le=100)
+    score_breakdown: ScoreBreakdown
+    reasons: List[str] = Field(default_factory=list)
+
+
+class ScoringBatchResult(BaseModel):
+    scores: List[JobScore] = Field(description="Scoring results for each job in the batch")
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -38,15 +57,7 @@ SCORING_SYSTEM_PROMPT = """\
 You are an expert career-matching engine. Given a candidate's resume and a batch
 of job listings, score each job on how well the candidate fits.
 
-For EACH job produce a JSON object with:
-- job_id (str): the id of the job listing
-- score (int 0-100): overall fit score
-- score_breakdown (object):
-    - keyword_match (int 0-100): how well the job's required skills match the resume
-    - location_match (int 0-100): 100 if location/remote preferences align, lower otherwise
-    - salary_match (int 0-100): 100 if salary range aligns with experience level, 50 if unknown
-    - experience_match (int 0-100): how well the candidate's experience level matches the role
-- reasons (list[str]): 2-3 short bullet points explaining the score
+For EACH job, produce a score with breakdown and reasons.
 
 Scoring guidelines:
 - keyword_match: Count overlapping skills, technologies, and domain keywords.
@@ -54,8 +65,7 @@ Scoring guidelines:
 - salary_match: 100 if within resume's implied range; 50 if salary not listed; lower if clearly mismatched.
 - experience_match: 100 if years of experience align; lower for over/under-qualified.
 - overall score should be a weighted average: keyword 40%, experience 30%, location 15%, salary 15%.
-
-Return ONLY valid JSON -- an array of scoring objects. No markdown, no explanation.
+- reasons: 2-3 short bullet points explaining the score.
 """
 
 
@@ -152,7 +162,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # Step 2: Batch
         batches = _batch(unique_jobs, SCORING_BATCH_SIZE)
 
-        # Step 3: Score each batch via LLM
+        # Step 3: Score each batch via LLM with structured output
         session_id = state.get("session_id", "")
         llm = ChatAnthropic(
             model=DEFAULT_MODEL,
@@ -161,6 +171,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
             temperature=0.0,  # deterministic scoring
             timeout=120,
         )
+        structured_llm = llm.with_structured_output(ScoringBatchResult)
 
         all_scores: List[dict] = []
 
@@ -185,37 +196,17 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
             user_prompt = (
                 f"## Candidate Resume\n\n{resume}\n\n"
                 f"## Job Listings (batch {batch_idx + 1}/{len(batches)})\n\n{jobs_text}\n\n"
-                "Score each job and return the JSON array."
+                "Score each job."
             )
 
-            response = await llm.ainvoke(
+            result: ScoringBatchResult = await structured_llm.ainvoke(
                 [
                     SystemMessage(content=SCORING_SYSTEM_PROMPT),
                     HumanMessage(content=user_prompt),
                 ]
             )
 
-            raw_text = response.content
-            if isinstance(raw_text, list):
-                raw_text = "".join(
-                    block if isinstance(block, str) else block.get("text", "")
-                    for block in raw_text
-                )
-
-            # Strip markdown fences if present
-            if "```json" in raw_text:
-                raw_text = raw_text.split("```json", 1)[1]
-                raw_text = raw_text.rsplit("```", 1)[0]
-            elif "```" in raw_text:
-                raw_text = raw_text.split("```", 1)[1]
-                raw_text = raw_text.rsplit("```", 1)[0]
-            raw_text = raw_text.strip()
-
-            parsed = json.loads(raw_text)
-            # Handle both {"scores": [...]} and direct [...] responses
-            if isinstance(parsed, dict):
-                parsed = parsed.get("scores", parsed.get("results", []))
-            all_scores.extend(parsed)
+            all_scores.extend(s.model_dump() for s in result.scores)
 
             done_pct = int(((batch_idx + 1) / len(batches)) * 100)
             await emit_agent_event(session_id, "scoring_progress", {

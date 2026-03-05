@@ -61,9 +61,20 @@ const config: Config = {
   				'0%, 100%': { opacity: '1' },
   				'50%': { opacity: '0.7' },
   			},
+  			'fade-in-up': {
+  				from: { opacity: '0', transform: 'translateY(6px)' },
+  				to: { opacity: '1', transform: 'translateY(0)' },
+  			},
+  			'gradient-shift': {
+  				'0%': { backgroundPosition: '0% 50%' },
+  				'50%': { backgroundPosition: '100% 50%' },
+  				'100%': { backgroundPosition: '0% 50%' },
+  			},
   		},
   		animation: {
   			'progress-pulse': 'progress-pulse 2s ease-in-out infinite',
+  			'fade-in-up': 'fade-in-up 0.3s ease-out',
+  			'gradient-shift': 'gradient-shift 3s ease infinite',
   		},
   	}
   },

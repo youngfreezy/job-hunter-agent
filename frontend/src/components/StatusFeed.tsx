@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Badge } from "@/components/ui/badge";
-
 export type StatusEvent = {
   event: string;
   agent: string;

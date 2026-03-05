@@ -29,7 +29,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <NextTopLoader color="#18181b" showSpinner={false} height={2} />
+        <NextTopLoader color="#6366f1" showSpinner={false} height={3} />
         {children}
       </body>
     </html>

@@ -12,7 +12,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Configure logging for all backend modules (Python default is WARNING only)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s: %(message)s",
+)
+for _noisy in ("httpcore", "httpx", "neo4j", "urllib3", "watchfiles", "asyncio"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 from backend.shared.config import get_settings
+from backend.shared import patches
+
+patches.apply_all()
 
 logger = logging.getLogger(__name__)
 
@@ -96,11 +107,13 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.health import router as health_router
     from backend.gateway.routes.payments import router as payments_router
     from backend.gateway.routes.sessions import router as sessions_router
+    from backend.gateway.routes.ws import router as ws_router
 
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
     app.include_router(payments_router)
+    app.include_router(ws_router)
 
     return app
 

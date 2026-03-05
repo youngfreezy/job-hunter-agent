@@ -8,6 +8,7 @@ from typing import List
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
@@ -15,6 +16,19 @@ from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import ApplicationResult
 
 logger = logging.getLogger(__name__)
+
+
+class VerificationDetail(BaseModel):
+    job_id: str
+    verified: bool
+    reason: str
+
+
+class VerificationResult(BaseModel):
+    verified_count: int
+    failed_count: int
+    details: List[VerificationDetail] = Field(default_factory=list)
+    summary: str
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
@@ -39,20 +53,6 @@ results. For each application, determine whether it was successfully submitted.
 
 In Phase 1 the only signal is the `status` field.  An application is verified
 if status == "submitted".
-
-Return ONLY valid JSON with this schema (no markdown fences):
-{
-  "verified_count": <int>,
-  "failed_count": <int>,
-  "details": [
-    {
-      "job_id": "<id>",
-      "verified": <bool>,
-      "reason": "<short explanation>"
-    }
-  ],
-  "summary": "<one-sentence overall summary>"
-}
 """
 
 
@@ -114,6 +114,7 @@ async def run_verification_agent(state: JobHunterState) -> dict:
         })
 
         llm = _build_llm()
+        structured_llm = llm.with_structured_output(VerificationResult)
 
         messages = [
             SystemMessage(content=VERIFY_SYSTEM),
@@ -125,12 +126,11 @@ async def run_verification_agent(state: JobHunterState) -> dict:
             ),
         ]
 
-        response = await llm.ainvoke(messages)
-        verification_result = json.loads(response.content)
+        verification_result: VerificationResult = await structured_llm.ainvoke(messages)
 
-        summary = verification_result.get("summary", "Verification complete.")
-        verified_count = verification_result.get("verified_count", 0)
-        failed_count = verification_result.get("failed_count", 0)
+        summary = verification_result.summary
+        verified_count = verification_result.verified_count
+        failed_count = verification_result.failed_count
 
         agent_status = (
             f"completed -- {verified_count} verified, "

@@ -13,6 +13,8 @@ from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
 from backend.shared.models.schemas import SearchConfig
 
+# SearchConfig is already a Pydantic model -- use it directly with structured output
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -22,7 +24,7 @@ INTAKE_SYSTEM_PROMPT = """\
 You are the Intake Agent for a job-hunting platform.
 
 Your job is to take raw user inputs (keywords, locations, preferences) along
-with optional resume text and produce a single, precise JSON object that
+with optional resume text and produce a structured search configuration that
 downstream agents will use to discover job listings.
 
 **Instructions**
@@ -34,20 +36,6 @@ downstream agents will use to discover job listings.
    - Inferred job type if not specified (e.g. "full-time").
 3. Respect explicit user preferences -- they always take priority over
    inferences from the resume.
-4. Return **only** valid JSON matching the schema below.  No markdown fences,
-   no commentary.
-
-**Output JSON schema**
-{
-  "keywords": ["string"],
-  "locations": ["string"],
-  "remote_only": bool,
-  "salary_min": int | null,
-  "experience_level": "entry" | "mid" | "senior" | "executive" | null,
-  "job_type": "full-time" | "contract" | "part-time" | null,
-  "company_size": "startup" | "mid" | "enterprise" | null,
-  "exclude_companies": ["string"]
-}
 """
 
 
@@ -68,6 +56,7 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
             temperature=0,
             max_tokens=2048,
         )
+        structured_llm = llm.with_structured_output(SearchConfig)
 
         # -- Build the user message from available state fields -------------
         parts: list[str] = []
@@ -99,18 +88,13 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
 
         user_message = "\n\n".join(parts) if parts else "No inputs provided."
 
-        # -- Invoke the LLM ------------------------------------------------
+        # -- Invoke the LLM with structured output -------------------------
         messages = [
             SystemMessage(content=INTAKE_SYSTEM_PROMPT),
             HumanMessage(content=user_message),
         ]
 
-        response = await llm.ainvoke(messages)
-        raw_json = response.content
-
-        # Parse and validate through the Pydantic model
-        parsed = json.loads(raw_json)
-        search_config = SearchConfig(**parsed)
+        search_config: SearchConfig = await structured_llm.ainvoke(messages)
 
         logger.info(
             "Intake agent produced SearchConfig with %d keywords for %s",

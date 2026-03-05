@@ -10,14 +10,35 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 
 from backend.shared.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# --- Pydantic models for structured output ---
+
+class FillInstruction(BaseModel):
+    """A single instruction for filling a form field."""
+    selector: str = Field(description="CSS selector for the field")
+    action: Literal["fill", "select", "check", "upload", "click", "skip"] = Field(
+        description="The action to perform on the field"
+    )
+    value: str = Field(default="", description="Value to fill, select, or use")
+    field_name: str = Field(default="", description="Human-readable name of the field")
+
+
+class FormAnalysisResult(BaseModel):
+    """Result of analysing a job application form."""
+    instructions: List[FillInstruction] = Field(
+        description="List of fill instructions for each form field"
+    )
+
 
 FORM_ANALYSIS_PROMPT = """\
 You are an expert at filling out job application forms.  You are given:
@@ -25,16 +46,7 @@ You are an expert at filling out job application forms.  You are given:
 2. Resume text and cover letter for the applicant
 3. Any known ATS-specific strategies
 
-For each field, return the best value to fill in.  Return ONLY valid JSON
-with this structure:
-[
-  {
-    "selector": "<CSS selector for the field>",
-    "action": "fill" | "select" | "check" | "upload" | "click",
-    "value": "<value to fill or select>",
-    "field_name": "<human-readable name>"
-  }
-]
+For each field, determine the best value to fill in.
 
 Rules:
 - For text inputs, use appropriate values from the resume/cover letter
@@ -44,8 +56,7 @@ Rules:
 - For "are you authorized to work" questions, always "Yes"
 - For "do you need sponsorship" questions, answer based on resume context
 - For salary fields, provide a reasonable number based on the job
-- Skip fields you cannot determine (return them with action "skip")
-- Return ONLY the JSON array -- no markdown, no explanation
+- Skip fields you cannot determine (use action "skip")
 """
 
 
@@ -127,6 +138,7 @@ async def analyse_form(
 ) -> List[Dict[str, Any]]:
     """Send form fields to Claude for intelligent fill-value determination.
 
+    Uses structured output (tool calling) to guarantee valid JSON responses.
     Returns a list of fill instructions.
     """
     llm = ChatAnthropic(
@@ -135,6 +147,7 @@ async def analyse_form(
         max_tokens=4096,
         temperature=0.0,
     )
+    structured_llm = llm.with_structured_output(FormAnalysisResult)
 
     user_content = (
         f"## Job\nTitle: {job_title}\nCompany: {job_company}\n\n"
@@ -145,19 +158,12 @@ async def analyse_form(
     if ats_strategy:
         user_content += f"## ATS Strategy\n{ats_strategy}\n\n"
 
-    response = await llm.ainvoke([
+    result: FormAnalysisResult = await structured_llm.ainvoke([
         SystemMessage(content=FORM_ANALYSIS_PROMPT),
         HumanMessage(content=user_content),
     ])
 
-    raw = response.content
-    if isinstance(raw, list):
-        raw = "".join(
-            block if isinstance(block, str) else block.get("text", "")
-            for block in raw
-        )
-
-    instructions = json.loads(raw)
+    instructions = [instr.model_dump() for instr in result.instructions]
     logger.info("Claude produced %d fill instructions", len(instructions))
     return instructions
 

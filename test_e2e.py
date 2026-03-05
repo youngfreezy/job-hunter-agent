@@ -14,28 +14,57 @@ SCREENSHOTS_DIR.mkdir(exist_ok=True)
 BASE_URL = "http://localhost:3000"
 
 # Test data
-KEYWORDS = "software engineer, python developer, backend engineer"
+KEYWORDS = "senior AI engineer, LLM engineer, agentic AI, full stack engineer"
 LOCATIONS = "San Francisco, Remote"
-RESUME_TEXT = """John Smith
-Senior Software Engineer | Python, Go, TypeScript
+RESUME_TEXT = """Fareez Ahmed
+Senior AI Engineer
+San Francisco, CA 94105
+(202) 677-0160
+Fareez.Ahmed@gmail.com
 
-EXPERIENCE
-Senior Software Engineer — Acme Corp (2021–Present)
-- Built scalable microservices handling 10M+ requests/day using Python and Go
-- Led migration from monolith to event-driven architecture (Kafka, Redis)
-- Mentored 4 junior engineers; established code review practices
-
-Software Engineer — TechStart Inc (2018–2021)
-- Developed REST APIs and GraphQL services using FastAPI and Django
-- Implemented CI/CD pipelines reducing deployment time by 70%
-- Built real-time data pipeline processing 500K events/hour
-
-EDUCATION
-B.S. Computer Science — UC Berkeley (2018)
+Senior AI Engineer with over ten years of software development experience across full-stack web applications, backend services, and AI-native systems. Builds production LLM platforms where models are first-class architecture components: agentic pipelines, HITL validation, and retrieval-augmented systems. Proven across React/Next.js, Python, Node.js, and AWS with a focus on evaluation-driven iteration and fast iteration cycles.
 
 SKILLS
-Python, Go, TypeScript, PostgreSQL, Redis, Kafka, Docker, Kubernetes, AWS, GCP
-FastAPI, Django, React, Next.js, GraphQL, REST APIs
+AI Systems & LLM Architecture: Agentic system design, orchestration, HITL validation, AI safety and guardrails, Prompt architecture, LLM evals, Evaluation-driven iteration, LangSmith, LangGraph, LangChain, LlamaIndex, Bedrock, AgentCore, OpenAI API
+Vector Search & Retrieval: RAG, semantic retrieval, grounding, PGVector, vector embeddings
+Backend: Node.js, NestJS, Express.js, Python, FastAPI, Flask, Ruby on Rails, Java
+Cloud / DevOps: AWS (Lambda, S3, EC2, Step Functions), GCP (Vertex AI, Cloud Run), Azure ML, CI/CD: GitLab, GitHub Actions, CircleCI
+Frontend: React, Next.js, TypeScript, JavaScript, Redux, HTML5, CSS3, Angular, D3.js
+Databases: PostgreSQL, DynamoDB, MongoDB, Neo4j, PGVector, Redis
+Testing & Quality: Jest, React Testing Library, Pytest, Playwright, Cypress, Storybook
+
+AI-NATIVE SYSTEMS & AGENTIC APPLICATIONS
+AEM Content Validator
+- Designed LangGraph pipeline with 5 parallel agents and zero-cost triage router
+- Reduced article validation from approx. 45 minutes to under 3 minutes
+- Loaded 34 validation rules from Neo4j Aura graph DB with JSON fallback
+- Grounded Accuracy Agent in PGVector; RAGAS evaluated faithfulness and recall
+- LLM Judge synthesized approve/reject/needs-revision verdict
+- Human reviewer gated via LangGraph interrupt() streamed to Next.js via SSE
+
+AI Foundry Platform
+- Shipped streaming chat on Bedrock/AgentCore with Vercel AI SDK and SSE
+- Memory reconciliation eliminated CloudFront timeout errors across all deployments
+- Built MCP server and model catalog for agent onboarding and spend tracking
+- Designed three-agent Copilot system (Orchestrator, Planner, QA) with E2E tests
+
+WORK HISTORY
+Nov 2018 - Present: Sr Software Engineer, V2 Software LLC
+- Mayo Clinic: Evolved AEM toward hybrid headless CMS; optimized GraphQL queries; built React component library; architected production LangGraph pipeline with 5 parallel agents
+- Signet Jewelers: Built AI Foundry platform; authored custom Vercel AI SDK provider for Bedrock AgentCore with server-side streaming
+- JP Morgan Chase: Developed React and Redux-based microfrontends; built backend services using Node.js and Express within AWS serverless architectures
+- CACI (Army AI Maintenance, DoD): Led UI development for DoD secure apps; built ML output visualizations with Plotly.js. Active Secret Clearance.
+- Rivian Automotive: Built React/Redux platform components; AWS Amplify backend with DynamoDB and Python Lambdas
+- College Board: Architected React micro-frontend for Student Portal with Redux and AWS Serverless
+- Etsy (Reverb): Led Plaid integration for secure financial account linking at scale
+- Live Nation (Ticketmaster): Built front-end components using ReactJS, Redux, Next.js, and GraphQL
+Jun 2017 - Nov 2018: Senior Software Engineer, CoStar Realty Group
+Aug 2016 - Mar 2017: Sr Software Engineer, Datascan
+Nov 2015 - Aug 2016: Software Engineer, General Electric
+
+EDUCATION
+MA: International Affairs and Economics, Columbia University, New York, NY
+Professional Certificates: DeepLearning.AI & Udemy — Agentic AI Engineering Course, Data Analytics Foundations
 """
 
 
@@ -135,9 +164,9 @@ async def run():
         await screenshot(page, "09_session_launched")
 
         # ---- Step 6: Monitor pipeline ----
-        print("8. Monitoring pipeline (up to 5 minutes)...")
+        print("8. Monitoring pipeline (up to 20 minutes)...")
         start_time = time.time()
-        max_wait = 600  # 10 minutes — discovery with proxy is slow
+        max_wait = 1200  # 20 minutes — applying to 20+ jobs takes time
         screenshot_count = 10
 
         while time.time() - start_time < max_wait:

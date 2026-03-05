@@ -10,6 +10,7 @@ import asyncio
 import base64
 import json
 import logging
+from functools import partial
 from typing import Any, Optional
 
 from backend.shared.config import settings
@@ -55,8 +56,11 @@ class ScreenshotStreamer:
         try:
             import redis.asyncio as aioredis
             self._redis = aioredis.from_url(settings.REDIS_URL)
-        except Exception:
-            logger.warning("Redis not available -- screenshots will not be streamed")
+            await self._redis.ping()
+            logger.info("Redis connected for screenshot streaming")
+        except Exception as exc:
+            logger.warning("Redis not available -- screenshots will not be streamed: %s", exc)
+            self._redis = None
             return
 
         self._running = True
@@ -88,7 +92,10 @@ class ScreenshotStreamer:
                 quality=self.quality,
                 full_page=False,
             )
-            return base64.b64encode(screenshot_bytes).decode("utf-8")
+            # Offload CPU-bound base64 encoding to thread pool
+            return await asyncio.to_thread(
+                lambda b: base64.b64encode(b).decode("utf-8"), screenshot_bytes
+            )
         except Exception:
             logger.debug("Screenshot capture failed", exc_info=True)
             return None
@@ -106,7 +113,8 @@ class ScreenshotStreamer:
                         "screenshot": b64,
                         "url": page.url,
                     })
-                    await self._redis.publish(channel, payload)
+                    receivers = await self._redis.publish(channel, payload)
+                    logger.debug("Published screenshot to %s (%d receivers, %d bytes)", channel, receivers, len(payload))
 
                 await asyncio.sleep(self.interval_ms / 1000)
 
