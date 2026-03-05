@@ -87,10 +87,12 @@ async def scrape_indeed(
 
         # Build the search URL with query params
         params: Dict[str, str] = {"q": query}
-        if location and location.lower() != "remote":
-            params["l"] = location
         if search_config.remote_only:
+            # Remote filter — skip location so Indeed doesn't limit to 25mi radius
             params["remotejob"] = "032b3046-06a3-4876-8dfd-474eb5e7ed11"
+        elif location and location.lower() != "remote":
+            params["l"] = location
+            params["radius"] = "100"
         if search_config.salary_min:
             params["salary"] = str(search_config.salary_min)
 
