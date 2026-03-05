@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { FormikProvider } from "formik";
 import { usePersistedFormik } from "@/lib/hooks/usePersistedFormik";
 import {
@@ -23,7 +22,6 @@ const WIZARD_STEPS = [
 ];
 
 export function SessionWizard() {
-  const router = useRouter();
   const [step, setStep] = useState(0);
   const [submitError, setSubmitError] = useState("");
 
@@ -47,9 +45,9 @@ export function SessionWizard() {
           preferences: {},
         });
 
-        // Don't clear persisted values — keep them so the user can
-        // prefill the form when starting another session later.
-        router.push(`/session/${session.session_id}`);
+        // Use window.location.href instead of router.push() to avoid
+        // Next.js dev-mode on-demand page compilation delay.
+        window.location.href = `/session/${session.session_id}`;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to start session";
         if (msg === "Failed to fetch" || msg.includes("NetworkError") || msg === "Load failed") {

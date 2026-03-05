@@ -279,6 +279,7 @@ export default function SessionPage() {
     try {
       const jobIds = Array.from(selectedJobIds);
       await submitReview(sessionId, { approved_job_ids: jobIds, feedback: "" });
+      shortlistApprovedRef.current = true;
       setShortlistReviewOpen(false);
       setSession((prev) => prev ? { ...prev, status: "applying" } : prev);
     } catch (e) {
@@ -301,6 +302,7 @@ export default function SessionPage() {
     setCoachReviewSubmitting(true);
     try {
       await submitCoachReview(sessionId, { approved: true });
+      coachApprovedRef.current = true;
       setCoachReviewOpen(false);
       setSession((prev) => prev ? { ...prev, status: "discovering" } : prev);
     } catch (e) {

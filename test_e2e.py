@@ -47,7 +47,7 @@ async def screenshot(page, name: str):
 
 async def run():
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False, slow_mo=300)
+        browser = await p.chromium.launch(headless=False, slow_mo=100)
         context = await browser.new_context(viewport={"width": 1400, "height": 900})
         page = await context.new_page()
 
@@ -123,7 +123,13 @@ async def run():
         # ---- Step 5: Launch ----
         print("7. Launching session...")
         await page.click('button:has-text("Start Job Hunt Session")')
-        await page.wait_for_timeout(5000)
+        # Wait for redirect to session page (max 15s — backend API responds in ~36ms,
+        # navigation should be fast with window.location.href)
+        try:
+            await page.wait_for_url("**/session/**", timeout=15000)
+        except Exception:
+            print(f"   WARNING: Still on {page.url} after 15s — checking...")
+            await page.wait_for_timeout(3000)
         session_url = page.url
         print(f"   Session URL: {session_url}")
         await screenshot(page, "09_session_launched")
