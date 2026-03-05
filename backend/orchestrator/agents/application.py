@@ -12,7 +12,6 @@ Uses real browser automation to:
 9. Submit the application
 10. Record the result
 
-Falls back to simulated submissions when SIMULATE_APPLICATIONS is True.
 """
 
 from __future__ import annotations
@@ -155,27 +154,7 @@ def _find_job_in_state(job_id: str, state: JobHunterState) -> Optional[JobListin
 
 
 # ---------------------------------------------------------------------------
-# Simulated application (fallback)
-# ---------------------------------------------------------------------------
-
-async def _simulate_application(job_id: str) -> ApplicationResult:
-    """Generate a simulated successful application result."""
-    mock_screenshot = (
-        f"https://storage.jobhunter.dev/screenshots/"
-        f"{uuid.uuid4().hex[:12]}.png"
-    )
-    logger.info("Simulated submission for job %s", job_id)
-    return ApplicationResult(
-        job_id=job_id,
-        status=ApplicationStatus.SUBMITTED,
-        screenshot_url=mock_screenshot,
-        submitted_at=datetime.now(timezone.utc),
-        duration_seconds=3,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Real Playwright application
+# Playwright application
 # ---------------------------------------------------------------------------
 
 async def _apply_with_playwright(
@@ -455,13 +434,11 @@ async def run_application_agent(state: JobHunterState) -> dict:
         Keys: applications_submitted, applications_failed,
               consecutive_failures, status, agent_statuses, errors
     """
-    settings = get_settings()
     errors: List[str] = []
     submitted: List[ApplicationResult] = []
     failed: List[ApplicationResult] = []
     consecutive_failures: int = state.get("consecutive_failures", 0)
     session_id: str = state.get("session_id", "unknown")
-    use_simulation = settings.SIMULATE_APPLICATIONS
 
     try:
         application_queue: List[str] = state.get("application_queue", [])
@@ -478,9 +455,8 @@ async def run_application_agent(state: JobHunterState) -> dict:
             }
 
         logger.info(
-            "Application agent starting -- %d jobs in queue, simulate=%s",
+            "Application agent starting -- %d jobs in queue",
             len(application_queue),
-            use_simulation,
         )
 
         total_in_queue = len(application_queue)
@@ -517,25 +493,16 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 }
 
             try:
-                if use_simulation:
-                    # ----- Simulated submission -----
-                    result = await _simulate_application(job_id)
-                else:
-                    # ----- Real Playwright submission -----
-                    job = _find_job_in_state(job_id, state)
-                    if job is None:
-                        logger.warning(
-                            "Job %s not found in state -- falling back to simulation",
-                            job_id,
-                        )
-                        result = await _simulate_application(job_id)
-                    else:
-                        result = await _apply_with_playwright(
-                            job_id=job_id,
-                            job=job,
-                            state=state,
-                            session_id=session_id,
-                        )
+                job = _find_job_in_state(job_id, state)
+                if job is None:
+                    raise ValueError(f"Job {job_id} not found in state -- cannot apply")
+
+                result = await _apply_with_playwright(
+                    job_id=job_id,
+                    job=job,
+                    state=state,
+                    session_id=session_id,
+                )
 
                 if result.status == ApplicationStatus.SUBMITTED:
                     submitted.append(result)
@@ -573,9 +540,8 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 failed.append(fail_result)
                 consecutive_failures += 1
 
-        mode_label = "simulated" if use_simulation else "live"
         agent_status = (
-            f"completed ({mode_label}) -- "
+            f"completed -- "
             f"{len(submitted)} submitted, {len(failed)} failed"
         )
 

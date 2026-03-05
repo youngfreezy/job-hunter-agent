@@ -24,7 +24,7 @@ arq==0.26.1
 neo4j==5.27.0
 
 # Browser automation
-playwright==1.49.1
+patchright==1.58.0
 
 # Auth + Security
 python-jose[cryptography]==3.3.0
