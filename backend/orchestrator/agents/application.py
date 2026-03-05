@@ -124,6 +124,7 @@ async def _apply_with_playwright(
     job: JobListing,
     state: JobHunterState,
     session_id: str,
+    browser=None,
 ) -> ApplicationResult:
     """Submit a job application using browser-use AI agent.
 
@@ -178,6 +179,7 @@ async def _apply_with_playwright(
             user_profile=user_profile,
             session_id=session_id,
             resume_file_path=resume_file,
+            browser=browser,
         )
 
         # --- Step 4: Record to Neo4j ---
@@ -264,6 +266,11 @@ async def run_application_agent(state: JobHunterState) -> dict:
             len(application_queue),
         )
 
+        # Pre-warm a shared browser instance to avoid cold-start timeouts
+        # on each application. browser-use's first launch can take 10-30s.
+        from browser_use import Browser
+        shared_browser = Browser(headless=False, disable_security=True)
+
         total_in_queue = len(application_queue)
 
         for app_idx, job_id in enumerate(application_queue):
@@ -318,6 +325,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     job=job,
                     state=state,
                     session_id=session_id,
+                    browser=shared_browser,
                 )
 
                 if result.status == ApplicationStatus.SUBMITTED:
@@ -361,10 +369,21 @@ async def run_application_agent(state: JobHunterState) -> dict:
             f"{len(submitted)} submitted, {len(failed)} failed"
         )
 
+        # Clean up shared browser
+        try:
+            await shared_browser.stop()
+        except Exception:
+            pass
+
     except Exception as exc:
         logger.exception("Application agent failed")
         errors.append(f"Application agent error: {exc}")
         agent_status = f"failed -- {exc}"
+        # Clean up shared browser if it was created
+        try:
+            await shared_browser.stop()  # type: ignore[possibly-undefined]
+        except Exception:
+            pass
 
     return {
         "applications_submitted": submitted,
