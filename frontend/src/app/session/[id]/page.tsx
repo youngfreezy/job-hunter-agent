@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { CircularProgress } from "@/components/ui/circular-progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
-import { getSession, connectSSE, connectWebSocket, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision } from "@/lib/api";
+import { getSession, connectSSE, connectWebSocket, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision, listCheckpoints, rewindSession } from "@/lib/api";
+import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
 
 type SessionData = {
@@ -165,6 +166,10 @@ export default function SessionPage() {
     screenshot?: string;
   } | null>(null);
 
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
+  const [rewindLoading, setRewindLoading] = useState(false);
+  const [sseKey, setSseKey] = useState(0);
+
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const latestStatusRef = useRef("intake");
   const coachApprovedRef = useRef(false);
@@ -248,7 +253,10 @@ export default function SessionPage() {
       });
 
       // Re-fetch full session on status changes to sync sidebar
-      if (evt.status && (evt.event === "status" || evt.event === "done")) {
+      // Only refetch on terminal events or significant status changes — not
+      // during replay of historical events (which would flood the API and
+      // cause status oscillation between historical and current values).
+      if (evt.event === "done" || (evt.status && evt.event === "status" && ["completed", "failed", "awaiting_review", "awaiting_coach_review"].includes(evt.status))) {
         getSession(sessionId).then((data) => {
           const s = data as unknown as SessionData;
           setSession(s);
@@ -321,7 +329,7 @@ export default function SessionPage() {
       setTimeout(() => eventsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
     return cleanup;
-  }, [sessionId]);
+  }, [sessionId, sseKey]);
 
   useEffect(() => {
     if (viewMode !== "screenshot") return;
@@ -398,6 +406,38 @@ export default function SessionPage() {
       setSubmitConfirmData(null);
     } catch (e) {
       console.error("Failed to send submit decision:", e);
+    }
+  };
+
+  const handleLoadCheckpoints = async () => {
+    try {
+      const cps = await listCheckpoints(sessionId);
+      setCheckpoints(cps);
+    } catch (e) {
+      console.error("Failed to load checkpoints:", e);
+    }
+  };
+
+  const handleRewind = async (checkpointId: string) => {
+    setRewindLoading(true);
+    try {
+      await rewindSession(sessionId, checkpointId);
+      // Clear stale state from previous run
+      setEvents([]);
+      setCheckpoints([]);
+      setSessionSummary(null);
+      setInterventionData(null);
+      setSubmitConfirmData(null);
+      // Reset approval refs so HITL modals can appear again
+      shortlistApprovedRef.current = false;
+      // Update session status
+      setSession((prev) => prev ? { ...prev, status: "applying" } : prev);
+      // Trigger SSE reconnection (old EventSource was closed on "done")
+      setSseKey((k) => k + 1);
+    } catch (e) {
+      console.error("Failed to rewind:", e);
+    } finally {
+      setRewindLoading(false);
     }
   };
 
@@ -895,6 +935,54 @@ export default function SessionPage() {
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Rewind */}
+          {(session.status === "completed" || session.status === "failed") && (
+            <Card className="border-amber-200 dark:border-amber-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z" />
+                  </svg>
+                  Rewind Session
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {checkpoints.length === 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-xs"
+                    onClick={handleLoadCheckpoints}
+                  >
+                    Load Checkpoints
+                  </Button>
+                ) : (
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground">Select a checkpoint to resume from:</p>
+                    {checkpoints
+                      .filter((cp) => cp.status === "paused" || cp.status === "awaiting_review" || cp.status === "awaiting_coach_review")
+                      .map((cp) => (
+                        <Button
+                          key={cp.checkpoint_id}
+                          size="sm"
+                          variant="outline"
+                          className="w-full text-xs justify-between"
+                          disabled={rewindLoading}
+                          onClick={() => handleRewind(cp.checkpoint_id)}
+                        >
+                          <span>{cp.status} ({cp.application_queue} jobs queued)</span>
+                          <span className="text-amber-600">Rewind</span>
+                        </Button>
+                      ))}
+                    {checkpoints.filter((cp) => ["paused", "awaiting_review", "awaiting_coach_review"].includes(cp.status)).length === 0 && (
+                      <p className="text-xs text-muted-foreground">No rewindable checkpoints found.</p>
+                    )}
                   </div>
                 )}
               </CardContent>

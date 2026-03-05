@@ -53,6 +53,7 @@ class ATSType(str, Enum):
     LEVER = "lever"
     ICIMS = "icims"
     TALEO = "taleo"
+    LINKEDIN = "linkedin"
     UNKNOWN = "unknown"
 
 

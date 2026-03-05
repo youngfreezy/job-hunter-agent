@@ -12,11 +12,10 @@ import json
 import logging
 from typing import Any, Dict, List, Literal, Optional
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from backend.shared.config import settings
+from backend.shared.llm import build_llm, invoke_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -141,12 +140,7 @@ async def analyse_form(
     Uses structured output (tool calling) to guarantee valid JSON responses.
     Returns a list of fill instructions.
     """
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-6",
-        api_key=settings.ANTHROPIC_API_KEY,
-        max_tokens=4096,
-        temperature=0.0,
-    )
+    llm = build_llm(model="claude-sonnet-4-6", max_tokens=4096, temperature=0.0)
     structured_llm = llm.with_structured_output(FormAnalysisResult)
 
     user_content = (
@@ -158,7 +152,7 @@ async def analyse_form(
     if ats_strategy:
         user_content += f"## ATS Strategy\n{ats_strategy}\n\n"
 
-    result: FormAnalysisResult = await structured_llm.ainvoke([
+    result: FormAnalysisResult = await invoke_with_retry(structured_llm, [
         SystemMessage(content=FORM_ANALYSIS_PROMPT),
         HumanMessage(content=user_content),
     ])

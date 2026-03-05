@@ -11,10 +11,9 @@ import json
 import logging
 from typing import Optional
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from backend.shared.config import settings
+from backend.shared.llm import build_llm, invoke_with_retry
 from backend.shared.models.schemas import CoverLetter, JobListing
 
 logger = logging.getLogger(__name__)
@@ -60,12 +59,7 @@ async def generate_cover_letter(
     -------
     CoverLetter
     """
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-6",
-        api_key=settings.ANTHROPIC_API_KEY,
-        max_tokens=2048,
-        temperature=0.7,  # slight creativity
-    )
+    llm = build_llm(model="claude-sonnet-4-6", max_tokens=2048, temperature=0.7)
 
     user_content = (
         f"## Job Details\n"
@@ -79,7 +73,7 @@ async def generate_cover_letter(
         user_content += f"## Cover Letter Template\n{template[:2000]}\n\n"
     user_content += f"## Tone: {tone}\n"
 
-    response = await llm.ainvoke([
+    response = await invoke_with_retry(llm, [
         SystemMessage(content=COVER_LETTER_SYSTEM),
         HumanMessage(content=user_content),
     ])

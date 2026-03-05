@@ -43,23 +43,33 @@ async def lifespan(app: FastAPI):
     # --- Build the LangGraph pipeline ---
     from backend.orchestrator.pipeline.graph import build_graph  # noqa: E402
 
-    # --- Checkpointer: prefer Postgres, fall back to in-memory ---
+    # --- Checkpointer: prefer Postgres connection POOL, fall back to in-memory ---
+    # IMPORTANT: Must use a connection POOL (not a single connection) because
+    # graph.astream writes checkpoints while other requests (getSession,
+    # coach-review) read concurrently.  A single psycopg async connection
+    # serialises all queries, deadlocking the entire event loop.
     checkpointer = None
-    pg_conn = None
+    pool = None
     try:
+        from psycopg_pool import AsyncConnectionPool
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-        # Newer langgraph versions return an async context manager
-        pg_conn = AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
-        checkpointer = await pg_conn.__aenter__()
+        pool = AsyncConnectionPool(
+            conninfo=settings.DATABASE_URL,
+            min_size=2,
+            max_size=10,
+            open=False,
+        )
+        await pool.open()
+        checkpointer = AsyncPostgresSaver(pool)
         await checkpointer.setup()
-        logger.info("Using AsyncPostgresSaver (dsn=%s...)", settings.DATABASE_URL[:40])
+        logger.info("Using AsyncPostgresSaver with pool (dsn=%s...)", settings.DATABASE_URL[:40])
     except Exception as exc:
         logger.warning(
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
             exc,
         )
-        pg_conn = None
+        pool = None
         from langgraph.checkpoint.memory import MemorySaver
 
         checkpointer = MemorySaver()
@@ -75,8 +85,8 @@ async def lifespan(app: FastAPI):
 
     # --- Shutdown ---
     logger.info("Shutting down JobHunter gateway")
-    if pg_conn is not None:
-        await pg_conn.__aexit__(None, None, None)
+    if pool is not None:
+        await pool.close()
     elif hasattr(checkpointer, "close"):
         await checkpointer.close()
 

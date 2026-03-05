@@ -51,11 +51,17 @@ class BrowserManager:
     # Lifecycle
     # ------------------------------------------------------------------
 
-    async def start(self) -> None:
+    async def start(self, headless: Optional[bool] = None) -> None:
         """Launch the Playwright runtime and browser process.
 
         Uses Patchright's Chromium build which includes anti-detection
         patches at the browser level.
+
+        Parameters
+        ----------
+        headless:
+            Override the ``BROWSER_HEADLESS`` setting.  Pass ``False`` to
+            force a visible window (e.g. during the application step).
         """
         if self._running:
             logger.warning("BrowserManager.start() called but already running")
@@ -67,7 +73,7 @@ class BrowserManager:
         stealth_cfg = get_stealth_config()
 
         launch_kwargs: dict = {
-            "headless": stealth_cfg["headless"],
+            "headless": headless if headless is not None else stealth_cfg["headless"],
             "args": stealth_cfg["args"],
             "ignore_default_args": stealth_cfg["ignore_default_args"],
         }
