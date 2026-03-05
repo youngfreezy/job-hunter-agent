@@ -179,6 +179,18 @@ export default function SessionPage() {
         const pastShortlist = ["applying", "verifying", "reporting", "completed", "failed"];
         if (pastCoach.includes(s.status)) coachApprovedRef.current = true;
         if (pastShortlist.includes(s.status)) shortlistApprovedRef.current = true;
+
+        // Restore modals from persisted state on page reload
+        if (s.status === "awaiting_coach_review" && s.coach_output) {
+          setCoachReviewData(s.coach_output as unknown as CoachOutput);
+          setCoachReviewOpen(true);
+        }
+        if (s.status === "awaiting_review" && s.scored_jobs && s.scored_jobs.length > 0) {
+          const jobs = s.scored_jobs as ScoredJobData[];
+          setShortlistJobs(jobs);
+          setSelectedJobIds(new Set(jobs.map((sj) => sj.job.id)));
+          setShortlistReviewOpen(true);
+        }
       })
       .catch(() => {
         setSession({
@@ -947,9 +959,9 @@ export default function SessionPage() {
             </Button>
             <Button
               onClick={handleApproveCoachReview}
-              disabled={coachReviewSubmitting}
+              loading={coachReviewSubmitting}
             >
-              {coachReviewSubmitting ? "Approving..." : "Approve & Start Job Discovery"}
+              Approve & Start Job Discovery
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1032,9 +1044,10 @@ export default function SessionPage() {
               </Button>
               <Button
                 onClick={handleApproveShortlist}
-                disabled={shortlistSubmitting || selectedJobIds.size === 0}
+                loading={shortlistSubmitting}
+                disabled={selectedJobIds.size === 0}
               >
-                {shortlistSubmitting ? "Submitting..." : `Apply to ${selectedJobIds.size} Jobs`}
+                Apply to {selectedJobIds.size} Jobs
               </Button>
             </div>
           </DialogFooter>
