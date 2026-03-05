@@ -540,6 +540,10 @@ async def _apply_with_playwright(
                 )
         except Exception as form_exc:
             logger.error("Form filling error for %s: %s", job_id, form_exc)
+            # If the page/browser was closed, skip intervention and fail fast
+            if "closed" in str(form_exc).lower():
+                logger.warning("Page/browser closed during form fill for %s — skipping intervention", job_id)
+                raise  # Let the outer except handle cleanup
             await _pause_for_intervention(
                 session_id=session_id,
                 job_id=job_id,
@@ -549,6 +553,12 @@ async def _apply_with_playwright(
             )
 
         # --- Step 9: Pre-submit confirmation gate ---
+        # Guard: if the page was closed (e.g. during intervention), bail out
+        try:
+            await page.title()  # Quick liveness check
+        except Exception:
+            logger.warning("Page no longer alive after form fill for %s — skipping submit", job_id)
+            raise RuntimeError(f"Page closed before submit for {job_id}")
         submit_btn = await page.query_selector(
             'button[type="submit"], '
             'button:has-text("Submit"), '

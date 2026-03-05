@@ -145,10 +145,9 @@ async def _stream_graph(
             })
 
         if status == "awaiting_review":
-            shortlist = [
-                _serialize(sj)
-                for sj in state_snapshot.get("scored_jobs", [])
-            ]
+            all_scored = state_snapshot.get("scored_jobs", [])
+            top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:20]
+            shortlist = [_serialize(sj) for sj in top_scored]
             await _emit(session_id, "hitl", {
                 "status": "awaiting_review",
                 "shortlist": shortlist,
@@ -220,11 +219,13 @@ async def _handle_shortlist_interrupt(session_id: str, graph: Any, config: dict)
     try:
         graph_state = await graph.aget_state(config)
         channel_values = graph_state.values if hasattr(graph_state, "values") else {}
-        scored_jobs = channel_values.get("scored_jobs", [])
+        all_scored = channel_values.get("scored_jobs", [])
+        # Only show the top 20 scored jobs to the user
+        top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:20]
         tailored_resumes = channel_values.get("tailored_resumes", {})
         await _emit(session_id, "shortlist_review", {
             "status": "awaiting_review",
-            "scored_jobs": _serialize(scored_jobs),
+            "scored_jobs": _serialize(top_scored),
             "tailored_resumes": _serialize(tailored_resumes),
             "message": "Review the shortlist and approve jobs to apply to.",
         })
@@ -624,6 +625,12 @@ async def get_session(session_id: str, request: Request):
         }
         if isinstance(cv, dict):
             cv_light = {k: v for k, v in cv.items() if k not in HEAVY_KEYS}
+            # Cap scored_jobs to top 20 for the frontend
+            if "scored_jobs" in cv_light and cv_light["scored_jobs"]:
+                all_scored = cv_light["scored_jobs"]
+                cv_light["scored_jobs"] = sorted(
+                    all_scored, key=lambda sj: sj.score if hasattr(sj, "score") else sj.get("score", 0), reverse=True
+                )[:20]
         else:
             cv_light = cv
 
