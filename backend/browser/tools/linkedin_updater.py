@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -135,28 +136,91 @@ TASK:
 """
 
 
-async def wait_for_login_signal(session_id: str, timeout: int = 300) -> bool:
-    """Wait for the user to signal they've logged into LinkedIn.
 
-    Polls a Redis key set by the frontend when the user clicks "I'm logged in".
+def _get_chrome_cookies_db() -> Optional[str]:
+    """Find the Chrome Cookies database path (cross-platform)."""
+    import pathlib
+    import platform
+
+    system = platform.system()
+    home = pathlib.Path.home()
+
+    candidates = []
+    if system == "Darwin":
+        candidates.append(home / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Cookies")
+    elif system == "Windows":
+        local = pathlib.Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
+        candidates.append(local / "Google" / "Chrome" / "User Data" / "Default" / "Cookies")
+    else:  # Linux
+        candidates.append(home / ".config" / "google-chrome" / "Default" / "Cookies")
+        candidates.append(home / ".config" / "chromium" / "Default" / "Cookies")
+
+    for path in candidates:
+        if path.exists():
+            return str(path)
+    return None
+
+
+def _extract_chrome_cookies() -> Optional[str]:
+    """Extract LinkedIn cookies from Chrome into a Playwright storage_state JSON file.
+
+    Copies the Cookies DB to a temp file (avoids lock conflicts with an open Chrome),
+    reads linkedin.com cookies, and writes a storage_state JSON that browser-use accepts.
+    Returns the path to the temp JSON file, or None if extraction fails.
     """
-    import redis.asyncio as aioredis
+    import json
+    import os
+    import shutil
+    import sqlite3
+    import tempfile
 
-    settings = get_settings()
-    redis_client = aioredis.from_url(settings.REDIS_URL)
+    cookies_db = _get_chrome_cookies_db()
+    if not cookies_db:
+        logger.info("Chrome cookies DB not found — will require manual LinkedIn login")
+        return None
 
-    key = f"linkedin:logged_in:{session_id}"
     try:
-        start = time.monotonic()
-        while time.monotonic() - start < timeout:
-            val = await redis_client.get(key)
-            if val:
-                await redis_client.delete(key)
-                return True
-            await asyncio.sleep(2)
-        return False
-    finally:
-        await redis_client.close()
+        # Copy DB to avoid SQLite lock when Chrome is open
+        tmp_db = tempfile.mktemp(suffix=".db")
+        shutil.copy2(cookies_db, tmp_db)
+
+        conn = sqlite3.connect(tmp_db)
+        cursor = conn.execute(
+            "SELECT name, value, host_key, path, is_secure, is_httponly "
+            "FROM cookies WHERE host_key LIKE '%linkedin.com'"
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        os.unlink(tmp_db)
+
+        if not rows:
+            logger.info("No LinkedIn cookies found in Chrome — will require manual login")
+            return None
+
+        cookies = []
+        for name, value, domain, path, secure, httponly in rows:
+            cookies.append({
+                "name": name,
+                "value": value,
+                "domain": domain,
+                "path": path or "/",
+                "secure": bool(secure),
+                "httpOnly": bool(httponly),
+                "sameSite": "Lax",
+            })
+
+        storage = {"cookies": cookies, "origins": []}
+
+        tmp_state = tempfile.mktemp(suffix=".json")
+        with open(tmp_state, "w") as f:
+            json.dump(storage, f)
+
+        logger.info("Extracted %d LinkedIn cookies from Chrome", len(cookies))
+        return tmp_state
+
+    except Exception as exc:
+        logger.warning("Could not extract Chrome cookies: %s", exc)
+        return None
 
 
 async def update_linkedin_profile(
@@ -185,45 +249,60 @@ async def update_linkedin_profile(
     start_time = time.monotonic()
     results: List[Dict[str, Any]] = []
 
-    # Always use headed mode so the user can see what's happening
-    browser = Browser(headless=False, disable_security=True)
+    # Try to reuse Chrome session cookies so the user doesn't have to log in again.
+    # We copy cookies to a temp profile to avoid locking issues when Chrome is open.
+    browser_kwargs: Dict[str, Any] = {
+        "headless": False,
+        "disable_security": True,
+    }
+
+    storage_state = _extract_chrome_cookies()
+    if storage_state:
+        browser_kwargs["storage_state"] = storage_state
+
+    browser = Browser(**browser_kwargs)
 
     try:
-        # Step 1: Open LinkedIn and wait for the user to log in
+        # Step 1: Open LinkedIn and navigate to profile
         await emit_agent_event(session_id, "linkedin_update_progress", {
-            "step": "Opening LinkedIn — please log in to your account...",
+            "step": "Opening LinkedIn...",
             "section": "login",
             "progress": 0,
         })
 
-        # Navigate to LinkedIn login directly via Playwright (no AI agent needed)
         await browser.start()
-        await browser.navigate_to("https://www.linkedin.com/login")
 
+        target_url = linkedin_url or "https://www.linkedin.com/feed/"
+        await browser.navigate_to(target_url)
+
+        # Give page a moment to settle, then check if we're logged in
+        await asyncio.sleep(2)
+        current_url = await browser.get_current_page_url()
+        is_logged_in = current_url and "linkedin.com/login" not in current_url and "linkedin.com/authwall" not in current_url
+
+        if not is_logged_in:
+            await emit_agent_event(session_id, "linkedin_update_failed", {
+                "step": "Not logged in to LinkedIn. Please log in via your browser first, then try again.",
+                "section": "login",
+                "error": "Not logged in",
+            })
+            return {"success": False, "error": "Not logged in to LinkedIn", "results": []}
+
+        await emit_agent_event(session_id, "linkedin_update_progress", {
+            "step": "Logged in — preparing updates...",
+            "section": "login",
+            "progress": 8,
+        })
+
+        # Initialize the LLM for profile editing
         llm = ChatAnthropic(
             model="claude-sonnet-4-5",
             api_key=settings.ANTHROPIC_API_KEY,
             max_tokens=4096,
         )
 
-        await emit_agent_event(session_id, "linkedin_login_required", {
-            "step": "LinkedIn is open — log in and click 'I'm logged in' when ready",
-            "section": "login",
-            "progress": 5,
-        })
-
-        # Wait for user to confirm login
-        logged_in = await wait_for_login_signal(session_id, timeout=300)
-        if not logged_in:
-            await emit_agent_event(session_id, "linkedin_update_failed", {
-                "step": "Timed out waiting for login confirmation",
-                "section": "login",
-                "error": "Login timeout — try again",
-            })
-            return {"success": False, "error": "Login timeout", "results": []}
-
         await emit_agent_event(session_id, "linkedin_update_progress", {
-            "step": "Logged in! Starting profile updates...",
+            "step": "Starting profile updates...",
             "section": "login",
             "progress": 10,
         })

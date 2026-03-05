@@ -26,7 +26,6 @@ interface CoachPanelProps {
   sessionId?: string;
   linkedinUrl?: string;
   linkedinProgress?: LinkedInProgress | null;
-  linkedinLoginRequired?: boolean;
 }
 
 export function CoachPanel({
@@ -34,7 +33,6 @@ export function CoachPanel({
   sessionId,
   linkedinUrl,
   linkedinProgress,
-  linkedinLoginRequired,
 }: CoachPanelProps) {
   const scoreColor = (score: number) => {
     if (score >= 80) return "text-green-700 dark:text-green-400";
@@ -183,7 +181,6 @@ export function CoachPanel({
                       linkedinAdvice={coach.linkedin_advice}
                       linkedinUrl={linkedinUrl}
                       linkedinProgress={linkedinProgress}
-                      linkedinLoginRequired={linkedinLoginRequired}
                     />
                   </div>
                 )}
