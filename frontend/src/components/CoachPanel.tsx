@@ -53,7 +53,7 @@ export function CoachPanel({ coach }: { coach: CoachOutput }) {
                 if (typeof value !== "number") return null;
                 return (
                   <div key={key} className="flex items-center gap-3">
-                    <span className="text-sm text-zinc-600 w-36">{label}</span>
+                    <span className="text-sm text-muted-foreground w-36">{label}</span>
                     <Progress value={value} className="flex-1" />
                     <span className={`text-sm font-medium w-10 text-right ${scoreColor(value)}`}>
                       {value}
@@ -69,7 +69,7 @@ export function CoachPanel({ coach }: { coach: CoachOutput }) {
                 <p className="text-sm font-medium mb-1">Improvement Suggestions</p>
                 <ul className="space-y-1">
                   {coach.resume_score.feedback.map((fb, i) => (
-                    <li key={i} className="text-sm text-zinc-600 flex items-start gap-2">
+                    <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
                       <span className="text-amber-500 mt-0.5">-</span>
                       {fb}
                     </li>
@@ -81,8 +81,8 @@ export function CoachPanel({ coach }: { coach: CoachOutput }) {
             {/* Strengths */}
             {coach.key_strengths && coach.key_strengths.length > 0 && (
               <div>
-                <p className="text-sm font-medium mb-1">Key Strengths</p>
-                <div className="flex flex-wrap gap-1">
+                <p className="text-sm font-medium mb-1.5">Key Strengths</p>
+                <div className="flex flex-wrap gap-1.5">
                   {coach.key_strengths.map((s, i) => (
                     <Badge key={i} variant="secondary" className="text-xs">{s}</Badge>
                   ))}
@@ -93,31 +93,33 @@ export function CoachPanel({ coach }: { coach: CoachOutput }) {
             {/* Improvement areas */}
             {coach.improvement_areas && coach.improvement_areas.length > 0 && (
               <div>
-                <p className="text-sm font-medium mb-1">Areas for Growth</p>
-                <div className="flex flex-wrap gap-1">
+                <p className="text-sm font-medium mb-1.5">Areas for Growth</p>
+                <ul className="space-y-2">
                   {coach.improvement_areas.map((a, i) => (
-                    <Badge key={i} variant="outline" className="text-xs">{a}</Badge>
+                    <li key={i} className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3 border border-border/50">
+                      {a}
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
           </TabsContent>
 
           <TabsContent value="resume">
-            <pre className="text-sm whitespace-pre-wrap bg-zinc-50 dark:bg-zinc-900 rounded p-4 max-h-96 overflow-y-auto">
+            <pre className="text-sm whitespace-pre-wrap bg-muted/50 dark:bg-muted/30 rounded p-4 max-h-96 overflow-y-auto">
               {coach.rewritten_resume}
             </pre>
           </TabsContent>
 
           <TabsContent value="cover">
-            <pre className="text-sm whitespace-pre-wrap bg-zinc-50 dark:bg-zinc-900 rounded p-4 max-h-96 overflow-y-auto">
+            <pre className="text-sm whitespace-pre-wrap bg-muted/50 dark:bg-muted/30 rounded p-4 max-h-96 overflow-y-auto">
               {coach.cover_letter_template}
             </pre>
           </TabsContent>
 
           <TabsContent value="linkedin" className="space-y-2">
             {coach.linkedin_advice.length === 0 ? (
-              <p className="text-sm text-zinc-500">No LinkedIn URL provided. Add your profile for personalized advice.</p>
+              <p className="text-sm text-muted-foreground">No LinkedIn URL provided. Add your profile for personalized advice.</p>
             ) : (
               <ul className="space-y-2">
                 {coach.linkedin_advice.map((advice, i) => (

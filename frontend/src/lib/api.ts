@@ -99,6 +99,8 @@ export type SSEEventType =
   | "application_progress"
   | "verification_progress"
   | "reporting_progress"
+  | "needs_intervention"
+  | "ready_to_submit"
   | "done"
   | "error"
   | "ping";
@@ -190,6 +192,26 @@ export async function submitReview(
   if (!res.ok) throw new Error(`Failed to submit review: ${res.statusText}`);
 }
 
+export async function submitDecision(
+  sessionId: string,
+  decision: "submit" | "skip"
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/submit-decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision }),
+  });
+  if (!res.ok) throw new Error(`Failed to submit decision: ${res.status}`);
+}
+
+export async function resumeIntervention(sessionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/resume-intervention`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to resume intervention: ${res.status}`);
+}
+
 // ---------- SSE ----------
 
 export function createSSEConnection(sessionId: string): EventSource {
@@ -211,7 +233,7 @@ export function connectSSE(
     "discovery_progress", "scoring", "scoring_progress", "tailoring",
     "tailoring_progress", "shortlist_review", "agent_complete", "hitl",
     "application_progress", "verification_progress", "reporting_progress",
-    "done", "error",
+    "needs_intervention", "ready_to_submit", "done", "error",
   ];
 
   for (const eventType of EVENT_TYPES) {
