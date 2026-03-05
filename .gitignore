@@ -25,6 +25,9 @@ node_modules/
 # Documentation (generated, not tracked)
 docs/
 
+# Claude Code
+CLAUDE.md
+
 # OS
 .DS_Store
 frontend/playwright-report/
