@@ -157,7 +157,7 @@ async def apply_with_browser_use(
     try:
         await emit_agent_event(session_id, "application_progress", {
             "job_id": job.id,
-            "step": f"AI agent starting application for {job.title} at {job.company}...",
+            "step": f"Filling out the application for {job.title} at {job.company}...",
         })
 
         result = await agent.run(max_steps=30, on_step_end=on_step_end)

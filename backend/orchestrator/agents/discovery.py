@@ -143,7 +143,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
                 kw_label = kw or "general search"
                 await emit_agent_event(session_id, "discovery_progress", {
                     "board": board,
-                    "step": f"Searching {board_label} for \"{kw_label}\"...",
+                    "step": f"Searching {board_label} for \"{kw_label}\" roles...",
                 })
 
                 single_kw_config = SearchConfig(
@@ -192,7 +192,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
             await emit_agent_event(session_id, "discovery_progress", {
                 "board": board,
-                "step": f"Found {len(board_jobs)} jobs on {board_label}",
+                "step": f"Found {len(board_jobs)} {'job' if len(board_jobs) == 1 else 'jobs'} on {board_label}",
                 "count": len(board_jobs),
                 "progress": 100,
             })

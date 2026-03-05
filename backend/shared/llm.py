@@ -23,8 +23,8 @@ HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
 # Retry config
 MAX_RETRIES = 5
-INITIAL_BACKOFF = 30  # seconds — must exceed the 1-min rate-limit window
-MAX_BACKOFF = 120  # seconds
+INITIAL_BACKOFF = 10  # seconds — SDK already retries with short backoffs first
+MAX_BACKOFF = 60  # seconds
 
 
 def build_llm(

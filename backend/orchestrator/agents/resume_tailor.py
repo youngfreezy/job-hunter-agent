@@ -223,7 +223,7 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
 
             pct = int((batch_start / total_jobs) * 100)
             await emit_agent_event(session_id, "tailoring_progress", {
-                "step": f"Tailoring resumes {batch_start + 1}-{batch_start + len(batch)} of {total_jobs}...",
+                "step": f"Customizing resume {batch_start + 1} of {total_jobs}...",
                 "progress": pct,
                 "current": batch_start + 1,
                 "total": total_jobs,
@@ -255,7 +255,7 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
 
             done_pct = int(((batch_start + len(batch)) / total_jobs) * 100)
             await emit_agent_event(session_id, "tailoring_progress", {
-                "step": f"Tailored {completed_count}/{total_jobs} resumes",
+                "step": f"Customized {completed_count} of {total_jobs} resumes",
                 "progress": done_pct,
                 "current": batch_start + len(batch),
                 "total": total_jobs,

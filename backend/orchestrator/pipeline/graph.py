@@ -192,7 +192,7 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
 
     # human_input expected shape:
     # {"approved_job_ids": [...], "feedback": "..."}
-    updates: dict = {}
+    updates: dict = {"consecutive_failures": 0}  # Reset circuit breaker on retry
     approved = human_input.get("approved_job_ids", [])
     if approved:
         if len(approved) > MAX_APPLICATION_JOBS:
@@ -218,19 +218,20 @@ async def application_node(state: JobHunterState) -> dict:
 
 def route_after_application(
     state: JobHunterState,
-) -> Literal["application", "verification"]:
-    """Decide whether to continue applying or move to verification.
+) -> Literal["application", "verification", "shortlist_review"]:
+    """Decide whether to continue applying, retry, or move to verification.
 
-    Circuit-breaker: if consecutive failures exceed the threshold, stop
-    the loop early and proceed to verification/reporting.
+    Circuit-breaker: if consecutive failures exceed the threshold, return
+    to the shortlist review gate so the user can retry or adjust.
     """
     consecutive = state.get("consecutive_failures", 0)
     if consecutive >= MAX_CONSECUTIVE_FAILURES:
         logger.warning(
-            "Circuit breaker tripped after %d consecutive failures.",
+            "Circuit breaker tripped after %d consecutive failures -- "
+            "returning to shortlist review for retry.",
             consecutive,
         )
-        return "verification"
+        return "shortlist_review"
 
     queue = state.get("application_queue", [])
     submitted = {r.job_id for r in (state.get("applications_submitted") or [])}
@@ -327,11 +328,15 @@ def build_graph(checkpointer=None):
     # 8. shortlist_review -> first application
     g.add_edge("shortlist_review", "application")
 
-    # 9. application loop with circuit breaker
+    # 9. application loop with circuit breaker (retries go back to HITL gate)
     g.add_conditional_edges(
         "application",
         route_after_application,
-        {"application": "application", "verification": "verification"},
+        {
+            "application": "application",
+            "verification": "verification",
+            "shortlist_review": "shortlist_review",
+        },
     )
 
     # 10. verification -> reporting

@@ -77,7 +77,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
 
     try:
         await emit_agent_event(session_id, "reporting_progress", {
-            "step": "Gathering session metrics...",
+            "step": "Crunching the numbers on your session...",
             "progress": 0,
         })
 
@@ -125,7 +125,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
 
         # --- AI-generated next steps ---
         await emit_agent_event(session_id, "reporting_progress", {
-            "step": "Generating personalized next steps...",
+            "step": "Writing your personalized next steps...",
             "progress": 50,
         })
 
@@ -181,7 +181,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
         )
 
         await emit_agent_event(session_id, "reporting_progress", {
-            "step": f"Report ready: {total_applied} applied, avg fit {avg_fit_score}",
+            "step": f"Summary ready — {total_applied} {'application' if total_applied == 1 else 'applications'} submitted, average fit score {avg_fit_score}",
             "progress": 100,
         })
 
