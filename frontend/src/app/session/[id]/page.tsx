@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { getSession, connectSSE, connectWebSocket, sendSteer, submitReview } from "@/lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { CoachPanel } from "@/components/CoachPanel";
+import { getSession, connectSSE, connectWebSocket, sendSteer, submitReview, submitCoachReview } from "@/lib/api";
+import type { CoachOutput } from "@/lib/api";
 
 type SessionData = {
   session_id: string;
@@ -29,13 +32,7 @@ type SessionData = {
     job_id: string;
     error_message?: string;
   }>;
-  coach_output?: {
-    rewritten_resume: string;
-    resume_score: { overall: number; breakdown: Record<string, number> };
-    cover_letter_template: string;
-    linkedin_advice: string[];
-    confidence_message: string;
-  };
+  coach_output?: CoachOutput;
   steering_mode: string;
   applications_used: number;
 };
@@ -53,11 +50,17 @@ type SSEEvent = {
   agent_statuses?: Record<string, string>;
   keywords?: string[];
   locations?: string[];
+  // Coaching/discovery progress events
+  step?: string;
+  progress?: number;
+  board?: string;
+  count?: number;
 };
 
 const STATUS_LABELS: Record<string, string> = {
   intake: "Processing Input",
   coaching: "Career Coaching",
+  awaiting_coach_review: "Review Resume",
   discovering: "Discovering Jobs",
   scoring: "Scoring Matches",
   tailoring: "Tailoring Resumes",
@@ -69,7 +72,7 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "Session Failed",
 };
 
-const PIPELINE_STEPS = ["intake", "coaching", "discovering", "scoring", "tailoring", "awaiting_review", "applying", "completed"];
+const PIPELINE_STEPS = ["intake", "coaching", "awaiting_coach_review", "discovering", "scoring", "tailoring", "awaiting_review", "applying", "completed"];
 
 export default function SessionPage() {
   const params = useParams();
@@ -81,6 +84,9 @@ export default function SessionPage() {
   const [chatInput, setChatInput] = useState("");
   const [viewMode, setViewMode] = useState<"status" | "screenshot" | "takeover">("status");
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
+  const [coachReviewOpen, setCoachReviewOpen] = useState(false);
+  const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(null);
+  const [coachReviewSubmitting, setCoachReviewSubmitting] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
@@ -109,20 +115,41 @@ export default function SessionPage() {
     const cleanup = connectSSE(sessionId, (event) => {
       const evt = event as unknown as SSEEvent;
 
-      // Skip duplicate ping events
+      // Skip ping events
       if (evt.event === "ping") return;
 
-      setEvents((prev) => [...prev, evt]);
+      // Deduplicate: skip if last event has same type + same message/step
+      setEvents((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.event === evt.event) {
+          const lastKey = last.message || last.step || last.status || "";
+          const evtKey = evt.message || evt.step || evt.status || "";
+          if (lastKey && lastKey === evtKey) return prev;
+        }
+        return [...prev, evt];
+      });
 
       // Update session from event data
       setSession((prev) => {
         if (!prev) return prev;
         const updates: Partial<SessionData> = {};
-        if (evt.status) updates.status = evt.status;
+        // Only update pipeline status from "status" or "done" events —
+        // agent_complete events have status:"done" meaning the *agent* is done,
+        // not the pipeline, so we must not overwrite session.status with that.
+        if (evt.status && (evt.event === "status" || evt.event === "done" || evt.event === "coach_review")) {
+          updates.status = evt.status;
+        }
         if (evt.coach_output) updates.coach_output = evt.coach_output as SessionData["coach_output"];
         if (Array.isArray(evt.keywords) && evt.keywords.length > 0) updates.keywords = evt.keywords;
         return { ...prev, ...updates };
       });
+
+      // Open coach review modal when the pipeline pauses for review
+      if (evt.event === "coach_review" && evt.coach_output) {
+        const co = evt.coach_output as unknown as CoachOutput;
+        setCoachReviewData(co);
+        setCoachReviewOpen(true);
+      }
 
       // Auto-scroll events
       setTimeout(() => eventsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -166,7 +193,21 @@ export default function SessionPage() {
     }
   };
 
-  const currentStepIndex = session ? PIPELINE_STEPS.indexOf(session.status) : 0;
+  const handleApproveCoachReview = async () => {
+    setCoachReviewSubmitting(true);
+    try {
+      await submitCoachReview(sessionId, { approved: true });
+      setCoachReviewOpen(false);
+      setSession((prev) => prev ? { ...prev, status: "discovering" } : prev);
+    } catch (e) {
+      console.error("Failed to submit coach review:", e);
+    } finally {
+      setCoachReviewSubmitting(false);
+    }
+  };
+
+  const rawStepIndex = session ? PIPELINE_STEPS.indexOf(session.status) : 0;
+  const currentStepIndex = Math.max(0, rawStepIndex); // -1 → 0 for unknown statuses
   const progressPct = session ? Math.max(5, ((currentStepIndex + 1) / PIPELINE_STEPS.length) * 100) : 0;
 
   if (!session) {
@@ -197,7 +238,7 @@ export default function SessionPage() {
         <div className="max-w-5xl mx-auto flex items-center gap-4">
           <Progress value={progressPct} className="flex-1" />
           <span className="text-xs text-zinc-500 whitespace-nowrap">
-            Step {currentStepIndex + 1}/{PIPELINE_STEPS.length}
+            Step {currentStepIndex + 1} of {PIPELINE_STEPS.length}
           </span>
         </div>
         <div className="max-w-5xl mx-auto flex justify-between mt-2">
@@ -206,7 +247,7 @@ export default function SessionPage() {
               key={step}
               className={`text-xs ${i <= currentStepIndex ? "text-zinc-900 dark:text-white font-medium" : "text-zinc-400"}`}
             >
-              {step === "awaiting_review" ? "Review" : step.charAt(0).toUpperCase() + step.slice(1)}
+              {step === "awaiting_review" ? "Review" : step === "awaiting_coach_review" ? "Coach Review" : step.charAt(0).toUpperCase() + step.slice(1)}
             </span>
           ))}
         </div>
@@ -234,6 +275,23 @@ export default function SessionPage() {
                   )}
                   {events.map((evt, i) => {
                     const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : "";
+
+                    // Progress events get special rendering
+                    if (evt.event === "coaching_progress" || evt.event === "discovery_progress") {
+                      const label = evt.event === "coaching_progress" ? "coach" : `discovery`;
+                      const pct = typeof evt.progress === "number" ? evt.progress : undefined;
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-zinc-400 text-xs whitespace-nowrap">{time}</span>
+                          <Badge variant="secondary" className="text-xs">{label}</Badge>
+                          <span className="text-blue-600 dark:text-blue-400">{evt.step}</span>
+                          {pct !== undefined && pct >= 0 && (
+                            <span className="text-xs text-zinc-400 ml-auto">{pct}%</span>
+                          )}
+                        </div>
+                      );
+                    }
+
                     const agent = evt.agent || evt.event || "system";
                     const msg = evt.message
                       || (evt.event === "discovery" ? `Found ${evt.jobs_found ?? 0} jobs so far` : "")
@@ -394,6 +452,36 @@ export default function SessionPage() {
           )}
         </div>
       </div>
+
+      {/* Coach Review Modal */}
+      <Dialog open={coachReviewOpen} onOpenChange={setCoachReviewOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review Your Coached Resume</DialogTitle>
+            <DialogDescription>
+              The Career Coach has analyzed and rewritten your resume. Review the results below, then approve to continue to job discovery.
+            </DialogDescription>
+          </DialogHeader>
+          {coachReviewData && (
+            <CoachPanel coach={coachReviewData} />
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCoachReviewOpen(false)}
+              disabled={coachReviewSubmitting}
+            >
+              Review Later
+            </Button>
+            <Button
+              onClick={handleApproveCoachReview}
+              disabled={coachReviewSubmitting}
+            >
+              {coachReviewSubmitting ? "Approving..." : "Approve & Start Job Discovery"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

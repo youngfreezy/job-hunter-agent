@@ -4,21 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { CoachOutput } from "@/lib/api";
 
-interface ResumeScore {
-  overall: number;
-  breakdown: Record<string, number>;
-}
-
-interface CoachOutput {
-  rewritten_resume: string;
-  resume_score: ResumeScore;
-  cover_letter_template: string;
-  linkedin_advice: string[];
-  confidence_message: string;
-  key_strengths?: string[];
-  improvement_areas?: string[];
-}
+const SCORE_FIELDS: Array<{ key: keyof CoachOutput["resume_score"]; label: string }> = [
+  { key: "keyword_density", label: "Keyword Density" },
+  { key: "impact_metrics", label: "Impact Metrics" },
+  { key: "ats_compatibility", label: "ATS Compatibility" },
+  { key: "readability", label: "Readability" },
+  { key: "formatting", label: "Formatting" },
+];
 
 export function CoachPanel({ coach }: { coach: CoachOutput }) {
   const scoreColor = (score: number) => {
@@ -54,18 +48,35 @@ export function CoachPanel({ coach }: { coach: CoachOutput }) {
 
             {/* Score breakdown */}
             <div className="space-y-2">
-              {Object.entries(coach.resume_score.breakdown).map(([key, value]) => (
-                <div key={key} className="flex items-center gap-3">
-                  <span className="text-sm text-zinc-600 w-36 capitalize">
-                    {key.replace(/_/g, " ")}
-                  </span>
-                  <Progress value={value} className="flex-1" />
-                  <span className={`text-sm font-medium w-10 text-right ${scoreColor(value)}`}>
-                    {value}
-                  </span>
-                </div>
-              ))}
+              {SCORE_FIELDS.map(({ key, label }) => {
+                const value = coach.resume_score[key];
+                if (typeof value !== "number") return null;
+                return (
+                  <div key={key} className="flex items-center gap-3">
+                    <span className="text-sm text-zinc-600 w-36">{label}</span>
+                    <Progress value={value} className="flex-1" />
+                    <span className={`text-sm font-medium w-10 text-right ${scoreColor(value)}`}>
+                      {value}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
+
+            {/* Feedback */}
+            {coach.resume_score.feedback && coach.resume_score.feedback.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-1">Improvement Suggestions</p>
+                <ul className="space-y-1">
+                  {coach.resume_score.feedback.map((fb, i) => (
+                    <li key={i} className="text-sm text-zinc-600 flex items-start gap-2">
+                      <span className="text-amber-500 mt-0.5">-</span>
+                      {fb}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Strengths */}
             {coach.key_strengths && coach.key_strengths.length > 0 && (
@@ -74,6 +85,18 @@ export function CoachPanel({ coach }: { coach: CoachOutput }) {
                 <div className="flex flex-wrap gap-1">
                   {coach.key_strengths.map((s, i) => (
                     <Badge key={i} variant="secondary" className="text-xs">{s}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Improvement areas */}
+            {coach.improvement_areas && coach.improvement_areas.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-1">Areas for Growth</p>
+                <div className="flex flex-wrap gap-1">
+                  {coach.improvement_areas.map((a, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">{a}</Badge>
                   ))}
                 </div>
               </div>

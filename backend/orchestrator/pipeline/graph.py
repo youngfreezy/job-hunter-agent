@@ -71,7 +71,14 @@ async def coach_review_gate(state: JobHunterState) -> dict:
 
     The graph pauses here.  When the user approves (or edits) the resume
     via the API, the graph resumes and interrupt() returns their input.
+    If coaching failed, skip the review and proceed directly to discovery.
     """
+    # If coaching failed, skip the HITL review and continue the pipeline
+    agent_statuses = state.get("agent_statuses", {})
+    if agent_statuses.get("career_coach") == "failed" or not state.get("coach_output"):
+        logger.warning("Coaching failed or no output — skipping coach review")
+        return {"status": "discovering"}
+
     human_input = interrupt(
         {
             "session_id": state["session_id"],
