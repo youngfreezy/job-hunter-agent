@@ -181,6 +181,7 @@ export function CoachPanel({
                       linkedinAdvice={coach.linkedin_advice}
                       linkedinUrl={linkedinUrl}
                       linkedinProgress={linkedinProgress}
+                      disabled
                     />
                   </div>
                 )}

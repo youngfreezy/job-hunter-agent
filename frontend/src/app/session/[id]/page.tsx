@@ -1178,6 +1178,7 @@ export default function SessionPage() {
                 linkedinAdvice={session.coach_output.linkedin_advice}
                 linkedinUrl={session.linkedin_url}
                 linkedinProgress={linkedinProgress}
+                disabled
               />
             )}
 
