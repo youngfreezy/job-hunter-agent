@@ -190,7 +190,11 @@ def get_stealth_config() -> Dict[str, Any]:
     """Return a full dict of browser launch args tuned for stealth.
 
     These arguments are passed to ``browser.launch()`` (Chromium).
+    Respects ``BROWSER_HEADLESS`` env var — set to ``true`` to run without
+    visible browser windows (better for accessibility / CI).
     """
+    from backend.shared.config import settings
+
     return {
         "args": [
             "--disable-blink-features=AutomationControlled",
@@ -209,7 +213,8 @@ def get_stealth_config() -> Dict[str, Any]:
         "ignore_default_args": [
             "--enable-automation",
         ],
-        "headless": False,
+        "headless": settings.BROWSER_HEADLESS,
+        "slow_mo": settings.BROWSER_SLOW_MO,
     }
 
 
