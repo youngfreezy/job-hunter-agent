@@ -271,7 +271,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
             if app_idx > 0:
                 cooldown = 60  # seconds — must exceed the 1-min rate-limit window
                 await emit_agent_event(session_id, "application_progress", {
-                    "step": f"Cooling down {cooldown}s before next application...",
+                    "step": f"Waiting {cooldown}s before the next application to avoid rate limits...",
                     "progress": int((app_idx / total_in_queue) * 100),
                     "current": app_idx + 1,
                     "total": total_in_queue,
@@ -282,7 +282,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
             job_obj = _find_job_in_state(job_id, state)
             job_label = f"{job_obj.title} at {job_obj.company}" if job_obj else job_id[:8]
             await emit_agent_event(session_id, "application_progress", {
-                "step": f"Applying to {job_label}...",
+                "step": f"Applying to {job_label} ({app_idx + 1} of {total_in_queue})...",
                 "progress": pct,
                 "current": app_idx + 1,
                 "total": total_in_queue,
@@ -337,7 +337,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
 
                 done_pct = int(((app_idx + 1) / total_in_queue) * 100)
                 await emit_agent_event(session_id, "application_progress", {
-                    "step": f"Applied {len(submitted)}/{app_idx + 1} ({len(failed)} failed)",
+                    "step": f"{len(submitted)} submitted, {len(failed)} failed — {app_idx + 1} of {total_in_queue} processed",
                     "progress": done_pct,
                     "submitted": len(submitted),
                     "failed": len(failed),

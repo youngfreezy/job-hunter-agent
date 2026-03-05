@@ -196,7 +196,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
 
             wave_pct = int((wave_start / total_batches) * 100)
             await emit_agent_event(session_id, "scoring_progress", {
-                "step": f"Scoring batches {wave_start + 1}-{wave_start + len(wave)} of {total_batches} (parallel)...",
+                "step": f"Analyzing job fit — batch {wave_start + 1} of {total_batches}...",
                 "progress": wave_pct,
                 "batch": wave_start + 1,
                 "total_batches": total_batches,
@@ -216,7 +216,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
 
             done_pct = int((completed_batches / total_batches) * 100)
             await emit_agent_event(session_id, "scoring_progress", {
-                "step": f"Scored {len(all_scores)} jobs so far...",
+                "step": f"Ranked {len(all_scores)} jobs so far...",
                 "progress": done_pct,
                 "scored_so_far": len(all_scores),
             })

@@ -78,7 +78,7 @@ async def run_verification_agent(state: JobHunterState) -> dict:
             }
 
         await emit_agent_event(session_id, "verification_progress", {
-            "step": f"Verifying {len(submitted)} submitted applications...",
+            "step": f"Checking {len(submitted)} submitted {'application' if len(submitted) == 1 else 'applications'}...",
             "progress": 0,
             "current": 0,
             "total": len(submitted),
@@ -97,7 +97,7 @@ async def run_verification_agent(state: JobHunterState) -> dict:
             )
 
         await emit_agent_event(session_id, "verification_progress", {
-            "step": "Running AI verification analysis...",
+            "step": "Analyzing submission confirmations...",
             "progress": 30,
             "current": 1,
             "total": 3,
@@ -134,7 +134,7 @@ async def run_verification_agent(state: JobHunterState) -> dict:
         )
 
         await emit_agent_event(session_id, "verification_progress", {
-            "step": f"Verification complete: {verified_count} verified, {failed_count} failed",
+            "step": f"Done — {verified_count} confirmed, {failed_count} need attention",
             "progress": 100,
             "current": len(submitted),
             "total": len(submitted),

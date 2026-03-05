@@ -102,13 +102,13 @@ breakdown:
 
 # Progress milestones based on JSON key detection in the stream
 _PROGRESS_KEYS = [
-    ("rewritten_resume", "Rewriting your resume with stronger language..."),
-    ("resume_score", "Scoring your original resume..."),
-    ("cover_letter_template", "Drafting a master cover letter template..."),
-    ("linkedin_advice", "Preparing LinkedIn profile advice..."),
-    ("confidence_message", "Writing your confidence coaching message..."),
-    ("key_strengths", "Identifying your key strengths..."),
-    ("improvement_areas", "Noting areas for growth..."),
+    ("rewritten_resume", "Strengthening your resume language..."),
+    ("resume_score", "Evaluating your resume against industry standards..."),
+    ("cover_letter_template", "Creating a tailored cover letter template..."),
+    ("linkedin_advice", "Reviewing your LinkedIn presence..."),
+    ("confidence_message", "Writing your personalized coaching notes..."),
+    ("key_strengths", "Highlighting your standout strengths..."),
+    ("improvement_areas", "Identifying growth opportunities..."),
 ]
 
 
@@ -166,7 +166,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
 
         # -- Stream the LLM response ----------------------------------------
         await emit_agent_event(session_id, "coaching_progress", {
-            "step": "Starting resume analysis...",
+            "step": "Your Career Coach is getting started...",
             "progress": 0,
         })
 
@@ -196,7 +196,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
                         })
 
         await emit_agent_event(session_id, "coaching_progress", {
-            "step": "Finalizing coach output...",
+            "step": "Putting the finishing touches on your coaching report...",
             "progress": 95,
         })
 
@@ -234,7 +234,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
         )
 
         await emit_agent_event(session_id, "coaching_progress", {
-            "step": f"Resume scored {resume_score.overall}/100 — coaching complete!",
+            "step": f"Resume score: {resume_score.overall}/100 — your coaching report is ready!",
             "progress": 100,
         })
 
@@ -249,7 +249,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
     except Exception as e:
         logger.exception("Career Coach agent failed")
         await emit_agent_event(session_id, "coaching_progress", {
-            "step": f"Coach encountered an error: {str(e)[:100]}",
+            "step": f"Something went wrong with the coaching analysis: {str(e)[:100]}",
             "progress": -1,
         })
         return {

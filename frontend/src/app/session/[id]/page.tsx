@@ -11,7 +11,7 @@ import { CircularProgress } from "@/components/ui/circular-progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
-import { getSession, connectSSE, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision, listCheckpoints, rewindSession } from "@/lib/api";
+import { getSession, connectSSE, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision, listCheckpoints, rewindSession, resumeSession } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
 
@@ -85,37 +85,52 @@ type SSEEvent = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  intake: "Processing Input",
-  coaching: "Career Coaching",
-  awaiting_coach_review: "Review Resume",
-  discovering: "Discovering Jobs",
-  scoring: "Scoring Matches",
-  tailoring: "Tailoring Resumes",
-  awaiting_review: "Awaiting Your Review",
-  applying: "Applying to Jobs",
-  verifying: "Verifying Applications",
-  reporting: "Generating Report",
+  intake: "Setting Up",
+  coaching: "Coaching Resume",
+  awaiting_coach_review: "Review Your Resume",
+  discovering: "Finding Jobs",
+  scoring: "Ranking Matches",
+  tailoring: "Customizing Resumes",
+  awaiting_review: "Your Turn to Review",
+  applying: "Submitting Applications",
+  verifying: "Checking Results",
+  reporting: "Preparing Summary",
   paused: "Paused",
-  needs_intervention: "Needs Help",
+  needs_intervention: "Needs Your Help",
   takeover: "Manual Control",
-  completed: "Session Complete",
-  failed: "Session Failed",
+  completed: "All Done",
+  failed: "Something Went Wrong",
 };
 
 const PIPELINE_STEPS = ["intake", "coaching", "awaiting_coach_review", "discovering", "scoring", "tailoring", "awaiting_review", "applying", "verifying", "reporting", "completed"];
 
 const STEP_LABELS: Record<string, string> = {
-  intake: "Intake",
+  intake: "Setup",
   coaching: "Coach",
   awaiting_coach_review: "Review",
-  discovering: "Discover",
-  scoring: "Score",
+  discovering: "Search",
+  scoring: "Rank",
   tailoring: "Tailor",
   awaiting_review: "Review",
   applying: "Apply",
   verifying: "Verify",
-  reporting: "Report",
+  reporting: "Summary",
   completed: "Done",
+};
+
+const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  intake: "Setup",
+  career_coach: "Coach",
+  coaching: "Coach",
+  discovery: "Search",
+  scoring: "Ranking",
+  resume_tailor: "Tailor",
+  tailoring: "Tailor",
+  application: "Apply",
+  verification: "Verify",
+  reporting: "Summary",
+  status: "Status",
+  system: "System",
 };
 
 const AGENT_COLORS: Record<string, string> = {
@@ -167,6 +182,7 @@ export default function SessionPage() {
   const [chatInput, setChatInput] = useState("");
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [rewindLoading, setRewindLoading] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
 
   const eventsEndRef = useRef<HTMLDivElement>(null);
@@ -194,6 +210,9 @@ export default function SessionPage() {
           setShortlistJobs(jobs);
           setSelectedJobIds(new Set(jobs.map((sj) => sj.job.id)));
           setShortlistReviewOpen(true);
+        }
+        if (s.status === "completed" && s.session_summary) {
+          setSessionSummary(s.session_summary as unknown as SessionSummaryData);
         }
       })
       .catch(() => {
@@ -510,6 +529,26 @@ export default function SessionPage() {
               )}
               {STATUS_LABELS[session.status] || session.status}
             </Badge>
+            {session.status !== "completed" && session.status !== "failed" && (
+              <Button
+                variant="default"
+                size="sm"
+                disabled={resumeLoading}
+                onClick={async () => {
+                  setResumeLoading(true);
+                  try {
+                    await resumeSession(sessionId);
+                    setSseKey((k) => k + 1);
+                  } catch (err) {
+                    console.error("Resume failed:", err);
+                  } finally {
+                    setResumeLoading(false);
+                  }
+                }}
+              >
+                {resumeLoading ? "Resuming..." : "Resume Pipeline"}
+              </Button>
+            )}
             <Link href="/dashboard">
               <Button variant="outline" size="sm">Dashboard</Button>
             </Link>
@@ -686,7 +725,7 @@ export default function SessionPage() {
                         <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors animate-fade-in-up">
                           <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-20 shrink-0">{time}</span>
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${AGENT_COLORS[label] || AGENT_COLORS.system}`}>
-                            {label}
+                            {AGENT_DISPLAY_NAMES[label] || label}
                           </span>
                           <span className="text-sm text-foreground/80 flex-1 min-w-0 break-words">{evt.step}</span>
                           {pct !== undefined && pct >= 0 && (
@@ -698,16 +737,16 @@ export default function SessionPage() {
 
                     const agent = evt.agent || evt.event || "system";
                     const msg = evt.message
-                      || (evt.event === "discovery" ? `Found ${evt.jobs_found ?? 0} jobs so far` : "")
-                      || (evt.event === "scoring" ? `Scored ${evt.scored_count ?? 0} jobs` : "")
-                      || (evt.event === "agent_complete" ? `${agent} completed` : "")
+                      || (evt.event === "discovery" ? `Found ${evt.jobs_found ?? 0} matching ${(evt.jobs_found ?? 0) === 1 ? 'job' : 'jobs'}` : "")
+                      || (evt.event === "scoring" ? `Ranked ${evt.scored_count ?? 0} jobs by fit` : "")
+                      || (evt.event === "agent_complete" ? `${agent.replace(/_/g, ' ')} finished` : "")
                       || evt.status
                       || evt.event;
                     return (
                       <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors animate-fade-in-up">
                         <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-20 shrink-0">{time}</span>
                         <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${AGENT_COLORS[agent] || AGENT_COLORS.system}`}>
-                          {agent}
+                          {AGENT_DISPLAY_NAMES[agent] || agent}
                         </span>
                         <span className={`text-sm flex-1 min-w-0 break-words ${evt.event === "error" ? "text-red-500 font-medium" : "text-foreground/80"}`}>{msg}</span>
                       </div>

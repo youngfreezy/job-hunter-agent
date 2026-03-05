@@ -84,17 +84,17 @@ async def _emit(session_id: str, event_type: str, data: dict) -> None:
 
 
 STATUS_MESSAGES = {
-    "intake": "Processing your input...",
-    "coaching": "Analyzing and coaching your resume (this may take 30-60 seconds)...",
-    "discovering": "Scanning job boards for matches...",
-    "scoring": "Scoring and ranking discovered jobs...",
-    "tailoring": "Tailoring resumes for top matches...",
-    "awaiting_review": "Ready for your review",
-    "applying": "Submitting applications...",
-    "verifying": "Verifying submitted applications...",
-    "reporting": "Generating session report...",
-    "completed": "Pipeline complete",
-    "failed": "Pipeline encountered an error",
+    "intake": "Setting up your job hunt session...",
+    "coaching": "Your Career Coach is reviewing your resume — this usually takes about a minute...",
+    "discovering": "Searching job boards for roles that match your profile...",
+    "scoring": "Ranking jobs by how well they match your experience...",
+    "tailoring": "Customizing your resume for your top matches...",
+    "awaiting_review": "Your shortlist is ready — pick the jobs you'd like to apply to",
+    "applying": "Submitting your applications...",
+    "verifying": "Double-checking that applications went through...",
+    "reporting": "Wrapping up and preparing your session summary...",
+    "completed": "All done! Your session is complete",
+    "failed": "Something went wrong — check the details below",
 }
 
 
@@ -152,7 +152,7 @@ async def _stream_graph(
             await _emit(session_id, "hitl", {
                 "status": "awaiting_review",
                 "shortlist": shortlist,
-                "message": "Please review and approve jobs to apply to.",
+                "message": "Your top matches are ready — select the jobs you'd like to apply to.",
             })
 
         # Generic status update for every snapshot
@@ -227,7 +227,7 @@ async def _handle_shortlist_interrupt(session_id: str, graph: Any, config: dict)
             "status": "awaiting_review",
             "scored_jobs": _serialize(top_scored),
             "tailored_resumes": _serialize(tailored_resumes),
-            "message": "Review the shortlist and approve jobs to apply to.",
+            "message": "Your shortlist is ready — choose which jobs to apply to.",
         })
     except Exception:
         logger.exception("Failed to emit shortlist review event for session %s", session_id)
@@ -282,7 +282,7 @@ async def _run_pipeline(
 
         await _emit(session_id, "status", {
             "status": "intake",
-            "message": "Pipeline started",
+            "message": "Starting your job hunt session...",
             "keywords": request_body.keywords,
             "locations": request_body.locations,
         })
@@ -305,7 +305,7 @@ async def _run_pipeline(
                     "status": "awaiting_coach_review",
                     "coach_output": _serialize(coach_output) if coach_output else None,
                     "coached_resume": channel_values.get("coached_resume", ""),
-                    "message": "Please review your coached resume. Approve to continue to job discovery.",
+                    "message": "Your coached resume is ready for review. Approve it to start searching for jobs.",
                 })
             except Exception:
                 logger.exception("Failed to emit coach review event for session %s", session_id)
@@ -387,16 +387,144 @@ async def _resume_pipeline(
         pass
 
 
+async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) -> None:
+    """Resume a pipeline that was interrupted mid-run (not at a HITL gate).
+
+    Uses None as input to continue from the last checkpoint.
+    """
+    register_emitter(session_id, _emit)
+
+    try:
+        interrupt_stage = await _stream_graph(session_id, graph, config, None)
+
+        if interrupt_stage == "coach_review":
+            vals = (await graph.aget_state(config)).values
+            if session_id in session_registry:
+                session_registry[session_id]["status"] = "awaiting_coach_review"
+            await _emit(session_id, "coach_review", {
+                "status": "awaiting_coach_review",
+                "coach_output": _serialize(vals.get("coach_output")),
+                "coached_resume": vals.get("coached_resume", ""),
+                "message": "Your coached resume is ready for review.",
+            })
+            return
+
+        if interrupt_stage == "shortlist_review":
+            await _handle_shortlist_interrupt(session_id, graph, config)
+            return
+
+    except Exception as exc:
+        logger.exception("Stalled pipeline resume failed for session %s", session_id)
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = "failed"
+        await _emit(session_id, "error", {"message": str(exc), "session_id": session_id})
+        await _emit(session_id, "done", {"status": "failed", "error": str(exc)})
+
+
+# ---------------------------------------------------------------------------
+# Snapshot synthesis (for reconnect after backend restart)
+# ---------------------------------------------------------------------------
+
+async def _synthesise_snapshot(session_id: str, checkpointer, graph=None):
+    """Yield synthetic SSE events from durable checkpoint state.
+
+    Called when ``event_logs`` is empty (backend restarted) so the frontend
+    can hydrate without having received the original live events.
+    """
+    try:
+        config = {"configurable": {"thread_id": session_id}}
+        state = await checkpointer.aget(config)
+        if state is None:
+            return
+
+        # Extract channel_values from checkpoint
+        cp = state
+        if hasattr(state, "checkpoint"):
+            cp = state.checkpoint
+        cv = cp.get("channel_values", cp) if isinstance(cp, dict) else cp
+        if not isinstance(cv, dict):
+            return
+
+        # Determine true status (check for HITL interrupts)
+        status = cv.get("status", "unknown")
+        if graph is not None:
+            try:
+                graph_state = await graph.aget_state(config)
+                next_nodes = getattr(graph_state, "next", ()) or ()
+                if "coach_review" in next_nodes:
+                    status = "awaiting_coach_review"
+                elif "shortlist_review" in next_nodes:
+                    status = "awaiting_review"
+            except Exception:
+                logger.debug("Could not check interrupt status for %s", session_id)
+
+        # Update registry with correct status
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = status
+
+        # Emit status event
+        status_data = {
+            "status": status,
+            "message": STATUS_MESSAGES.get(status, status),
+            "keywords": cv.get("keywords", []),
+        }
+        yield f"event: status\ndata: {json.dumps(_serialize(status_data))}\n\n"
+
+        # Emit coach_review if coach output exists and session is at that stage
+        coach_output = cv.get("coach_output")
+        if coach_output:
+            coach_data = {
+                "status": status,
+                "coach_output": _serialize(coach_output),
+                "coached_resume": cv.get("coached_resume", ""),
+                "message": "Resume coaching complete.",
+            }
+            yield f"event: coach_review\ndata: {json.dumps(coach_data)}\n\n"
+
+        # Emit shortlist_review if scored jobs exist
+        scored_jobs = cv.get("scored_jobs", [])
+        if scored_jobs:
+            top_scored = sorted(
+                scored_jobs,
+                key=lambda sj: sj.score if hasattr(sj, "score") else sj.get("score", 0),
+                reverse=True,
+            )[:MAX_APPLICATION_JOBS]
+            shortlist_data = {
+                "status": status,
+                "scored_jobs": _serialize(top_scored),
+                "tailored_resumes": _serialize(cv.get("tailored_resumes", {})),
+                "message": "Shortlist ready for review.",
+            }
+            yield f"event: shortlist_review\ndata: {json.dumps(shortlist_data)}\n\n"
+
+        # Emit done for terminal sessions
+        if status in ("completed", "failed"):
+            done_data = {
+                "status": status,
+                "session_summary": _serialize(cv.get("session_summary")),
+                "applications_submitted": _serialize(cv.get("applications_submitted", [])),
+                "applications_failed": _serialize(cv.get("applications_failed", [])),
+            }
+            yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
+
+    except Exception:
+        logger.exception("Failed to synthesise snapshot for session %s", session_id)
+
+
 # ---------------------------------------------------------------------------
 # SSE event generator
 # ---------------------------------------------------------------------------
 
-async def _event_generator(session_id: str):
+async def _event_generator(session_id: str, checkpointer=None, graph=None):
     """Yield SSE frames: first replay stored events, then stream live.
 
     Each connected client gets its own subscriber queue so multiple tabs
     or reconnects work independently. Stored events are replayed first,
     then live events stream from the per-subscriber queue.
+
+    If ``event_logs`` is empty (e.g. after backend restart), synthesises
+    events from the durable checkpointer state so the frontend can
+    fully hydrate.
     """
     # Create a dedicated queue for this subscriber
     subscriber_queue: asyncio.Queue = asyncio.Queue()
@@ -405,8 +533,17 @@ async def _event_generator(session_id: str):
     sse_subscribers[session_id].append(subscriber_queue)
 
     try:
-        # Phase 1: Replay all previously stored events
         stored = list(event_logs.get(session_id, []))
+
+        # Phase 0: If no stored events, synthesise from checkpointer
+        if not stored and checkpointer is not None:
+            async for frame in _synthesise_snapshot(session_id, checkpointer, graph):
+                yield frame
+                # If we emitted a done event, we're finished
+                if 'event: done\n' in frame:
+                    return
+
+        # Phase 1: Replay all previously stored events
         for event in stored:
             event_type = event.get("type", "message")
             event_data = json.dumps(event.get("data", {}))
@@ -627,12 +764,8 @@ async def get_session(session_id: str, request: Request):
         else:
             cv = checkpoint
 
-        # Strip heavy fields that the frontend gets via SSE instead.
-        # This prevents serializing megabytes of tailored resumes on every poll.
-        HEAVY_KEYS = {
-            "tailored_resumes", "resume_scores", "messages",
-            "resume_text", "coached_resume", "cover_letter_template",
-        }
+        # Strip fields that are too large or not needed by the frontend.
+        HEAVY_KEYS = {"messages", "resume_text", "cover_letter_template"}
         if isinstance(cv, dict):
             cv_light = {k: v for k, v in cv.items() if k not in HEAVY_KEYS}
             if "scored_jobs" in cv_light and cv_light["scored_jobs"]:
@@ -740,8 +873,11 @@ async def stream_session(session_id: str, request: Request):
     if session_id not in sse_subscribers:
         sse_subscribers[session_id] = []
 
+    checkpointer = request.app.state.checkpointer
+    graph = request.app.state.graph
+
     return StreamingResponse(
-        _event_generator(session_id),
+        _event_generator(session_id, checkpointer=checkpointer, graph=graph),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -768,7 +904,7 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
 
     await _emit(session_id, "status", {
         "status": "discovering",
-        "message": "Resume approved! Starting job discovery...",
+        "message": "Resume approved! Now searching for matching jobs...",
     })
 
     # Resume the pipeline with Command(resume=human_input)
@@ -794,7 +930,7 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
 
     await _emit(session_id, "status", {
         "status": "steering",
-        "message": f"Steering message received: {body.message}",
+        "message": f"Got it — adjusting based on your feedback: {body.message}",
     })
 
     return {"status": "ok", "message": "Steering message injected"}
@@ -816,7 +952,7 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
 
     await _emit(session_id, "status", {
         "status": "applying",
-        "message": f"Approved {len(body.approved_job_ids)} jobs for application",
+        "message": f"Great picks! Applying to {len(body.approved_job_ids)} {'job' if len(body.approved_job_ids) == 1 else 'jobs'}...",
         "approved_count": len(body.approved_job_ids),
     })
 
@@ -844,7 +980,7 @@ async def resume_intervention(session_id: str):
 
     await _emit(session_id, "status", {
         "status": "applying",
-        "message": "User intervention complete — agent resuming...",
+        "message": "Thanks for helping out — resuming applications...",
     })
 
     return {"status": "ok", "message": "Intervention resume signal sent"}
@@ -870,10 +1006,10 @@ async def submit_decision(session_id: str, body: SubmitDecisionRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to send decision: {exc}")
 
-    action = "Submitting" if body.decision == "submit" else "Skipping"
+    action_msg = "Submitting your application..." if body.decision == "submit" else "Skipping this one — moving on..."
     await _emit(session_id, "status", {
         "status": "applying",
-        "message": f"{action} application...",
+        "message": action_msg,
     })
 
     return {"status": "ok", "decision": body.decision}
@@ -952,7 +1088,7 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
 
     await _emit(session_id, "status", {
         "status": "applying",
-        "message": f"Rewound to checkpoint — resuming with {len(resume_value.get('approved_job_ids', []))} jobs",
+        "message": f"Rewinding session — restarting with {len(resume_value.get('approved_job_ids', []))} {'job' if len(resume_value.get('approved_job_ids', [])) == 1 else 'jobs'}...",
     })
 
     # Resume the pipeline from the rewound checkpoint
@@ -966,3 +1102,82 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
         "next_nodes": list(next_nodes),
         "message": f"Resuming from {next_nodes}",
     }
+
+
+@router.post("/{session_id}/resume")
+async def resume_session(session_id: str, request: Request):
+    """Resume a stalled pipeline from where it left off.
+
+    Handles two cases:
+    1. Pipeline is at an interrupt (HITL gate) — re-emits the review event
+       so the frontend can show the modal.
+    2. Pipeline was mid-run when the backend restarted — continues execution
+       from the last checkpoint.
+    """
+    graph = request.app.state.graph
+    config = {"configurable": {"thread_id": session_id}}
+
+    try:
+        graph_state = await graph.aget_state(config)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"No checkpoint found: {exc}")
+
+    next_nodes = getattr(graph_state, "next", ()) or ()
+    if not next_nodes:
+        raise HTTPException(
+            status_code=400,
+            detail="Session has no pending nodes — it may already be complete.",
+        )
+
+    # Ensure event infrastructure exists
+    if session_id not in event_logs:
+        event_logs[session_id] = []
+    sse_subscribers.setdefault(session_id, [])
+
+    # Recover session_registry if needed
+    vals = graph_state.values if hasattr(graph_state, "values") else {}
+    if session_id not in session_registry:
+        session_registry[session_id] = {
+            "session_id": session_id,
+            "status": vals.get("status", "unknown"),
+            "keywords": vals.get("keywords", []),
+            "locations": vals.get("locations", []),
+            "remote_only": vals.get("remote_only", False),
+            "salary_min": vals.get("salary_min"),
+            "resume_text_snippet": (vals.get("resume_text", "") or "")[:200],
+            "linkedin_url": vals.get("linkedin_url"),
+            "applications_submitted": len(vals.get("applications_submitted", [])),
+            "applications_failed": len(vals.get("applications_failed", [])),
+            "created_at": vals.get("created_at", ""),
+        }
+
+    register_emitter(session_id, _emit)
+
+    # Case 1: At an interrupt — re-emit the HITL event
+    if "coach_review" in next_nodes:
+        session_registry[session_id]["status"] = "awaiting_coach_review"
+        await _emit(session_id, "coach_review", {
+            "status": "awaiting_coach_review",
+            "coach_output": _serialize(vals.get("coach_output")),
+            "coached_resume": vals.get("coached_resume", ""),
+            "message": "Your coached resume is ready for review.",
+        })
+        return {"status": "ok", "next": list(next_nodes), "action": "awaiting_coach_review"}
+
+    if "shortlist_review" in next_nodes:
+        await _handle_shortlist_interrupt(session_id, graph, config)
+        return {"status": "ok", "next": list(next_nodes), "action": "awaiting_review"}
+
+    # Case 2: Not at an interrupt — continue the pipeline
+    next_label = next_nodes[0] if next_nodes else "unknown"
+    session_registry[session_id]["status"] = vals.get("status", next_label)
+
+    await _emit(session_id, "status", {
+        "status": session_registry[session_id]["status"],
+        "message": f"Resuming pipeline from {next_label}...",
+    })
+
+    # Continue execution (None input = resume from last checkpoint)
+    asyncio.create_task(_resume_stalled_pipeline(session_id, graph, config))
+
+    return {"status": "ok", "next": list(next_nodes), "action": f"resuming_{next_label}"}

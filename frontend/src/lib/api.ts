@@ -213,6 +213,19 @@ export async function resumeIntervention(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to resume intervention: ${res.status}`);
 }
 
+// ---------- Resume stalled pipeline ----------
+
+export async function resumeSession(
+  sessionId: string
+): Promise<{ status: string; next: string[]; action: string }> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/resume`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to resume session: ${res.statusText}`);
+  return res.json();
+}
+
 // ---------- Rewind ----------
 
 export interface Checkpoint {

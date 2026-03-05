@@ -59,7 +59,7 @@ async def generate_cover_letter(
     -------
     CoverLetter
     """
-    llm = build_llm(model="claude-sonnet-4-6", max_tokens=2048, temperature=0.7)
+    llm = build_llm(model="claude-haiku-4-5-20251001", max_tokens=2048, temperature=0.7)
 
     user_content = (
         f"## Job Details\n"
