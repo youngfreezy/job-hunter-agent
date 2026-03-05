@@ -27,3 +27,4 @@ docs/
 
 # OS
 .DS_Store
+frontend/playwright-report/
