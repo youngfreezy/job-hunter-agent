@@ -73,6 +73,7 @@ interface LinkedInUpdateButtonProps {
   linkedinAdvice: string[];
   linkedinUrl?: string;
   linkedinProgress?: LinkedInProgress | null;
+  disabled?: boolean;
 }
 
 export function LinkedInUpdateButton({
@@ -80,6 +81,7 @@ export function LinkedInUpdateButton({
   linkedinAdvice,
   linkedinUrl,
   linkedinProgress,
+  disabled,
 }: LinkedInUpdateButtonProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<ModalStep>("review");
@@ -166,6 +168,7 @@ export function LinkedInUpdateButton({
         onClick={handleOpenModal}
         variant="outline"
         size="sm"
+        disabled={disabled}
         className="w-full gap-2 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
       >
         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
