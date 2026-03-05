@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { CircularProgress } from "@/components/ui/circular-progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
@@ -74,7 +73,6 @@ type SSEEvent = {
   keywords?: string[];
   locations?: string[];
   session_summary?: SessionSummaryData;
-  // Coaching/discovery progress events
   step?: string;
   progress?: number;
   board?: string;
@@ -100,6 +98,34 @@ const STATUS_LABELS: Record<string, string> = {
 
 const PIPELINE_STEPS = ["intake", "coaching", "awaiting_coach_review", "discovering", "scoring", "tailoring", "awaiting_review", "applying", "verifying", "reporting", "completed"];
 
+const STEP_LABELS: Record<string, string> = {
+  intake: "Intake",
+  coaching: "Coach",
+  awaiting_coach_review: "Review",
+  discovering: "Discover",
+  scoring: "Score",
+  tailoring: "Tailor",
+  awaiting_review: "Review",
+  applying: "Apply",
+  verifying: "Verify",
+  reporting: "Report",
+  completed: "Done",
+};
+
+const AGENT_COLORS: Record<string, string> = {
+  intake: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
+  career_coach: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-800",
+  coaching: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-800",
+  discovery: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800",
+  scoring: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800",
+  resume_tailor: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800",
+  application: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800",
+  verification: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800",
+  reporting: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800",
+  status: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-800",
+  system: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-800",
+};
+
 export default function SessionPage() {
   const params = useParams();
   const sessionId = params.id as string;
@@ -117,23 +143,26 @@ export default function SessionPage() {
   const [shortlistJobs, setShortlistJobs] = useState<ScoredJobData[]>([]);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [shortlistSubmitting, setShortlistSubmitting] = useState(false);
-  const [stepProgress, setStepProgress] = useState(0); // latest progress % from *_progress events
+  const [stepProgress, setStepProgress] = useState(0);
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryData | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
-  // Track latest status synchronously (refs don't batch) to prevent modals from re-opening during SSE replay
   const latestStatusRef = useRef("intake");
-  // Track if user has already approved each HITL gate in this session
   const coachApprovedRef = useRef(false);
   const shortlistApprovedRef = useRef(false);
 
-  // Load session — may 404 initially (pipeline hasn't checkpointed yet)
   useEffect(() => {
     getSession(sessionId)
-      .then((data) => setSession(data as unknown as SessionData))
+      .then((data) => {
+        const s = data as unknown as SessionData;
+        setSession(s);
+        const pastCoach = ["discovering", "scoring", "tailoring", "awaiting_review", "applying", "verifying", "reporting", "completed", "failed"];
+        const pastShortlist = ["applying", "verifying", "reporting", "completed", "failed"];
+        if (pastCoach.includes(s.status)) coachApprovedRef.current = true;
+        if (pastShortlist.includes(s.status)) shortlistApprovedRef.current = true;
+      })
       .catch(() => {
-        // Session not in checkpointer yet — set a minimal placeholder
         setSession({
           session_id: sessionId,
           status: "intake",
@@ -147,15 +176,11 @@ export default function SessionPage() {
       });
   }, [sessionId]);
 
-  // SSE connection
   useEffect(() => {
     const cleanup = connectSSE(sessionId, (event) => {
       const evt = event as unknown as SSEEvent;
-
-      // Skip ping events
       if (evt.event === "ping") return;
 
-      // Deduplicate: skip if last event has same type + same message/step
       setEvents((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.event === evt.event) {
@@ -166,28 +191,14 @@ export default function SessionPage() {
         return [...prev, evt];
       });
 
-      // Track step progress from *_progress events
       if (evt.event?.endsWith("_progress") && typeof evt.progress === "number") {
         setStepProgress(evt.progress);
       }
 
-      // Track status synchronously via ref (immune to React batching)
       if (evt.status && (evt.event === "status" || evt.event === "done" || evt.event === "coach_review" || evt.event === "shortlist_review")) {
         latestStatusRef.current = evt.status;
       }
 
-      // Mark HITL gates as approved once pipeline moves past them
-      if (latestStatusRef.current === "discovering" || latestStatusRef.current === "scoring") {
-        coachApprovedRef.current = true;
-      }
-      if (latestStatusRef.current === "applying" || latestStatusRef.current === "verifying" ||
-          latestStatusRef.current === "reporting" || latestStatusRef.current === "completed" ||
-          latestStatusRef.current === "failed") {
-        coachApprovedRef.current = true;
-        shortlistApprovedRef.current = true;
-      }
-
-      // Update session from event data
       setSession((prev) => {
         if (!prev) return prev;
         const updates: Partial<SessionData> = {};
@@ -200,7 +211,6 @@ export default function SessionPage() {
         return { ...prev, ...updates };
       });
 
-      // Store coach review data for sidebar, but only open modal if not already approved
       if (evt.event === "coach_review" && evt.coach_output) {
         setCoachReviewData(evt.coach_output as unknown as CoachOutput);
         if (!coachApprovedRef.current &&
@@ -208,12 +218,10 @@ export default function SessionPage() {
           setCoachReviewOpen(true);
         }
       }
-      // Close coach modal when pipeline moves past
       if (evt.status && evt.status !== "coaching" && evt.status !== "awaiting_coach_review") {
         setCoachReviewOpen(false);
       }
 
-      // Store shortlist data, but only open modal if not already approved
       if (evt.event === "shortlist_review" && evt.scored_jobs) {
         const jobs = evt.scored_jobs as ScoredJobData[];
         setShortlistJobs(jobs);
@@ -223,29 +231,22 @@ export default function SessionPage() {
           setShortlistReviewOpen(true);
         }
       }
-      // Close shortlist modal when pipeline moves past
       if (evt.status && evt.status !== "tailoring" && evt.status !== "awaiting_review") {
         setShortlistReviewOpen(false);
       }
 
-      // Capture session summary from done event
       if (evt.event === "done" && evt.session_summary) {
         setSessionSummary(evt.session_summary);
       }
 
-      // Auto-scroll events
       setTimeout(() => eventsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
     return cleanup;
   }, [sessionId]);
 
-  // WebSocket for screenshot feed + notify backend of mode switch
   useEffect(() => {
     if (viewMode !== "screenshot" && viewMode !== "takeover") return;
-
-    // Tell the backend to enable screenshot streaming
     sendSteer(sessionId, { message: `Switched to ${viewMode} mode`, mode: viewMode }).catch(() => {});
-
     const cleanup = connectWebSocket(sessionId, (data) => {
       if (data.type === "screenshot" && data.image) {
         setScreenshotUrl(`data:image/jpeg;base64,${data.image}`);
@@ -254,10 +255,8 @@ export default function SessionPage() {
         setChatMessages((prev) => [...prev, { role: "agent", text: data.message as string }]);
       }
     });
-
     return () => {
       cleanup();
-      // Revert to status mode when leaving screenshot/takeover
       sendSteer(sessionId, { message: "Switched back to status mode", mode: "status" }).catch(() => {});
     };
   }, [sessionId, viewMode]);
@@ -313,57 +312,51 @@ export default function SessionPage() {
   };
 
   const rawStepIndex = session ? PIPELINE_STEPS.indexOf(session.status) : 0;
-  const currentStepIndex = Math.max(0, rawStepIndex); // -1 → 0 for unknown statuses
-  const progressPct = session ? Math.max(5, ((currentStepIndex + 1) / PIPELINE_STEPS.length) * 100) : 0;
+  const currentStepIndex = Math.max(0, rawStepIndex);
+  const isActive = session && session.status !== "completed" && session.status !== "failed";
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-white dark:bg-zinc-950">
-        {/* Nav */}
-        <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
-          <div className="h-6 w-40 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
-          <div className="flex gap-4">
-            <div className="h-4 w-20 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
-            <div className="h-6 w-24 bg-zinc-200 dark:bg-zinc-800 rounded-full animate-pulse" />
+      <div className="min-h-screen bg-background">
+        <nav className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50 px-6 py-3">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="h-6 w-40 bg-muted rounded-lg animate-pulse" />
+            <div className="flex gap-3">
+              <div className="h-8 w-24 bg-muted rounded-full animate-pulse" />
+              <div className="h-8 w-24 bg-muted rounded-lg animate-pulse" />
+            </div>
           </div>
         </nav>
-        <div className="max-w-7xl mx-auto px-6 py-8 flex gap-6">
-          <div className="flex-1">
-            {/* Pipeline progress skeleton */}
-            <div className="flex items-center gap-3 mb-6">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center flex-1">
-                  <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
-                  {i < 5 && <div className="flex-1 h-0.5 mx-2 bg-zinc-200 dark:bg-zinc-800" />}
-                </div>
-              ))}
-            </div>
-            {/* Tab bar skeleton */}
-            <div className="flex gap-4 border-b border-zinc-200 dark:border-zinc-800 mb-6">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-4 w-28 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-3" />
-              ))}
-            </div>
-            {/* Feed skeleton */}
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex gap-3 items-start">
-                  <div className="h-4 w-16 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />
-                  <div className="h-5 w-20 bg-zinc-200 dark:bg-zinc-800 rounded-full animate-pulse" />
-                  <div className="h-4 flex-1 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />
-                </div>
-              ))}
-            </div>
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          {/* Pipeline skeleton */}
+          <div className="flex items-center gap-1 mb-8 px-4">
+            {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <div key={i} className="flex items-center flex-1">
+                <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
+                {i < 7 && <div className="flex-1 h-0.5 mx-1 bg-muted" />}
+              </div>
+            ))}
           </div>
-          {/* Sidebar skeleton */}
-          <div className="w-72 shrink-0">
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 space-y-4">
-              <div className="h-5 w-24 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
-              <div className="space-y-3">
+          <div className="flex gap-6">
+            <div className="flex-1 space-y-4">
+              <div className="h-10 w-72 bg-muted rounded-xl animate-pulse" />
+              <div className="rounded-xl border border-border/50 p-6 space-y-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex gap-3 items-center animate-fade-in-up" style={{ animationDelay: `${i * 100}ms` }}>
+                    <div className="h-4 w-16 bg-muted rounded animate-pulse" />
+                    <div className="h-6 w-20 bg-muted rounded-full animate-pulse" />
+                    <div className="h-4 flex-1 bg-muted/50 rounded animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="w-80 space-y-4">
+              <div className="rounded-xl border border-border/50 p-5 space-y-4">
+                <div className="h-5 w-24 bg-muted rounded animate-pulse" />
                 {[1, 2, 3].map((i) => (
                   <div key={i}>
-                    <div className="h-3 w-16 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse mb-1" />
-                    <div className="h-4 w-40 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+                    <div className="h-3 w-16 bg-muted/50 rounded animate-pulse mb-1.5" />
+                    <div className="h-4 w-40 bg-muted rounded animate-pulse" />
                   </div>
                 ))}
               </div>
@@ -375,78 +368,160 @@ export default function SessionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950 flex flex-col">
-      {/* Nav */}
-      <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-3 flex items-center justify-between">
-        <Link href="/" className="text-lg font-bold">JobHunter Agent</Link>
-        <div className="flex items-center gap-3">
-          <Badge variant={session.status === "completed" ? "default" : "secondary"}>
-            {STATUS_LABELS[session.status] || session.status}
-          </Badge>
-          <Link href="/dashboard">
-            <Button variant="outline" size="sm">Dashboard</Button>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Navbar */}
+      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50 px-6 py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <Link href="/" className="text-lg font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+            JobHunter Agent
           </Link>
+          <div className="flex items-center gap-3">
+            <Badge
+              variant={session.status === "completed" ? "default" : "secondary"}
+              className={
+                isActive
+                  ? "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800 animate-pulse"
+                  : session.status === "completed"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+                  : ""
+              }
+            >
+              {isActive && (
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 mr-1.5 animate-pulse" />
+              )}
+              {STATUS_LABELS[session.status] || session.status}
+            </Badge>
+            <Link href="/dashboard">
+              <Button variant="outline" size="sm">Dashboard</Button>
+            </Link>
+          </div>
         </div>
       </nav>
 
-      {/* Progress bar */}
-      <div className="px-6 py-3 border-b border-zinc-100 dark:border-zinc-900">
-        <div className="max-w-5xl mx-auto flex items-center gap-4">
-          <Progress value={progressPct} className={`flex-1 ${session.status !== "completed" && session.status !== "failed" ? "[&>div]:animate-progress-pulse" : ""}`} />
-          {session.status !== "completed" && session.status !== "failed" ? (
-            <CircularProgress value={stepProgress} size={36} strokeWidth={3} showValue pulse />
-          ) : (
-            <span className="text-xs text-zinc-500 whitespace-nowrap">
-              {session.status === "completed" ? "Done" : "Failed"}
-            </span>
-          )}
-        </div>
-        <div className="max-w-5xl mx-auto flex justify-between mt-2">
-          {PIPELINE_STEPS.map((step, i) => (
-            <span
-              key={step}
-              className={`text-xs ${i <= currentStepIndex ? "text-zinc-900 dark:text-white font-medium" : "text-zinc-400"}`}
-            >
-              {step === "awaiting_review" ? "Review" : step === "awaiting_coach_review" ? "Coach Review" : step.charAt(0).toUpperCase() + step.slice(1)}
-            </span>
-          ))}
+      {/* Pipeline Stepper */}
+      <div className="border-b border-border/50 bg-card/50 backdrop-blur-sm">
+        <div className="max-w-6xl mx-auto px-6 py-4">
+          <div className="flex items-center gap-0.5">
+            {PIPELINE_STEPS.map((step, i) => {
+              const isCompleted = i < currentStepIndex;
+              const isCurrent = i === currentStepIndex;
+              return (
+                <div key={step} className="flex items-center flex-1 last:flex-none">
+                  {/* Step pill */}
+                  <div
+                    className={`
+                      relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-500 whitespace-nowrap overflow-hidden
+                      ${isCompleted
+                        ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300"
+                        : isCurrent
+                        ? "bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/30"
+                        : "text-muted-foreground/60"
+                      }
+                    `}
+                  >
+                    {/* Shimmer effect on active step */}
+                    {isCurrent && isActive && (
+                      <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[gradient-shift_2s_ease_infinite] bg-[length:200%_100%]" />
+                    )}
+                    {isCompleted ? (
+                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : isCurrent && isActive ? (
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                      </span>
+                    ) : (
+                      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-30 shrink-0" />
+                    )}
+                    <span className="relative z-10">{STEP_LABELS[step]}</span>
+                  </div>
+                  {/* Connector */}
+                  {i < PIPELINE_STEPS.length - 1 && (
+                    <div className="flex-1 mx-0.5">
+                      <div className="h-0.5 w-full rounded-full bg-border/50 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-700 ease-out ${
+                            isCurrent && isActive
+                              ? "bg-gradient-to-r from-indigo-500 to-violet-500 animate-progress-pulse"
+                              : "bg-indigo-400 dark:bg-indigo-500"
+                          }`}
+                          style={{ width: isCompleted ? "100%" : isCurrent ? `${Math.max(stepProgress, 5)}%` : "0%" }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Main content */}
       <div className="flex-1 flex max-w-7xl mx-auto w-full">
-        {/* Left: Viewer */}
-        <div className="flex-1 p-4 flex flex-col">
+        {/* Left: Main viewer */}
+        <div className="flex-1 p-5 flex flex-col">
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)} className="flex-1 flex flex-col">
-            <TabsList className="mb-3">
-              <TabsTrigger value="status">Status Feed</TabsTrigger>
-              <TabsTrigger value="screenshot">Screenshot Feed</TabsTrigger>
-              <TabsTrigger value="takeover">Take Control</TabsTrigger>
+            <TabsList className="mb-4 self-start">
+              <TabsTrigger value="status" className="gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Status Feed
+              </TabsTrigger>
+              <TabsTrigger value="screenshot" className="gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Screenshots
+              </TabsTrigger>
+              <TabsTrigger value="takeover" className="gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                </svg>
+                Take Control
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="status" className="flex-1 flex flex-col">
-              <Card className="flex-1 flex flex-col">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Live Status</CardTitle>
+              <Card className="flex-1 flex flex-col overflow-hidden">
+                <CardHeader className="pb-2 border-b border-border/50">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Live Status
+                    </CardTitle>
+                    <span className="text-xs text-muted-foreground">{events.length} events</span>
+                  </div>
                 </CardHeader>
-                <CardContent className="flex-1 overflow-y-auto max-h-[500px] space-y-2 font-mono text-sm">
+                <CardContent className="flex-1 overflow-y-auto max-h-[500px] py-3 space-y-1">
                   {events.length === 0 && (
-                    <p className="text-zinc-400">Waiting for events...</p>
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                      <svg className="w-10 h-10 mb-3 animate-pulse opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+                      </svg>
+                      <p className="text-sm font-medium">Waiting for events...</p>
+                      <p className="text-xs mt-1">The agent is warming up</p>
+                    </div>
                   )}
                   {events.map((evt, i) => {
                     const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : "";
 
-                    // Progress events get special rendering (any *_progress event)
                     if (evt.event?.endsWith("_progress")) {
                       const label = evt.event.replace("_progress", "");
                       const pct = typeof evt.progress === "number" ? evt.progress : undefined;
                       return (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="text-zinc-400 text-xs whitespace-nowrap">{time}</span>
-                          <Badge variant="secondary" className="text-xs">{label}</Badge>
-                          <span className="text-blue-600 dark:text-blue-400">{evt.step}</span>
+                        <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors animate-fade-in-up">
+                          <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-16">{time}</span>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${AGENT_COLORS[label] || AGENT_COLORS.system}`}>
+                            {label}
+                          </span>
+                          <span className="text-sm text-indigo-600 dark:text-indigo-400 flex-1">{evt.step}</span>
                           {pct !== undefined && pct >= 0 && (
-                            <CircularProgress value={pct} size={24} strokeWidth={2.5} showValue className="ml-auto" />
+                            <CircularProgress value={pct} size={24} strokeWidth={2.5} showValue className="ml-auto shrink-0" />
                           )}
                         </div>
                       );
@@ -460,10 +535,12 @@ export default function SessionPage() {
                       || evt.status
                       || evt.event;
                     return (
-                      <div key={i} className="flex gap-2">
-                        <span className="text-zinc-400 text-xs whitespace-nowrap">{time}</span>
-                        <Badge variant="secondary" className="text-xs">{agent}</Badge>
-                        <span className={evt.event === "error" ? "text-red-500" : ""}>{msg}</span>
+                      <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors animate-fade-in-up">
+                        <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-16">{time}</span>
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${AGENT_COLORS[agent] || AGENT_COLORS.system}`}>
+                          {agent}
+                        </span>
+                        <span className={`text-sm flex-1 ${evt.event === "error" ? "text-red-500 font-medium" : "text-foreground/80"}`}>{msg}</span>
                       </div>
                     );
                   })}
@@ -473,17 +550,21 @@ export default function SessionPage() {
             </TabsContent>
 
             <TabsContent value="screenshot" className="flex-1 flex flex-col">
-              <Card className="flex-1 flex flex-col">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Live Screenshot Feed</CardTitle>
+              <Card className="flex-1 flex flex-col overflow-hidden">
+                <CardHeader className="pb-2 border-b border-border/50">
+                  <CardTitle className="text-sm font-semibold">Live Screenshot Feed</CardTitle>
                 </CardHeader>
-                <CardContent className="flex-1 flex items-center justify-center bg-zinc-100 dark:bg-zinc-900 rounded min-h-[400px]">
+                <CardContent className="flex-1 flex items-center justify-center bg-muted/30 rounded-b-xl min-h-[400px]">
                   {screenshotUrl ? (
-                    <img src={screenshotUrl} alt="Browser" className="max-w-full max-h-full object-contain" />
+                    <img src={screenshotUrl} alt="Browser" className="max-w-full max-h-full object-contain rounded-lg shadow-lg" />
                   ) : (
-                    <div className="text-center text-zinc-400">
-                      <p className="text-lg mb-2">Screenshot Feed</p>
-                      <p className="text-sm">Connecting to browser session...</p>
+                    <div className="text-center text-muted-foreground">
+                      <svg className="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <p className="font-medium">Screenshot Feed</p>
+                      <p className="text-xs mt-1">Connecting to browser session...</p>
                     </div>
                   )}
                   <canvas ref={canvasRef} className="hidden" />
@@ -492,29 +573,35 @@ export default function SessionPage() {
             </TabsContent>
 
             <TabsContent value="takeover" className="flex-1 flex flex-col">
-              <Card className="flex-1 flex flex-col">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Browser Control (noVNC)</CardTitle>
+              <Card className="flex-1 flex flex-col overflow-hidden">
+                <CardHeader className="pb-2 border-b border-border/50">
+                  <CardTitle className="text-sm font-semibold">Browser Control</CardTitle>
                 </CardHeader>
-                <CardContent className="flex-1 flex items-center justify-center bg-zinc-100 dark:bg-zinc-900 rounded min-h-[400px]">
-                  <div className="text-center text-zinc-400">
-                    <p className="text-lg mb-2">Direct Browser Control</p>
-                    <p className="text-sm mb-4">Take direct control of the browser when the agent needs help.</p>
-                    <Button variant="outline">Request Control</Button>
+                <CardContent className="flex-1 flex items-center justify-center bg-muted/30 rounded-b-xl min-h-[400px]">
+                  <div className="text-center text-muted-foreground">
+                    <svg className="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                    <p className="font-medium">Direct Browser Control</p>
+                    <p className="text-xs mt-1 mb-4 max-w-xs">Take direct control of the browser when the agent needs help</p>
+                    <Button variant="outline" size="sm">Request Control</Button>
                   </div>
                 </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
 
-          {/* Chat panel (visible in screenshot and takeover modes) */}
+          {/* Chat panel */}
           {(viewMode === "screenshot" || viewMode === "takeover") && (
             <Card className="mt-3">
               <CardContent className="p-3">
-                <div className="max-h-32 overflow-y-auto mb-2 space-y-1">
+                <div className="max-h-32 overflow-y-auto mb-2 space-y-1.5">
                   {chatMessages.map((msg, i) => (
-                    <div key={i} className={`text-sm ${msg.role === "user" ? "text-blue-600" : "text-zinc-600"}`}>
-                      <span className="font-medium">{msg.role === "user" ? "You" : "Agent"}:</span> {msg.text}
+                    <div key={i} className={`text-sm flex gap-2 ${msg.role === "user" ? "" : ""}`}>
+                      <Badge variant="secondary" className={`text-[10px] shrink-0 ${msg.role === "user" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}>
+                        {msg.role === "user" ? "You" : "Agent"}
+                      </Badge>
+                      <span className="text-foreground/80">{msg.text}</span>
                     </div>
                   ))}
                 </div>
@@ -524,6 +611,7 @@ export default function SessionPage() {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
+                    className="text-sm"
                   />
                   <Button size="sm" onClick={handleSendChat}>Send</Button>
                 </div>
@@ -533,49 +621,88 @@ export default function SessionPage() {
         </div>
 
         {/* Right: Sidebar */}
-        <div className="w-80 border-l border-zinc-200 dark:border-zinc-800 p-4 space-y-4 overflow-y-auto">
+        <div className="w-80 border-l border-border/50 p-5 space-y-4 overflow-y-auto bg-card/30">
           {/* Session info */}
-          <Card>
+          <Card className="bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-950/50 dark:to-violet-950/50 border-indigo-100 dark:border-indigo-900">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Session</CardTitle>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <svg className="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Session
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <p><span className="text-zinc-500">Keywords:</span> {session.keywords?.join(", ")}</p>
-              <p><span className="text-zinc-500">Applications:</span> {session.applications_used || 0}</p>
-              <p><span className="text-zinc-500">Submitted:</span> {session.applications_submitted?.length || 0}</p>
-              <p><span className="text-zinc-500">Failed:</span> {session.applications_failed?.length || 0}</p>
+            <CardContent className="space-y-2.5 text-sm">
+              <div>
+                <span className="text-muted-foreground text-xs uppercase tracking-wider">Keywords</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {session.keywords?.map((kw, i) => (
+                    <Badge key={i} variant="secondary" className="text-xs bg-white/80 dark:bg-white/10">{kw}</Badge>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center p-2 rounded-lg bg-white/60 dark:bg-white/5">
+                  <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{session.applications_used || 0}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Applied</p>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-white/60 dark:bg-white/5">
+                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{session.applications_submitted?.length || 0}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Submitted</p>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-white/60 dark:bg-white/5">
+                  <p className="text-lg font-bold text-red-500">{session.applications_failed?.length || 0}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Failed</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
           {/* Coach output */}
           {session.coach_output && (
-            <Card>
+            <Card className="bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/50 dark:to-purple-950/50 border-violet-100 dark:border-violet-900">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Career Coach</CardTitle>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <svg className="w-4 h-4 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  Career Coach
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
+              <CardContent className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-zinc-500">Resume Score:</span>
-                  <Badge>{session.coach_output.resume_score.overall}/100</Badge>
+                  <span className="text-xs text-muted-foreground">Resume Score</span>
+                  <CircularProgress value={session.coach_output.resume_score.overall} size={42} strokeWidth={4} showValue />
                 </div>
-                <p className="text-zinc-600 dark:text-zinc-400 italic text-xs">
-                  {session.coach_output.confidence_message?.slice(0, 120)}...
+                <p className="text-xs text-muted-foreground italic leading-relaxed">
+                  {session.coach_output.confidence_message?.slice(0, 140)}...
                 </p>
               </CardContent>
             </Card>
           )}
 
-          {/* Shortlist summary (shown when review data is available) */}
+          {/* Shortlist summary */}
           {shortlistJobs.length > 0 && (
-            <Card>
+            <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/50 dark:to-orange-950/50 border-amber-100 dark:border-amber-900">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Shortlist</CardTitle>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Shortlist
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1 text-sm">
-                <p><span className="text-zinc-500">Jobs scored:</span> {shortlistJobs.length}</p>
-                <p><span className="text-zinc-500">Top score:</span> {shortlistJobs[0]?.score}/100</p>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-xs">Jobs scored</span>
+                  <span className="font-semibold">{shortlistJobs.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-xs">Top score</span>
+                  <CircularProgress value={shortlistJobs[0]?.score || 0} size={28} strokeWidth={3} showValue />
+                </div>
                 {session.status === "awaiting_review" && (
-                  <Button size="sm" className="w-full mt-2" onClick={() => setShortlistReviewOpen(true)}>
+                  <Button size="sm" className="w-full mt-1" onClick={() => setShortlistReviewOpen(true)}>
                     Review Shortlist
                   </Button>
                 )}
@@ -583,46 +710,55 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {/* Session Summary (shown when completed) */}
+          {/* Session Summary */}
           {sessionSummary && session.status === "completed" && (
-            <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950">
+            <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50 border-emerald-200 dark:border-emerald-800">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-green-800 dark:text-green-200">Session Complete</CardTitle>
+                <CardTitle className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Session Complete
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div className="grid grid-cols-2 gap-1">
-                  <span className="text-zinc-500">Discovered:</span>
-                  <span className="font-medium">{sessionSummary.total_discovered}</span>
-                  <span className="text-zinc-500">Scored:</span>
-                  <span className="font-medium">{sessionSummary.total_scored}</span>
-                  <span className="text-zinc-500">Applied:</span>
-                  <span className="font-medium text-green-700 dark:text-green-300">{sessionSummary.total_applied}</span>
-                  <span className="text-zinc-500">Failed:</span>
-                  <span className="font-medium text-red-600">{sessionSummary.total_failed}</span>
-                  <span className="text-zinc-500">Skipped:</span>
-                  <span className="font-medium">{sessionSummary.total_skipped}</span>
-                  <span className="text-zinc-500">Avg Fit:</span>
-                  <span className="font-medium">{sessionSummary.avg_fit_score}/100</span>
-                  <span className="text-zinc-500">Duration:</span>
-                  <span className="font-medium">{sessionSummary.duration_minutes}m</span>
+              <CardContent className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Discovered", value: sessionSummary.total_discovered, color: "" },
+                    { label: "Scored", value: sessionSummary.total_scored, color: "" },
+                    { label: "Applied", value: sessionSummary.total_applied, color: "text-emerald-600 dark:text-emerald-400" },
+                    { label: "Failed", value: sessionSummary.total_failed, color: "text-red-500" },
+                    { label: "Skipped", value: sessionSummary.total_skipped, color: "" },
+                    { label: "Avg Fit", value: `${sessionSummary.avg_fit_score}/100`, color: "" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className="flex items-center justify-between py-1">
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                      <span className={`font-semibold ${color}`}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between py-1 border-t border-emerald-200/50 dark:border-emerald-800/50">
+                  <span className="text-xs text-muted-foreground">Duration</span>
+                  <span className="font-semibold">{sessionSummary.duration_minutes}m</span>
                 </div>
                 {sessionSummary.top_companies.length > 0 && (
                   <div>
-                    <p className="text-zinc-500 text-xs mb-1">Top Companies:</p>
+                    <p className="text-xs text-muted-foreground mb-1.5">Top Companies</p>
                     <div className="flex flex-wrap gap-1">
                       {sessionSummary.top_companies.slice(0, 5).map((c, i) => (
-                        <Badge key={i} variant="secondary" className="text-xs">{c}</Badge>
+                        <Badge key={i} variant="secondary" className="text-xs bg-white/80 dark:bg-white/10">{c}</Badge>
                       ))}
                     </div>
                   </div>
                 )}
                 {sessionSummary.next_steps.length > 0 && (
                   <div>
-                    <p className="text-zinc-500 text-xs mb-1">Next Steps:</p>
-                    <ul className="space-y-1">
+                    <p className="text-xs text-muted-foreground mb-1.5">Next Steps</p>
+                    <ul className="space-y-1.5">
                       {sessionSummary.next_steps.map((step, i) => (
-                        <li key={i} className="text-xs text-zinc-700 dark:text-zinc-300">
-                          {i + 1}. {step}
+                        <li key={i} className="text-xs text-foreground/70 flex items-start gap-1.5">
+                          <span className="text-emerald-500 mt-0.5 shrink-0">{i + 1}.</span>
+                          {step}
                         </li>
                       ))}
                     </ul>
@@ -636,14 +772,23 @@ export default function SessionPage() {
           {session.applications_submitted && session.applications_submitted.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Applications</CardTitle>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Applications
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1 text-xs max-h-64 overflow-y-auto">
+              <CardContent className="space-y-1 max-h-64 overflow-y-auto">
                 {session.applications_submitted.map((app, i) => (
-                  <div key={i} className="flex items-center gap-2 py-1 border-b border-zinc-100 dark:border-zinc-800 last:border-0">
-                    <span className="text-green-600">✓</span>
-                    <span className="truncate">{app.job_id.slice(0, 8)}...</span>
-                    <Badge variant="secondary" className="text-xs">{app.status}</Badge>
+                  <div key={i} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors text-xs">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center shrink-0">
+                      <svg className="w-3 h-3 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                    <span className="truncate flex-1 text-foreground/70">{app.job_id.slice(0, 12)}...</span>
+                    <Badge variant="secondary" className="text-[10px]">{app.status}</Badge>
                   </div>
                 ))}
               </CardContent>
@@ -656,7 +801,14 @@ export default function SessionPage() {
       <Dialog open={coachReviewOpen} onOpenChange={setCoachReviewOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Review Your Coached Resume</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </span>
+              Review Your Coached Resume
+            </DialogTitle>
             <DialogDescription>
               The Career Coach has analyzed and rewritten your resume. Review the results below, then approve to continue to job discovery.
             </DialogDescription>
@@ -686,9 +838,16 @@ export default function SessionPage() {
       <Dialog open={shortlistReviewOpen} onOpenChange={setShortlistReviewOpen}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Review Job Shortlist</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </span>
+              Review Job Shortlist
+            </DialogTitle>
             <DialogDescription>
-              Select the jobs you want to apply to. Tailored resumes have been prepared for each one. Deselect any you want to skip.
+              Select the jobs you want to apply to. Deselect any you want to skip.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 max-h-[55vh] overflow-y-auto">
@@ -697,32 +856,40 @@ export default function SessionPage() {
               return (
                 <div
                   key={sj.job.id}
-                  className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                  className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
                     selected
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
-                      : "border-zinc-200 dark:border-zinc-800 opacity-60"
+                      ? "border-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/30 dark:border-indigo-700 shadow-sm"
+                      : "border-border hover:border-border/80 opacity-60 hover:opacity-80"
                   }`}
                   onClick={() => toggleJobSelection(sj.job.id)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <p className="font-medium text-sm">{sj.job.title}</p>
-                      <p className="text-xs text-zinc-500">{sj.job.company} — {sj.job.location}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{sj.job.company} — {sj.job.location}</p>
                       {sj.reasons && sj.reasons.length > 0 && (
-                        <ul className="mt-1 space-y-0.5">
+                        <ul className="mt-2 space-y-0.5">
                           {sj.reasons.map((r, ri) => (
-                            <li key={ri} className="text-xs text-zinc-600 dark:text-zinc-400">- {r}</li>
+                            <li key={ri} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                              <span className="text-indigo-400 mt-0.5">-</span> {r}
+                            </li>
                           ))}
                         </ul>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 ml-3">
-                      <CircularProgress value={sj.score} size={36} strokeWidth={3} showValue />
+                    <div className="flex items-center gap-3 ml-4">
+                      <CircularProgress value={sj.score} size={40} strokeWidth={3.5} showValue />
                       <Badge variant="secondary" className="text-xs">{sj.job.board}</Badge>
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                        selected ? "border-blue-500 bg-blue-500 text-white" : "border-zinc-300"
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                        selected
+                          ? "border-indigo-500 bg-indigo-500 text-white shadow-sm shadow-indigo-500/30"
+                          : "border-muted-foreground/30"
                       }`}>
-                        {selected && <span className="text-xs">✓</span>}
+                        {selected && (
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -731,7 +898,7 @@ export default function SessionPage() {
             })}
           </div>
           <DialogFooter className="flex items-center justify-between">
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-muted-foreground">
               {selectedJobIds.size} of {shortlistJobs.length} jobs selected
             </span>
             <div className="flex gap-2">

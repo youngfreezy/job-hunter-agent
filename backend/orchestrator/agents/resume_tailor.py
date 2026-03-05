@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Dict, List
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
@@ -16,12 +16,18 @@ from backend.shared.models.schemas import ScoredJob, TailoredResume
 
 logger = logging.getLogger(__name__)
 
+
+class TailorResult(BaseModel):
+    tailored_text: str = Field(description="Full tailored resume text")
+    fit_score: int = Field(ge=0, le=100, description="Fit score 0-100")
+    changes_made: List[str] = Field(default_factory=list, description="List of changes made")
+
 # ---------------------------------------------------------------------------
 # Model helpers
 # ---------------------------------------------------------------------------
 
-SONNET_MODEL = "claude-sonnet-4-20250514"
-OPUS_MODEL = "claude-opus-4-0-20250514"
+SONNET_MODEL = "claude-sonnet-4-6"
+OPUS_MODEL = "claude-sonnet-4-6"
 MAX_SELF_REFLECTION_RETRIES = 1
 FIT_SCORE_THRESHOLD = 70
 
@@ -50,26 +56,12 @@ You are an expert resume writer. Given a base resume and a job description,
 rewrite the resume so it is maximally relevant to this specific role while
 remaining truthful. Emphasise matching keywords, transferable skills, and
 quantified achievements.
-
-Return ONLY valid JSON with this schema (no markdown fences):
-{
-  "tailored_text": "<full tailored resume text>",
-  "fit_score": <int 0-100>,
-  "changes_made": ["<change 1>", "<change 2>", ...]
-}
 """
 
 IMPROVE_SYSTEM = """\
 You are an expert resume writer performing a second pass. The first tailored
 resume scored below the quality bar. Improve it by addressing the specific
 feedback below. Keep all facts truthful.
-
-Return ONLY valid JSON with this schema (no markdown fences):
-{
-  "tailored_text": "<improved tailored resume text>",
-  "fit_score": <int 0-100>,
-  "changes_made": ["<change 1>", "<change 2>", ...]
-}
 """
 
 
@@ -91,16 +83,17 @@ async def _tailor_single(
         f"## Job URL\n{job.job.url}\n"
     )
 
+    structured_llm = llm.with_structured_output(TailorResult)
+
     messages = [
         SystemMessage(content=TAILOR_SYSTEM),
         HumanMessage(content=user_content),
     ]
-    response = await llm.ainvoke(messages)
-    result = json.loads(response.content)
+    result: TailorResult = await structured_llm.ainvoke(messages)
 
-    fit_score: int = int(result["fit_score"])
-    tailored_text: str = result["tailored_text"]
-    changes_made: List[str] = result.get("changes_made", [])
+    fit_score = result.fit_score
+    tailored_text = result.tailored_text
+    changes_made = result.changes_made
 
     # --- Self-reflection loop (max 1 retry) ---
     if fit_score < FIT_SCORE_THRESHOLD:
@@ -125,11 +118,10 @@ async def _tailor_single(
             SystemMessage(content=IMPROVE_SYSTEM),
             HumanMessage(content=improve_content),
         ]
-        retry_response = await llm.ainvoke(retry_messages)
-        retry_result = json.loads(retry_response.content)
-        fit_score = int(retry_result["fit_score"])
-        tailored_text = retry_result["tailored_text"]
-        changes_made = retry_result.get("changes_made", changes_made)
+        retry_result: TailorResult = await structured_llm.ainvoke(retry_messages)
+        fit_score = retry_result.fit_score
+        tailored_text = retry_result.tailored_text
+        changes_made = retry_result.changes_made
 
     return TailoredResume(
         job_id=job.job.id,

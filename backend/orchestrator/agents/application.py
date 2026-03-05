@@ -16,10 +16,14 @@ Uses real browser automation to:
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import logging
+import random
 import time
 import uuid
 from datetime import datetime, timezone
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 from backend.orchestrator.pipeline.state import JobHunterState
@@ -204,6 +208,15 @@ async def _apply_with_playwright(
         page = await context.new_page()
         await apply_stealth(page)
 
+        # Start screenshot streamer immediately so user can watch from the start
+        streamer: Optional[ScreenshotStreamer] = None
+        try:
+            streamer = ScreenshotStreamer(session_id=session_id)
+            await streamer.start(page)
+            logger.info("Screenshot streamer started for %s (running=%s)", session_id, streamer._running)
+        except Exception:
+            logger.warning("Screenshot streamer failed to start for %s", session_id, exc_info=True)
+
         # Publish SSE: starting application
         await _publish_sse_event(session_id, "application_start", {
             "job_id": job_id,
@@ -215,7 +228,6 @@ async def _apply_with_playwright(
         # --- Step 1: Navigate to application URL ---
         logger.info("Navigating to application URL: %s", job.url)
         await page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
-        import random
         await page.wait_for_timeout(random.randint(2000, 4000))
 
         # --- Step 2: Detect ATS type ---
@@ -239,15 +251,32 @@ async def _apply_with_playwright(
                 "company": job.company,
             })
 
-            # Use a generated email/password for the account
-            # In production, these would come from user preferences
-            settings = get_settings()
+            # Extract email from resume text for account creation
+            resume_text = state.get("coached_resume") or state.get("resume_text", "")
+            import re as _re
+            email_match = _re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', resume_text)
+            user_email = email_match.group(0) if email_match else None
+            if not user_email:
+                logger.warning("No email found in resume — skipping account creation")
+                return ApplicationResult(
+                    job_id=job_id,
+                    status=ApplicationStatus.SKIPPED,
+                    error_message="No email in resume — cannot create account",
+                    duration_seconds=int(time.monotonic() - start_time),
+                )
+
+            # Extract name from first line of resume
+            first_line = resume_text.strip().split("\n")[0].strip()
+            name_parts = first_line.split()
+            first_name = name_parts[0] if name_parts else ""
+            last_name = name_parts[-1] if len(name_parts) > 1 else ""
+
             account_result = await create_account(
                 page,
-                email=f"applicant+{uuid.uuid4().hex[:6]}@jobhunter.dev",
+                email=user_email,
                 password=f"Jh{uuid.uuid4().hex[:12]}!",
-                first_name="",  # Will be extracted from resume
-                last_name="",
+                first_name=first_name,
+                last_name=last_name,
             )
 
             if account_result.needs_email_verification:
@@ -273,14 +302,7 @@ async def _apply_with_playwright(
                     f"Account creation failed: {account_result.error}"
                 )
 
-        # --- Step 5: Start screenshot streamer if steering_mode is "screenshot" ---
-        streamer: Optional[ScreenshotStreamer] = None
-        steering_mode = state.get("steering_mode", "status")
-        if steering_mode == "screenshot":
-            streamer = ScreenshotStreamer(session_id=session_id)
-            await streamer.start(page)
-
-        # --- Step 6: Generate tailored cover letter ---
+        # --- Step 5: Generate tailored cover letter ---
         resume_text = state.get("coached_resume") or state.get("resume_text", "")
         cover_letter_template = state.get("cover_letter_template", "")
 
@@ -339,9 +361,10 @@ async def _apply_with_playwright(
                 type="png",
                 full_page=True,
             )
-            import base64
-            screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
-            # In production: upload to S3/GCS and get URL
+            # Offload CPU-bound base64 encoding to a thread
+            screenshot_b64 = await asyncio.to_thread(
+                lambda b: base64.b64encode(b).decode("utf-8"), screenshot_bytes
+            )
             screenshot_url = (
                 f"data:image/png;base64,{screenshot_b64[:50]}..."
                 f"(full screenshot captured, {len(screenshot_bytes)} bytes)"
@@ -394,12 +417,27 @@ async def _apply_with_playwright(
         duration = int(time.monotonic() - start_time)
         logger.exception("Playwright application failed for job %s", job_id)
 
+        # Capture error screenshot so the user can see what went wrong
+        error_screenshot_b64 = None
+        try:
+            if page:
+                error_bytes = await page.screenshot(type="jpeg", quality=60, full_page=True)
+                error_screenshot_b64 = await asyncio.to_thread(
+                    lambda b: base64.b64encode(b).decode("utf-8"), error_bytes
+                )
+        except Exception:
+            pass
+
         # Record failure to Neo4j for learning
         await _record_result_to_neo4j(job_id, ats_type_str, success=False)
 
         await _publish_sse_event(session_id, "application_failed", {
             "job_id": job_id,
+            "job_title": job.title,
+            "company": job.company,
             "error": str(exc),
+            "ats_type": ats_type_str,
+            "error_screenshot": error_screenshot_b64,
         })
 
         return ApplicationResult(
@@ -410,6 +448,8 @@ async def _apply_with_playwright(
         )
 
     finally:
+        if streamer:
+            await streamer.stop()
         if ctx_id:
             await manager.close_context(ctx_id)
         await manager.stop()

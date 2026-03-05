@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import List
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
@@ -20,6 +20,10 @@ from backend.shared.models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class NextStepsResult(BaseModel):
+    next_steps: List[str] = Field(description="3-5 actionable next steps for the candidate")
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
@@ -42,11 +46,6 @@ NEXT_STEPS_SYSTEM = """\
 You are a career strategy assistant. Given a summary of a job-hunting session,
 generate a list of 3-5 actionable next steps the candidate should take before
 their next session.
-
-Return ONLY valid JSON with this schema (no markdown fences):
-{
-  "next_steps": ["<step 1>", "<step 2>", ...]
-}
 """
 
 
@@ -156,13 +155,13 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
                 f"- Session duration: {duration_minutes} minutes\n"
             )
 
+            structured_llm = llm.with_structured_output(NextStepsResult)
             messages = [
                 SystemMessage(content=NEXT_STEPS_SYSTEM),
                 HumanMessage(content=session_context),
             ]
-            response = await llm.ainvoke(messages)
-            result = json.loads(response.content)
-            next_steps = result.get("next_steps", [])
+            result: NextStepsResult = await structured_llm.ainvoke(messages)
+            next_steps = result.next_steps
 
         except Exception as exc:
             logger.warning("Failed to generate AI next steps: %s", exc)

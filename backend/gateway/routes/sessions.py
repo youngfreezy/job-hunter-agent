@@ -111,6 +111,9 @@ async def _stream_graph(
     last_status = "unknown"
 
     async for state_snapshot in graph.astream(input_state, config=config, stream_mode="values"):
+        # Yield to the event loop so health checks / SSE / API calls aren't starved
+        await asyncio.sleep(0)
+
         status = state_snapshot.get("status", "unknown")
         last_status = status
 
@@ -467,6 +470,131 @@ async def start_session(body: StartSessionRequest, request: Request):
     return {"session_id": session_id}
 
 
+# ---------------------------------------------------------------------------
+# Test endpoint: isolated application with screenshot streaming
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _BaseModel
+
+
+class TestApplyRequest(_BaseModel):
+    job_url: str
+    job_title: str = "Software Engineer"
+    company: str = "Unknown"
+    resume_text: str = ""
+
+
+@router.post("/test-apply")
+async def test_apply_endpoint(body: TestApplyRequest, request: Request):
+    """Run a single job application in isolation with screenshot streaming.
+
+    Returns a session_id. Open http://localhost:3000/session/{session_id}
+    and switch to the Screenshot Feed tab to watch live.
+    """
+    session_id = f"test-{uuid.uuid4().hex[:8]}"
+
+    event_logs[session_id] = []
+    sse_subscribers[session_id] = []
+    session_registry[session_id] = {
+        "session_id": session_id,
+        "status": "applying",
+        "keywords": [body.job_title],
+        "locations": [],
+        "remote_only": False,
+        "salary_min": None,
+        "resume_text_snippet": body.resume_text[:200],
+        "linkedin_url": None,
+        "applications_submitted": 0,
+        "applications_failed": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    register_emitter(session_id, _emit)
+
+    await _emit(session_id, "status", {
+        "status": "applying",
+        "message": f"Testing application to {body.job_url}",
+    })
+
+    asyncio.create_task(_test_apply_single(
+        session_id=session_id,
+        job_url=body.job_url,
+        job_title=body.job_title,
+        company=body.company,
+        resume_text=body.resume_text,
+    ))
+
+    return {
+        "session_id": session_id,
+        "message": f"Test apply started. Watch at /session/{session_id} (Screenshot Feed tab)",
+    }
+
+
+async def _test_apply_single(
+    session_id: str,
+    job_url: str,
+    job_title: str,
+    company: str,
+    resume_text: str,
+) -> None:
+    """Background task: run a single application with live SSE + screenshot streaming."""
+    from backend.orchestrator.agents.application import _apply_with_playwright
+    from backend.shared.models.schemas import JobListing, JobBoard
+
+    dummy_job = JobListing(
+        id=f"test-{uuid.uuid4().hex[:6]}",
+        title=job_title,
+        company=company,
+        location="Remote",
+        url=job_url,
+        board=JobBoard.INDEED,
+    )
+
+    state = {
+        "session_id": session_id,
+        "resume_text": resume_text or "No resume provided",
+        "coached_resume": resume_text or "",
+        "cover_letter_template": "",
+        "resume_file_path": None,
+        "discovered_jobs": [dummy_job],
+        "scored_jobs": [],
+    }
+
+    try:
+        await _emit(session_id, "status", {
+            "status": "applying",
+            "message": f"Applying to {job_title} at {company}...",
+        })
+
+        result = await _apply_with_playwright(
+            job_id=dummy_job.id,
+            job=dummy_job,
+            state=state,
+            session_id=session_id,
+        )
+
+        final_status = "completed" if result.status.value == "submitted" else "failed"
+        await _emit(session_id, "status", {
+            "status": final_status,
+            "message": f"Result: {result.status.value} — {result.error_message or 'OK'}",
+        })
+        await _emit(session_id, "done", {
+            "status": final_status,
+            "message": f"Application {result.status.value}",
+            "error": result.error_message,
+            "duration_seconds": result.duration_seconds,
+        })
+
+    except Exception as exc:
+        logger.exception("Test apply failed for %s", session_id)
+        await _emit(session_id, "error", {"message": str(exc)})
+        await _emit(session_id, "done", {"status": "failed", "error": str(exc)})
+    finally:
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = "completed"
+        unregister_emitter(session_id)
+
+
 @router.get("/{session_id}")
 async def get_session(session_id: str, request: Request):
     """Return session state from checkpointer, falling back to registry."""
@@ -484,8 +612,32 @@ async def get_session(session_id: str, request: Request):
         if hasattr(state, "checkpoint"):
             checkpoint = state.checkpoint
         if isinstance(checkpoint, dict) and "channel_values" in checkpoint:
-            return _serialize(checkpoint["channel_values"])
-        return _serialize(checkpoint)
+            cv = checkpoint["channel_values"]
+        else:
+            cv = checkpoint
+
+        # Strip heavy fields that the frontend gets via SSE instead.
+        # This prevents serializing megabytes of tailored resumes on every poll.
+        HEAVY_KEYS = {
+            "tailored_resumes", "resume_scores", "messages",
+            "resume_text", "coached_resume", "cover_letter_template",
+        }
+        if isinstance(cv, dict):
+            cv_light = {k: v for k, v in cv.items() if k not in HEAVY_KEYS}
+        else:
+            cv_light = cv
+
+        result = _serialize(cv_light)
+
+        # The checkpointer's status may not reflect HITL pauses (e.g. it shows
+        # "discovering" when the graph is actually paused at coach_review).
+        # Overlay the registry status which is managed by _run_pipeline.
+        meta = session_registry.get(session_id)
+        if meta and isinstance(result, dict):
+            registry_status = meta.get("status")
+            if registry_status:
+                result["status"] = registry_status
+        return result
 
     # Fall back to the session registry (keywords, status, etc.)
     meta = session_registry.get(session_id)
