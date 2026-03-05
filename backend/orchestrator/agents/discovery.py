@@ -66,6 +66,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
     the site, searches keywords, and extracts listings. All boards run
     concurrently. Results are deduplicated by title+company.
     """
+    from browser_use import Browser
     from backend.browser.tools.browser_use_discovery import discover_board
 
     session_id: str = state.get("session_id", "")
@@ -84,7 +85,11 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
     all_errors: List[str] = []
     agent_statuses: Dict[str, str] = {}
 
-    async def _discover_board(board: JobBoard) -> tuple[JobBoard, List[JobListing], List[str]]:
+    # Pre-start one browser per board in parallel to avoid serial cold-starts
+    browsers = [Browser(headless=False, disable_security=True) for _ in boards]
+    await asyncio.gather(*[b.start() for b in browsers])
+
+    async def _discover_board(board: JobBoard, browser: Browser) -> tuple[JobBoard, List[JobListing], List[str]]:
         """Run browser-use discovery for a single board."""
         try:
             jobs = await discover_board(
@@ -92,17 +97,26 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
                 search_config=search_config,
                 session_id=session_id,
                 max_results=PER_BOARD_MAX,
+                browser=browser,
             )
             return board, jobs, []
         except Exception as exc:
             logger.exception("Discovery failed for %s", board.value)
             return board, [], [f"Discovery failed for {board.value}: {exc}"]
 
-    # Discover all boards concurrently
-    results = await asyncio.gather(
-        *[_discover_board(board) for board in boards],
-        return_exceptions=True,
-    )
+    # Discover all boards concurrently (each with its own pre-started browser)
+    try:
+        results = await asyncio.gather(
+            *[_discover_board(board, browser) for board, browser in zip(boards, browsers)],
+            return_exceptions=True,
+        )
+    finally:
+        # Clean up all browsers
+        for b in browsers:
+            try:
+                await b.stop()
+            except Exception:
+                pass
 
     for result in results:
         if isinstance(result, Exception):

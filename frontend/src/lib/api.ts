@@ -102,6 +102,11 @@ export type SSEEventType =
   | "reporting_progress"
   | "needs_intervention"
   | "ready_to_submit"
+  | "linkedin_update_progress"
+  | "linkedin_login_required"
+  | "linkedin_browser_action"
+  | "linkedin_update_complete"
+  | "linkedin_update_failed"
   | "done"
   | "error"
   | "ping";
@@ -353,4 +358,36 @@ export function connectWebSocket(
       ws.close();
     }
   };
+}
+
+
+// ---------- LinkedIn Profile Updater ----------
+
+export interface LinkedInUpdate {
+  section: string;
+  content: string;
+}
+
+export async function startLinkedInUpdate(
+  sessionId: string,
+  updates: LinkedInUpdate[],
+  linkedinUrl?: string,
+): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/linkedin-update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates, linkedin_url: linkedinUrl }),
+  });
+  if (!res.ok) throw new Error(`LinkedIn update failed: ${res.statusText}`);
+  return res.json();
+}
+
+export async function confirmLinkedInLogin(
+  sessionId: string,
+): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/linkedin-login-confirmed`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`Login confirmation failed: ${res.statusText}`);
+  return res.json();
 }

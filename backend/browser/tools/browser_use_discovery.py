@@ -248,11 +248,12 @@ async def discover_board(
     search_config: SearchConfig,
     session_id: str,
     max_results: int = 20,
+    browser: Any = None,
 ) -> List[JobListing]:
     """Discover job listings on a single board using browser-use.
 
-    Creates its own BrowserSession, runs the agent, validates URLs,
-    and returns a list of JobListing objects.
+    Pass an existing ``browser`` (pre-started) to skip cold-start.
+    If *None*, a fresh instance is created and cleaned up after use.
     """
     from browser_use import Agent, Browser, ChatAnthropic
 
@@ -269,7 +270,9 @@ async def discover_board(
         temperature=0.0,
     )
 
-    browser = Browser(headless=False, disable_security=True)
+    owns_browser = browser is None
+    if owns_browser:
+        browser = Browser(headless=False, disable_security=True)
 
     # SSE progress callback
     step_count = 0
@@ -377,7 +380,8 @@ async def discover_board(
         return []
 
     finally:
-        try:
-            await browser.stop()
-        except Exception:
-            pass
+        if owns_browser:
+            try:
+                await browser.stop()
+            except Exception:
+                pass
