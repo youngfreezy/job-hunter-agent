@@ -1,12 +1,13 @@
 """Session lifecycle and SSE streaming routes.
 
 Handles:
-  - GET  /api/sessions             -> list all sessions
-  - POST /api/sessions             -> start a new pipeline session
-  - GET  /api/sessions/{id}        -> retrieve current session state
-  - GET  /api/sessions/{id}/stream -> SSE event stream (with replay)
-  - POST /api/sessions/{id}/steer  -> inject a steering message
-  - POST /api/sessions/{id}/review -> approve/reject the shortlist (HITL)
+  - GET  /api/sessions                  -> list all sessions
+  - POST /api/sessions                  -> start a new pipeline session
+  - GET  /api/sessions/{id}             -> retrieve current session state
+  - GET  /api/sessions/{id}/stream      -> SSE event stream (with replay)
+  - POST /api/sessions/{id}/steer       -> inject a steering message
+  - POST /api/sessions/{id}/coach-review -> approve/edit coached resume (HITL)
+  - POST /api/sessions/{id}/review      -> approve/reject the shortlist (HITL)
 """
 
 from __future__ import annotations
@@ -22,7 +23,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from backend.orchestrator.pipeline.state import JobHunterState
+from backend.shared.event_bus import register_emitter, unregister_emitter
 from backend.shared.models.schemas import (
+    CoachReviewRequest,
     ReviewRequest,
     SSEEvent,
     StartSessionRequest,
@@ -77,6 +80,132 @@ async def _emit(session_id: str, event_type: str, data: dict) -> None:
         await queue.put(event)
 
 
+STATUS_MESSAGES = {
+    "intake": "Processing your input...",
+    "coaching": "Analyzing and coaching your resume (this may take 30-60 seconds)...",
+    "discovering": "Scanning job boards for matches...",
+    "scoring": "Scoring and ranking discovered jobs...",
+    "tailoring": "Tailoring resumes for top matches...",
+    "awaiting_review": "Ready for your review",
+    "applying": "Submitting applications...",
+    "completed": "Pipeline complete",
+    "failed": "Pipeline encountered an error",
+}
+
+
+async def _stream_graph(
+    session_id: str,
+    graph: Any,
+    config: dict,
+    input_state: Any,
+) -> str | None:
+    """Stream a graph run and emit SSE events for each state snapshot.
+
+    Returns the interrupt stage name (e.g. "coach_review") if the graph
+    paused at an interrupt, or None if it ran to completion/failure.
+    """
+    last_status = "unknown"
+
+    async for state_snapshot in graph.astream(input_state, config=config, stream_mode="values"):
+        status = state_snapshot.get("status", "unknown")
+        last_status = status
+
+        # Update registry status
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = status
+
+        # Emit agent-specific events based on current pipeline status
+        if status == "coaching" and state_snapshot.get("coach_output"):
+            await _emit(session_id, "coaching", {
+                "status": "coaching",
+                "coach_output": _serialize(state_snapshot["coach_output"]),
+            })
+
+        if status == "discovering":
+            await _emit(session_id, "discovery", {
+                "status": "discovering",
+                "jobs_found": len(state_snapshot.get("discovered_jobs", [])),
+            })
+
+        if status == "scoring" and state_snapshot.get("scored_jobs"):
+            await _emit(session_id, "scoring", {
+                "status": "scoring",
+                "scored_count": len(state_snapshot["scored_jobs"]),
+                "top_score": max(
+                    (j.score for j in state_snapshot["scored_jobs"]),
+                    default=0,
+                ),
+            })
+
+        if status == "awaiting_review":
+            shortlist = [
+                _serialize(sj)
+                for sj in state_snapshot.get("scored_jobs", [])
+            ]
+            await _emit(session_id, "hitl", {
+                "status": "awaiting_review",
+                "shortlist": shortlist,
+                "message": "Please review and approve jobs to apply to.",
+            })
+
+        # Generic status update for every snapshot
+        await _emit(session_id, "status", {
+            "status": status,
+            "message": STATUS_MESSAGES.get(status, status),
+            "agent_statuses": state_snapshot.get("agent_statuses", {}),
+        })
+
+        # Agent completion signals
+        agent_statuses = state_snapshot.get("agent_statuses", {})
+        for agent_name, agent_status in agent_statuses.items():
+            if agent_status == "done":
+                await _emit(session_id, "agent_complete", {
+                    "agent": agent_name,
+                    "status": "done",
+                })
+
+        # Track application counts in registry
+        if session_id in session_registry:
+            session_registry[session_id]["applications_submitted"] = len(
+                state_snapshot.get("applications_submitted", [])
+            )
+            session_registry[session_id]["applications_failed"] = len(
+                state_snapshot.get("applications_failed", [])
+            )
+
+        if status in ("completed", "failed"):
+            summary = _serialize(state_snapshot.get("session_summary"))
+            await _emit(session_id, "done", {
+                "status": status,
+                "session_summary": summary,
+            })
+            return None  # Terminal — no interrupt
+
+    # Stream ended without terminal status — check for interrupt
+    if last_status not in ("completed", "failed"):
+        try:
+            graph_state = await graph.aget_state(config)
+            # LangGraph stores pending tasks/interrupts in the state
+            next_nodes = getattr(graph_state, "next", ()) or ()
+            if next_nodes:
+                logger.info(
+                    "Pipeline paused at interrupt for session %s, next=%s",
+                    session_id,
+                    next_nodes,
+                )
+                # Determine which interrupt we're at
+                if "coach_review" in next_nodes:
+                    return "coach_review"
+                elif "shortlist_review" in next_nodes:
+                    return "shortlist_review"
+                else:
+                    return str(next_nodes[0]) if next_nodes else None
+        except Exception:
+            logger.exception("Failed to check graph state for session %s", session_id)
+
+    return None
+
+
 async def _run_pipeline(
     session_id: str,
     request_body: StartSessionRequest,
@@ -85,8 +214,12 @@ async def _run_pipeline(
     """Execute the LangGraph pipeline and emit SSE events as agents complete.
 
     Runs as a background task so the POST /api/sessions response returns
-    immediately with the session_id.
+    immediately with the session_id. Handles interrupt detection for HITL
+    gates (coach review, shortlist review).
     """
+    # Register the emit callback so agents can send SSE events directly
+    register_emitter(session_id, _emit)
+
     try:
         # Build the initial state
         initial_state: Dict[str, Any] = {
@@ -129,78 +262,35 @@ async def _run_pipeline(
 
         config = {"configurable": {"thread_id": session_id}}
 
-        async for state_snapshot in graph.astream(initial_state, config=config, stream_mode="values"):
-            status = state_snapshot.get("status", "unknown")
+        interrupt_stage = await _stream_graph(session_id, graph, config, initial_state)
 
-            # Update registry status
+        if interrupt_stage == "coach_review":
+            # Pipeline is paused at coach review — emit the review event
+            try:
+                graph_state = await graph.aget_state(config)
+                channel_values = graph_state.values if hasattr(graph_state, "values") else {}
+                coach_output = channel_values.get("coach_output")
+
+                if session_id in session_registry:
+                    session_registry[session_id]["status"] = "awaiting_coach_review"
+
+                await _emit(session_id, "coach_review", {
+                    "status": "awaiting_coach_review",
+                    "coach_output": _serialize(coach_output) if coach_output else None,
+                    "coached_resume": channel_values.get("coached_resume", ""),
+                    "message": "Please review your coached resume. Approve to continue to job discovery.",
+                })
+            except Exception:
+                logger.exception("Failed to emit coach review event for session %s", session_id)
+
+            # Do NOT unregister emitter or send "done" — pipeline will resume
+            return
+
+        if interrupt_stage == "shortlist_review":
             if session_id in session_registry:
-                session_registry[session_id]["status"] = status
-
-            # Emit agent-specific events based on current pipeline status
-            if status == "coaching" and state_snapshot.get("coach_output"):
-                await _emit(session_id, "coaching", {
-                    "status": "coaching",
-                    "coach_output": _serialize(state_snapshot["coach_output"]),
-                })
-
-            if status == "discovering":
-                await _emit(session_id, "discovery", {
-                    "status": "discovering",
-                    "jobs_found": len(state_snapshot.get("discovered_jobs", [])),
-                })
-
-            if status == "scoring" and state_snapshot.get("scored_jobs"):
-                await _emit(session_id, "scoring", {
-                    "status": "scoring",
-                    "scored_count": len(state_snapshot["scored_jobs"]),
-                    "top_score": max(
-                        (j.score for j in state_snapshot["scored_jobs"]),
-                        default=0,
-                    ),
-                })
-
-            if status == "awaiting_review":
-                shortlist = [
-                    _serialize(sj)
-                    for sj in state_snapshot.get("scored_jobs", [])
-                ]
-                await _emit(session_id, "hitl", {
-                    "status": "awaiting_review",
-                    "shortlist": shortlist,
-                    "message": "Please review and approve jobs to apply to.",
-                })
-
-            # Generic status update for every snapshot
-            await _emit(session_id, "status", {
-                "status": status,
-                "agent_statuses": state_snapshot.get("agent_statuses", {}),
-            })
-
-            # Agent completion signals
-            agent_statuses = state_snapshot.get("agent_statuses", {})
-            for agent_name, agent_status in agent_statuses.items():
-                if agent_status == "done":
-                    await _emit(session_id, "agent_complete", {
-                        "agent": agent_name,
-                        "status": "done",
-                    })
-
-            # Track application counts in registry
-            if session_id in session_registry:
-                session_registry[session_id]["applications_submitted"] = len(
-                    state_snapshot.get("applications_submitted", [])
-                )
-                session_registry[session_id]["applications_failed"] = len(
-                    state_snapshot.get("applications_failed", [])
-                )
-
-            if status in ("completed", "failed"):
-                summary = _serialize(state_snapshot.get("session_summary"))
-                await _emit(session_id, "done", {
-                    "status": status,
-                    "session_summary": summary,
-                })
-                break
+                session_registry[session_id]["status"] = "awaiting_review"
+            # Shortlist review event already emitted by _stream_graph
+            return
 
     except Exception as exc:
         logger.exception("Pipeline error for session %s", session_id)
@@ -210,11 +300,53 @@ async def _run_pipeline(
             "message": str(exc),
             "session_id": session_id,
         })
-        # Always send a terminal event so the SSE stream closes cleanly
         await _emit(session_id, "done", {
             "status": "failed",
             "error": str(exc),
         })
+        unregister_emitter(session_id)
+
+
+async def _resume_pipeline(session_id: str, graph: Any) -> None:
+    """Resume the pipeline after an interrupt (coach review or shortlist review).
+
+    Calls graph.astream(None, config) which continues from the last checkpoint.
+    """
+    # Ensure emitter is registered for this session
+    register_emitter(session_id, _emit)
+
+    config = {"configurable": {"thread_id": session_id}}
+
+    try:
+        interrupt_stage = await _stream_graph(session_id, graph, config, None)
+
+        if interrupt_stage == "shortlist_review":
+            if session_id in session_registry:
+                session_registry[session_id]["status"] = "awaiting_review"
+            # Shortlist review event already emitted by _stream_graph
+            return
+
+        # If another interrupt, handle it (could be extended for more HITL gates)
+        if interrupt_stage:
+            logger.info("Pipeline paused at %s for session %s", interrupt_stage, session_id)
+            return
+
+    except Exception as exc:
+        logger.exception("Pipeline resume error for session %s", session_id)
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = "failed"
+        await _emit(session_id, "error", {
+            "message": str(exc),
+            "session_id": session_id,
+        })
+        await _emit(session_id, "done", {
+            "status": "failed",
+            "error": str(exc),
+        })
+    finally:
+        # Only unregister if pipeline is truly done (no more interrupts expected)
+        # The finally block runs after _stream_graph returns None (terminal)
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +455,13 @@ async def get_session(session_id: str, request: Request):
         state = None
 
     if state is not None:
-        return _serialize(state)
+        # Extract channel_values from the checkpoint (the actual state dict)
+        checkpoint = state
+        if hasattr(state, "checkpoint"):
+            checkpoint = state.checkpoint
+        if isinstance(checkpoint, dict) and "channel_values" in checkpoint:
+            return _serialize(checkpoint["channel_values"])
+        return _serialize(checkpoint)
 
     # Fall back to the session registry (keywords, status, etc.)
     meta = session_registry.get(session_id)
@@ -348,6 +486,40 @@ async def stream_session(session_id: str):
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
+
+
+@router.post("/{session_id}/coach-review")
+async def submit_coach_review(session_id: str, body: CoachReviewRequest, request: Request):
+    """Resume the pipeline after the user reviews the coached resume."""
+    graph = request.app.state.graph
+    config = {"configurable": {"thread_id": session_id}}
+
+    # Build the human input that coach_review_gate expects
+    human_input: Dict[str, Any] = {"approved": body.approved}
+    if body.edited_resume:
+        human_input["edited_resume"] = body.edited_resume
+    if body.feedback:
+        human_input["feedback"] = body.feedback
+
+    try:
+        # Resume the graph from the interrupt with the human input
+        await graph.aupdate_state(config, human_input, as_node="coach_review")
+    except Exception as exc:
+        logger.exception("Failed to submit coach review for session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if session_id in session_registry:
+        session_registry[session_id]["status"] = "discovering"
+
+    await _emit(session_id, "status", {
+        "status": "discovering",
+        "message": "Resume approved! Starting job discovery...",
+    })
+
+    # Resume the pipeline in the background
+    asyncio.create_task(_resume_pipeline(session_id, graph))
+
+    return {"status": "ok", "message": "Coach review submitted, pipeline resuming"}
 
 
 @router.post("/{session_id}/steer")
@@ -380,24 +552,29 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
     config = {"configurable": {"thread_id": session_id}}
 
     try:
-        # Update state with approved jobs and resume the graph
         await graph.aupdate_state(
             config,
             {
-                "application_queue": body.approved_job_ids,
-                "status": "applying",
-                "human_messages": [body.feedback] if body.feedback else [],
+                "approved_job_ids": body.approved_job_ids,
+                "feedback": body.feedback or "",
             },
+            as_node="shortlist_review",
         )
     except Exception as exc:
         logger.exception("Failed to submit review for session %s", session_id)
         raise HTTPException(status_code=500, detail=str(exc))
+
+    if session_id in session_registry:
+        session_registry[session_id]["status"] = "applying"
 
     await _emit(session_id, "status", {
         "status": "applying",
         "message": f"Approved {len(body.approved_job_ids)} jobs for application",
         "approved_count": len(body.approved_job_ids),
     })
+
+    # Resume the pipeline in the background
+    asyncio.create_task(_resume_pipeline(session_id, graph))
 
     return {
         "status": "ok",

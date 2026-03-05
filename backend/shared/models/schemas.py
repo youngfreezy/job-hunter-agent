@@ -217,6 +217,13 @@ class SteerRequest(BaseModel):
     mode: Optional[SteeringMode] = None
 
 
+class CoachReviewRequest(BaseModel):
+    """User approval/edits after career coach review."""
+    approved: bool = True
+    edited_resume: Optional[str] = None
+    feedback: Optional[str] = None
+
+
 class ReviewRequest(BaseModel):
     """User approval/rejection of shortlist."""
     approved_job_ids: List[str]

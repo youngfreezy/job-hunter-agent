@@ -18,6 +18,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import Send
 
 from backend.shared.config import settings
+from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     ATSType,
     JobBoard,
@@ -274,6 +275,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
     4. Return discovered jobs for this board (merged via operator.add).
     """
     board: str = state.get("board", JobBoard.INDEED.value)
+    session_id: str = state.get("session_id", "")
     search_config = _get_search_config(state)
 
     logger.info(
@@ -282,6 +284,11 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         search_config.keywords,
         search_config.locations,
     )
+
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": board,
+        "step": f"Searching {board.replace('_', ' ').title()}...",
+    })
 
     discovered: List[JobListing] = []
     used_simulation = False
@@ -330,6 +337,12 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         f"done ({len(discovered)} listings"
         f"{', simulated' if used_simulation else ', scraped'})"
     )
+
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": board,
+        "step": f"Found {len(discovered)} jobs on {board.replace('_', ' ').title()}",
+        "count": len(discovered),
+    })
 
     return {
         "discovered_jobs": discovered,

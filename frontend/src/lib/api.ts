@@ -85,7 +85,10 @@ export interface SessionSummary {
 export type SSEEventType =
   | "status"
   | "coaching"
+  | "coach_review"
+  | "coaching_progress"
   | "discovery"
+  | "discovery_progress"
   | "scoring"
   | "tailoring"
   | "agent_complete"
@@ -158,6 +161,18 @@ export async function sendSteer(
   if (!res.ok) throw new Error(`Failed to send steer: ${res.statusText}`);
 }
 
+export async function submitCoachReview(
+  sessionId: string,
+  data: { approved: boolean; edited_resume?: string; feedback?: string }
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/coach-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Failed to submit coach review: ${res.statusText}`);
+}
+
 export async function submitReview(
   sessionId: string,
   data: { approved_job_ids: string[]; feedback: string }
@@ -187,8 +202,9 @@ export function connectSSE(
   const es = createSSEConnection(sessionId);
 
   const EVENT_TYPES: SSEEventType[] = [
-    "status", "coaching", "discovery", "scoring", "tailoring",
-    "agent_complete", "hitl", "application_progress", "done", "error",
+    "status", "coaching", "coach_review", "coaching_progress", "discovery",
+    "discovery_progress", "scoring", "tailoring", "agent_complete", "hitl",
+    "application_progress", "done", "error",
   ];
 
   for (const eventType of EVENT_TYPES) {
