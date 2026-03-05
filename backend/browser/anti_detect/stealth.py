@@ -209,7 +209,7 @@ def get_stealth_config() -> Dict[str, Any]:
         "ignore_default_args": [
             "--enable-automation",
         ],
-        "headless": True,
+        "headless": False,
     }
 
 

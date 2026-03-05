@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { CircularProgress } from "@/components/ui/circular-progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
-import { getSession, connectSSE, connectWebSocket, sendSteer, submitReview, submitCoachReview } from "@/lib/api";
+import { getSession, connectSSE, connectWebSocket, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
 
 type SessionData = {
@@ -95,6 +95,7 @@ const STATUS_LABELS: Record<string, string> = {
   verifying: "Verifying Applications",
   reporting: "Generating Report",
   paused: "Paused",
+  needs_intervention: "Needs Help",
   takeover: "Manual Control",
   completed: "Session Complete",
   failed: "Session Failed",
@@ -138,8 +139,7 @@ export default function SessionPage() {
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [chatMessages, setChatMessages] = useState<Array<{ role: string; text: string }>>([]);
   const [chatInput, setChatInput] = useState("");
-  const [viewMode, setViewMode] = useState<"status" | "screenshot" | "takeover">("status");
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"status" | "screenshot">("status");
   const [coachReviewOpen, setCoachReviewOpen] = useState(false);
   const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(null);
   const [coachReviewSubmitting, setCoachReviewSubmitting] = useState(false);
@@ -149,8 +149,22 @@ export default function SessionPage() {
   const [shortlistSubmitting, setShortlistSubmitting] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryData | null>(null);
+  const [interventionData, setInterventionData] = useState<{
+    job_id: string;
+    job_title: string;
+    company: string;
+    reason: string;
+    screenshot?: string;
+  } | null>(null);
+  const [submitConfirmData, setSubmitConfirmData] = useState<{
+    job_id: string;
+    job_title: string;
+    company: string;
+    url: string;
+    fields_filled: number;
+    screenshot?: string;
+  } | null>(null);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const latestStatusRef = useRef("intake");
   const coachApprovedRef = useRef(false);
@@ -257,26 +271,54 @@ export default function SessionPage() {
         setSessionSummary(evt.session_summary);
       }
 
+      // Handle agent intervention request
+      if (evt.event === "needs_intervention") {
+        const d = (evt.data || evt) as Record<string, unknown>;
+        if (d.reason) {
+          setInterventionData({
+            job_id: String(d.job_id || ""),
+            job_title: String(d.job_title || "Unknown"),
+            company: String(d.company || "Unknown"),
+            reason: String(d.reason || "Agent needs help"),
+            screenshot: d.screenshot ? String(d.screenshot) : undefined,
+          });
+        }
+      }
+
+      // Handle ready-to-submit confirmation
+      if (evt.event === "ready_to_submit") {
+        const d = (evt.data || evt) as Record<string, unknown>;
+        setSubmitConfirmData({
+          job_id: String(d.job_id || ""),
+          job_title: String(d.job_title || "Unknown"),
+          company: String(d.company || "Unknown"),
+          url: String(d.url || ""),
+          fields_filled: Number(d.fields_filled || 0),
+          screenshot: d.screenshot ? String(d.screenshot) : undefined,
+        });
+      }
+
+      // Clear intervention/submit confirmation when agent resumes
+      if (evt.status === "applying" && evt.message?.includes("resuming")) {
+        setInterventionData(null);
+      }
+      if (evt.status === "applying" && (evt.message?.includes("Submitting") || evt.message?.includes("Skipping"))) {
+        setSubmitConfirmData(null);
+      }
+
       setTimeout(() => eventsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
     return cleanup;
   }, [sessionId]);
 
   useEffect(() => {
-    if (viewMode !== "screenshot" && viewMode !== "takeover") return;
-    sendSteer(sessionId, { message: `Switched to ${viewMode} mode`, mode: viewMode }).catch(() => {});
+    if (viewMode !== "screenshot") return;
     const cleanup = connectWebSocket(sessionId, (data) => {
-      if (data.type === "screenshot" && data.image) {
-        setScreenshotUrl(`data:image/jpeg;base64,${data.image}`);
-      }
       if (data.type === "chat" && data.message) {
         setChatMessages((prev) => [...prev, { role: "agent", text: data.message as string }]);
       }
     });
-    return () => {
-      cleanup();
-      sendSteer(sessionId, { message: "Switched back to status mode", mode: "status" }).catch(() => {});
-    };
+    return () => { cleanup(); };
   }, [sessionId, viewMode]);
 
   const handleSendChat = useCallback(async () => {
@@ -326,6 +368,24 @@ export default function SessionPage() {
       console.error("Failed to submit coach review:", e);
     } finally {
       setCoachReviewSubmitting(false);
+    }
+  };
+
+  const handleResumeIntervention = async () => {
+    try {
+      await resumeIntervention(sessionId);
+      setInterventionData(null);
+    } catch (e) {
+      console.error("Failed to resume:", e);
+    }
+  };
+
+  const handleSubmitDecision = async (decision: "submit" | "skip") => {
+    try {
+      await submitDecision(sessionId, decision);
+      setSubmitConfirmData(null);
+    } catch (e) {
+      console.error("Failed to send submit decision:", e);
     }
   };
 
@@ -477,6 +537,79 @@ export default function SessionPage() {
         </div>
       </div>
 
+      {/* Intervention Banner */}
+      {interventionData && (
+        <div className="bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800 px-6 py-4">
+          <div className="max-w-7xl mx-auto flex items-start gap-4">
+            <div className="shrink-0 mt-0.5">
+              <svg className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-amber-800 dark:text-amber-200">
+                Agent Paused — Needs Your Help
+              </h3>
+              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                <span className="font-medium">{interventionData.job_title}</span> at {interventionData.company}
+              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">{interventionData.reason}</p>
+              <p className="text-xs text-amber-500 mt-2">
+                The browser window is open on your desktop. Fix the issue there, then click Resume.
+              </p>
+            </div>
+            <Button
+              onClick={handleResumeIntervention}
+              className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              Resume Agent
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Submit Confirmation Banner */}
+      {submitConfirmData && (
+        <div className="bg-blue-50 dark:bg-blue-950/50 border-b border-blue-200 dark:border-blue-800 px-6 py-4">
+          <div className="max-w-7xl mx-auto flex items-start gap-4">
+            <div className="shrink-0 mt-0.5">
+              <svg className="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-blue-800 dark:text-blue-200">
+                Ready to Submit — Review & Approve
+              </h3>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                <span className="font-medium">{submitConfirmData.job_title}</span> at {submitConfirmData.company}
+              </p>
+              <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                {submitConfirmData.fields_filled} fields filled. Review the form in the browser window before submitting.
+              </p>
+              <p className="text-xs text-blue-500 mt-2">
+                The browser is paused with the filled form visible on your desktop.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button
+                variant="outline"
+                onClick={() => handleSubmitDecision("skip")}
+                className="border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300"
+              >
+                Skip
+              </Button>
+              <Button
+                onClick={() => handleSubmitDecision("submit")}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Submit Application
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main content */}
       <div className="flex-1 flex max-w-7xl mx-auto w-full">
         {/* Left: Main viewer */}
@@ -491,16 +624,10 @@ export default function SessionPage() {
               </TabsTrigger>
               <TabsTrigger value="screenshot" className="gap-1.5">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                Screenshots
-              </TabsTrigger>
-              <TabsTrigger value="takeover" className="gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                </svg>
-                Take Control
+                Browser
               </TabsTrigger>
             </TabsList>
 
@@ -570,39 +697,15 @@ export default function SessionPage() {
             <TabsContent value="screenshot" className="flex-1 flex flex-col">
               <Card className="flex-1 flex flex-col overflow-hidden">
                 <CardHeader className="pb-2 border-b border-border/50">
-                  <CardTitle className="text-sm font-semibold">Live Screenshot Feed</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 flex items-center justify-center bg-muted/30 rounded-b-xl min-h-[400px]">
-                  {screenshotUrl ? (
-                    <img src={screenshotUrl} alt="Browser" className="max-w-full max-h-full object-contain rounded-lg shadow-lg" />
-                  ) : (
-                    <div className="text-center text-muted-foreground">
-                      <svg className="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <p className="font-medium">Screenshot Feed</p>
-                      <p className="text-xs mt-1">Connecting to browser session...</p>
-                    </div>
-                  )}
-                  <canvas ref={canvasRef} className="hidden" />
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="takeover" className="flex-1 flex flex-col">
-              <Card className="flex-1 flex flex-col overflow-hidden">
-                <CardHeader className="pb-2 border-b border-border/50">
-                  <CardTitle className="text-sm font-semibold">Browser Control</CardTitle>
+                  <CardTitle className="text-sm font-semibold">Browser View</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1 flex items-center justify-center bg-muted/30 rounded-b-xl min-h-[400px]">
                   <div className="text-center text-muted-foreground">
                     <svg className="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
                     </svg>
-                    <p className="font-medium">Direct Browser Control</p>
-                    <p className="text-xs mt-1 mb-4 max-w-xs">Take direct control of the browser when the agent needs help</p>
-                    <Button variant="outline" size="sm">Request Control</Button>
+                    <p className="font-medium">Browser Running in Headed Mode</p>
+                    <p className="text-xs mt-1 max-w-xs">The browser window is visible on your desktop. You can watch the agent work and interact directly when it pauses.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -610,7 +713,7 @@ export default function SessionPage() {
           </Tabs>
 
           {/* Chat panel */}
-          {(viewMode === "screenshot" || viewMode === "takeover") && (
+          {viewMode === "screenshot" && (
             <Card className="mt-3">
               <CardContent className="p-3">
                 <div className="max-h-32 overflow-y-auto mb-2 space-y-1.5">

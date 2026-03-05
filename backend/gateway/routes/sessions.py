@@ -774,3 +774,53 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
         "status": "ok",
         "approved_count": len(body.approved_job_ids),
     }
+
+
+@router.post("/{session_id}/resume-intervention")
+async def resume_intervention(session_id: str):
+    """Signal the application agent to continue after user intervention."""
+    try:
+        import redis.asyncio as aioredis
+        from backend.shared.config import get_settings
+        settings = get_settings()
+        redis_client = aioredis.from_url(settings.REDIS_URL)
+        await redis_client.set(f"intervention:resume:{session_id}", "1", ex=600)
+        await redis_client.close()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to signal resume: {exc}")
+
+    await _emit(session_id, "status", {
+        "status": "applying",
+        "message": "User intervention complete — agent resuming...",
+    })
+
+    return {"status": "ok", "message": "Intervention resume signal sent"}
+
+
+class SubmitDecisionRequest(_BaseModel):
+    decision: str = "submit"  # "submit" or "skip"
+
+
+@router.post("/{session_id}/submit-decision")
+async def submit_decision(session_id: str, body: SubmitDecisionRequest):
+    """Approve or skip a pending application submission."""
+    if body.decision not in ("submit", "skip"):
+        raise HTTPException(status_code=400, detail="decision must be 'submit' or 'skip'")
+
+    try:
+        import redis.asyncio as aioredis
+        from backend.shared.config import get_settings
+        settings = get_settings()
+        redis_client = aioredis.from_url(settings.REDIS_URL)
+        await redis_client.set(f"submit:approve:{session_id}", body.decision, ex=600)
+        await redis_client.close()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to send decision: {exc}")
+
+    action = "Submitting" if body.decision == "submit" else "Skipping"
+    await _emit(session_id, "status", {
+        "status": "applying",
+        "message": f"{action} application...",
+    })
+
+    return {"status": "ok", "decision": body.decision}

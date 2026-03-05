@@ -125,24 +125,6 @@ async def _record_result_to_neo4j(
         logger.debug("Neo4j record write failed", exc_info=True)
 
 
-async def _publish_sse_event(
-    session_id: str,
-    event_type: str,
-    data: Dict[str, Any],
-) -> None:
-    """Publish an SSE event via Redis pub/sub."""
-    settings = get_settings()
-    try:
-        import json
-        import redis.asyncio as aioredis
-
-        client = aioredis.from_url(settings.REDIS_URL)
-        payload = json.dumps({"type": event_type, "data": data})
-        await client.publish(f"sse:{session_id}", payload)
-        await client.close()
-    except Exception:
-        logger.debug("SSE publish failed for %s", event_type, exc_info=True)
-
 
 def _find_job_in_state(job_id: str, state: JobHunterState) -> Optional[JobListing]:
     """Look up a JobListing by ID from discovered_jobs or scored_jobs."""
@@ -155,6 +137,190 @@ def _find_job_in_state(job_id: str, state: JobHunterState) -> Optional[JobListin
         if scored.job.id == job_id:
             return scored.job
     return None
+
+
+# ---------------------------------------------------------------------------
+# Intervention helpers
+# ---------------------------------------------------------------------------
+
+
+async def _wait_for_submit_approval(
+    session_id: str,
+    job_id: str,
+    job: Any,
+    page: Any,
+    fields_filled: int = 0,
+) -> str:
+    """Pause before submit and wait for user to approve, skip, or take control.
+
+    Emits a ``ready_to_submit`` SSE event with a pre-submit screenshot.
+    Returns ``"submit"`` if approved, ``"skip"`` to skip this job.
+    """
+    # Capture pre-submit screenshot
+    screenshot_b64 = None
+    try:
+        ss_bytes = await page.screenshot(type="jpeg", quality=70, full_page=True)
+        screenshot_b64 = await asyncio.to_thread(
+            lambda b: base64.b64encode(b).decode("utf-8"), ss_bytes
+        )
+    except Exception:
+        pass
+
+    await emit_agent_event(session_id, "ready_to_submit", {
+        "job_id": job_id,
+        "job_title": job.title if hasattr(job, "title") else str(job_id),
+        "company": job.company if hasattr(job, "company") else "Unknown",
+        "url": page.url,
+        "fields_filled": fields_filled,
+        "screenshot": screenshot_b64,
+        "message": f"Ready to submit application for {job.title} at {job.company}. Review the form in the browser window and approve.",
+    })
+
+    logger.info("Waiting for submit approval for %s (session %s)...", job_id, session_id)
+
+    try:
+        import redis.asyncio as aioredis
+        settings = get_settings()
+        redis_client = aioredis.from_url(settings.REDIS_URL)
+
+        approve_key = f"submit:approve:{session_id}"
+        await redis_client.delete(approve_key)
+
+        # Poll for approval (every 2s, max 10 minutes)
+        for _ in range(300):
+            result = await redis_client.get(approve_key)
+            if result:
+                decision = result.decode("utf-8") if isinstance(result, bytes) else str(result)
+                logger.info("Submit decision for %s: %s", session_id, decision)
+                await redis_client.delete(approve_key)
+                await redis_client.close()
+                return decision  # "submit" or "skip"
+            await asyncio.sleep(2)
+
+        await redis_client.close()
+        logger.warning("Submit approval timeout for %s — skipping", session_id)
+        return "skip"
+    except Exception as exc:
+        logger.warning("Submit approval wait failed: %s — auto-submitting", exc)
+        return "submit"
+
+
+async def _check_submission_confirmation(page: Any) -> bool:
+    """Check if the page shows a submission confirmation after clicking submit.
+
+    Looks for common confirmation indicators like 'thank you', 'application received',
+    'successfully submitted', etc.
+    """
+    try:
+        await page.wait_for_timeout(2000)  # Give page time to update
+
+        # Check for common confirmation text patterns
+        confirmation_patterns = [
+            "thank you",
+            "thanks for applying",
+            "application received",
+            "application submitted",
+            "successfully submitted",
+            "application has been submitted",
+            "we received your application",
+            "your application is complete",
+            "congratulations",
+            "application confirmation",
+        ]
+
+        page_text = (await page.inner_text("body")).lower()
+
+        for pattern in confirmation_patterns:
+            if pattern in page_text:
+                return True
+
+        # Check if URL changed to a confirmation/success page
+        current_url = page.url.lower()
+        url_indicators = ["thank", "confirm", "success", "complete", "submitted"]
+        for indicator in url_indicators:
+            if indicator in current_url:
+                return True
+
+        # Check for validation errors still visible
+        error_selectors = [
+            '[class*="error"]:visible',
+            '[class*="alert-danger"]:visible',
+            '[class*="validation"]:visible',
+            '[role="alert"]:visible',
+        ]
+        for selector in error_selectors:
+            try:
+                errors = await page.query_selector_all(selector)
+                if errors:
+                    return False  # Validation errors present
+            except Exception:
+                pass
+
+        return False
+    except Exception:
+        return False
+
+
+async def _pause_for_intervention(
+    session_id: str,
+    job_id: str,
+    job: Any,
+    reason: str,
+    page: Any = None,
+    screenshot_b64: str | None = None,
+) -> None:
+    """Pause the agent and notify the user that intervention is needed.
+
+    The agent will wait until the user resumes via the API.
+    The browser stays open in headed mode so the user can interact directly.
+    """
+    logger.info("Agent paused for intervention: %s (job: %s)", reason, job_id)
+
+    # Capture screenshot if not provided
+    if not screenshot_b64 and page:
+        try:
+            ss_bytes = await page.screenshot(type="jpeg", quality=70)
+            screenshot_b64 = await asyncio.to_thread(
+                lambda b: base64.b64encode(b).decode("utf-8"), ss_bytes
+            )
+        except Exception:
+            pass
+
+    await emit_agent_event(session_id, "needs_intervention", {
+        "job_id": job_id,
+        "job_title": job.title if hasattr(job, 'title') else str(job_id),
+        "company": job.company if hasattr(job, 'company') else "Unknown",
+        "reason": reason,
+        "screenshot": screenshot_b64,
+        "message": f"Agent needs help with {job.title if hasattr(job, 'title') else job_id}: {reason}",
+    })
+
+    # Wait for user to resume — poll a Redis key
+    try:
+        import redis.asyncio as aioredis
+        settings = get_settings()
+        redis_client = aioredis.from_url(settings.REDIS_URL)
+
+        resume_key = f"intervention:resume:{session_id}"
+        # Clear any stale resume signal
+        await redis_client.delete(resume_key)
+
+        logger.info("Waiting for user intervention (key: %s)...", resume_key)
+
+        # Poll for resume signal (check every 2 seconds, max 10 minutes)
+        for _ in range(300):
+            result = await redis_client.get(resume_key)
+            if result:
+                logger.info("User resumed intervention for session %s", session_id)
+                await redis_client.delete(resume_key)
+                break
+            await asyncio.sleep(2)
+        else:
+            logger.warning("Intervention timeout for session %s (10 minutes)", session_id)
+
+        await redis_client.close()
+    except Exception as exc:
+        logger.warning("Intervention wait failed: %s — continuing", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +384,7 @@ async def _apply_with_playwright(
             logger.warning("Screenshot streamer failed to start for %s", session_id, exc_info=True)
 
         # Publish SSE: starting application
-        await _publish_sse_event(session_id, "application_start", {
+        await emit_agent_event(session_id, "application_start", {
             "job_id": job_id,
             "job_title": job.title,
             "company": job.company,
@@ -234,7 +400,7 @@ async def _apply_with_playwright(
         ats_type_str = await _detect_ats(page)
         logger.info("Detected ATS: %s for %s at %s", ats_type_str, job.title, job.company)
 
-        await _publish_sse_event(session_id, "application_ats_detected", {
+        await emit_agent_event(session_id, "application_ats_detected", {
             "job_id": job_id,
             "ats_type": ats_type_str,
         })
@@ -246,7 +412,7 @@ async def _apply_with_playwright(
         needs_account = await detect_account_required(page)
         if needs_account:
             logger.info("Account creation required for %s", job.company)
-            await _publish_sse_event(session_id, "application_account_required", {
+            await emit_agent_event(session_id, "application_account_required", {
                 "job_id": job_id,
                 "company": job.company,
             })
@@ -284,7 +450,7 @@ async def _apply_with_playwright(
                     "Email verification required for %s -- marking as needing HITL",
                     job.company,
                 )
-                await _publish_sse_event(session_id, "application_needs_verification", {
+                await emit_agent_event(session_id, "application_needs_verification", {
                     "job_id": job_id,
                     "company": job.company,
                     "message": "Email verification required. Please verify and resume.",
@@ -313,67 +479,76 @@ async def _apply_with_playwright(
         )
         cover_letter_text = cover_letter.text
 
-        await _publish_sse_event(session_id, "application_cover_letter_ready", {
+        await emit_agent_event(session_id, "application_cover_letter_ready", {
             "job_id": job_id,
             "cover_letter_preview": cover_letter_text[:200],
         })
 
         # --- Step 7: Analyse and fill form ---
-        form_fields = await extract_form_fields(page)
-
-        if form_fields:
-            fill_instructions = await analyse_form(
-                fields=form_fields,
-                resume_text=resume_text,
-                cover_letter=cover_letter_text,
-                job_title=job.title,
-                job_company=job.company,
-                ats_strategy=ats_strategy,
-            )
-
-            # --- Step 8: Fill the form + upload resume ---
-            resume_file = state.get("resume_file_path")
-            fill_result = await fill_form(
-                page,
-                fill_instructions,
-                resume_file_path=resume_file,
-            )
-
-            logger.info(
-                "Form fill for %s: %d filled, %d skipped, %d errors",
-                job_id,
-                fill_result["filled"],
-                fill_result["skipped"],
-                len(fill_result["errors"]),
-            )
-
-            await _publish_sse_event(session_id, "application_form_filled", {
-                "job_id": job_id,
-                "fields_filled": fill_result["filled"],
-                "fields_skipped": fill_result["skipped"],
-            })
-        else:
-            logger.warning("No form fields found on page for %s", job_id)
-
-        # --- Step 9: Verification screenshot before submission ---
         try:
-            screenshot_bytes = await page.screenshot(
-                type="png",
-                full_page=True,
-            )
-            # Offload CPU-bound base64 encoding to a thread
-            screenshot_b64 = await asyncio.to_thread(
-                lambda b: base64.b64encode(b).decode("utf-8"), screenshot_bytes
-            )
-            screenshot_url = (
-                f"data:image/png;base64,{screenshot_b64[:50]}..."
-                f"(full screenshot captured, {len(screenshot_bytes)} bytes)"
-            )
-            logger.info("Verification screenshot captured for %s", job_id)
-        except Exception:
-            logger.warning("Screenshot capture failed for %s", job_id, exc_info=True)
+            form_fields = await extract_form_fields(page)
 
-        # --- Step 10: Submit the application ---
+            if form_fields:
+                fill_instructions = await analyse_form(
+                    fields=form_fields,
+                    resume_text=resume_text,
+                    cover_letter=cover_letter_text,
+                    job_title=job.title,
+                    job_company=job.company,
+                    ats_strategy=ats_strategy,
+                )
+
+                # --- Step 8: Fill the form + upload resume ---
+                resume_file = state.get("resume_file_path")
+                fill_result = await fill_form(
+                    page,
+                    fill_instructions,
+                    resume_file_path=resume_file,
+                )
+
+                logger.info(
+                    "Form fill for %s: %d filled, %d skipped, %d errors",
+                    job_id,
+                    fill_result["filled"],
+                    fill_result["skipped"],
+                    len(fill_result["errors"]),
+                )
+
+                await emit_agent_event(session_id, "application_form_filled", {
+                    "job_id": job_id,
+                    "fields_filled": fill_result["filled"],
+                    "fields_skipped": fill_result["skipped"],
+                })
+
+                # If there were fill errors, pause for intervention
+                if fill_result["errors"]:
+                    await _pause_for_intervention(
+                        session_id=session_id,
+                        job_id=job_id,
+                        job=job,
+                        reason=f"Form fill had {len(fill_result['errors'])} errors: {'; '.join(fill_result['errors'][:3])}",
+                        page=page,
+                    )
+            else:
+                logger.warning("No form fields found on page for %s", job_id)
+                await _pause_for_intervention(
+                    session_id=session_id,
+                    job_id=job_id,
+                    job=job,
+                    reason="No form fields detected on the page. The page may need scrolling, clicking an 'Apply' button first, or requires a different approach.",
+                    page=page,
+                )
+        except Exception as form_exc:
+            logger.error("Form filling error for %s: %s", job_id, form_exc)
+            await _pause_for_intervention(
+                session_id=session_id,
+                job_id=job_id,
+                job=job,
+                reason=f"Error during form filling: {str(form_exc)}",
+                page=page,
+            )
+
+        # --- Step 9: Pre-submit confirmation gate ---
         submit_btn = await page.query_selector(
             'button[type="submit"], '
             'button:has-text("Submit"), '
@@ -382,36 +557,108 @@ async def _apply_with_playwright(
             'input[type="submit"]'
         )
 
+        fields_filled_count = fill_result["filled"] if 'fill_result' in dir() else 0
+        submit_decision = await _wait_for_submit_approval(
+            session_id=session_id,
+            job_id=job_id,
+            job=job,
+            page=page,
+            fields_filled=fields_filled_count,
+        )
+
+        if submit_decision == "skip":
+            logger.info("User skipped submission for %s", job_id)
+            if streamer:
+                await streamer.stop()
+            return ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.SKIPPED,
+                error_message="Skipped by user before submission",
+                duration_seconds=int(time.monotonic() - start_time),
+            )
+
+        # --- Step 10: Submit the application ---
+        confirmation_ok = False
         if submit_btn:
             await submit_btn.click()
             await page.wait_for_timeout(random.randint(3000, 5000))
-            logger.info("Application submitted for %s at %s", job.title, job.company)
+
+            # --- Post-submit confirmation check ---
+            confirmation_ok = await _check_submission_confirmation(page)
+
+            # Take screenshot AFTER submit (not before)
+            try:
+                post_screenshot_bytes = await page.screenshot(type="png", full_page=True)
+                post_screenshot_b64 = await asyncio.to_thread(
+                    lambda b: base64.b64encode(b).decode("utf-8"), post_screenshot_bytes
+                )
+                screenshot_url = f"data:image/png;base64,{post_screenshot_b64}"
+            except Exception:
+                logger.warning("Post-submit screenshot failed for %s", job_id)
+
+            if confirmation_ok:
+                logger.info("Application confirmed for %s at %s", job.title, job.company)
+            else:
+                logger.warning("No confirmation detected after submit for %s — may have failed", job_id)
+                # Pause for user intervention
+                await _pause_for_intervention(
+                    session_id=session_id,
+                    job_id=job_id,
+                    job=job,
+                    reason="No confirmation page detected after clicking submit. The form may have validation errors or require additional steps.",
+                    screenshot_b64=post_screenshot_b64 if 'post_screenshot_b64' in dir() else None,
+                    page=page,
+                )
         else:
-            logger.warning("No submit button found for %s -- form may be incomplete", job_id)
+            logger.warning("No submit button found for %s", job_id)
+            await _pause_for_intervention(
+                session_id=session_id,
+                job_id=job_id,
+                job=job,
+                reason="No submit button found on the page. The form may require scrolling or the page structure is different than expected.",
+                page=page,
+            )
 
         # --- Step 11: Stop streamer ---
         if streamer:
             await streamer.stop()
 
         # --- Step 12: Record result to Neo4j ---
-        await _record_result_to_neo4j(job_id, ats_type_str, success=True)
-
-        await _publish_sse_event(session_id, "application_submitted", {
-            "job_id": job_id,
-            "job_title": job.title,
-            "company": job.company,
-        })
+        await _record_result_to_neo4j(job_id, ats_type_str, success=confirmation_ok)
 
         duration = int(time.monotonic() - start_time)
 
-        return ApplicationResult(
-            job_id=job_id,
-            status=ApplicationStatus.SUBMITTED,
-            screenshot_url=screenshot_url,
-            cover_letter_used=cover_letter_text,
-            submitted_at=datetime.now(timezone.utc),
-            duration_seconds=duration,
-        )
+        if confirmation_ok:
+            await emit_agent_event(session_id, "application_submitted", {
+                "job_id": job_id,
+                "job_title": job.title,
+                "company": job.company,
+            })
+
+            return ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.SUBMITTED,
+                screenshot_url=screenshot_url,
+                cover_letter_used=cover_letter_text,
+                submitted_at=datetime.now(timezone.utc),
+                duration_seconds=duration,
+            )
+        else:
+            await emit_agent_event(session_id, "application_failed", {
+                "job_id": job_id,
+                "job_title": job.title,
+                "company": job.company,
+                "error": "No submission confirmation detected",
+            })
+
+            return ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.FAILED,
+                error_message="No submission confirmation detected",
+                screenshot_url=screenshot_url,
+                cover_letter_used=cover_letter_text,
+                duration_seconds=duration,
+            )
 
     except Exception as exc:
         duration = int(time.monotonic() - start_time)
@@ -431,7 +678,7 @@ async def _apply_with_playwright(
         # Record failure to Neo4j for learning
         await _record_result_to_neo4j(job_id, ats_type_str, success=False)
 
-        await _publish_sse_event(session_id, "application_failed", {
+        await emit_agent_event(session_id, "application_failed", {
             "job_id": job_id,
             "job_title": job.title,
             "company": job.company,
