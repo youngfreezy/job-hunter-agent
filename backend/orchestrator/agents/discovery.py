@@ -138,7 +138,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             keywords = search_config.keywords if search_config.keywords else [""]
             for kw in keywords:
                 if len(board_jobs) >= PER_BOARD_MAX:
-                    continue
+                    break
 
                 kw_label = kw or "general search"
                 await emit_agent_event(session_id, "discovery_progress", {
@@ -236,7 +236,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
     return {
         "discovered_jobs": all_jobs,
-        "errors": all_errors if all_errors else [],
+        "errors": all_errors,
         "agent_statuses": agent_statuses,
         "status": "scoring",
     }

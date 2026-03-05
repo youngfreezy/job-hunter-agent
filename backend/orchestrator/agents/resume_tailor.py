@@ -10,10 +10,12 @@ import asyncio
 import logging
 from typing import Any, Dict, List
 
+from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
+from backend.shared.config import MAX_APPLICATION_JOBS
 from backend.shared.llm import build_llm as _shared_build_llm, invoke_with_retry
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import ScoredJob, TailoredResume
@@ -183,10 +185,9 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
                 sj for sj in scored_jobs if sj.job.id in application_queue
             ]
         else:
-            # Default: top 20 scored jobs
             jobs_to_tailor = sorted(
                 scored_jobs, key=lambda sj: sj.score, reverse=True
-            )[:20]
+            )[:MAX_APPLICATION_JOBS]
 
         if not jobs_to_tailor:
             return {
@@ -212,6 +213,10 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
         total_jobs = len(jobs_to_tailor)
         completed_count = 0
 
+        # Pre-create LLM instances (one per model) to avoid per-job overhead
+        sonnet_llm = _build_llm(SONNET_MODEL)
+        opus_llm = _build_llm(OPUS_MODEL)
+
         # Process in concurrent batches to avoid blocking the event loop
         for batch_start in range(0, total_jobs, CONCURRENCY):
             batch = jobs_to_tailor[batch_start:batch_start + CONCURRENCY]
@@ -228,9 +233,9 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
                 """Tailor a single job, return (job_id, result_or_error)."""
                 try:
                     is_top_tier = sj.score >= top_20_threshold
-                    model = _pick_model(is_top_tier)
-                    llm = _build_llm(model)
-                    logger.info("Tailoring for %s (%s) using %s", sj.job.id, sj.job.title, model)
+                    llm = opus_llm if is_top_tier else sonnet_llm
+                    model_name = OPUS_MODEL if is_top_tier else SONNET_MODEL
+                    logger.info("Tailoring for %s (%s) using %s", sj.job.id, sj.job.title, model_name)
                     tailored = await _tailor_single(llm, base_resume, sj, allow_reflection=is_top_tier)
                     return (sj.job.id, tailored, None)
                 except Exception as exc:

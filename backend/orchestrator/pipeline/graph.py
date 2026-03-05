@@ -19,6 +19,8 @@ from typing import Literal
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from backend.shared.config import MAX_APPLICATION_JOBS
+
 from backend.orchestrator.agents import (
     application,
     career_coach,
@@ -168,9 +170,9 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     The user sees scored jobs + tailored resumes and selects which ones
     to actually apply to.
     """
-    # Only show the top 20 scored jobs (sorted by score desc) to the user.
+    # Only show the top scored jobs (sorted by score desc) to the user.
     all_scored = state.get("scored_jobs") or []
-    top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:20]
+    top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
 
     human_input = interrupt(
         {
@@ -193,13 +195,11 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     updates: dict = {}
     approved = human_input.get("approved_job_ids", [])
     if approved:
-        # Cap at 20 to avoid blocking the event loop with too many
-        # sequential LLM calls and massive checkpoint writes.
-        if len(approved) > 20:
+        if len(approved) > MAX_APPLICATION_JOBS:
             logger.info(
-                "Capping approved jobs from %d to 20", len(approved)
+                "Capping approved jobs from %d to %d", len(approved), MAX_APPLICATION_JOBS
             )
-            approved = approved[:20]
+            approved = approved[:MAX_APPLICATION_JOBS]
         updates["application_queue"] = approved
     if human_input.get("feedback"):
         updates["human_messages"] = [human_input["feedback"]]
