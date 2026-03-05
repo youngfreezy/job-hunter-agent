@@ -66,11 +66,15 @@ class BrowserManager:
 
         stealth_cfg = get_stealth_config()
 
-        self._browser = await self._playwright.chromium.launch(
-            headless=stealth_cfg["headless"],
-            args=stealth_cfg["args"],
-            ignore_default_args=stealth_cfg["ignore_default_args"],
-        )
+        launch_kwargs: dict = {
+            "headless": stealth_cfg["headless"],
+            "args": stealth_cfg["args"],
+            "ignore_default_args": stealth_cfg["ignore_default_args"],
+        }
+        if stealth_cfg.get("slow_mo"):
+            launch_kwargs["slow_mo"] = stealth_cfg["slow_mo"]
+
+        self._browser = await self._playwright.chromium.launch(**launch_kwargs)
         self._running = True
         logger.info("Browser engine started (pid=%s)", self._browser.contexts)
 

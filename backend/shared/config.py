@@ -55,8 +55,10 @@ class Settings(BaseSettings):
     SENTRY_DSN: Optional[str] = None
     LOG_LEVEL: str = "INFO"
 
-    # --- Browser proxy (anti-detection) ---
+    # --- Browser ---
     PROXY_URL: Optional[str] = None
+    BROWSER_HEADLESS: bool = False
+    BROWSER_SLOW_MO: int = 0  # ms delay between Playwright actions (smoother in headed mode)
 
     model_config = {
         "env_file": str(_PROJECT_ROOT / ".env"),
