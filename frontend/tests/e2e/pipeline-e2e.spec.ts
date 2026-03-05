@@ -18,25 +18,35 @@ const API_BASE = "http://localhost:8000";
 // Helper: fill wizard and submit to create a session
 async function createSessionViaWizard(page: Page): Promise<string> {
   await page.goto("/session/new");
-  await expect(page.getByRole("heading", { name: "New Session" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "New Session" })
+  ).toBeVisible();
 
   // Step 1: Keywords
-  await page.getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner").fill("Python, Backend Engineer");
+  await page
+    .getByPlaceholder(
+      "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
+    )
+    .fill("Python, Backend Engineer");
   await page.getByText("Remote only").click();
   await page.getByRole("button", { name: "Next" }).click();
   await page.waitForTimeout(500);
 
   // Step 2: Resume
-  await page.getByPlaceholder("Paste your full resume text here...").fill(
-    "John Doe\nSenior Backend Engineer\nSan Francisco, CA\njohn@example.com\n\n" +
-    "Experience:\n- 5 years Python, FastAPI, Django\n- AWS, Docker, Kubernetes\n" +
-    "- PostgreSQL, Redis\n- CI/CD pipelines\n\nEducation:\nBS Computer Science, UC Berkeley"
-  );
+  await page
+    .getByPlaceholder("Paste your full resume text here...")
+    .fill(
+      "John Doe\nSenior Backend Engineer\nSan Francisco, CA\njohn@example.com\n\n" +
+        "Experience:\n- 5 years Python, FastAPI, Django\n- AWS, Docker, Kubernetes\n" +
+        "- PostgreSQL, Redis\n- CI/CD pipelines\n\nEducation:\nBS Computer Science, UC Berkeley"
+    );
   await page.getByRole("button", { name: "Next" }).click();
   await page.waitForTimeout(500);
 
   // Step 3: Review & Launch
-  await expect(page.getByText("Review & Launch", { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText("Review & Launch", { exact: true }).first()
+  ).toBeVisible();
   await page.getByRole("button", { name: /Launch|Submit|Start/ }).click();
 
   // Wait for redirect to session page
@@ -53,7 +63,7 @@ async function waitForStatus(
   page: Page,
   sessionId: string,
   targetStatuses: string[],
-  timeoutMs = 300_000,
+  timeoutMs = 300_000
 ): Promise<string> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -67,7 +77,9 @@ async function waitForStatus(
     await page.waitForTimeout(5_000);
   }
   throw new Error(
-    `Timed out waiting for status ${targetStatuses.join("|")} after ${timeoutMs}ms`
+    `Timed out waiting for status ${targetStatuses.join(
+      "|"
+    )} after ${timeoutMs}ms`
   );
 }
 
@@ -78,20 +90,28 @@ test.describe("Full Pipeline E2E", () => {
     await login(page);
   });
 
-  test("wizard creates session and coaching events stream", async ({ page }) => {
+  test("wizard creates session and coaching events stream", async ({
+    page,
+  }) => {
     test.setTimeout(120_000);
 
     const sessionId = await createSessionViaWizard(page);
     expect(sessionId).toBeTruthy();
 
     // Verify session page loaded
-    await expect(page.getByText("Status Feed")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Status Feed")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Verify SSE events start streaming
-    await expect(page.getByText("Pipeline started")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Pipeline started")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Wait for coaching to begin
-    await expect(page.getByText(/coaching/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/coaching/i).first()).toBeVisible({
+      timeout: 15_000,
+    });
 
     await page.screenshot({ path: "test-results/pipeline-coaching.png" });
   });
@@ -117,22 +137,28 @@ test.describe("Full Pipeline E2E", () => {
 
     // Navigate to session page and connect SSE
     await page.goto(`/session/${sessionId}`);
-    await expect(page.getByText("Status Feed")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Status Feed")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Wait for coaching to complete and coach review modal to appear
     // The modal has a DialogTitle with "Resume Coach Review" or similar
-    await expect(
-      page.getByRole("dialog").first()
-    ).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByRole("dialog").first()).toBeVisible({
+      timeout: 120_000,
+    });
 
-    await page.screenshot({ path: "test-results/pipeline-coach-review-modal.png" });
+    await page.screenshot({
+      path: "test-results/pipeline-coach-review-modal.png",
+    });
 
     // The modal should show coach output (rewritten resume, score, etc.)
     const dialog = page.getByRole("dialog").first();
     await expect(dialog).toBeVisible();
 
     // Click Approve button
-    const approveBtn = dialog.getByRole("button", { name: /Approve|Continue/i });
+    const approveBtn = dialog.getByRole("button", {
+      name: /Approve|Continue/i,
+    });
     await expect(approveBtn).toBeVisible({ timeout: 5_000 });
     await approveBtn.click();
 
@@ -140,14 +166,18 @@ test.describe("Full Pipeline E2E", () => {
     await expect(dialog).not.toBeVisible({ timeout: 10_000 });
 
     // Status should advance past coaching
-    await expect(
-      page.getByText(/discover/i).first()
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/discover/i).first()).toBeVisible({
+      timeout: 30_000,
+    });
 
-    await page.screenshot({ path: "test-results/pipeline-post-coach-approve.png" });
+    await page.screenshot({
+      path: "test-results/pipeline-post-coach-approve.png",
+    });
   });
 
-  test("shortlist review shows max 20 jobs and approval works", async ({ page }) => {
+  test("shortlist review shows max 20 jobs and approval works", async ({
+    page,
+  }) => {
     test.setTimeout(600_000); // 10 min — discovery + scoring takes time
 
     // Create session via API
@@ -169,7 +199,9 @@ test.describe("Full Pipeline E2E", () => {
 
     // Navigate to session page immediately so we receive SSE events in real-time
     await page.goto(`/session/${sessionId}`);
-    await expect(page.getByText("Status Feed")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Status Feed")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Wait for coach review modal, approve it, then wait for shortlist review
     // The coach review dialog appears first
@@ -177,7 +209,9 @@ test.describe("Full Pipeline E2E", () => {
     await expect(coachDialog).toBeVisible({ timeout: 120_000 });
 
     // Approve coach review via the dialog button
-    const coachApproveBtn = coachDialog.getByRole("button", { name: /Approve|Continue/i });
+    const coachApproveBtn = coachDialog.getByRole("button", {
+      name: /Approve|Continue/i,
+    });
     await expect(coachApproveBtn).toBeVisible({ timeout: 5_000 });
     await coachApproveBtn.click();
     await expect(coachDialog).not.toBeVisible({ timeout: 10_000 });
@@ -187,11 +221,15 @@ test.describe("Full Pipeline E2E", () => {
     const dialog = page.getByRole("dialog").first();
     await expect(dialog).toBeVisible({ timeout: 540_000 });
 
-    await page.screenshot({ path: "test-results/pipeline-shortlist-review.png" });
+    await page.screenshot({
+      path: "test-results/pipeline-shortlist-review.png",
+    });
 
     // COUNT the job items in the shortlist — must be <= 20
     // Look for job cards/rows in the dialog
-    const jobItems = dialog.locator('[data-testid="job-item"], tr, [class*="job"], [class*="Job"]');
+    const jobItems = dialog.locator(
+      '[data-testid="job-item"], tr, [class*="job"], [class*="Job"]'
+    );
     const jobCount = await jobItems.count();
 
     // If no specific selectors match, count by looking for checkboxes (each job has one)
@@ -205,7 +243,9 @@ test.describe("Full Pipeline E2E", () => {
     expect(actualCount).toBeLessThanOrEqual(20);
     expect(actualCount).toBeGreaterThan(0);
 
-    await page.screenshot({ path: "test-results/pipeline-shortlist-count.png" });
+    await page.screenshot({
+      path: "test-results/pipeline-shortlist-count.png",
+    });
 
     // Approve the shortlist — click "Approve" or "Apply to Selected"
     const approveBtn = dialog.getByRole("button", {
@@ -231,7 +271,9 @@ test.describe("Full Pipeline E2E", () => {
       page.getByText(/apply|tailoring|applying/i).first()
     ).toBeVisible({ timeout: 30_000 });
 
-    await page.screenshot({ path: "test-results/pipeline-post-shortlist-approve.png" });
+    await page.screenshot({
+      path: "test-results/pipeline-post-shortlist-approve.png",
+    });
   });
 
   test("page reload restores HITL state", async ({ page }) => {
@@ -304,7 +346,9 @@ test.describe("Full Pipeline E2E", () => {
       const start = Date.now();
       let coachApproved = false;
       while (Date.now() - start < 480_000) {
-        const res = await page.request.get(`${API_BASE}/api/sessions/${sessionId}`);
+        const res = await page.request.get(
+          `${API_BASE}/api/sessions/${sessionId}`
+        );
         const data = await res.json();
 
         if (data.status === "awaiting_review") break;

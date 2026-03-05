@@ -16,7 +16,10 @@ test.describe("Session Persistence and Dashboard", () => {
 
   test("dashboard fetches and displays sessions from API", async ({ page }) => {
     await page.route("**/api/sessions", async (route) => {
-      if (route.request().method() === "GET" && !route.request().url().includes("/api/sessions/")) {
+      if (
+        route.request().method() === "GET" &&
+        !route.request().url().includes("/api/sessions/")
+      ) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -50,7 +53,10 @@ test.describe("Session Persistence and Dashboard", () => {
 
   test("dashboard shows empty state when no sessions", async ({ page }) => {
     await page.route("**/api/sessions", async (route) => {
-      if (route.request().method() === "GET" && !route.request().url().includes("/api/sessions/")) {
+      if (
+        route.request().method() === "GET" &&
+        !route.request().url().includes("/api/sessions/")
+      ) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -67,7 +73,10 @@ test.describe("Session Persistence and Dashboard", () => {
 
   test("dashboard session card links to session page", async ({ page }) => {
     await page.route("**/api/sessions", async (route) => {
-      if (route.request().method() === "GET" && !route.request().url().includes("/api/sessions/")) {
+      if (
+        route.request().method() === "GET" &&
+        !route.request().url().includes("/api/sessions/")
+      ) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -100,7 +109,10 @@ test.describe("Session Persistence and Dashboard", () => {
 
   test("dashboard stats reflect session data", async ({ page }) => {
     await page.route("**/api/sessions", async (route) => {
-      if (route.request().method() === "GET" && !route.request().url().includes("/api/sessions/")) {
+      if (
+        route.request().method() === "GET" &&
+        !route.request().url().includes("/api/sessions/")
+      ) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -141,16 +153,24 @@ test.describe("Session Persistence and Dashboard", () => {
     await page.goto("/dashboard");
 
     // Total Sessions = 2
-    await expect(page.locator("text=Total Sessions").locator("..").getByText("2")).toBeVisible();
+    await expect(
+      page.locator("text=Total Sessions").locator("..").getByText("2")
+    ).toBeVisible();
     // Applications Sent = 5 (3 + 2)
-    await expect(page.locator("text=Applications Sent").locator("..").getByText("5")).toBeVisible();
+    await expect(
+      page.locator("text=Applications Sent").locator("..").getByText("5")
+    ).toBeVisible();
     // Completed = 1
-    await expect(page.locator("text=Completed").locator("..").getByText("1")).toBeVisible();
+    await expect(
+      page.locator("text=Completed").locator("..").getByText("1")
+    ).toBeVisible();
   });
 
   // -- Session page keywords from registry --
 
-  test("session page shows keywords from getSession registry fallback", async ({ page }) => {
+  test("session page shows keywords from getSession registry fallback", async ({
+    page,
+  }) => {
     const mockId = "persist-test-001";
 
     await page.route(`**/api/sessions/${mockId}`, async (route) => {
@@ -188,7 +208,10 @@ test.describe("Session Persistence and Dashboard", () => {
 
       await route.fulfill({
         status: 200,
-        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
         body,
       });
     });
@@ -196,12 +219,16 @@ test.describe("Session Persistence and Dashboard", () => {
     await page.goto(`/session/${mockId}`);
 
     // Keywords should be visible in the sidebar
-    await expect(page.getByText("Machine Learning, Data Scientist")).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByText("Machine Learning, Data Scientist")
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   // -- SSE replay on refresh --
 
-  test("session page refresh preserves events via SSE replay", async ({ page }) => {
+  test("session page refresh preserves events via SSE replay", async ({
+    page,
+  }) => {
     const mockId = "replay-test-001";
 
     await page.route(`**/api/sessions/${mockId}`, async (route) => {
@@ -253,21 +280,32 @@ test.describe("Session Persistence and Dashboard", () => {
 
       await route.fulfill({
         status: 200,
-        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
         body,
       });
     });
 
     // First load
     await page.goto(`/session/${mockId}`);
-    await expect(page.getByText("Pipeline started")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Pipeline started")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Refresh
     await page.reload();
 
     // After refresh, replayed events should still appear
-    await expect(page.getByText("Pipeline started")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/Found 15 jobs/)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/Scored 10 jobs/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Pipeline started")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText(/Found 15 jobs/)).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText(/Scored 10 jobs/)).toBeVisible({
+      timeout: 10_000,
+    });
   });
 });

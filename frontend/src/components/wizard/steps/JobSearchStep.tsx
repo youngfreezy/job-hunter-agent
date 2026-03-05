@@ -30,11 +30,15 @@ export function JobSearchStep() {
             name="locations"
             placeholder="e.g. San Francisco, New York, Austin"
           />
-          <p className="text-xs text-zinc-500">Comma-separated cities. Leave blank for any location.</p>
+          <p className="text-xs text-zinc-500">
+            Comma-separated cities. Leave blank for any location.
+          </p>
           <div className="flex items-center gap-4">
             <FormikCheckbox name="remoteOnly" label="Remote only" />
             <div className="flex items-center gap-2">
-              <span className="text-sm text-zinc-600 dark:text-zinc-400">Min salary:</span>
+              <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                Min salary:
+              </span>
               <FormikInput
                 name="salaryMin"
                 type="number"

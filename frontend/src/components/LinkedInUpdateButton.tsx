@@ -3,7 +3,13 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import type { LinkedInUpdate } from "@/lib/api";
 import { startLinkedInUpdate, confirmLinkedInLogin } from "@/lib/api";
 
@@ -13,7 +19,12 @@ function parseAdviceToUpdates(advice: string[]): LinkedInUpdate[] {
     about: ["about section", "about "],
     featured: ["featured section", "featured"],
     skills: ["skills section", "skills"],
-    experience: ["work history", "experience entry", "experience entries", "work experience"],
+    experience: [
+      "work history",
+      "experience entry",
+      "experience entries",
+      "work experience",
+    ],
     education: ["education", "columbia", "university"],
     url: ["custom url", "linkedin url", "linkedin.com/in/"],
   };
@@ -49,7 +60,12 @@ export interface LinkedInProgress {
   section: string;
   progress: number;
   success?: boolean;
-  results?: Array<{ section: string; label: string; success: boolean; error?: string | null }>;
+  results?: Array<{
+    section: string;
+    label: string;
+    success: boolean;
+    error?: string | null;
+  }>;
 }
 
 interface LinkedInUpdateButtonProps {
@@ -69,24 +85,39 @@ export function LinkedInUpdateButton({
 }: LinkedInUpdateButtonProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<ModalStep>("review");
-  const [proposedUpdates, setProposedUpdates] = useState<Array<LinkedInUpdate & { enabled: boolean }>>([]);
+  const [proposedUpdates, setProposedUpdates] = useState<
+    Array<LinkedInUpdate & { enabled: boolean }>
+  >([]);
   const [loginConfirming, setLoginConfirming] = useState(false);
   const [startingUpdate, setStartingUpdate] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Transition to login step when SSE says login is required
-  if (linkedinLoginRequired && modalStep === "review" && modalOpen && startingUpdate) {
+  if (
+    linkedinLoginRequired &&
+    modalStep === "review" &&
+    modalOpen &&
+    startingUpdate
+  ) {
     setModalStep("login");
     setStartingUpdate(false);
   }
 
   // Transition to updating step when progress starts flowing
-  if (linkedinProgress && linkedinProgress.progress > 5 && modalStep === "login") {
+  if (
+    linkedinProgress &&
+    linkedinProgress.progress > 5 &&
+    modalStep === "login"
+  ) {
     setModalStep("updating");
   }
 
   // Transition to done
-  if (linkedinProgress && linkedinProgress.progress === 100 && modalStep === "updating") {
+  if (
+    linkedinProgress &&
+    linkedinProgress.progress === 100 &&
+    modalStep === "updating"
+  ) {
     setModalStep("done");
   }
 
@@ -112,7 +143,7 @@ export function LinkedInUpdateButton({
       await startLinkedInUpdate(
         sessionId,
         enabledUpdates.map(({ section, content }) => ({ section, content })),
-        linkedinUrl,
+        linkedinUrl
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start update");
@@ -155,38 +186,57 @@ export function LinkedInUpdateButton({
         className="w-full gap-2 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
       >
         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
         </svg>
         Update LinkedIn
       </Button>
 
-      <Dialog open={modalOpen} onOpenChange={(open) => {
-        if (!open && (modalStep === "review" || modalStep === "done")) {
-          setModalOpen(false);
-        }
-      }}>
+      <Dialog
+        open={modalOpen}
+        onOpenChange={(open) => {
+          if (!open && (modalStep === "review" || modalStep === "done")) {
+            setModalOpen(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Update LinkedIn Profile</DialogTitle>
             <DialogDescription className="sr-only">
-              Follow the steps to update your LinkedIn profile with the recommended changes.
+              Follow the steps to update your LinkedIn profile with the
+              recommended changes.
             </DialogDescription>
           </DialogHeader>
 
           {/* Stepper */}
           <div className="flex items-center gap-1 py-3 border-b border-border/50">
             {stepperSteps.map((s, i) => (
-              <div key={s.key} className="flex items-center flex-1 last:flex-none">
-                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                  i < currentStepIdx
-                    ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
-                    : i === currentStepIdx
-                    ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm"
-                    : "text-muted-foreground/60"
-                }`}>
+              <div
+                key={s.key}
+                className="flex items-center flex-1 last:flex-none"
+              >
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
+                    i < currentStepIdx
+                      ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
+                      : i === currentStepIdx
+                      ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm"
+                      : "text-muted-foreground/60"
+                  }`}
+                >
                   {i < currentStepIdx ? (
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={3}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                   ) : i === currentStepIdx ? (
                     <span className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -197,7 +247,11 @@ export function LinkedInUpdateButton({
                 </div>
                 {i < stepperSteps.length - 1 && (
                   <div className="flex-1 mx-1">
-                    <div className={`h-0.5 rounded-full ${i < currentStepIdx ? "bg-blue-400" : "bg-border/50"}`} />
+                    <div
+                      className={`h-0.5 rounded-full ${
+                        i < currentStepIdx ? "bg-blue-400" : "bg-border/50"
+                      }`}
+                    />
                   </div>
                 )}
               </div>
@@ -206,12 +260,12 @@ export function LinkedInUpdateButton({
 
           {/* Step Content */}
           <div className="flex-1 overflow-y-auto py-3 min-h-0">
-
             {/* Step 1: Review Changes */}
             {modalStep === "review" && (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Select which updates to apply. A browser will open to LinkedIn where you&apos;ll log in first.
+                  Select which updates to apply. A browser will open to LinkedIn
+                  where you&apos;ll log in first.
                 </p>
                 {proposedUpdates.map((update, i) => (
                   <label
@@ -233,15 +287,22 @@ export function LinkedInUpdateButton({
                         {SECTION_LABELS[update.section] || update.section}
                       </p>
                       <p className="text-sm text-foreground/80 leading-relaxed">
-                        {update.content.length > 400 ? update.content.slice(0, 400) + "..." : update.content}
+                        {update.content.length > 400
+                          ? update.content.slice(0, 400) + "..."
+                          : update.content}
                       </p>
                     </div>
                   </label>
                 ))}
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-                  <Button onClick={handleConfirmAndStart} loading={startingUpdate}>
+                  <Button variant="outline" onClick={() => setModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleConfirmAndStart}
+                    loading={startingUpdate}
+                  >
                     Open LinkedIn &amp; Continue
                   </Button>
                 </div>
@@ -252,14 +313,19 @@ export function LinkedInUpdateButton({
             {modalStep === "login" && (
               <div className="flex flex-col items-center justify-center py-8 space-y-6">
                 <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
-                  <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                  <svg
+                    className="w-8 h-8 text-blue-600 dark:text-blue-400"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
                   </svg>
                 </div>
                 <div className="text-center space-y-2">
                   <h3 className="text-lg font-semibold">Log in to LinkedIn</h3>
                   <p className="text-sm text-muted-foreground max-w-sm">
-                    A browser window has opened to LinkedIn. Log in to your account there, then come back and click the button below.
+                    A browser window has opened to LinkedIn. Log in to your
+                    account there, then come back and click the button below.
                   </p>
                 </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
@@ -278,60 +344,99 @@ export function LinkedInUpdateButton({
             {modalStep === "updating" && (
               <div className="space-y-4 py-4">
                 <div className="text-center space-y-1">
-                  <h3 className="text-base font-semibold">Updating your profile...</h3>
+                  <h3 className="text-base font-semibold">
+                    Updating your profile...
+                  </h3>
                   <p className="text-sm text-muted-foreground">
-                    Watch the browser window — changes are being applied one at a time.
+                    Watch the browser window — changes are being applied one at
+                    a time.
                   </p>
                 </div>
 
                 {linkedinProgress && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">{linkedinProgress.step}</p>
-                      <span className="text-xs font-mono text-muted-foreground tabular-nums">{linkedinProgress.progress}%</span>
+                      <p className="text-sm font-medium">
+                        {linkedinProgress.step}
+                      </p>
+                      <span className="text-xs font-mono text-muted-foreground tabular-nums">
+                        {linkedinProgress.progress}%
+                      </span>
                     </div>
-                    <Progress value={linkedinProgress.progress} className="h-2" />
+                    <Progress
+                      value={linkedinProgress.progress}
+                      className="h-2"
+                    />
                   </div>
                 )}
 
-                {proposedUpdates.filter(u => u.enabled).map((update, i) => {
-                  const isActive = linkedinProgress?.section === update.section;
-                  const result = linkedinProgress?.results?.find(r => r.section === update.section);
-                  return (
-                    <div
-                      key={i}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-sm transition-colors ${
-                        result?.success
-                          ? "bg-green-50/50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-                          : result && !result.success
-                          ? "bg-red-50/50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
-                          : isActive
-                          ? "bg-blue-50/50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800"
-                          : "border-border/30"
-                      }`}
-                    >
-                      {result?.success ? (
-                        <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : result && !result.success ? (
-                        <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      ) : isActive ? (
-                        <span className="relative flex h-3 w-3 shrink-0">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+                {proposedUpdates
+                  .filter((u) => u.enabled)
+                  .map((update, i) => {
+                    const isActive =
+                      linkedinProgress?.section === update.section;
+                    const result = linkedinProgress?.results?.find(
+                      (r) => r.section === update.section
+                    );
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                          result?.success
+                            ? "bg-green-50/50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
+                            : result && !result.success
+                            ? "bg-red-50/50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+                            : isActive
+                            ? "bg-blue-50/50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800"
+                            : "border-border/30"
+                        }`}
+                      >
+                        {result?.success ? (
+                          <svg
+                            className="w-4 h-4 text-green-500 shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={3}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        ) : result && !result.success ? (
+                          <svg
+                            className="w-4 h-4 text-red-500 shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={3}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        ) : isActive ? (
+                          <span className="relative flex h-3 w-3 shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+                          </span>
+                        ) : (
+                          <span className="w-4 h-4 rounded-full border-2 border-border/50 shrink-0" />
+                        )}
+                        <span
+                          className={
+                            isActive ? "font-medium" : "text-muted-foreground"
+                          }
+                        >
+                          {SECTION_LABELS[update.section] || update.section}
                         </span>
-                      ) : (
-                        <span className="w-4 h-4 rounded-full border-2 border-border/50 shrink-0" />
-                      )}
-                      <span className={isActive ? "font-medium" : "text-muted-foreground"}>
-                        {SECTION_LABELS[update.section] || update.section}
-                      </span>
-                    </div>
-                  );
-                })}
+                      </div>
+                    );
+                  })}
               </div>
             )}
 
@@ -339,31 +444,69 @@ export function LinkedInUpdateButton({
             {modalStep === "done" && (
               <div className="flex flex-col items-center justify-center py-8 space-y-6">
                 <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
-                  <svg className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    className="w-8 h-8 text-green-600 dark:text-green-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                 </div>
                 <div className="text-center space-y-2">
                   <h3 className="text-lg font-semibold">Profile Updated!</h3>
                   <p className="text-sm text-muted-foreground">
-                    {linkedinProgress?.step || "Your LinkedIn profile has been updated."}
+                    {linkedinProgress?.step ||
+                      "Your LinkedIn profile has been updated."}
                   </p>
                 </div>
 
                 {linkedinProgress?.results && (
                   <div className="w-full space-y-1.5">
                     {linkedinProgress.results.map((r, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm px-3 py-1.5">
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 text-sm px-3 py-1.5"
+                      >
                         {r.success ? (
-                          <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          <svg
+                            className="w-4 h-4 text-green-500 shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={3}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M5 13l4 4L19 7"
+                            />
                           </svg>
                         ) : (
-                          <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          <svg
+                            className="w-4 h-4 text-red-500 shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={3}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M6 18L18 6M6 6l12 12"
+                            />
                           </svg>
                         )}
-                        <span className={r.success ? "" : "text-red-600 dark:text-red-400"}>
+                        <span
+                          className={
+                            r.success ? "" : "text-red-600 dark:text-red-400"
+                          }
+                        >
                           {r.label}
                         </span>
                       </div>
@@ -371,7 +514,12 @@ export function LinkedInUpdateButton({
                   </div>
                 )}
 
-                <Button onClick={() => { setModalOpen(false); setModalStep("review"); }}>
+                <Button
+                  onClick={() => {
+                    setModalOpen(false);
+                    setModalStep("review");
+                  }}
+                >
                   Close
                 </Button>
               </div>

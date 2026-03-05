@@ -10,7 +10,12 @@ interface ScreenshotViewerProps {
   status?: "connecting" | "connected" | "disconnected" | "error";
 }
 
-export function ScreenshotViewer({ imageUrl, currentUrl, fps, status = "connecting" }: ScreenshotViewerProps) {
+export function ScreenshotViewer({
+  imageUrl,
+  currentUrl,
+  fps,
+  status = "connecting",
+}: ScreenshotViewerProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [dimensions, setDimensions] = useState({ w: 0, h: 0 });
 
@@ -59,7 +64,9 @@ export function ScreenshotViewer({ imageUrl, currentUrl, fps, status = "connecti
         <div className="text-center text-zinc-500">
           <div className="w-16 h-16 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin mx-auto mb-4" />
           <p className="text-lg">Connecting to browser...</p>
-          <p className="text-sm mt-1">The screenshot feed will appear here once the agent starts browsing.</p>
+          <p className="text-sm mt-1">
+            The screenshot feed will appear here once the agent starts browsing.
+          </p>
         </div>
       )}
 

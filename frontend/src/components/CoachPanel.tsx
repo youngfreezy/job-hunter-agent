@@ -5,9 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CoachOutput } from "@/lib/api";
-import { LinkedInUpdateButton, type LinkedInProgress } from "@/components/LinkedInUpdateButton";
+import {
+  LinkedInUpdateButton,
+  type LinkedInProgress,
+} from "@/components/LinkedInUpdateButton";
 
-const SCORE_FIELDS: Array<{ key: keyof CoachOutput["resume_score"]; label: string }> = [
+const SCORE_FIELDS: Array<{
+  key: keyof CoachOutput["resume_score"];
+  label: string;
+}> = [
   { key: "keyword_density", label: "Keyword Density" },
   { key: "impact_metrics", label: "Impact Metrics" },
   { key: "ats_compatibility", label: "ATS Compatibility" },
@@ -37,8 +43,10 @@ export function CoachPanel({
   };
 
   const scoreBadgeStyle = (score: number) => {
-    if (score >= 80) return "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/50 dark:text-green-300 dark:border-green-800";
-    if (score >= 60) return "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/50 dark:text-yellow-300 dark:border-yellow-800";
+    if (score >= 80)
+      return "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/50 dark:text-green-300 dark:border-green-800";
+    if (score >= 60)
+      return "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/50 dark:text-yellow-300 dark:border-yellow-800";
     return "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/50 dark:text-red-300 dark:border-red-800";
   };
 
@@ -47,7 +55,12 @@ export function CoachPanel({
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           Career Coach Results
-          <Badge variant="outline" className={`font-semibold ${scoreBadgeStyle(coach.resume_score.overall)}`}>
+          <Badge
+            variant="outline"
+            className={`font-semibold ${scoreBadgeStyle(
+              coach.resume_score.overall
+            )}`}
+          >
             {coach.resume_score.overall}/100
           </Badge>
         </CardTitle>
@@ -71,34 +84,48 @@ export function CoachPanel({
                 if (typeof value !== "number") return null;
                 return (
                   <div key={key} className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground w-36">{label}</span>
+                    <span className="text-sm text-muted-foreground w-36">
+                      {label}
+                    </span>
                     <Progress value={value} className="flex-1" />
-                    <span className={`text-sm font-medium w-10 text-right ${scoreColor(value)}`}>
+                    <span
+                      className={`text-sm font-medium w-10 text-right ${scoreColor(
+                        value
+                      )}`}
+                    >
                       {value}
                     </span>
                   </div>
                 );
               })}
             </div>
-            {coach.resume_score.feedback && coach.resume_score.feedback.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Improvement Suggestions</p>
-                <ul className="space-y-1">
-                  {coach.resume_score.feedback.map((fb, i) => (
-                    <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                      <span className="text-amber-500 mt-0.5">-</span>
-                      {fb}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {coach.resume_score.feedback &&
+              coach.resume_score.feedback.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium mb-1">
+                    Improvement Suggestions
+                  </p>
+                  <ul className="space-y-1">
+                    {coach.resume_score.feedback.map((fb, i) => (
+                      <li
+                        key={i}
+                        className="text-sm text-muted-foreground flex items-start gap-2"
+                      >
+                        <span className="text-amber-500 mt-0.5">-</span>
+                        {fb}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             {coach.key_strengths && coach.key_strengths.length > 0 && (
               <div>
                 <p className="text-sm font-medium mb-1.5">Key Strengths</p>
                 <div className="flex flex-wrap gap-1.5">
                   {coach.key_strengths.map((s, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">{s}</Badge>
+                    <Badge key={i} variant="secondary" className="text-xs">
+                      {s}
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -108,7 +135,10 @@ export function CoachPanel({
                 <p className="text-sm font-medium mb-1.5">Areas for Growth</p>
                 <ul className="space-y-2">
                   {coach.improvement_areas.map((a, i) => (
-                    <li key={i} className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3 border border-border/50">
+                    <li
+                      key={i}
+                      className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3 border border-border/50"
+                    >
                       {a}
                     </li>
                   ))}
@@ -131,7 +161,10 @@ export function CoachPanel({
 
           <TabsContent value="linkedin" className="space-y-3">
             {coach.linkedin_advice.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No LinkedIn URL provided. Add your profile for personalized advice.</p>
+              <p className="text-sm text-muted-foreground">
+                No LinkedIn URL provided. Add your profile for personalized
+                advice.
+              </p>
             ) : (
               <>
                 <ul className="space-y-2">

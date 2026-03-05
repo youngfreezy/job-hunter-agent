@@ -1,39 +1,41 @@
 "use client";
 
+import { useState } from "react";
 import { useFormikContext } from "formik";
 import type { SessionFormValues } from "@/lib/schemas/session";
+import { parseResume } from "@/lib/api";
 
 export function FormikFileUpload() {
   const { values, setFieldValue } = useFormikContext<SessionFormValues>();
+  const [parsing, setParsing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setError(null);
     setFieldValue("resumeFileName", file.name);
 
+    // Plain text files can be read directly
     if (file.type === "text/plain" || file.name.endsWith(".txt")) {
       setFieldValue("resumeText", await file.text());
-    } else if (
-      file.type === "application/pdf" ||
-      file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      file.type === "application/msword"
-    ) {
-      try {
-        const text = await file.text();
-        if (text && !text.includes("\x00") && text.length < 500000) {
-          setFieldValue("resumeText", text);
-        } else {
-          setFieldValue(
-            "resumeText",
-            `[File uploaded: ${file.name}]\n\nPlease also paste your resume text below for best results, or the AI will extract text from your uploaded file.`
-          );
-        }
-      } catch {
-        setFieldValue("resumeText", `[File uploaded: ${file.name}]`);
-      }
-    } else {
+      return;
+    }
+
+    // PDF and DOCX files: send to backend for parsing
+    setParsing(true);
+    try {
+      const result = await parseResume(file);
+      setFieldValue("resumeText", result.text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to parse file";
+      setError(msg);
+      setFieldValue("resumeFileName", "");
+      setFieldValue("resumeText", "");
       e.target.value = "";
+    } finally {
+      setParsing(false);
     }
   };
 
@@ -46,22 +48,36 @@ export function FormikFileUpload() {
           onChange={handleFileUpload}
           className="hidden"
           id="resume-upload"
+          disabled={parsing}
         />
-        <label htmlFor="resume-upload" className="cursor-pointer">
+        <label
+          htmlFor="resume-upload"
+          className={`cursor-pointer ${
+            parsing ? "pointer-events-none opacity-60" : ""
+          }`}
+        >
           <div className="text-sm text-zinc-600 dark:text-zinc-400">
-            {values.resumeFileName ? (
-              <span className="text-green-600 font-medium">{values.resumeFileName}</span>
+            {parsing ? (
+              <span className="text-blue-600 font-medium">
+                Extracting text from your resume...
+              </span>
+            ) : values.resumeFileName ? (
+              <span className="text-green-600 font-medium">
+                {values.resumeFileName}
+              </span>
             ) : (
               <>
-                <span className="font-medium text-zinc-900 dark:text-white">Click to upload</span>
-                {" "}or drag and drop
+                <span className="font-medium text-zinc-900 dark:text-white">
+                  Click to upload
+                </span>{" "}
+                your resume
               </>
             )}
           </div>
           <p className="text-xs text-zinc-500 mt-1">.txt, .pdf, or .docx</p>
         </label>
       </div>
-      {/* Error shown by FormikTextarea for resumeText field — don't duplicate */}
+      {error && <p className="text-xs text-red-600 mt-1.5">{error}</p>}
     </div>
   );
 }

@@ -14,15 +14,26 @@ interface ReviewStepProps {
 export function ReviewStep({ onEditStep }: ReviewStepProps) {
   const { values } = useFormikContext<SessionFormValues>();
 
-  const keywords = values.keywords.split(",").map((k) => k.trim()).filter(Boolean);
-  const locations = values.locations.split(",").map((l) => l.trim()).filter(Boolean);
+  const keywords = values.keywords
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+  const locations = values.locations
+    .split(",")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
   return (
     <>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Job Search</CardTitle>
-          <Button type="button" variant="ghost" size="sm" onClick={() => onEditStep(0)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onEditStep(0)}
+          >
             <Pencil className="w-4 h-4 mr-1" /> Edit
           </Button>
         </CardHeader>
@@ -30,7 +41,11 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
           <div>
             <p className="text-sm font-medium text-zinc-500">Keywords</p>
             <div className="flex flex-wrap gap-2 mt-1">
-              {keywords.map((k) => <Badge key={k} variant="secondary">{k}</Badge>)}
+              {keywords.map((k) => (
+                <Badge key={k} variant="secondary">
+                  {k}
+                </Badge>
+              ))}
             </div>
           </div>
           {locations.length > 0 && (
@@ -49,7 +64,12 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Resume & Profile</CardTitle>
-          <Button type="button" variant="ghost" size="sm" onClick={() => onEditStep(1)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onEditStep(1)}
+          >
             <Pencil className="w-4 h-4 mr-1" /> Edit
           </Button>
         </CardHeader>
@@ -60,14 +80,20 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
               <p className="text-sm text-green-600">{values.resumeFileName}</p>
             ) : (
               <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-3">
-                {values.resumeText.slice(0, 200)}{values.resumeText.length > 200 ? "..." : ""}
+                {values.resumeText.slice(0, 200)}
+                {values.resumeText.length > 200 ? "..." : ""}
               </p>
             )}
           </div>
           {values.linkedinUrl && (
             <div>
               <p className="text-sm font-medium text-zinc-500">LinkedIn</p>
-              <a href={values.linkedinUrl} className="text-sm text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+              <a
+                href={values.linkedinUrl}
+                className="text-sm text-blue-600 hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {values.linkedinUrl}
               </a>
             </div>

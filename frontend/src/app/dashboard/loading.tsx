@@ -14,7 +14,10 @@ export default function Loading() {
         {/* Stats row */}
         <div className="grid grid-cols-4 gap-4 mb-8">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4">
+            <div
+              key={i}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4"
+            >
               <div className="h-3 w-24 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse mb-2" />
               <div className="h-7 w-12 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
             </div>
@@ -24,7 +27,10 @@ export default function Loading() {
         {/* Session list skeleton */}
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 flex items-center justify-between">
+            <div
+              key={i}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 flex items-center justify-between"
+            >
               <div className="space-y-2">
                 <div className="h-5 w-48 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
                 <div className="h-3 w-32 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />

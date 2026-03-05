@@ -5,7 +5,8 @@ import { FormikConfig, FormikValues, useFormik } from "formik";
 
 const STORAGE_PREFIX = "jh_form_";
 
-interface UsePersistedFormikOptions<T extends FormikValues> extends FormikConfig<T> {
+interface UsePersistedFormikOptions<T extends FormikValues>
+  extends FormikConfig<T> {
   persistKey: string;
   debounceMs?: number;
 }
@@ -54,8 +55,11 @@ export function usePersistedFormik<T extends FormikValues>({
       try {
         const toStore = { ...formik.values };
         // Exclude resume text >500KB to avoid localStorage quota
-        if (typeof (toStore as Record<string, unknown>).resumeText === "string" &&
-            ((toStore as Record<string, unknown>).resumeText as string).length > 500_000) {
+        if (
+          typeof (toStore as Record<string, unknown>).resumeText === "string" &&
+          ((toStore as Record<string, unknown>).resumeText as string).length >
+            500_000
+        ) {
           (toStore as Record<string, unknown>).resumeText = "";
         }
         localStorage.setItem(storageKey, JSON.stringify(toStore));

@@ -9,30 +9,27 @@ test.describe("Live Session Viewer", () => {
     await login(page);
 
     // Mock the GET /api/sessions/:id endpoint to return session data
-    await page.route(
-      `**/api/sessions/${mockSessionId}`,
-      async (route) => {
-        if (route.request().method() === "GET") {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({
-              session_id: mockSessionId,
-              status: "discovering",
-              keywords: ["React", "Senior Engineer"],
-              scored_jobs: [],
-              applications_submitted: [],
-              applications_failed: [],
-              coach_output: null,
-              steering_mode: "status",
-              applications_used: 0,
-            }),
-          });
-        } else {
-          await route.continue();
-        }
+    await page.route(`**/api/sessions/${mockSessionId}`, async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            session_id: mockSessionId,
+            status: "discovering",
+            keywords: ["React", "Senior Engineer"],
+            scored_jobs: [],
+            applications_submitted: [],
+            applications_failed: [],
+            coach_output: null,
+            steering_mode: "status",
+            applications_used: 0,
+          }),
+        });
+      } else {
+        await route.continue();
       }
-    );
+    });
 
     // Mock the SSE stream endpoint to avoid hanging connections
     await page.route(
@@ -79,7 +76,9 @@ test.describe("Live Session Viewer", () => {
     await expect(page.getByText("JobHunter Agent").first()).toBeVisible();
 
     // Should show session status badge
-    await expect(page.getByText("Discovering Jobs", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Discovering Jobs", { exact: true })
+    ).toBeVisible();
   });
 
   test("shows pipeline progress steps", async ({ page }) => {
@@ -115,9 +114,7 @@ test.describe("Live Session Viewer", () => {
     await page.goto(`/session/${mockSessionId}`);
 
     // Sidebar should show session metadata
-    await expect(
-      page.getByText("Session").first()
-    ).toBeVisible();
+    await expect(page.getByText("Session").first()).toBeVisible();
     await expect(page.getByText("Keywords:")).toBeVisible();
     await expect(page.getByText("React, Senior Engineer")).toBeVisible();
     await expect(page.getByText("Applications:")).toBeVisible();
@@ -155,9 +152,7 @@ test.describe("Live Session Viewer", () => {
     await page.getByText("Take Control").click();
 
     // Should show the browser control area
-    await expect(
-      page.getByText("Browser Control (noVNC)")
-    ).toBeVisible();
+    await expect(page.getByText("Browser Control (noVNC)")).toBeVisible();
     await expect(page.getByText("Direct Browser Control")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Request Control" })
@@ -171,12 +166,8 @@ test.describe("Live Session Viewer", () => {
     await page.getByText("Screenshot Feed").click();
 
     // Chat panel should appear
-    await expect(
-      page.getByPlaceholder(/Steer the agent/)
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Send" })
-    ).toBeVisible();
+    await expect(page.getByPlaceholder(/Steer the agent/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   });
 
   test("dashboard link is present in session viewer nav", async ({ page }) => {

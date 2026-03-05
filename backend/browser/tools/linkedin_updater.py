@@ -196,22 +196,15 @@ async def update_linkedin_profile(
             "progress": 0,
         })
 
-        # Use a simple agent to navigate to LinkedIn login
+        # Navigate to LinkedIn login directly via Playwright (no AI agent needed)
+        await browser.start()
+        await browser.navigate_to("https://www.linkedin.com/login")
+
         llm = ChatAnthropic(
             model="claude-sonnet-4-5",
             api_key=settings.ANTHROPIC_API_KEY,
             max_tokens=4096,
         )
-
-        nav_agent = Agent(
-            task="Navigate to https://www.linkedin.com/login and wait. Do nothing else.",
-            llm=llm,
-            browser=browser,
-            max_actions_per_step=1,
-            use_vision=True,
-            max_failures=2,
-        )
-        await nav_agent.run(max_steps=3)
 
         await emit_agent_event(session_id, "linkedin_login_required", {
             "step": "LinkedIn is open — log in and click 'I'm logged in' when ready",

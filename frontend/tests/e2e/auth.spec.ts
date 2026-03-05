@@ -3,9 +3,7 @@ import { login } from "./helpers/auth";
 
 test.describe("Authentication Flow", () => {
   test.describe("Protected routes redirect unauthenticated users", () => {
-    test("visiting /session/new redirects to /auth/login", async ({
-      page,
-    }) => {
+    test("visiting /session/new redirects to /auth/login", async ({ page }) => {
       await page.goto("/session/new");
       await page.waitForURL("**/auth/login**");
       expect(page.url()).toContain("/auth/login");
@@ -26,14 +24,10 @@ test.describe("Authentication Flow", () => {
     test("renders the login form with email and password fields", async ({
       page,
     }) => {
-      await expect(
-        page.getByText("Sign in to your account")
-      ).toBeVisible();
+      await expect(page.getByText("Sign in to your account")).toBeVisible();
       await expect(page.getByPlaceholder("Email")).toBeVisible();
       await expect(page.getByPlaceholder("Password")).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: "Sign In" })
-      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
     });
 
     test("has a link to the signup page", async ({ page }) => {
@@ -61,9 +55,7 @@ test.describe("Authentication Flow", () => {
     test("renders the signup form with name, email, and password fields", async ({
       page,
     }) => {
-      await expect(
-        page.getByText("Create your account")
-      ).toBeVisible();
+      await expect(page.getByText("Create your account")).toBeVisible();
       await expect(page.getByPlaceholder("Full name")).toBeVisible();
       await expect(page.getByPlaceholder("Email")).toBeVisible();
       await expect(

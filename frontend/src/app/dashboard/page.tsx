@@ -49,7 +49,9 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950">
       <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
-        <Link href="/" className="text-xl font-bold tracking-tight">JobHunter Agent</Link>
+        <Link href="/" className="text-xl font-bold tracking-tight">
+          JobHunter Agent
+        </Link>
         <div className="flex items-center gap-4">
           <span className="text-sm text-zinc-500">test@example.com</span>
           <Link href="/session/new">
@@ -62,7 +64,9 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-zinc-600 dark:text-zinc-400 mt-1">Your job hunting sessions</p>
+            <p className="text-zinc-600 dark:text-zinc-400 mt-1">
+              Your job hunting sessions
+            </p>
           </div>
           <Link href="/session/new">
             <Button>Start New Session</Button>
@@ -91,7 +95,10 @@ export default function Dashboard() {
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-2xl font-bold">
-                    {sessions.reduce((sum, s) => sum + s.applications_submitted, 0)}
+                    {sessions.reduce(
+                      (sum, s) => sum + s.applications_submitted,
+                      0
+                    )}
                   </p>
                   <p className="text-sm text-zinc-500">Applications Sent</p>
                 </CardContent>
@@ -118,7 +125,10 @@ export default function Dashboard() {
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 flex items-center justify-between">
+              <div
+                key={i}
+                className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 flex items-center justify-between"
+              >
                 <div className="space-y-2">
                   <div className="h-5 w-48 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
                   <div className="h-3 w-32 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />
@@ -130,7 +140,9 @@ export default function Dashboard() {
         ) : sessions.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-zinc-500 mb-4">No sessions yet. Start your first job hunt!</p>
+              <p className="text-zinc-500 mb-4">
+                No sessions yet. Start your first job hunt!
+              </p>
               <Link href="/session/new">
                 <Button>Start Session</Button>
               </Link>
@@ -144,7 +156,15 @@ export default function Dashboard() {
                   <CardContent className="py-4 flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <Badge variant={(STATUS_COLORS[s.status] as "default" | "secondary" | "destructive" | "outline") || "secondary"}>
+                        <Badge
+                          variant={
+                            (STATUS_COLORS[s.status] as
+                              | "default"
+                              | "secondary"
+                              | "destructive"
+                              | "outline") || "secondary"
+                          }
+                        >
                           {STATUS_LABELS[s.status] || s.status}
                         </Badge>
                         <span className="text-sm text-zinc-500">
@@ -154,9 +174,19 @@ export default function Dashboard() {
                       <p className="font-medium">{s.keywords.join(", ")}</p>
                     </div>
                     <div className="text-right text-sm">
-                      <p><span className="text-green-600">{s.applications_submitted}</span> submitted</p>
+                      <p>
+                        <span className="text-green-600">
+                          {s.applications_submitted}
+                        </span>{" "}
+                        submitted
+                      </p>
                       {s.applications_failed > 0 && (
-                        <p><span className="text-red-500">{s.applications_failed}</span> failed</p>
+                        <p>
+                          <span className="text-red-500">
+                            {s.applications_failed}
+                          </span>{" "}
+                          failed
+                        </p>
                       )}
                     </div>
                   </CardContent>

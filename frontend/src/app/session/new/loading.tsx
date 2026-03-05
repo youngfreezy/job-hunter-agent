@@ -20,7 +20,9 @@ export default function Loading() {
                 <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
                 <div className="h-3 w-16 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse mt-2" />
               </div>
-              {i < 3 && <div className="flex-1 h-0.5 mx-4 bg-zinc-200 dark:bg-zinc-800" />}
+              {i < 3 && (
+                <div className="flex-1 h-0.5 mx-4 bg-zinc-200 dark:bg-zinc-800" />
+              )}
             </div>
           ))}
         </div>

@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 
 from langgraph.types import Command
@@ -1279,6 +1279,41 @@ async def resume_session(session_id: str, request: Request):
     asyncio.create_task(_resume_stalled_pipeline(session_id, graph, config))
 
     return {"status": "ok", "next": list(next_nodes), "action": f"resuming_{next_label}"}
+
+
+# ---------------------------------------------------------------------------
+# Resume file parsing (PDF / DOCX / TXT → plain text)
+# ---------------------------------------------------------------------------
+
+@router.post("/parse-resume")
+async def parse_resume(file: UploadFile = File(...)):
+    """Extract plain text from an uploaded resume file."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    suffix = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    raw = await file.read()
+
+    if suffix == "txt":
+        text = raw.decode("utf-8", errors="replace")
+    elif suffix == "pdf":
+        import io
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(raw))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    elif suffix in ("docx", "doc"):
+        import io
+        from docx import Document
+        doc = Document(io.BytesIO(raw))
+        text = "\n".join(p.text for p in doc.paragraphs)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: .{suffix}")
+
+    text = text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Could not extract any text from the file")
+
+    return {"text": text, "filename": file.filename}
 
 
 # ---------------------------------------------------------------------------

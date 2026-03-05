@@ -32,8 +32,14 @@ export function SessionWizard() {
     onSubmit: async (values) => {
       setSubmitError("");
       try {
-        const keywordList = values.keywords.split(",").map((k) => k.trim()).filter(Boolean);
-        const locationList = values.locations.split(",").map((l) => l.trim()).filter(Boolean);
+        const keywordList = values.keywords
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean);
+        const locationList = values.locations
+          .split(",")
+          .map((l) => l.trim())
+          .filter(Boolean);
 
         const session = await startSession({
           keywords: keywordList,
@@ -49,9 +55,16 @@ export function SessionWizard() {
         // Next.js dev-mode on-demand page compilation delay.
         window.location.href = `/session/${session.session_id}`;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Failed to start session";
-        if (msg === "Failed to fetch" || msg.includes("NetworkError") || msg === "Load failed") {
-          setSubmitError("Unable to connect to the server. Make sure the backend is running (npm start).");
+        const msg =
+          err instanceof Error ? err.message : "Failed to start session";
+        if (
+          msg === "Failed to fetch" ||
+          msg.includes("NetworkError") ||
+          msg === "Load failed"
+        ) {
+          setSubmitError(
+            "Unable to connect to the server. Make sure the backend is running (npm start)."
+          );
         } else {
           setSubmitError(msg);
         }

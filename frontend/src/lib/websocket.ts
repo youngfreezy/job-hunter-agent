@@ -4,7 +4,9 @@
  */
 
 type MessageHandler = (data: Record<string, unknown>) => void;
-type StatusHandler = (status: "connecting" | "connected" | "disconnected" | "error") => void;
+type StatusHandler = (
+  status: "connecting" | "connected" | "disconnected" | "error"
+) => void;
 
 export class WebSocketManager {
   private ws: WebSocket | null = null;
