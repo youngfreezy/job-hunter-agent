@@ -3,13 +3,13 @@
 Uses browser-use (LLM-driven browser automation) to dynamically navigate
 job boards, search keywords, and extract listings. No hardcoded CSS selectors.
 
-All boards are searched concurrently via asyncio.gather, each with its own
-browser-use Agent and BrowserSession. Results are deduplicated by title+company.
+Boards are searched sequentially (one at a time), each with a fresh browser
+instance (browser-use resets CDP on agent completion). Only 1 Chrome runs
+at a time. Results are deduplicated by title+company.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Dict, List
 
@@ -62,11 +62,10 @@ def _dedup_key(job: JobListing) -> str:
 async def run_discovery_agent(state: Dict[str, Any]) -> dict:
     """Discover job listings across job boards using browser-use.
 
-    Each board gets its own browser-use Agent that dynamically navigates
-    the site, searches keywords, and extracts listings. All boards run
-    concurrently. Results are deduplicated by title+company.
+    Each board gets a fresh browser (browser-use resets CDP after agent
+    completion). Boards run sequentially to keep only 1 Chrome at a time.
+    Results are deduplicated by title+company.
     """
-    from browser_use import Browser
     from backend.browser.tools.browser_use_discovery import discover_board
 
     session_id: str = state.get("session_id", "")
@@ -85,59 +84,39 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
     all_errors: List[str] = []
     agent_statuses: Dict[str, str] = {}
 
-    # Pre-start one browser per board in parallel to avoid serial cold-starts
-    browsers = [Browser(headless=False, disable_security=True) for _ in boards]
-    await asyncio.gather(*[b.start() for b in browsers])
+    # Each board gets its own fresh browser because browser-use's Agent.run()
+    # resets/disconnects the browser session on completion, breaking CDP for
+    # subsequent agents. Sequential execution keeps only 1 Chrome at a time.
+    for board in boards:
+        board_label = board.value.replace("_", " ").title()
 
-    async def _discover_board(board: JobBoard, browser: Browser) -> tuple[JobBoard, List[JobListing], List[str]]:
-        """Run browser-use discovery for a single board."""
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": board.value,
+            "step": f"Searching {board_label}...",
+        })
+
         try:
-            jobs = await discover_board(
+            board_jobs = await discover_board(
                 board=board,
                 search_config=search_config,
                 session_id=session_id,
                 max_results=PER_BOARD_MAX,
-                browser=browser,
+                browser=None,  # fresh browser per board
             )
-            return board, jobs, []
-        except Exception as exc:
-            logger.exception("Discovery failed for %s", board.value)
-            return board, [], [f"Discovery failed for {board.value}: {exc}"]
 
-    # Discover all boards concurrently (each with its own pre-started browser)
-    try:
-        results = await asyncio.gather(
-            *[_discover_board(board, browser) for board, browser in zip(boards, browsers)],
-            return_exceptions=True,
-        )
-    finally:
-        # Clean up all browsers
-        for b in browsers:
-            try:
-                await b.stop()
-            except Exception:
-                pass
-
-    for result in results:
-        if isinstance(result, Exception):
-            logger.error("Board discovery failed: %s", result)
-            all_errors.append(str(result))
-            continue
-
-        board, board_jobs, board_errors = result
-        all_errors.extend(board_errors)
-
-        if board_errors and not board_jobs:
-            agent_statuses[f"discovery_{board.value}"] = "failed"
-        else:
             agent_statuses[f"discovery_{board.value}"] = f"done ({len(board_jobs)} listings)"
 
-        # Deduplicate across boards
-        for job in board_jobs:
-            key = _dedup_key(job)
-            if key not in seen_keys:
-                seen_keys.add(key)
-                all_jobs.append(job)
+            # Deduplicate across boards
+            for job in board_jobs:
+                key = _dedup_key(job)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    all_jobs.append(job)
+
+        except Exception as exc:
+            logger.exception("Discovery failed for %s", board.value)
+            all_errors.append(f"Discovery failed for {board.value}: {exc}")
+            agent_statuses[f"discovery_{board.value}"] = "failed"
 
     logger.info(
         "Discovery complete -- %d total jobs from %d boards, %d errors",
