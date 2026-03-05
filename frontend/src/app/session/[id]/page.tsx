@@ -114,14 +114,14 @@ const STEP_LABELS: Record<string, string> = {
 
 const AGENT_COLORS: Record<string, string> = {
   intake: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
-  career_coach: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-800",
-  coaching: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-800",
+  career_coach: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800",
+  coaching: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800",
   discovery: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800",
   scoring: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800",
   resume_tailor: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800",
   application: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800",
   verification: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800",
-  reporting: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800",
+  reporting: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
   status: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-800",
   system: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-800",
 };
@@ -372,7 +372,7 @@ export default function SessionPage() {
       {/* Navbar */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50 px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/" className="text-lg font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+          <Link href="/" className="text-lg font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
             JobHunter Agent
           </Link>
           <div className="flex items-center gap-3">
@@ -380,14 +380,14 @@ export default function SessionPage() {
               variant={session.status === "completed" ? "default" : "secondary"}
               className={
                 isActive
-                  ? "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800 animate-pulse"
+                  ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 animate-pulse"
                   : session.status === "completed"
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
                   : ""
               }
             >
               {isActive && (
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 mr-1.5 animate-pulse" />
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse" />
               )}
               {STATUS_LABELS[session.status] || session.status}
             </Badge>
@@ -412,9 +412,9 @@ export default function SessionPage() {
                     className={`
                       relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-500 whitespace-nowrap overflow-hidden
                       ${isCompleted
-                        ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300"
+                        ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
                         : isCurrent
-                        ? "bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/30"
+                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
                         : "text-muted-foreground/60"
                       }
                     `}
@@ -444,8 +444,8 @@ export default function SessionPage() {
                         <div
                           className={`h-full rounded-full transition-all duration-700 ease-out ${
                             isCurrent && isActive
-                              ? "bg-gradient-to-r from-indigo-500 to-violet-500 animate-progress-pulse"
-                              : "bg-indigo-400 dark:bg-indigo-500"
+                              ? "bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
+                              : "bg-blue-400 dark:bg-blue-500"
                           }`}
                           style={{ width: isCompleted ? "100%" : isCurrent ? `${Math.max(stepProgress, 5)}%` : "0%" }}
                         />
@@ -519,9 +519,9 @@ export default function SessionPage() {
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${AGENT_COLORS[label] || AGENT_COLORS.system}`}>
                             {label}
                           </span>
-                          <span className="text-sm text-indigo-600 dark:text-indigo-400 flex-1">{evt.step}</span>
+                          <span className="text-sm text-foreground/80 flex-1">{evt.step}</span>
                           {pct !== undefined && pct >= 0 && (
-                            <CircularProgress value={pct} size={24} strokeWidth={2.5} showValue className="ml-auto shrink-0" />
+                            <span className="text-[11px] font-mono text-muted-foreground ml-auto tabular-nums">{Math.round(pct)}%</span>
                           )}
                         </div>
                       );
@@ -598,7 +598,7 @@ export default function SessionPage() {
                 <div className="max-h-32 overflow-y-auto mb-2 space-y-1.5">
                   {chatMessages.map((msg, i) => (
                     <div key={i} className={`text-sm flex gap-2 ${msg.role === "user" ? "" : ""}`}>
-                      <Badge variant="secondary" className={`text-[10px] shrink-0 ${msg.role === "user" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}>
+                      <Badge variant="secondary" className={`text-[10px] shrink-0 ${msg.role === "user" ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}>
                         {msg.role === "user" ? "You" : "Agent"}
                       </Badge>
                       <span className="text-foreground/80">{msg.text}</span>
@@ -623,10 +623,10 @@ export default function SessionPage() {
         {/* Right: Sidebar */}
         <div className="w-80 border-l border-border/50 p-5 space-y-4 overflow-y-auto bg-card/30">
           {/* Session info */}
-          <Card className="bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-950/50 dark:to-violet-950/50 border-indigo-100 dark:border-indigo-900">
+          <Card className="bg-gradient-to-br from-blue-50 to-sky-50 dark:from-blue-950/50 dark:to-sky-950/50 border-blue-100 dark:border-blue-900">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <svg className="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Session
@@ -643,7 +643,7 @@ export default function SessionPage() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="text-center p-2 rounded-lg bg-white/60 dark:bg-white/5">
-                  <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{session.applications_used || 0}</p>
+                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{session.applications_used || 0}</p>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Applied</p>
                 </div>
                 <div className="text-center p-2 rounded-lg bg-white/60 dark:bg-white/5">
@@ -660,10 +660,10 @@ export default function SessionPage() {
 
           {/* Coach output */}
           {session.coach_output && (
-            <Card className="bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/50 dark:to-purple-950/50 border-violet-100 dark:border-violet-900">
+            <Card className="bg-gradient-to-br from-slate-50 to-gray-50 dark:from-slate-950/50 dark:to-gray-950/50 border-slate-200 dark:border-slate-800">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <svg className="w-4 h-4 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                   </svg>
                   Career Coach
@@ -802,7 +802,7 @@ export default function SessionPage() {
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
                 <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
@@ -858,7 +858,7 @@ export default function SessionPage() {
                   key={sj.job.id}
                   className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
                     selected
-                      ? "border-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/30 dark:border-indigo-700 shadow-sm"
+                      ? "border-blue-300 bg-blue-50/50 dark:bg-blue-950/30 dark:border-blue-700 shadow-sm"
                       : "border-border hover:border-border/80 opacity-60 hover:opacity-80"
                   }`}
                   onClick={() => toggleJobSelection(sj.job.id)}
@@ -871,7 +871,7 @@ export default function SessionPage() {
                         <ul className="mt-2 space-y-0.5">
                           {sj.reasons.map((r, ri) => (
                             <li key={ri} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                              <span className="text-indigo-400 mt-0.5">-</span> {r}
+                              <span className="text-blue-400 mt-0.5">-</span> {r}
                             </li>
                           ))}
                         </ul>
@@ -882,7 +882,7 @@ export default function SessionPage() {
                       <Badge variant="secondary" className="text-xs">{sj.job.board}</Badge>
                       <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
                         selected
-                          ? "border-indigo-500 bg-indigo-500 text-white shadow-sm shadow-indigo-500/30"
+                          ? "border-blue-500 bg-blue-500 text-white shadow-sm shadow-blue-500/30"
                           : "border-muted-foreground/30"
                       }`}>
                         {selected && (

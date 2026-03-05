@@ -16,7 +16,7 @@
     --card-foreground: 224 71% 4%;
     --popover: 0 0% 100%;
     --popover-foreground: 224 71% 4%;
-    --primary: 239 84% 67%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 14% 96%;
     --secondary-foreground: 224 71% 4%;
@@ -28,16 +28,16 @@
     --destructive-foreground: 0 0% 98%;
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 239 84% 67%;
-    --chart-1: 239 84% 67%;
+    --ring: 217 91% 60%;
+    --chart-1: 217 91% 60%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.75rem;
-    --cp-path: #6366f1;
-    --cp-trail: #e0e7ff;
-    --cp-text: #3730a3;
+    --cp-path: #3b82f6;
+    --cp-trail: #dbeafe;
+    --cp-text: #1e40af;
   }
   .dark {
     --background: 224 71% 4%;
@@ -46,7 +46,7 @@
     --card-foreground: 210 20% 98%;
     --popover: 224 50% 8%;
     --popover-foreground: 210 20% 98%;
-    --primary: 239 84% 67%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
     --secondary: 215 28% 17%;
     --secondary-foreground: 210 20% 98%;
@@ -58,15 +58,15 @@
     --destructive-foreground: 210 20% 98%;
     --border: 215 28% 17%;
     --input: 215 28% 17%;
-    --ring: 239 84% 67%;
+    --ring: 217 91% 60%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
-    --cp-path: #818cf8;
-    --cp-trail: #1e1b4b;
-    --cp-text: #c7d2fe;
+    --cp-path: #60a5fa;
+    --cp-trail: #172554;
+    --cp-text: #bfdbfe;
   }
 }
 

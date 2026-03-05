@@ -28,3 +28,7 @@ docs/
 # OS
 .DS_Store
 frontend/playwright-report/
+
+# Test artifacts
+test_screenshots/
+test_apply_screenshots/

@@ -55,7 +55,7 @@ const CircularProgress = React.forwardRef<HTMLDivElement, CircularProgressProps>
             r={radius}
             fill="none"
             strokeWidth={strokeWidth}
-            className="stroke-indigo-100 dark:stroke-indigo-950/50"
+            className="stroke-blue-100 dark:stroke-blue-950/50"
           />
           {/* Foreground ring */}
           <circle
