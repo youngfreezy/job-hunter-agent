@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
 from backend.orchestrator.pipeline.state import JobHunterState
-from backend.shared.config import MAX_APPLICATION_JOBS
+from backend.shared.config import MAX_APPLICATION_JOBS, get_settings
 from backend.shared.event_bus import register_emitter, unregister_emitter
 from backend.shared.models.schemas import (
     CoachReviewRequest,
@@ -1279,3 +1279,72 @@ async def resume_session(session_id: str, request: Request):
     asyncio.create_task(_resume_stalled_pipeline(session_id, graph, config))
 
     return {"status": "ok", "next": list(next_nodes), "action": f"resuming_{next_label}"}
+
+
+# ---------------------------------------------------------------------------
+# LinkedIn Profile Updater
+# ---------------------------------------------------------------------------
+
+class LinkedInUpdateRequest(_BaseModel):
+    updates: list[dict]  # [{"section": "headline", "content": "..."}, ...]
+    linkedin_url: str | None = None
+
+
+@router.post("/{session_id}/linkedin-update")
+async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
+    """Launch a guided LinkedIn profile update in a visible browser.
+
+    The browser opens to LinkedIn login, waits for the user to log in
+    and confirm, then applies updates one section at a time.
+    """
+    if not body.updates:
+        raise HTTPException(status_code=400, detail="No updates provided")
+
+    # Ensure SSE infrastructure exists for this session
+    sse_subscribers.setdefault(session_id, [])
+    event_logs.setdefault(session_id, [])
+
+    # Register emitter so the linkedin tool can send SSE events
+    register_emitter(session_id, _emit)
+
+    # Launch in background
+    async def _run_linkedin_update():
+        try:
+            from backend.browser.tools.linkedin_updater import update_linkedin_profile
+            await update_linkedin_profile(
+                session_id=session_id,
+                updates=body.updates,
+                linkedin_url=body.linkedin_url,
+            )
+        except Exception as exc:
+            logger.exception("LinkedIn update task failed for session %s", session_id)
+            await _emit(session_id, "linkedin_update_failed", {
+                "step": f"Update failed: {str(exc)[:200]}",
+                "error": str(exc),
+            })
+        finally:
+            unregister_emitter(session_id)
+
+    asyncio.create_task(_run_linkedin_update())
+
+    return {"status": "ok", "message": "LinkedIn update started — open the browser and log in"}
+
+
+@router.post("/{session_id}/linkedin-login-confirmed")
+async def confirm_linkedin_login(session_id: str):
+    """Signal that the user has logged into LinkedIn in the browser."""
+    try:
+        import redis.asyncio as aioredis
+        settings_val = get_settings()
+        redis_client = aioredis.from_url(settings_val.REDIS_URL)
+        await redis_client.set(f"linkedin:logged_in:{session_id}", "1", ex=600)
+        await redis_client.close()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to send login signal: {exc}")
+
+    await _emit(session_id, "status", {
+        "status": "linkedin_update",
+        "message": "Login confirmed — starting profile updates...",
+    })
+
+    return {"status": "ok", "message": "Login confirmed"}

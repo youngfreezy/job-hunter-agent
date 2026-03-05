@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { CircularProgress } from "@/components/ui/circular-progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { CoachPanel } from "@/components/CoachPanel";
+import { CoachPanel, type LinkedInProgress } from "@/components/CoachPanel";
 import { getSession, connectSSE, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision, listCheckpoints, rewindSession, resumeSession } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
@@ -34,6 +34,7 @@ type SessionData = {
     error_message?: string;
   }>;
   coach_output?: CoachOutput;
+  linkedin_url?: string;
   steering_mode: string;
   applications_used: number;
 };
@@ -82,6 +83,9 @@ type SSEEvent = {
   failed?: number;
   current?: number;
   total?: number;
+  section?: string;
+  success?: boolean;
+  results?: Array<{ section: string; label: string; success: boolean; error?: string | null }>;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -184,6 +188,8 @@ export default function SessionPage() {
   const [rewindLoading, setRewindLoading] = useState(false);
   const [resumeLoading, setResumeLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
+  const [linkedinProgress, setLinkedinProgress] = useState<LinkedInProgress | null>(null);
+  const [linkedinLoginRequired, setLinkedinLoginRequired] = useState(false);
 
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const latestStatusRef = useRef("intake");
@@ -342,6 +348,28 @@ export default function SessionPage() {
       }
       if (evt.status === "applying" && (evt.message?.includes("Submitting") || evt.message?.includes("Skipping"))) {
         setSubmitConfirmData(null);
+      }
+
+      // LinkedIn update SSE events
+      if (evt.event === "linkedin_login_required") {
+        setLinkedinLoginRequired(true);
+      }
+      if (evt.event === "linkedin_update_progress" || evt.event === "linkedin_update_complete") {
+        setLinkedinLoginRequired(false);
+        setLinkedinProgress({
+          step: String(evt.step || ""),
+          section: String(evt.section || ""),
+          progress: typeof evt.progress === "number" ? evt.progress : 0,
+          success: evt.success as boolean | undefined,
+          results: evt.results as LinkedInProgress["results"],
+        });
+      }
+      if (evt.event === "linkedin_update_failed") {
+        setLinkedinProgress({
+          step: String(evt.step || "Update failed"),
+          section: String(evt.section || ""),
+          progress: -1,
+        });
       }
 
       setTimeout(() => eventsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -1009,7 +1037,13 @@ export default function SessionPage() {
             </DialogDescription>
           </DialogHeader>
           {coachReviewData && (
-            <CoachPanel coach={coachReviewData} />
+            <CoachPanel
+              coach={coachReviewData}
+              sessionId={sessionId}
+              linkedinUrl={session?.linkedin_url}
+              linkedinProgress={linkedinProgress}
+              linkedinLoginRequired={linkedinLoginRequired}
+            />
           )}
           <DialogFooter>
             <Button
