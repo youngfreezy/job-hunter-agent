@@ -85,7 +85,7 @@ async def scrape_google_jobs(
     listings: List[JobListing] = []
 
     try:
-        query_parts = search_config.keywords + ["jobs"]
+        query_parts = search_config.keywords[:5] + ["jobs"]
         if search_config.locations and search_config.locations[0].lower() != "remote":
             query_parts.append(search_config.locations[0])
         if search_config.remote_only:
