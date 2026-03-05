@@ -13,14 +13,22 @@ interface FormikTextareaProps {
   className?: string;
 }
 
-export function FormikTextarea({ name, label, className, ...props }: FormikTextareaProps) {
+export function FormikTextarea({
+  name,
+  label,
+  className,
+  ...props
+}: FormikTextareaProps) {
   const [field, meta] = useField(name);
   const showError = meta.touched && !!meta.error;
 
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={name} className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label
+          htmlFor={name}
+          className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+        >
           {label}
         </label>
       )}

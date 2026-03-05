@@ -14,8 +14,22 @@ interface CircularProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   pulse?: boolean;
 }
 
-const CircularProgress = React.forwardRef<HTMLDivElement, CircularProgressProps>(
-  ({ value, size = 40, strokeWidth = 4, showValue = false, pulse = false, className, ...props }, ref) => {
+const CircularProgress = React.forwardRef<
+  HTMLDivElement,
+  CircularProgressProps
+>(
+  (
+    {
+      value,
+      size = 40,
+      strokeWidth = 4,
+      showValue = false,
+      pulse = false,
+      className,
+      ...props
+    },
+    ref
+  ) => {
     const clamped = Math.max(0, Math.min(100, value));
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
@@ -36,7 +50,7 @@ const CircularProgress = React.forwardRef<HTMLDivElement, CircularProgressProps>
         className={cn(
           "relative inline-flex items-center justify-center",
           pulse && "animate-[spin-pulse_2s_ease-in-out_infinite]",
-          className,
+          className
         )}
         style={{ width: size, height: size }}
         {...props}
@@ -69,7 +83,12 @@ const CircularProgress = React.forwardRef<HTMLDivElement, CircularProgressProps>
             strokeDasharray={circumference}
             strokeDashoffset={offset}
             className="transition-[stroke-dashoffset] duration-500 ease-out"
-            style={{ filter: clamped > 0 ? `drop-shadow(0 0 3px ${colors.from}40)` : undefined }}
+            style={{
+              filter:
+                clamped > 0
+                  ? `drop-shadow(0 0 3px ${colors.from}40)`
+                  : undefined,
+            }}
           />
         </svg>
         {showValue && (

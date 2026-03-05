@@ -4,34 +4,30 @@ import * as Yup from "yup";
 export const jobSearchSchema = Yup.object({
   keywords: Yup.string()
     .required("Enter at least one keyword.")
-    .test(
-      "has-keywords",
-      "Enter at least one keyword.",
-      (value) => {
-        if (!value) return false;
-        const parsed = value.split(",").map((k) => k.trim()).filter(Boolean);
-        return parsed.length > 0;
-      }
-    ),
+    .test("has-keywords", "Enter at least one keyword.", (value) => {
+      if (!value) return false;
+      const parsed = value
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean);
+      return parsed.length > 0;
+    }),
   locations: Yup.string().default(""),
   remoteOnly: Yup.boolean().default(false),
   salaryMin: Yup.string()
     .default("")
-    .test(
-      "positive-salary",
-      "Salary must be a positive number.",
-      (value) => {
-        if (!value || value === "") return true;
-        const num = parseInt(value, 10);
-        return !isNaN(num) && num > 0;
-      }
-    ),
+    .test("positive-salary", "Salary must be a positive number.", (value) => {
+      if (!value || value === "") return true;
+      const num = parseInt(value, 10);
+      return !isNaN(num) && num > 0;
+    }),
 });
 
 // ---------- Step 2: Resume & Profile ----------
 export const resumeProfileSchema = Yup.object({
-  resumeText: Yup.string()
-    .required("Upload a resume file or paste your resume text."),
+  resumeText: Yup.string().required(
+    "Upload a resume file (.pdf, .docx, or .txt)."
+  ),
   resumeFileName: Yup.string().default(""),
   linkedinUrl: Yup.string()
     .default("")

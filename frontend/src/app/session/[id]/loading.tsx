@@ -18,7 +18,9 @@ export default function Loading() {
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="flex items-center flex-1">
                 <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
-                {i < 5 && <div className="flex-1 h-0.5 mx-2 bg-zinc-200 dark:bg-zinc-800" />}
+                {i < 5 && (
+                  <div className="flex-1 h-0.5 mx-2 bg-zinc-200 dark:bg-zinc-800" />
+                )}
               </div>
             ))}
           </div>
@@ -26,7 +28,10 @@ export default function Loading() {
           {/* Tab bar skeleton */}
           <div className="flex gap-4 border-b border-zinc-200 dark:border-zinc-800 mb-6">
             {["Status Feed", "Screenshot Feed", "Take Control"].map((_, i) => (
-              <div key={i} className="h-4 w-28 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-3" />
+              <div
+                key={i}
+                className="h-4 w-28 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-3"
+              />
             ))}
           </div>
 

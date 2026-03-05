@@ -76,9 +76,7 @@ test.describe("Landing Page", () => {
     page,
   }) => {
     await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Get Started" })
-    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Get Started" })).toBeVisible();
   });
 
   test("hero section has correct headline text", async ({ page }) => {

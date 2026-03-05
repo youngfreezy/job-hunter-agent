@@ -4,8 +4,7 @@ export const loginSchema = Yup.object({
   email: Yup.string()
     .email("Enter a valid email address.")
     .required("Email is required."),
-  password: Yup.string()
-    .required("Password is required."),
+  password: Yup.string().required("Password is required."),
 });
 
 export type LoginFormValues = Yup.InferType<typeof loginSchema>;
@@ -16,8 +15,7 @@ export const loginInitialValues: LoginFormValues = {
 };
 
 export const signupSchema = Yup.object({
-  name: Yup.string()
-    .required("Name is required."),
+  name: Yup.string().required("Name is required."),
   email: Yup.string()
     .email("Enter a valid email address.")
     .required("Email is required."),

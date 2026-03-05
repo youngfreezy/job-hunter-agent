@@ -17,7 +17,12 @@ interface ChatPanelProps {
   placeholder?: string;
 }
 
-export function ChatPanel({ messages, onSend, disabled, placeholder }: ChatPanelProps) {
+export function ChatPanel({
+  messages,
+  onSend,
+  disabled,
+  placeholder,
+}: ChatPanelProps) {
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -68,7 +73,11 @@ export function ChatPanel({ messages, onSend, disabled, placeholder }: ChatPanel
           placeholder={placeholder || "Steer the agent... e.g. 'Skip this job'"}
           disabled={disabled}
         />
-        <Button size="sm" onClick={handleSend} disabled={disabled || !input.trim()}>
+        <Button
+          size="sm"
+          onClick={handleSend}
+          disabled={disabled || !input.trim()}
+        >
           Send
         </Button>
       </div>

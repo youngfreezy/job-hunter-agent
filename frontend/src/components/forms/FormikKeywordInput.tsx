@@ -13,18 +13,29 @@ interface FormikKeywordInputProps {
   helpText?: string;
 }
 
-export function FormikKeywordInput({ name, placeholder, label, helpText }: FormikKeywordInputProps) {
+export function FormikKeywordInput({
+  name,
+  placeholder,
+  label,
+  helpText,
+}: FormikKeywordInputProps) {
   const [field, meta] = useField(name);
   const showError = meta.touched && !!meta.error;
 
   const keywords = field.value
-    ? field.value.split(",").map((k: string) => k.trim()).filter(Boolean)
+    ? field.value
+        .split(",")
+        .map((k: string) => k.trim())
+        .filter(Boolean)
     : [];
 
   return (
     <div className="space-y-3">
       {label && (
-        <label htmlFor={name} className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <label
+          htmlFor={name}
+          className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+        >
           {label}
         </label>
       )}
@@ -38,7 +49,9 @@ export function FormikKeywordInput({ name, placeholder, label, helpText }: Formi
       {keywords.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {keywords.map((k: string) => (
-            <Badge key={k} variant="secondary">{k}</Badge>
+            <Badge key={k} variant="secondary">
+              {k}
+            </Badge>
           ))}
         </div>
       )}

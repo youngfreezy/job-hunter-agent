@@ -21,13 +21,17 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     expect(health.status()).toBe(200);
   });
 
-  test("complete wizard and verify session page loads with keywords and events", async ({ page }) => {
+  test("complete wizard and verify session page loads with keywords and events", async ({
+    page,
+  }) => {
     // Allow enough time for pipeline to start
     test.setTimeout(60_000);
 
     // Step 1: Navigate to wizard
     await page.goto("/session/new");
-    await expect(page.getByRole("heading", { name: "New Session" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "New Session" })
+    ).toBeVisible();
     await expect(page.getByText("Job Search", { exact: true })).toBeVisible();
 
     // Step 1: Fill keywords
@@ -49,15 +53,17 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.waitForTimeout(500);
 
     // Step 2: Should be on Resume & Profile
-    await expect(page.getByText("Your Resume", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText("Your Resume", { exact: true }).first()
+    ).toBeVisible();
 
     // Fill resume text
     const resumeTextarea = page.locator("textarea#resumeText");
     await resumeTextarea.fill(
       "Senior Software Engineer with 10 years of experience in React, Python, " +
-      "and distributed systems. Built multiple AI-native applications using " +
-      "LangGraph, LangChain, and RAG pipelines. Expert in TypeScript, Node.js, " +
-      "and AWS cloud services."
+        "and distributed systems. Built multiple AI-native applications using " +
+        "LangGraph, LangChain, and RAG pipelines. Expert in TypeScript, Node.js, " +
+        "and AWS cloud services."
     );
     await page.waitForTimeout(500);
 
@@ -66,7 +72,9 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.waitForTimeout(500);
 
     // Step 3: Should be on Review & Launch
-    await expect(page.getByText("Review & Launch", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText("Review & Launch", { exact: true }).first()
+    ).toBeVisible();
 
     // Verify review shows our data
     await expect(page.getByText("React, Python, LangGraph")).toBeVisible();
@@ -95,7 +103,9 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await expect(sidebar.getByText(/React/)).toBeVisible({ timeout: 10_000 });
 
     // Verify SSE events are streaming
-    await expect(page.getByText("Pipeline started")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Pipeline started")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Wait for coaching to start
     await expect(page.getByText("coaching")).toBeVisible({ timeout: 10_000 });
@@ -104,13 +114,17 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.screenshot({ path: "test-results/session-page-events.png" });
 
     // Verify the progress bar is visible
-    await expect(page.locator('[role="progressbar"], .relative.w-full')).toBeVisible();
+    await expect(
+      page.locator('[role="progressbar"], .relative.w-full')
+    ).toBeVisible();
 
     // Check that at least intake completed
     await expect(page.getByText(/intake/i).first()).toBeVisible();
   });
 
-  test("session page refresh preserves keywords and replays events", async ({ page }) => {
+  test("session page refresh preserves keywords and replays events", async ({
+    page,
+  }) => {
     test.setTimeout(60_000);
 
     // First create a session via the API directly
@@ -139,7 +153,9 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await expect(page.getByText(/TypeScript/)).toBeVisible({ timeout: 10_000 });
 
     // Verify replayed SSE events
-    await expect(page.getByText("Pipeline started")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Pipeline started")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Take screenshot before refresh
     await page.screenshot({ path: "test-results/session-before-refresh.png" });
@@ -152,7 +168,9 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await expect(page.getByText(/TypeScript/)).toBeVisible({ timeout: 10_000 });
 
     // Events should be replayed
-    await expect(page.getByText("Pipeline started")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Pipeline started")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Take screenshot after refresh
     await page.screenshot({ path: "test-results/session-after-refresh.png" });
@@ -180,7 +198,9 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.waitForTimeout(2000);
 
     // Should show at least one session (not "No sessions yet")
-    await expect(page.getByText("Dashboard Test")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Dashboard Test")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Take screenshot
     await page.screenshot({ path: "test-results/dashboard-with-sessions.png" });

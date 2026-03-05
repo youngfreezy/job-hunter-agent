@@ -31,17 +31,29 @@ export function StatusFeed({ events }: { events: StatusEvent[] }) {
   return (
     <div className="space-y-1.5 font-mono text-sm">
       {events.length === 0 && (
-        <p className="text-zinc-400 text-center py-8">Waiting for agent activity...</p>
+        <p className="text-zinc-400 text-center py-8">
+          Waiting for agent activity...
+        </p>
       )}
       {events.map((evt, i) => (
         <div key={i} className="flex items-start gap-2 py-0.5">
           <span className="text-zinc-400 text-xs whitespace-nowrap mt-0.5">
             {new Date(evt.timestamp).toLocaleTimeString()}
           </span>
-          <span className={`text-xs px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${AGENT_COLORS[evt.agent] || AGENT_COLORS.system}`}>
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${
+              AGENT_COLORS[evt.agent] || AGENT_COLORS.system
+            }`}
+          >
             {evt.agent}
           </span>
-          <span className={evt.event === "error" ? "text-red-500" : "text-zinc-700 dark:text-zinc-300"}>
+          <span
+            className={
+              evt.event === "error"
+                ? "text-red-500"
+                : "text-zinc-700 dark:text-zinc-300"
+            }
+          >
             {evt.message}
           </span>
         </div>
