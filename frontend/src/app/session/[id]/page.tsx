@@ -122,6 +122,11 @@ export default function SessionPage() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
+  // Track latest status synchronously (refs don't batch) to prevent modals from re-opening during SSE replay
+  const latestStatusRef = useRef("intake");
+  // Track if user has already approved each HITL gate in this session
+  const coachApprovedRef = useRef(false);
+  const shortlistApprovedRef = useRef(false);
 
   // Load session — may 404 initially (pipeline hasn't checkpointed yet)
   useEffect(() => {
@@ -166,14 +171,28 @@ export default function SessionPage() {
         setStepProgress(evt.progress);
       }
 
+      // Track status synchronously via ref (immune to React batching)
+      if (evt.status && (evt.event === "status" || evt.event === "done" || evt.event === "coach_review" || evt.event === "shortlist_review")) {
+        latestStatusRef.current = evt.status;
+      }
+
+      // Mark HITL gates as approved once pipeline moves past them
+      if (latestStatusRef.current === "discovering" || latestStatusRef.current === "scoring") {
+        coachApprovedRef.current = true;
+      }
+      if (latestStatusRef.current === "applying" || latestStatusRef.current === "verifying" ||
+          latestStatusRef.current === "reporting" || latestStatusRef.current === "completed" ||
+          latestStatusRef.current === "failed") {
+        coachApprovedRef.current = true;
+        shortlistApprovedRef.current = true;
+      }
+
       // Update session from event data
       setSession((prev) => {
         if (!prev) return prev;
         const updates: Partial<SessionData> = {};
-        // Only update pipeline status from "status", "done", "coach_review", or "shortlist_review" events
         if (evt.status && (evt.event === "status" || evt.event === "done" || evt.event === "coach_review" || evt.event === "shortlist_review")) {
           updates.status = evt.status;
-          // Reset step progress when status changes (new stage starting)
           setStepProgress(0);
         }
         if (evt.coach_output) updates.coach_output = evt.coach_output as unknown as SessionData["coach_output"];
@@ -181,39 +200,31 @@ export default function SessionPage() {
         return { ...prev, ...updates };
       });
 
-      // Open coach review modal when the pipeline pauses for review.
-      // Store the data always (for the sidebar), but only open the modal
-      // if the session is still awaiting review (not if replaying old events).
+      // Store coach review data for sidebar, but only open modal if not already approved
       if (evt.event === "coach_review" && evt.coach_output) {
-        const co = evt.coach_output as unknown as CoachOutput;
-        setCoachReviewData(co);
-        setSession((prev) => {
-          // Only auto-open if we're still at coaching/awaiting_coach_review
-          if (prev && (prev.status === "coaching" || prev.status === "awaiting_coach_review")) {
-            setCoachReviewOpen(true);
-          }
-          return prev;
-        });
+        setCoachReviewData(evt.coach_output as unknown as CoachOutput);
+        if (!coachApprovedRef.current &&
+            (latestStatusRef.current === "coaching" || latestStatusRef.current === "awaiting_coach_review")) {
+          setCoachReviewOpen(true);
+        }
       }
-      // Close modal if pipeline has moved past coach review
-      if (evt.event === "status" && evt.status && evt.status !== "coaching" && evt.status !== "awaiting_coach_review") {
+      // Close coach modal when pipeline moves past
+      if (evt.status && evt.status !== "coaching" && evt.status !== "awaiting_coach_review") {
         setCoachReviewOpen(false);
       }
 
-      // Open shortlist review modal
+      // Store shortlist data, but only open modal if not already approved
       if (evt.event === "shortlist_review" && evt.scored_jobs) {
         const jobs = evt.scored_jobs as ScoredJobData[];
         setShortlistJobs(jobs);
         setSelectedJobIds(new Set(jobs.map((sj) => sj.job.id)));
-        setSession((prev) => {
-          if (prev && (prev.status === "tailoring" || prev.status === "awaiting_review")) {
-            setShortlistReviewOpen(true);
-          }
-          return prev;
-        });
+        if (!shortlistApprovedRef.current &&
+            (latestStatusRef.current === "tailoring" || latestStatusRef.current === "awaiting_review")) {
+          setShortlistReviewOpen(true);
+        }
       }
-      // Close shortlist modal if pipeline moved past review
-      if (evt.event === "status" && evt.status && evt.status !== "tailoring" && evt.status !== "awaiting_review") {
+      // Close shortlist modal when pipeline moves past
+      if (evt.status && evt.status !== "tailoring" && evt.status !== "awaiting_review") {
         setShortlistReviewOpen(false);
       }
 

@@ -22,6 +22,8 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from langgraph.types import Command
+
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.event_bus import register_emitter, unregister_emitter
 from backend.shared.models.schemas import (
@@ -326,18 +328,23 @@ async def _run_pipeline(
         unregister_emitter(session_id)
 
 
-async def _resume_pipeline(session_id: str, graph: Any) -> None:
+async def _resume_pipeline(session_id: str, graph: Any, resume_value: Any = None) -> None:
     """Resume the pipeline after an interrupt (coach review or shortlist review).
 
-    Calls graph.astream(None, config) which continues from the last checkpoint.
+    Uses Command(resume=value) to provide the human input back to the
+    interrupt() call that paused the graph.
     """
     # Ensure emitter is registered for this session
     register_emitter(session_id, _emit)
 
     config = {"configurable": {"thread_id": session_id}}
 
+    # Build the resume input — Command(resume=...) feeds the value back
+    # to the interrupt() call that paused execution.
+    resume_input = Command(resume=resume_value) if resume_value is not None else None
+
     try:
-        interrupt_stage = await _stream_graph(session_id, graph, config, None)
+        interrupt_stage = await _stream_graph(session_id, graph, config, resume_input)
 
         if interrupt_stage == "shortlist_review":
             await _handle_shortlist_interrupt(session_id, graph, config)
@@ -543,21 +550,13 @@ async def stream_session(session_id: str, request: Request):
 async def submit_coach_review(session_id: str, body: CoachReviewRequest, request: Request):
     """Resume the pipeline after the user reviews the coached resume."""
     graph = request.app.state.graph
-    config = {"configurable": {"thread_id": session_id}}
 
-    # Build the human input that coach_review_gate expects
+    # Build the human input that coach_review_gate's interrupt() will receive
     human_input: Dict[str, Any] = {"approved": body.approved}
     if body.edited_resume:
         human_input["edited_resume"] = body.edited_resume
     if body.feedback:
         human_input["feedback"] = body.feedback
-
-    try:
-        # Resume the graph from the interrupt with the human input
-        await graph.aupdate_state(config, human_input, as_node="coach_review")
-    except Exception as exc:
-        logger.exception("Failed to submit coach review for session %s", session_id)
-        raise HTTPException(status_code=500, detail=str(exc))
 
     if session_id in session_registry:
         session_registry[session_id]["status"] = "discovering"
@@ -567,8 +566,8 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
         "message": "Resume approved! Starting job discovery...",
     })
 
-    # Resume the pipeline in the background
-    asyncio.create_task(_resume_pipeline(session_id, graph))
+    # Resume the pipeline with Command(resume=human_input)
+    asyncio.create_task(_resume_pipeline(session_id, graph, resume_value=human_input))
 
     return {"status": "ok", "message": "Coach review submitted, pipeline resuming"}
 
@@ -600,20 +599,12 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
 async def review_shortlist(session_id: str, body: ReviewRequest, request: Request):
     """Resume the pipeline after HITL shortlist review."""
     graph = request.app.state.graph
-    config = {"configurable": {"thread_id": session_id}}
 
-    try:
-        await graph.aupdate_state(
-            config,
-            {
-                "approved_job_ids": body.approved_job_ids,
-                "feedback": body.feedback or "",
-            },
-            as_node="shortlist_review",
-        )
-    except Exception as exc:
-        logger.exception("Failed to submit review for session %s", session_id)
-        raise HTTPException(status_code=500, detail=str(exc))
+    # Build the human input that shortlist_review_gate's interrupt() will receive
+    human_input: Dict[str, Any] = {
+        "approved_job_ids": body.approved_job_ids,
+        "feedback": body.feedback or "",
+    }
 
     if session_id in session_registry:
         session_registry[session_id]["status"] = "applying"
@@ -624,8 +615,8 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
         "approved_count": len(body.approved_job_ids),
     })
 
-    # Resume the pipeline in the background
-    asyncio.create_task(_resume_pipeline(session_id, graph))
+    # Resume the pipeline with Command(resume=human_input)
+    asyncio.create_task(_resume_pipeline(session_id, graph, resume_value=human_input))
 
     return {
         "status": "ok",
