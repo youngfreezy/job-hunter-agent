@@ -12,6 +12,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
+from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     ApplicationResult,
     ScoredJob,
@@ -83,8 +84,13 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
     """
     errors: List[str] = []
 
+    session_id: str = state.get("session_id", "unknown")
+
     try:
-        session_id: str = state.get("session_id", "unknown")
+        await emit_agent_event(session_id, "reporting_progress", {
+            "step": "Gathering session metrics...",
+            "progress": 0,
+        })
 
         # --- Gather raw numbers ---
         discovered_jobs = state.get("discovered_jobs", [])
@@ -129,6 +135,11 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
         )
 
         # --- AI-generated next steps ---
+        await emit_agent_event(session_id, "reporting_progress", {
+            "step": "Generating personalized next steps...",
+            "progress": 50,
+        })
+
         next_steps: List[str] = []
         try:
             llm = _build_llm()
@@ -179,6 +190,11 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
             duration_minutes=duration_minutes,
             next_steps=next_steps,
         )
+
+        await emit_agent_event(session_id, "reporting_progress", {
+            "step": f"Report ready: {total_applied} applied, avg fit {avg_fit_score}",
+            "progress": 100,
+        })
 
         logger.info(
             "Reporting complete: %d discovered, %d applied, avg fit %.1f",

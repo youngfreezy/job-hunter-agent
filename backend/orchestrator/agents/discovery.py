@@ -288,6 +288,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
     await emit_agent_event(session_id, "discovery_progress", {
         "board": board,
         "step": f"Searching {board.replace('_', ' ').title()}...",
+        "progress": 0,
     })
 
     discovered: List[JobListing] = []
@@ -342,6 +343,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         "board": board,
         "step": f"Found {len(discovered)} jobs on {board.replace('_', ' ').title()}",
         "count": len(discovered),
+        "progress": 100,
     })
 
     return {

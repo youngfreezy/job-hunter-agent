@@ -90,10 +90,15 @@ export type SSEEventType =
   | "discovery"
   | "discovery_progress"
   | "scoring"
+  | "scoring_progress"
   | "tailoring"
+  | "tailoring_progress"
+  | "shortlist_review"
   | "agent_complete"
   | "hitl"
   | "application_progress"
+  | "verification_progress"
+  | "reporting_progress"
   | "done"
   | "error"
   | "ping";
@@ -203,8 +208,10 @@ export function connectSSE(
 
   const EVENT_TYPES: SSEEventType[] = [
     "status", "coaching", "coach_review", "coaching_progress", "discovery",
-    "discovery_progress", "scoring", "tailoring", "agent_complete", "hitl",
-    "application_progress", "done", "error",
+    "discovery_progress", "scoring", "scoring_progress", "tailoring",
+    "tailoring_progress", "shortlist_review", "agent_complete", "hitl",
+    "application_progress", "verification_progress", "reporting_progress",
+    "done", "error",
   ];
 
   for (const eventType of EVENT_TYPES) {

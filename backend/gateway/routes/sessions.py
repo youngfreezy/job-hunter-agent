@@ -88,6 +88,8 @@ STATUS_MESSAGES = {
     "tailoring": "Tailoring resumes for top matches...",
     "awaiting_review": "Ready for your review",
     "applying": "Submitting applications...",
+    "verifying": "Verifying submitted applications...",
+    "reporting": "Generating session report...",
     "completed": "Pipeline complete",
     "failed": "Pipeline encountered an error",
 }
@@ -206,6 +208,25 @@ async def _stream_graph(
     return None
 
 
+async def _handle_shortlist_interrupt(session_id: str, graph: Any, config: dict) -> None:
+    """Emit the shortlist_review SSE event when the pipeline pauses for review."""
+    if session_id in session_registry:
+        session_registry[session_id]["status"] = "awaiting_review"
+    try:
+        graph_state = await graph.aget_state(config)
+        channel_values = graph_state.values if hasattr(graph_state, "values") else {}
+        scored_jobs = channel_values.get("scored_jobs", [])
+        tailored_resumes = channel_values.get("tailored_resumes", {})
+        await _emit(session_id, "shortlist_review", {
+            "status": "awaiting_review",
+            "scored_jobs": _serialize(scored_jobs),
+            "tailored_resumes": _serialize(tailored_resumes),
+            "message": "Review the shortlist and approve jobs to apply to.",
+        })
+    except Exception:
+        logger.exception("Failed to emit shortlist review event for session %s", session_id)
+
+
 async def _run_pipeline(
     session_id: str,
     request_body: StartSessionRequest,
@@ -287,9 +308,7 @@ async def _run_pipeline(
             return
 
         if interrupt_stage == "shortlist_review":
-            if session_id in session_registry:
-                session_registry[session_id]["status"] = "awaiting_review"
-            # Shortlist review event already emitted by _stream_graph
+            await _handle_shortlist_interrupt(session_id, graph, config)
             return
 
     except Exception as exc:
@@ -321,9 +340,7 @@ async def _resume_pipeline(session_id: str, graph: Any) -> None:
         interrupt_stage = await _stream_graph(session_id, graph, config, None)
 
         if interrupt_stage == "shortlist_review":
-            if session_id in session_registry:
-                session_registry[session_id]["status"] = "awaiting_review"
-            # Shortlist review event already emitted by _stream_graph
+            await _handle_shortlist_interrupt(session_id, graph, config)
             return
 
         # If another interrupt, handle it (could be extended for more HITL gates)
@@ -472,10 +489,44 @@ async def get_session(session_id: str, request: Request):
 
 
 @router.get("/{session_id}/stream")
-async def stream_session(session_id: str):
+async def stream_session(session_id: str, request: Request):
     """SSE stream for real-time pipeline updates (with replay on reconnect)."""
     if session_id not in session_registry:
-        raise HTTPException(status_code=404, detail="Session not found or stream expired")
+        # Try to recover from checkpointer (e.g. after backend restart)
+        checkpointer = request.app.state.checkpointer
+        config = {"configurable": {"thread_id": session_id}}
+        try:
+            state = await checkpointer.aget(config)
+        except Exception:
+            state = None
+        if state is None:
+            raise HTTPException(status_code=404, detail="Session not found or stream expired")
+        # Re-register the session from checkpoint data
+        cv = {}
+        if hasattr(state, "checkpoint"):
+            cv = state.checkpoint.get("channel_values", {}) if isinstance(state.checkpoint, dict) else {}
+        elif isinstance(state, dict):
+            cv = state.get("channel_values", state)
+        session_registry[session_id] = {
+            "session_id": session_id,
+            "status": cv.get("status", "unknown"),
+            "keywords": cv.get("keywords", []),
+            "locations": cv.get("locations", []),
+            "remote_only": cv.get("remote_only", False),
+            "salary_min": cv.get("salary_min"),
+            "resume_text_snippet": (cv.get("resume_text", "") or "")[:200],
+            "linkedin_url": cv.get("linkedin_url"),
+            "applications_submitted": len(cv.get("applications_submitted", [])),
+            "applications_failed": len(cv.get("applications_failed", [])),
+            "created_at": cv.get("created_at", ""),
+        }
+        logger.info("Recovered session %s from checkpointer (status=%s)", session_id, cv.get("status"))
+
+    # Ensure event log and subscriber list exist
+    if session_id not in event_logs:
+        event_logs[session_id] = []
+    if session_id not in sse_subscribers:
+        sse_subscribers[session_id] = []
 
     return StreamingResponse(
         _event_generator(session_id),
@@ -529,10 +580,10 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
     config = {"configurable": {"thread_id": session_id}}
 
     try:
-        await graph.aupdate_state(
-            config,
-            {"human_messages": [body.message]},
-        )
+        state_update: Dict[str, Any] = {"human_messages": [body.message]}
+        if body.mode:
+            state_update["steering_mode"] = body.mode.value
+        await graph.aupdate_state(config, state_update)
     except Exception as exc:
         logger.exception("Failed to steer session %s", session_id)
         raise HTTPException(status_code=500, detail=str(exc))

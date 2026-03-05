@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
+from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     ApplicationResult,
     ApplicationStatus,
@@ -482,7 +483,19 @@ async def run_application_agent(state: JobHunterState) -> dict:
             use_simulation,
         )
 
-        for job_id in application_queue:
+        total_in_queue = len(application_queue)
+
+        for app_idx, job_id in enumerate(application_queue):
+            pct = int((app_idx / total_in_queue) * 100)
+            job_obj = _find_job_in_state(job_id, state)
+            job_label = f"{job_obj.title} at {job_obj.company}" if job_obj else job_id[:8]
+            await emit_agent_event(session_id, "application_progress", {
+                "step": f"Applying to {job_label}...",
+                "progress": pct,
+                "current": app_idx + 1,
+                "total": total_in_queue,
+            })
+
             # --- Circuit breaker ---
             if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 logger.warning(
@@ -538,6 +551,14 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     # SKIPPED or other status
                     logger.info("Application %s status: %s", job_id, result.status)
                     consecutive_failures = 0  # don't count skips toward circuit breaker
+
+                done_pct = int(((app_idx + 1) / total_in_queue) * 100)
+                await emit_agent_event(session_id, "application_progress", {
+                    "step": f"Applied {len(submitted)}/{app_idx + 1} ({len(failed)} failed)",
+                    "progress": done_pct,
+                    "submitted": len(submitted),
+                    "failed": len(failed),
+                })
 
             except Exception as exc:
                 error_msg = f"Application failed for job {job_id}: {exc}"

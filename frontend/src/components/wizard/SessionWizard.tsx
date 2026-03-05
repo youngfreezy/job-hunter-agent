@@ -47,7 +47,8 @@ export function SessionWizard() {
           preferences: {},
         });
 
-        clearPersistedValues();
+        // Don't clear persisted values — keep them so the user can
+        // prefill the form when starting another session later.
         router.push(`/session/${session.session_id}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to start session";
