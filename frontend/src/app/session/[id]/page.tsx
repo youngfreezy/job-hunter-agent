@@ -6,12 +6,12 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { CircularProgress } from "@/components/ui/circular-progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
-import { getSession, connectSSE, connectWebSocket, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision, listCheckpoints, rewindSession } from "@/lib/api";
+import { getSession, connectSSE, sendSteer, submitReview, submitCoachReview, resumeIntervention, submitDecision, listCheckpoints, rewindSession } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
 
@@ -138,9 +138,6 @@ export default function SessionPage() {
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [events, setEvents] = useState<SSEEvent[]>([]);
-  const [chatMessages, setChatMessages] = useState<Array<{ role: string; text: string }>>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [viewMode, setViewMode] = useState<"status" | "screenshot">("status");
   const [coachReviewOpen, setCoachReviewOpen] = useState(false);
   const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(null);
   const [coachReviewSubmitting, setCoachReviewSubmitting] = useState(false);
@@ -166,6 +163,8 @@ export default function SessionPage() {
     screenshot?: string;
   } | null>(null);
 
+  const [chatMessages, setChatMessages] = useState<Array<{ role: string; text: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [rewindLoading, setRewindLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
@@ -331,27 +330,17 @@ export default function SessionPage() {
     return cleanup;
   }, [sessionId, sseKey]);
 
-  useEffect(() => {
-    if (viewMode !== "screenshot") return;
-    const cleanup = connectWebSocket(sessionId, (data) => {
-      if (data.type === "chat" && data.message) {
-        setChatMessages((prev) => [...prev, { role: "agent", text: data.message as string }]);
-      }
-    });
-    return () => { cleanup(); };
-  }, [sessionId, viewMode]);
-
   const handleSendChat = useCallback(async () => {
     if (!chatInput.trim()) return;
     const msg = chatInput.trim();
     setChatInput("");
     setChatMessages((prev) => [...prev, { role: "user", text: msg }]);
     try {
-      await sendSteer(sessionId, { message: msg, mode: viewMode });
+      await sendSteer(sessionId, { message: msg, mode: "status" });
     } catch (e) {
       console.error("Failed to send steering message:", e);
     }
-  }, [chatInput, sessionId, viewMode]);
+  }, [chatInput, sessionId]);
 
   const handleApproveShortlist = async () => {
     setShortlistSubmitting(true);
@@ -666,24 +655,7 @@ export default function SessionPage() {
       <div className="flex-1 flex max-w-7xl mx-auto w-full">
         {/* Left: Main viewer */}
         <div className="flex-1 p-5 flex flex-col">
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)} className="flex-1 flex flex-col">
-            <TabsList className="mb-4 self-start">
-              <TabsTrigger value="status" className="gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Status Feed
-              </TabsTrigger>
-              <TabsTrigger value="screenshot" className="gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Browser
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="status" className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col">
               <Card className="flex-1 flex flex-col overflow-hidden">
                 <CardHeader className="pb-2 border-b border-border/50">
                   <div className="flex items-center justify-between">
@@ -744,53 +716,7 @@ export default function SessionPage() {
                   <div ref={eventsEndRef} />
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            <TabsContent value="screenshot" className="flex-1 flex flex-col">
-              <Card className="flex-1 flex flex-col overflow-hidden">
-                <CardHeader className="pb-2 border-b border-border/50">
-                  <CardTitle className="text-sm font-semibold">Browser View</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 flex items-center justify-center bg-muted/30 rounded-b-xl min-h-[400px]">
-                  <div className="text-center text-muted-foreground">
-                    <svg className="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-                    </svg>
-                    <p className="font-medium">Browser Running in Headed Mode</p>
-                    <p className="text-xs mt-1 max-w-xs">The browser window is visible on your desktop. You can watch the agent work and interact directly when it pauses.</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-          {/* Chat panel */}
-          {viewMode === "screenshot" && (
-            <Card className="mt-3">
-              <CardContent className="p-3">
-                <div className="max-h-32 overflow-y-auto mb-2 space-y-1.5">
-                  {chatMessages.map((msg, i) => (
-                    <div key={i} className={`text-sm flex gap-2 ${msg.role === "user" ? "" : ""}`}>
-                      <Badge variant="secondary" className={`text-[10px] shrink-0 ${msg.role === "user" ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}>
-                        {msg.role === "user" ? "You" : "Agent"}
-                      </Badge>
-                      <span className="text-foreground/80">{msg.text}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Steer the agent... e.g. 'Skip this job' or 'Use a different answer'"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
-                    className="text-sm"
-                  />
-                  <Button size="sm" onClick={handleSendChat}>Send</Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          </div>
         </div>
 
         {/* Right: Sidebar */}
@@ -847,9 +773,18 @@ export default function SessionPage() {
                   <span className="text-xs text-muted-foreground">Resume Score</span>
                   <CircularProgress value={session.coach_output.resume_score.overall} size={42} strokeWidth={4} showValue />
                 </div>
-                <p className="text-xs text-muted-foreground italic leading-relaxed">
-                  {session.coach_output.confidence_message?.slice(0, 140)}...
-                </p>
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-xs text-muted-foreground italic leading-relaxed line-clamp-3 cursor-help">
+                        {session.coach_output.confidence_message}
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="max-w-sm text-xs leading-relaxed">
+                      {session.coach_output.confidence_message}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </CardContent>
             </Card>
           )}

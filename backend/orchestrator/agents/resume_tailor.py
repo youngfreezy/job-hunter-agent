@@ -31,10 +31,10 @@ class TailorResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 SONNET_MODEL = "claude-sonnet-4-6"
-OPUS_MODEL = "claude-sonnet-4-6"
+OPUS_MODEL = "claude-opus-4-6"
 MAX_SELF_REFLECTION_RETRIES = 1
 FIT_SCORE_THRESHOLD = 70
-CONCURRENCY = 5  # Max parallel LLM calls for tailoring
+CONCURRENCY = 10  # Max parallel LLM calls for tailoring
 
 
 def _pick_model(is_top_tier: bool) -> str:
@@ -72,8 +72,13 @@ async def _tailor_single(
     llm: ChatAnthropic,
     base_resume: str,
     job: ScoredJob,
+    allow_reflection: bool = True,
 ) -> TailoredResume:
-    """Tailor a resume for a single job, with optional self-reflection retry."""
+    """Tailor a resume for a single job, with optional self-reflection retry.
+
+    Self-reflection is only enabled for top-tier jobs (allow_reflection=True)
+    to avoid doubling LLM calls on lower-priority resumes.
+    """
 
     user_content = (
         f"## Base Resume\n{base_resume}\n\n"
@@ -94,8 +99,8 @@ async def _tailor_single(
     tailored_text = result.tailored_text
     changes_made = result.changes_made
 
-    # --- Self-reflection loop (max 1 retry) ---
-    if fit_score < FIT_SCORE_THRESHOLD:
+    # --- Self-reflection loop (max 1 retry, top-tier jobs only) ---
+    if allow_reflection and fit_score < FIT_SCORE_THRESHOLD:
         logger.info(
             "Fit score %d < %d for %s -- retrying with improvement instructions",
             fit_score,
@@ -226,7 +231,7 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
                     model = _pick_model(is_top_tier)
                     llm = _build_llm(model)
                     logger.info("Tailoring for %s (%s) using %s", sj.job.id, sj.job.title, model)
-                    tailored = await _tailor_single(llm, base_resume, sj)
+                    tailored = await _tailor_single(llm, base_resume, sj, allow_reflection=is_top_tier)
                     return (sj.job.id, tailored, None)
                 except Exception as exc:
                     return (sj.job.id, None, exc)

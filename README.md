@@ -11,9 +11,9 @@ Architecture is modeled after the mayo-clinic-validator's proven LangGraph patte
 
 **Existing tools**: LazyApply ($99-249/mo), Sonara ($20-80/mo), JobCopilot ($24-32/mo), Simplify Copilot (free-$30/mo). All are self-serve Chrome extensions or basic auto-apply bots. None offer live video steering or real-time HITL.
 
-**Open-source references**: ApplyPilot (Playwright + Claude), Browser-Use (78K+ stars, LLM-driven Playwright), Skyvern (computer vision + Playwright, 85.85% form-fill accuracy).
+**Open-source references**: ApplyPilot (Playwright + Claude), Browser-Use (78K+ stars, LLM-driven Playwright -- **integrated as our application engine**), Skyvern (computer vision + Playwright, 85.85% form-fill accuracy).
 
-**Our differentiator**: Live-steerable browser session with chat + noVNC takeover. Industry/keyword agnostic. Cross-session learning via knowledge graph. No existing product offers this combination.
+**Our differentiator**: Live-steerable browser session with chat + noVNC takeover. Industry/keyword agnostic. Cross-session learning via knowledge graph. AI-driven browser automation (browser-use) that dynamically handles any ATS without hardcoded selectors. No existing product offers this combination.
 
 ---
 
@@ -65,10 +65,10 @@ Architecture is modeled after the mayo-clinic-validator's proven LangGraph patte
 |---|-------|-------|---------|
 | 1 | **Intake** | Sonnet 4.6 | Parses keywords, resume, preferences → structured `SearchConfig` |
 | 2 | **Career Coach** | Opus 4.6 | **The user's personal salesperson.** Analyzes resume + LinkedIn profile. Identifies strengths the user undervalues (combats impostor syndrome). Rewrites resume to "sell" the person — not just list experience. Generates a master cover letter template. Advises on LinkedIn headline/about/skills. Scores resume 0-100 with actionable improvement feedback. |
-| 3 | **Discovery** | Sonnet 4.6 + Playwright | Parallel job board scraping. Fan-out via LangGraph `Send` API per board. |
-| 4 | **Scoring** | Sonnet 4.6 | Scores each job 0-100 against the **coached** profile (not raw resume). Deduplicates. |
-| 5 | **Resume Tailor** | Sonnet 4.6 (default) / Opus 4.6 (top 20%) | Per-job adaptation from the coached base resume. Scores fit 0-100. |
-| 6 | **Application** | Opus 4.6 + Playwright | Core agent. Fills forms, uploads docs, generates per-job cover letters (from coach template), creates accounts. Live-steerable. |
+| 3 | **Discovery** | Sonnet 4.6 + Playwright | Concurrent job board scraping via `asyncio.gather()`. All boards (Indeed, LinkedIn, Glassdoor, ZipRecruiter) scraped in parallel with isolated BrowserContexts sharing one Chromium process. |
+| 4 | **Scoring** | Sonnet 4.6 | Scores each job 0-100 against the **coached** profile (not raw resume). Deduplicates. Batches scored concurrently (10 parallel LLM calls). |
+| 5 | **Resume Tailor** | Sonnet 4.6 (default) / Opus 4.6 (top 20%) | Per-job adaptation from the coached base resume. 10 concurrent LLM calls. Self-reflection retry only for top-20% jobs. |
+| 6 | **Application** | Sonnet 4.5 + browser-use | Core agent. Uses [browser-use](https://github.com/browser-use/browser-use) (LLM-driven browser automation) to dynamically navigate application forms, click buttons, fill fields, and submit -- no hardcoded CSS selectors. Handles LinkedIn Easy Apply, Workday, Greenhouse, and any ATS. Live-steerable. |
 | 7 | **Verification** | Haiku 4.5 | Screenshots confirmation pages, verifies submission success. |
 | 8 | **Reporting** | Haiku 4.5 | Session summary with metrics, callback predictions, coach follow-up tips. |
 
@@ -133,52 +133,22 @@ The Coach is the **emotional and strategic heart** of the product. It's what tur
 
 ---
 
-## Live Video Steering (Tiered — Key Differentiator)
+## Live Steering
 
-### Three Tiers (Cost-Optimized)
+### SSE Status Feed
 
-noVNC is NOT always-on. It spins up **on demand only** to avoid the massive resource cost of running Xvfb+VNC per user at all times.
+All plans include real-time SSE text updates that stream agent progress:
+- "Searching LinkedIn for 'Data Engineer'..."
+- "Scoring 47 jobs against your profile..."
+- "AI agent applying to Senior Engineer at Stripe... filling education field... submitted!"
 
-| Tier | Mode | Default? | How It Works | Cost |
-|------|------|----------|-------------|------|
-| 1 | **Status Feed** | Yes (all plans) | SSE text updates: "Applying to Senior Engineer at Stripe... Filling education... Submitted!" | ~$0 |
-| 2 | **Screenshot Feed** | Yes (Pro+) | CDP `page.screenshot()` at 1-2 FPS → JPEG over WebSocket. ~40-100 KB/s per user. Chat panel for steering. | Low |
-| 3 | **Live Takeover** | On-demand (Pro+) | Agent encounters obstacle → pauses → user clicks "Take Control" → noVNC session spins up → user interacts directly → "Release Control" → agent resumes | High, but rare & time-limited |
+The frontend receives granular SSE events from each agent phase (discovery_progress, scoring_progress, tailoring_progress, application_progress, application_browser_action) with step-by-step detail.
 
-### Steering Architecture
-```
-┌─────────────────────────┐         ┌─────────────────────────────────┐
-│      Frontend           │         │      Browser Worker Container   │
-│      (Next.js)          │         │                                 │
-│                         │  SSE    │  ┌───────────┐                  │
-│  ┌──────────────────┐   │◄────────│  │ LangGraph │                  │
-│  │ Status Feed      │   │         │  │ Pipeline  │                  │
-│  │ (text updates)   │   │         │  └─────┬─────┘                  │
-│  └──────────────────┘   │         │        │                        │
-│                         │  WS     │  ┌─────▼─────┐                  │
-│  ┌──────────────────┐   │◄───────►│  │ Playwright │                 │
-│  │ Screenshot Feed  │   │ frames  │  │ (Chromium) │                 │
-│  │ (canvas)         │   │ + chat  │  └─────┬─────┘                  │
-│  └──────────────────┘   │         │        │ (on demand only)       │
-│                         │  WS     │  ┌─────▼─────┐  ┌───────────┐  │
-│  ┌──────────────────┐   │◄───────►│  │   Xvfb    ├──► x11vnc    │  │
-│  │ noVNC Takeover   │   │ VNC     │  └───────────┘  └─────┬─────┘  │
-│  │ (interactive)    │   │         │                  ┌─────▼─────┐  │
-│  └──────────────────┘   │         │                  │websockify │  │
-│                         │         │                  └───────────┘  │
-│  ┌──────────────────┐   │         │                                 │
-│  │ Chat Panel       │   │         │                                 │
-│  │ (steering cmds)  │   │         │                                 │
-│  └──────────────────┘   │         │                                 │
-└─────────────────────────┘         └─────────────────────────────────┘
-```
+### Chat Steering
 
-### Mode Toggle
-```
-Status Feed ──[upgrade click]──► Screenshot + Chat ──[Take Control]──► noVNC Takeover
-     ▲                                  ▲                                     │
-     └──────────────────────────────────┴──────[Release Control]──────────────┘
-```
+Users can steer the agent via the chat panel throughout the session:
+- During coaching: "Actually, I led that project" -> Coach updates resume
+- During application: "Skip this job" or "Use a more formal tone"
 
 ---
 
@@ -190,7 +160,7 @@ Status Feed ──[upgrade click]──► Screenshot + Chat ──[Take Control
 ┌─────────┐     ┌───────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │ Vercel  │     │ API Gateway   │     │ Orchestrator     │     │ Browser Workers  │
 │ (Next.js│────►│ (FastAPI)     │────►│ (LangGraph +     │────►│ (Playwright +    │
-│ frontend│     │               │     │  ARQ consumer)   │     │  optional noVNC) │
+│ frontend│     │               │     │  ARQ consumer)   │     │  browser-use)    │
 │         │◄────│ Auth, Stripe, │◄────│                  │◄────│                  │
 │         │ SSE │ SSE, REST     │Redis│ Agent pipeline   │Redis│ Per-user browser │
 │         │     │               │pub/ │ Session mgmt     │pub/ │ contexts         │
@@ -320,20 +290,17 @@ class JobHunterState(TypedDict):
 - **LangGraph** for agent orchestration + state machine
 - **Inngest** for pipeline orchestration (step-level retry, HITL via `waitForEvent`, runs on Vercel)
 - **ARQ** for browser-specific tasks (Redis-backed, runs on Railway workers)
-- **Playwright** (async) for browser automation
+- **Playwright** (async) for browser automation (discovery scraping)
 - **Patchright** for anti-detection (patched Playwright fork)
+- **browser-use** for AI-driven job application (LLM-controlled browser agent, replaces hardcoded selectors)
 - **Claude API** (Anthropic SDK) — Opus, Sonnet, Haiku
 - **PostgreSQL** + **AsyncPostgresSaver** for checkpointing + data persistence
 - **Neo4j Aura** for application strategy knowledge graph
-- **Redis** for job queue (ARQ), pub/sub (status events, video frames, chat), rate limiting
-- **WebSocket** (FastAPI) for screenshot feed + chat
-- **noVNC + websockify + x11vnc + Xvfb** for on-demand takeover mode
+- **Redis** for job queue (ARQ), pub/sub (status events, chat), rate limiting
 
 ### Frontend
 - **Next.js 14** (App Router, TypeScript) — from scratch with shadcn/ui
 - **Tailwind CSS** + **shadcn/ui** component library
-- **WebSocket client** for screenshot stream + chat
-- **noVNC.js** for takeover mode (loaded on demand)
 - **Stripe.js** + **Stripe Checkout** (hosted payment page, minimal PCI scope)
 - **NextAuth.js** for authentication (email + Google OAuth)
 
@@ -425,11 +392,11 @@ Weekly billing is better than hourly because:
 - Avoids the anxiety of watching a clock while the bot works
 - Aligns incentives: fast sessions are good for us (less infra), and the user isn't punished for speed
 
-| Tier | Price | Applications/Week | Viewing | Takeover | Best For |
-|------|-------|-------------------|---------|----------|----------|
-| **Starter** | $49/week | 25 | Status Feed | No | Dipping toes, light search |
-| **Professional** | $99/week | 75 | Screenshot + Chat | No | Active job seekers |
-| **Executive** | $199/week | 200 + live steering | Screenshot + Chat | Yes (on-demand) | Serious search, full control |
+| Tier | Price | Applications/Week | Features | Best For |
+|------|-------|-------------------|----------|----------|
+| **Starter** | $49/week | 25 | SSE Status Feed | Dipping toes, light search |
+| **Professional** | $99/week | 75 | SSE + Chat Steering | Active job seekers |
+| **Executive** | $199/week | 200 | SSE + Chat + Priority Support | Serious search, full control |
 
 ### Payment Flow (Stripe)
 ```
@@ -572,12 +539,10 @@ job-hunter-agent/
 │   │   │   │   ├── glassdoor.py
 │   │   │   │   ├── ziprecruiter.py
 │   │   │   │   └── google_jobs.py
-│   │   │   ├── form_filler.py     # Dynamic form analysis + filling
-│   │   │   ├── account_creator.py # Workday/Greenhouse account creation
+│   │   │   ├── browser_use_applier.py  # AI-driven application via browser-use (primary)
+│   │   │   ├── form_filler.py     # Dynamic form analysis + filling (fallback)
+│   │   │   ├── account_creator.py # Workday/Greenhouse account creation (fallback)
 │   │   │   └── cover_letter.py    # Cover letter generation
-│   │   ├── streaming/
-│   │   │   ├── screenshots.py     # CDP screenshot loop → Redis pub/sub
-│   │   │   └── vnc.py             # On-demand noVNC setup/teardown
 │   │   └── anti_detect/
 │   │       └── stealth.py         # Patchright config, random delays
 │   ├── shared/
@@ -604,9 +569,7 @@ job-hunter-agent/
 │   │   │   └── signup/page.tsx
 │   │   └── layout.tsx
 │   ├── components/
-│   │   ├── StatusFeed.tsx         # Tier 1: SSE text updates
-│   │   ├── ScreenshotViewer.tsx   # Tier 2: Canvas + WebSocket frames
-│   │   ├── NoVNCTakeover.tsx      # Tier 3: On-demand noVNC embed
+│   │   ├── StatusFeed.tsx         # SSE text updates
 │   │   ├── ChatPanel.tsx          # Steering chat interface
 │   │   ├── SessionProgress.tsx    # Pipeline step indicator
 │   │   ├── JobCard.tsx            # Job listing with score
@@ -618,7 +581,6 @@ job-hunter-agent/
 │   │   └── GeoGate.tsx            # US-only message for blocked users
 │   ├── lib/
 │   │   ├── api.ts                 # REST + SSE client
-│   │   ├── websocket.ts           # WebSocket manager (screenshots + chat)
 │   │   └── stripe.ts              # Stripe client helpers
 │   └── package.json
 └── README.md

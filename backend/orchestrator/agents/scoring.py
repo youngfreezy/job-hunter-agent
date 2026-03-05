@@ -1,13 +1,13 @@
 """Scoring Agent -- ranks discovered jobs by fit against the coached resume/profile.
 
-Uses Claude Sonnet (claude-sonnet-4-6) to evaluate each job listing against the
-user's resume, producing a 0-100 score with a breakdown across multiple dimensions.
-Jobs are batched in groups of 10 to manage token limits.
+Uses Claude Sonnet to evaluate each job listing against the user's resume,
+producing a 0-100 score with a breakdown across multiple dimensions.
+Jobs are batched in groups of 10 and scored concurrently (up to 5 parallel LLM calls).
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 from typing import Any, Dict, List
 
@@ -48,6 +48,7 @@ class ScoringBatchResult(BaseModel):
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
 SCORING_BATCH_SIZE = 10
+CONCURRENCY = 10  # Max parallel LLM calls for scoring batches
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -162,46 +163,56 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # Step 2: Batch
         batches = _batch(unique_jobs, SCORING_BATCH_SIZE)
 
-        # Step 3: Score each batch via LLM with structured output
+        # Step 3: Score batches concurrently (up to CONCURRENCY parallel LLM calls)
         session_id = state.get("session_id", "")
-        llm = build_llm(model=DEFAULT_MODEL, max_tokens=4096, temperature=0.0, timeout=120)
-        structured_llm = llm.with_structured_output(ScoringBatchResult)
 
         all_scores: List[dict] = []
+        completed_batches = 0
+        total_batches = len(batches)
 
-        for batch_idx, batch_jobs in enumerate(batches):
-            logger.info(
-                "Scoring batch %d/%d (%d jobs)",
-                batch_idx + 1,
-                len(batches),
-                len(batch_jobs),
-            )
-
-            batch_pct = int((batch_idx / len(batches)) * 100)
-            await emit_agent_event(session_id, "scoring_progress", {
-                "step": f"Scoring batch {batch_idx + 1} of {len(batches)} ({len(batch_jobs)} jobs)...",
-                "progress": batch_pct,
-                "batch": batch_idx + 1,
-                "total_batches": len(batches),
-            })
+        async def _score_batch(batch_idx: int, batch_jobs: List[JobListing]) -> List[dict]:
+            """Score a single batch via LLM."""
+            llm = build_llm(model=DEFAULT_MODEL, max_tokens=4096, temperature=0.0, timeout=120)
+            structured_llm = llm.with_structured_output(ScoringBatchResult)
 
             jobs_text = _jobs_to_prompt_text(batch_jobs)
-
             user_prompt = (
                 f"## Candidate Resume\n\n{resume}\n\n"
-                f"## Job Listings (batch {batch_idx + 1}/{len(batches)})\n\n{jobs_text}\n\n"
+                f"## Job Listings (batch {batch_idx + 1}/{total_batches})\n\n{jobs_text}\n\n"
                 "Score each job."
             )
 
             result: ScoringBatchResult = await invoke_with_retry(structured_llm, [
-                    SystemMessage(content=SCORING_SYSTEM_PROMPT),
-                    HumanMessage(content=user_prompt),
-                ]
+                SystemMessage(content=SCORING_SYSTEM_PROMPT),
+                HumanMessage(content=user_prompt),
+            ])
+            return [s.model_dump() for s in result.scores]
+
+        # Process in concurrent waves of CONCURRENCY
+        for wave_start in range(0, total_batches, CONCURRENCY):
+            wave = list(enumerate(batches[wave_start:wave_start + CONCURRENCY], start=wave_start))
+
+            wave_pct = int((wave_start / total_batches) * 100)
+            await emit_agent_event(session_id, "scoring_progress", {
+                "step": f"Scoring batches {wave_start + 1}-{wave_start + len(wave)} of {total_batches} (parallel)...",
+                "progress": wave_pct,
+                "batch": wave_start + 1,
+                "total_batches": total_batches,
+            })
+
+            results = await asyncio.gather(
+                *[_score_batch(idx, batch_jobs) for idx, batch_jobs in wave],
+                return_exceptions=True,
             )
 
-            all_scores.extend(s.model_dump() for s in result.scores)
+            for (batch_idx, _), result in zip(wave, results):
+                if isinstance(result, Exception):
+                    logger.error("Scoring batch %d failed: %s", batch_idx + 1, result)
+                else:
+                    all_scores.extend(result)
+                completed_batches += 1
 
-            done_pct = int(((batch_idx + 1) / len(batches)) * 100)
+            done_pct = int((completed_batches / total_batches) * 100)
             await emit_agent_event(session_id, "scoring_progress", {
                 "step": f"Scored {len(all_scores)} jobs so far...",
                 "progress": done_pct,
