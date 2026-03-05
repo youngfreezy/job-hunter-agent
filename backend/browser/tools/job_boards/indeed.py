@@ -82,7 +82,7 @@ async def scrape_indeed(
     listings: List[JobListing] = []
 
     try:
-        query = " ".join(search_config.keywords)
+        query = " ".join(search_config.keywords[:5])
         location = search_config.locations[0] if search_config.locations else ""
 
         # Build the search URL with query params
