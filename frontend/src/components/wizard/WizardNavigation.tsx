@@ -37,9 +37,9 @@ export function WizardNavigation({
           type="button"
           size="lg"
           onClick={onSubmit}
-          disabled={isSubmitting}
+          loading={isSubmitting}
         >
-          {isSubmitting ? "Starting session..." : "Start Job Hunt Session"}
+          Start Job Hunt Session
         </Button>
       ) : (
         <Button type="button" onClick={onNext}>
