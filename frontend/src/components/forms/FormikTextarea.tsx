@@ -1,0 +1,39 @@
+"use client";
+
+import { useField } from "formik";
+import { Textarea } from "@/components/ui/textarea";
+import { FormError } from "./FormError";
+import { cn } from "@/lib/utils";
+
+interface FormikTextareaProps {
+  name: string;
+  label?: string;
+  placeholder?: string;
+  rows?: number;
+  className?: string;
+}
+
+export function FormikTextarea({ name, label, className, ...props }: FormikTextareaProps) {
+  const [field, meta] = useField(name);
+  const showError = meta.touched && !!meta.error;
+
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label htmlFor={name} className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          {label}
+        </label>
+      )}
+      <Textarea
+        id={name}
+        {...field}
+        {...props}
+        className={cn(
+          showError && "border-red-500 focus-visible:ring-red-500",
+          className
+        )}
+      />
+      {showError && <FormError message={meta.error} />}
+    </div>
+  );
+}

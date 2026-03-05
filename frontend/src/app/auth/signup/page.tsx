@@ -3,37 +3,14 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { Formik, Form } from "formik";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { FormikInput } from "@/components/forms/FormikInput";
+import { signupSchema, signupInitialValues } from "@/lib/schemas/auth";
 
 export default function SignupPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    // TODO: Phase 4 — call backend to create user in Postgres
-    // For now, just sign in with credentials (dev mode accepts any email/password)
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-
-    if (result?.error) {
-      setError("Failed to create account. Please try again.");
-      setLoading(false);
-    } else {
-      window.location.href = "/session/new";
-    }
-  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center px-4">
@@ -68,33 +45,38 @@ export default function SignupPage() {
             </div>
           </div>
 
-          <form onSubmit={handleSignup} className="space-y-3">
-            <Input
-              placeholder="Full name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-            <Input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <Input
-              type="password"
-              placeholder="Password (min 8 characters)"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
-            />
-            {error && <p className="text-sm text-red-500">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating account..." : "Create Account"}
-            </Button>
-          </form>
+          <Formik
+            initialValues={signupInitialValues}
+            validationSchema={signupSchema}
+            onSubmit={async (values, { setSubmitting }) => {
+              setError("");
+              // TODO: Phase 4 — call backend to create user in Postgres
+              // For now, just sign in with credentials (dev mode accepts any email/password)
+              const result = await signIn("credentials", {
+                email: values.email,
+                password: values.password,
+                redirect: false,
+              });
+              if (result?.error) {
+                setError("Failed to create account. Please try again.");
+                setSubmitting(false);
+              } else {
+                window.location.href = "/session/new";
+              }
+            }}
+          >
+            {({ isSubmitting }) => (
+              <Form className="space-y-3">
+                <FormikInput name="name" placeholder="Full name" />
+                <FormikInput name="email" type="email" placeholder="Email" />
+                <FormikInput name="password" type="password" placeholder="Password (min 8 characters)" />
+                {error && <p className="text-sm text-red-500">{error}</p>}
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? "Creating account..." : "Create Account"}
+                </Button>
+              </Form>
+            )}
+          </Formik>
 
           <p className="text-center text-sm text-zinc-500">
             Already have an account?{" "}

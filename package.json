@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "node scripts/start.js",
-    "start:no-docker": "node scripts/start.js --no-docker"
+    "kill": "lsof -ti:3000,8000 | xargs kill -9 2>/dev/null; pkill -9 -f uvicorn 2>/dev/null; pkill -9 -f 'next dev' 2>/dev/null; echo 'Ports 3000/8000 cleared'",
+    "start": "npm run kill && node scripts/start.js",
+    "start:no-docker": "npm run kill && node scripts/start.js --no-docker"
   }
 }

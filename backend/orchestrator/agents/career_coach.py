@@ -113,7 +113,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
             model="claude-opus-4-6",
             api_key=settings.ANTHROPIC_API_KEY,
             temperature=0,
-            model_kwargs={"response_format": {"type": "json_object"}},
+            max_tokens=4096,
         )
 
         # -- Build user message from state ----------------------------------

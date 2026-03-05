@@ -1,9 +1,10 @@
 """Session lifecycle and SSE streaming routes.
 
 Handles:
-  - POST /api/sessions          -> start a new pipeline session
-  - GET  /api/sessions/{id}     -> retrieve current session state
-  - GET  /api/sessions/{id}/stream -> SSE event stream
+  - GET  /api/sessions             -> list all sessions
+  - POST /api/sessions             -> start a new pipeline session
+  - GET  /api/sessions/{id}        -> retrieve current session state
+  - GET  /api/sessions/{id}/stream -> SSE event stream (with replay)
   - POST /api/sessions/{id}/steer  -> inject a steering message
   - POST /api/sessions/{id}/review -> approve/reject the shortlist (HITL)
 """
@@ -15,7 +16,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -32,9 +33,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
-# In-memory SSE queues keyed by session_id.
-# Each queue carries dicts with {"type": str, "data": dict}.
-sse_queues: Dict[str, asyncio.Queue] = {}
+# ---------------------------------------------------------------------------
+# In-memory stores
+# ---------------------------------------------------------------------------
+
+# Session metadata saved at creation time (keywords, status, etc.)
+session_registry: Dict[str, dict] = {}
+
+# Append-only event log per session for SSE replay on reconnect.
+event_logs: Dict[str, list] = {}
+
+# Per-session list of subscriber queues (one per connected SSE client).
+sse_subscribers: Dict[str, List[asyncio.Queue]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -55,10 +65,16 @@ def _serialize(obj: Any) -> Any:
 
 
 async def _emit(session_id: str, event_type: str, data: dict) -> None:
-    """Push an SSE event into the queue for *session_id*."""
-    queue = sse_queues.get(session_id)
-    if queue is not None:
-        await queue.put({"type": event_type, "data": data})
+    """Log an SSE event and push it to all active subscribers."""
+    event = {"type": event_type, "data": data}
+
+    # Append to persistent event log for replay
+    if session_id in event_logs:
+        event_logs[session_id].append(event)
+
+    # Push to all connected SSE clients
+    for queue in sse_subscribers.get(session_id, []):
+        await queue.put(event)
 
 
 async def _run_pipeline(
@@ -104,12 +120,21 @@ async def _run_pipeline(
             "applications_used": 0,
         }
 
-        await _emit(session_id, "status", {"status": "intake", "message": "Pipeline started"})
+        await _emit(session_id, "status", {
+            "status": "intake",
+            "message": "Pipeline started",
+            "keywords": request_body.keywords,
+            "locations": request_body.locations,
+        })
 
         config = {"configurable": {"thread_id": session_id}}
 
         async for state_snapshot in graph.astream(initial_state, config=config, stream_mode="values"):
             status = state_snapshot.get("status", "unknown")
+
+            # Update registry status
+            if session_id in session_registry:
+                session_registry[session_id]["status"] = status
 
             # Emit agent-specific events based on current pipeline status
             if status == "coaching" and state_snapshot.get("coach_output"):
@@ -160,6 +185,15 @@ async def _run_pipeline(
                         "status": "done",
                     })
 
+            # Track application counts in registry
+            if session_id in session_registry:
+                session_registry[session_id]["applications_submitted"] = len(
+                    state_snapshot.get("applications_submitted", [])
+                )
+                session_registry[session_id]["applications_failed"] = len(
+                    state_snapshot.get("applications_failed", [])
+                )
+
             if status in ("completed", "failed"):
                 summary = _serialize(state_snapshot.get("session_summary"))
                 await _emit(session_id, "done", {
@@ -170,6 +204,8 @@ async def _run_pipeline(
 
     except Exception as exc:
         logger.exception("Pipeline error for session %s", session_id)
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = "failed"
         await _emit(session_id, "error", {
             "message": str(exc),
             "session_id": session_id,
@@ -186,32 +222,63 @@ async def _run_pipeline(
 # ---------------------------------------------------------------------------
 
 async def _event_generator(session_id: str):
-    """Yield SSE frames from the session's queue.
+    """Yield SSE frames: first replay stored events, then stream live.
 
-    Sends a keepalive ping every 25 seconds if no events arrive.
+    Each connected client gets its own subscriber queue so multiple tabs
+    or reconnects work independently. Stored events are replayed first,
+    then live events stream from the per-subscriber queue.
     """
-    queue = sse_queues.get(session_id)
-    if queue is None:
-        yield f"event: error\ndata: {json.dumps({'message': 'Unknown session'})}\n\n"
-        return
+    # Create a dedicated queue for this subscriber
+    subscriber_queue: asyncio.Queue = asyncio.Queue()
+    if session_id not in sse_subscribers:
+        sse_subscribers[session_id] = []
+    sse_subscribers[session_id].append(subscriber_queue)
 
-    while True:
-        try:
-            event = await asyncio.wait_for(queue.get(), timeout=25)
+    try:
+        # Phase 1: Replay all previously stored events
+        stored = list(event_logs.get(session_id, []))
+        for event in stored:
             event_type = event.get("type", "message")
             event_data = json.dumps(event.get("data", {}))
-
             yield f"event: {event_type}\ndata: {event_data}\n\n"
-
+            # If a terminal event was already stored, stop here
             if event_type == "done":
-                break
-        except asyncio.TimeoutError:
-            yield f"event: ping\ndata: \"\"\n\n"
+                return
+
+        # Phase 2: Stream new live events from the subscriber queue
+        while True:
+            try:
+                event = await asyncio.wait_for(subscriber_queue.get(), timeout=25)
+                event_type = event.get("type", "message")
+                event_data = json.dumps(event.get("data", {}))
+
+                yield f"event: {event_type}\ndata: {event_data}\n\n"
+
+                if event_type == "done":
+                    break
+            except asyncio.TimeoutError:
+                yield f"event: ping\ndata: \"\"\n\n"
+    finally:
+        # Clean up: remove this subscriber's queue
+        subs = sse_subscribers.get(session_id, [])
+        if subscriber_queue in subs:
+            subs.remove(subscriber_queue)
 
 
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+@router.get("")
+async def list_sessions():
+    """Return all sessions from the in-memory registry (newest first)."""
+    sessions = sorted(
+        session_registry.values(),
+        key=lambda s: s.get("created_at", ""),
+        reverse=True,
+    )
+    return sessions
+
 
 @router.post("")
 async def start_session(body: StartSessionRequest, request: Request):
@@ -219,8 +286,24 @@ async def start_session(body: StartSessionRequest, request: Request):
     session_id = str(uuid.uuid4())
     graph = request.app.state.graph
 
-    # Create the SSE queue for this session
-    sse_queues[session_id] = asyncio.Queue()
+    # Initialize event log and subscriber list
+    event_logs[session_id] = []
+    sse_subscribers[session_id] = []
+
+    # Register session metadata immediately (before pipeline starts)
+    session_registry[session_id] = {
+        "session_id": session_id,
+        "status": "intake",
+        "keywords": body.keywords,
+        "locations": body.locations,
+        "remote_only": body.remote_only,
+        "salary_min": body.salary_min,
+        "resume_text_snippet": (body.resume_text or "")[:200],
+        "linkedin_url": body.linkedin_url,
+        "applications_submitted": 0,
+        "applications_failed": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
 
     # Launch the pipeline as a background coroutine
     asyncio.create_task(_run_pipeline(session_id, body, graph))
@@ -230,7 +313,7 @@ async def start_session(body: StartSessionRequest, request: Request):
 
 @router.get("/{session_id}")
 async def get_session(session_id: str, request: Request):
-    """Return the current session state from the checkpointer."""
+    """Return session state from checkpointer, falling back to registry."""
     checkpointer = request.app.state.checkpointer
     config = {"configurable": {"thread_id": session_id}}
 
@@ -239,16 +322,21 @@ async def get_session(session_id: str, request: Request):
     except Exception:
         state = None
 
-    if state is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+    if state is not None:
+        return _serialize(state)
 
-    return _serialize(state)
+    # Fall back to the session registry (keywords, status, etc.)
+    meta = session_registry.get(session_id)
+    if meta is not None:
+        return meta
+
+    raise HTTPException(status_code=404, detail="Session not found")
 
 
 @router.get("/{session_id}/stream")
 async def stream_session(session_id: str):
-    """SSE stream for real-time pipeline updates."""
-    if session_id not in sse_queues:
+    """SSE stream for real-time pipeline updates (with replay on reconnect)."""
+    if session_id not in session_registry:
         raise HTTPException(status_code=404, detail="Session not found or stream expired")
 
     return StreamingResponse(

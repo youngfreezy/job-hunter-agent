@@ -38,15 +38,6 @@ export default defineConfig({
     },
   ],
 
-  /* Start both backend and frontend before running tests */
-  webServer: {
-    command: "npm run start:no-docker",
-    cwd: "/Users/fareezahmed/Desktop/job-hunter-agent",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    env: {
-      PATH: `/opt/homebrew/opt/node@20/bin:${process.env.PATH}`,
-    },
-  },
+  /* Tests expect the dev server to already be running (npm start from project root).
+     No webServer config — start it separately to avoid test dependency. */
 });

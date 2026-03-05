@@ -34,10 +34,13 @@ async def lifespan(app: FastAPI):
 
     # --- Checkpointer: prefer Postgres, fall back to in-memory ---
     checkpointer = None
+    pg_conn = None
     try:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-        checkpointer = AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
+        # Newer langgraph versions return an async context manager
+        pg_conn = AsyncPostgresSaver.from_conn_string(settings.DATABASE_URL)
+        checkpointer = await pg_conn.__aenter__()
         await checkpointer.setup()
         logger.info("Using AsyncPostgresSaver (dsn=%s...)", settings.DATABASE_URL[:40])
     except Exception as exc:
@@ -45,6 +48,7 @@ async def lifespan(app: FastAPI):
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
             exc,
         )
+        pg_conn = None
         from langgraph.checkpoint.memory import MemorySaver
 
         checkpointer = MemorySaver()
@@ -60,7 +64,9 @@ async def lifespan(app: FastAPI):
 
     # --- Shutdown ---
     logger.info("Shutting down JobHunter gateway")
-    if hasattr(checkpointer, "close"):
+    if pg_conn is not None:
+        await pg_conn.__aexit__(None, None, None)
+    elif hasattr(checkpointer, "close"):
         await checkpointer.close()
 
 
