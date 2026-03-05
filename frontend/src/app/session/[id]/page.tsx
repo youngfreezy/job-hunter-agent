@@ -77,6 +77,10 @@ type SSEEvent = {
   progress?: number;
   board?: string;
   count?: number;
+  submitted?: number;
+  failed?: number;
+  current?: number;
+  total?: number;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -208,8 +212,22 @@ export default function SessionPage() {
         }
         if (evt.coach_output) updates.coach_output = evt.coach_output as unknown as SessionData["coach_output"];
         if (Array.isArray(evt.keywords) && evt.keywords.length > 0) updates.keywords = evt.keywords;
+        // Track application counts from progress events
+        if (evt.event === "application_progress") {
+          if (typeof evt.submitted === "number") {
+            updates.applications_used = (evt.submitted || 0) + (evt.failed || 0);
+          }
+        }
         return { ...prev, ...updates };
       });
+
+      // Re-fetch full session on status changes to sync sidebar
+      if (evt.status && (evt.event === "status" || evt.event === "done")) {
+        getSession(sessionId).then((data) => {
+          const s = data as unknown as SessionData;
+          setSession(s);
+        }).catch(() => {});
+      }
 
       if (evt.event === "coach_review" && evt.coach_output) {
         setCoachReviewData(evt.coach_output as unknown as CoachOutput);
