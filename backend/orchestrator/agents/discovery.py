@@ -1,9 +1,9 @@
 """Discovery Agent -- searches job boards for listings matching the user's SearchConfig.
 
 Uses real Playwright browser automation (patchright) to scrape job boards
-sequentially through a single shared browser instance. Each board gets its
-own isolated BrowserContext but shares the same Chromium process to avoid
-resource exhaustion.
+concurrently through a single shared browser instance. All boards are scraped
+in parallel via asyncio.gather, each with its own isolated BrowserContext
+sharing the same Chromium process.
 
 Keywords are searched individually (one at a time) per board to avoid the
 "keyword stuffing" problem where boards return no results for overly
@@ -12,6 +12,7 @@ specific multi-keyword queries. Results are deduplicated by title+company.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
@@ -90,7 +91,7 @@ async def _get_scraper(board: str) -> Optional[Callable]:
 
 
 # ---------------------------------------------------------------------------
-# Main discovery node — scrapes boards sequentially, keywords individually
+# Main discovery node — scrapes boards concurrently, keywords individually
 # ---------------------------------------------------------------------------
 
 async def run_discovery_agent(state: Dict[str, Any]) -> dict:
@@ -121,40 +122,30 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
     try:
         await manager.start()
 
-        total_steps = len(boards) * max(len(search_config.keywords), 1)
-        step_idx = 0
-
-        for board in boards:
+        async def _scrape_board(board: str) -> tuple[str, List[JobListing], List[str]]:
+            """Scrape a single board for all keywords. Returns (board, jobs, errors)."""
             board_label = board.replace("_", " ").title()
             board_jobs: List[JobListing] = []
+            board_errors: List[str] = []
+            board_seen: set[str] = set()
 
             scraper = await _get_scraper(board)
             if scraper is None:
                 msg = f"No scraper available for {board}"
                 logger.warning(msg)
-                all_errors.append(msg)
-                agent_statuses[f"discovery_{board}"] = "failed -- no scraper"
-                step_idx += max(len(search_config.keywords), 1)
-                continue
+                return board, [], [msg]
 
-            # Search each keyword individually
             keywords = search_config.keywords if search_config.keywords else [""]
             for kw in keywords:
                 if len(board_jobs) >= PER_BOARD_MAX:
-                    step_idx += 1
                     continue
-
-                step_idx += 1
-                pct = int((step_idx / total_steps) * 100)
 
                 kw_label = kw or "general search"
                 await emit_agent_event(session_id, "discovery_progress", {
                     "board": board,
                     "step": f"Searching {board_label} for \"{kw_label}\"...",
-                    "progress": pct,
                 })
 
-                # Build a single-keyword config for this search
                 single_kw_config = SearchConfig(
                     keywords=[kw] if kw else [],
                     locations=search_config.locations,
@@ -178,12 +169,11 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
                         max_results=PER_KEYWORD_MAX,
                     )
 
-                    # Deduplicate against all previous results
                     new_count = 0
                     for job in listings:
                         key = _dedup_key(job)
-                        if key not in seen_keys:
-                            seen_keys.add(key)
+                        if key not in board_seen:
+                            board_seen.add(key)
                             board_jobs.append(job)
                             new_count += 1
 
@@ -194,16 +184,11 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
                 except Exception as scrape_err:
                     logger.exception("Scraping failed for %s/%s", board, kw_label)
-                    err_msg = f"Scraping failed for {board}/{kw_label}: {scrape_err}"
-                    all_errors.append(err_msg)
+                    board_errors.append(f"Scraping failed for {board}/{kw_label}: {scrape_err}")
 
                 finally:
                     if ctx_id:
                         await manager.close_context(ctx_id)
-
-            # Board summary
-            all_jobs.extend(board_jobs[:PER_BOARD_MAX])
-            agent_statuses[f"discovery_{board}"] = f"done ({len(board_jobs)} listings)"
 
             await emit_agent_event(session_id, "discovery_progress", {
                 "board": board,
@@ -211,6 +196,35 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
                 "count": len(board_jobs),
                 "progress": 100,
             })
+
+            return board, board_jobs[:PER_BOARD_MAX], board_errors
+
+        # Scrape all boards concurrently (share one Chromium, separate contexts)
+        results = await asyncio.gather(
+            *[_scrape_board(board) for board in boards],
+            return_exceptions=True,
+        )
+
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error("Board scraping failed: %s", result)
+                all_errors.append(str(result))
+                continue
+
+            board, board_jobs, board_errors = result
+            all_errors.extend(board_errors)
+
+            if board_errors and not board_jobs:
+                agent_statuses[f"discovery_{board}"] = "failed"
+            else:
+                agent_statuses[f"discovery_{board}"] = f"done ({len(board_jobs)} listings)"
+
+            # Deduplicate across boards
+            for job in board_jobs:
+                key = _dedup_key(job)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    all_jobs.append(job)
 
     finally:
         await manager.stop()

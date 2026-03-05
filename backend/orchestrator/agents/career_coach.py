@@ -176,7 +176,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
 
         async with client.messages.stream(
             model="claude-sonnet-4-6",
-            max_tokens=8192,
+            max_tokens=6000,
             temperature=0,
             system=COACH_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
