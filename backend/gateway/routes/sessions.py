@@ -25,6 +25,7 @@ from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
 from backend.orchestrator.pipeline.state import JobHunterState
+from backend.shared.config import MAX_APPLICATION_JOBS
 from backend.shared.event_bus import register_emitter, unregister_emitter
 from backend.shared.models.schemas import (
     CoachReviewRequest,
@@ -146,7 +147,7 @@ async def _stream_graph(
 
         if status == "awaiting_review":
             all_scored = state_snapshot.get("scored_jobs", [])
-            top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:20]
+            top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
             shortlist = [_serialize(sj) for sj in top_scored]
             await _emit(session_id, "hitl", {
                 "status": "awaiting_review",
@@ -220,8 +221,7 @@ async def _handle_shortlist_interrupt(session_id: str, graph: Any, config: dict)
         graph_state = await graph.aget_state(config)
         channel_values = graph_state.values if hasattr(graph_state, "values") else {}
         all_scored = channel_values.get("scored_jobs", [])
-        # Only show the top 20 scored jobs to the user
-        top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:20]
+        top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
         tailored_resumes = channel_values.get("tailored_resumes", {})
         await _emit(session_id, "shortlist_review", {
             "status": "awaiting_review",
@@ -635,12 +635,11 @@ async def get_session(session_id: str, request: Request):
         }
         if isinstance(cv, dict):
             cv_light = {k: v for k, v in cv.items() if k not in HEAVY_KEYS}
-            # Cap scored_jobs to top 20 for the frontend
             if "scored_jobs" in cv_light and cv_light["scored_jobs"]:
                 all_scored = cv_light["scored_jobs"]
                 cv_light["scored_jobs"] = sorted(
                     all_scored, key=lambda sj: sj.score if hasattr(sj, "score") else sj.get("score", 0), reverse=True
-                )[:20]
+                )[:MAX_APPLICATION_JOBS]
         else:
             cv_light = cv
 

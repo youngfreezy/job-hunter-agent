@@ -47,7 +47,7 @@ class ScoringBatchResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
-SCORING_BATCH_SIZE = 10
+SCORING_BATCH_SIZE = 20
 CONCURRENCY = 10  # Max parallel LLM calls for scoring batches
 
 # ---------------------------------------------------------------------------
@@ -170,10 +170,12 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         completed_batches = 0
         total_batches = len(batches)
 
+        # Pre-create LLM + structured wrapper once (shared across all batches)
+        llm = build_llm(model=DEFAULT_MODEL, max_tokens=4096, temperature=0.0, timeout=120)
+        structured_llm = llm.with_structured_output(ScoringBatchResult)
+
         async def _score_batch(batch_idx: int, batch_jobs: List[JobListing]) -> List[dict]:
             """Score a single batch via LLM."""
-            llm = build_llm(model=DEFAULT_MODEL, max_tokens=4096, temperature=0.0, timeout=120)
-            structured_llm = llm.with_structured_output(ScoringBatchResult)
 
             jobs_text = _jobs_to_prompt_text(batch_jobs)
             user_prompt = (

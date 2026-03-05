@@ -66,11 +66,16 @@ async def apply_with_browser_use(
     user_profile: Dict[str, str],
     session_id: str,
     resume_file_path: Optional[str] = None,
+    browser: Optional[Any] = None,
 ) -> ApplicationResult:
     """Apply for a job using browser-use's AI agent.
 
     The agent dynamically navigates the page, finds form fields, fills them,
     and submits — no hardcoded selectors needed.
+
+    Pass an existing ``browser`` to reuse across multiple applications (avoids
+    2-5 s cold-start per call).  If *None*, a fresh instance is created and
+    cleaned up after use.
     """
     from browser_use import Agent, Browser, ChatAnthropic, ActionResult, Tools
 
@@ -86,8 +91,10 @@ async def apply_with_browser_use(
     if user_profile.get("phone"):
         sensitive_data["x_phone"] = user_profile["phone"]
 
-    # Browser instance (browser-use manages its own Chromium)
-    browser = Browser(headless=False, disable_security=True)
+    # Reuse provided browser or create a new one
+    owns_browser = browser is None
+    if owns_browser:
+        browser = Browser(headless=False, disable_security=True)
 
     # Custom tool for resume upload
     tools = Tools()
@@ -202,7 +209,8 @@ async def apply_with_browser_use(
             duration_seconds=duration,
         )
     finally:
-        try:
-            await browser.stop()
-        except Exception:
-            pass
+        if owns_browser:
+            try:
+                await browser.stop()
+            except Exception:
+                pass
