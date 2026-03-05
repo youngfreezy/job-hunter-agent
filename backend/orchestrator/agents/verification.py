@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
+from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import ApplicationResult
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,8 @@ async def run_verification_agent(state: JobHunterState) -> dict:
     """
     errors: List[str] = []
 
+    session_id = state.get("session_id", "")
+
     try:
         submitted: List[ApplicationResult] = state.get("applications_submitted", [])
 
@@ -83,6 +86,13 @@ async def run_verification_agent(state: JobHunterState) -> dict:
                 },
                 "errors": [],
             }
+
+        await emit_agent_event(session_id, "verification_progress", {
+            "step": f"Verifying {len(submitted)} submitted applications...",
+            "progress": 0,
+            "current": 0,
+            "total": len(submitted),
+        })
 
         # Build a lightweight payload for the LLM
         applications_data = []
@@ -95,6 +105,13 @@ async def run_verification_agent(state: JobHunterState) -> dict:
                     "error_message": app.error_message,
                 }
             )
+
+        await emit_agent_event(session_id, "verification_progress", {
+            "step": "Running AI verification analysis...",
+            "progress": 30,
+            "current": 1,
+            "total": 3,
+        })
 
         llm = _build_llm()
 
@@ -125,6 +142,13 @@ async def run_verification_agent(state: JobHunterState) -> dict:
             verified_count,
             failed_count,
         )
+
+        await emit_agent_event(session_id, "verification_progress", {
+            "step": f"Verification complete: {verified_count} verified, {failed_count} failed",
+            "progress": 100,
+            "current": len(submitted),
+            "total": len(submitted),
+        })
 
     except Exception as exc:
         logger.exception("Verification agent failed")

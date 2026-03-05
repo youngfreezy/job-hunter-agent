@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { CircularProgress } from "@/components/ui/circular-progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
 import { getSession, connectSSE, connectWebSocket, sendSteer, submitReview, submitCoachReview } from "@/lib/api";
@@ -37,6 +38,27 @@ type SessionData = {
   applications_used: number;
 };
 
+type SessionSummaryData = {
+  session_id: string;
+  total_discovered: number;
+  total_scored: number;
+  total_applied: number;
+  total_failed: number;
+  total_skipped: number;
+  top_companies: string[];
+  avg_fit_score: number;
+  resume_score: { overall: number } | null;
+  duration_minutes: number;
+  next_steps: string[];
+};
+
+type ScoredJobData = {
+  job: { id: string; title: string; company: string; location: string; url: string; board: string };
+  score: number;
+  score_breakdown?: Record<string, number>;
+  reasons?: string[];
+};
+
 type SSEEvent = {
   event: string;
   agent?: string;
@@ -47,9 +69,11 @@ type SSEEvent = {
   jobs_found?: number;
   scored_count?: number;
   coach_output?: Record<string, unknown>;
+  scored_jobs?: ScoredJobData[];
   agent_statuses?: Record<string, string>;
   keywords?: string[];
   locations?: string[];
+  session_summary?: SessionSummaryData;
   // Coaching/discovery progress events
   step?: string;
   progress?: number;
@@ -66,13 +90,15 @@ const STATUS_LABELS: Record<string, string> = {
   tailoring: "Tailoring Resumes",
   awaiting_review: "Awaiting Your Review",
   applying: "Applying to Jobs",
+  verifying: "Verifying Applications",
+  reporting: "Generating Report",
   paused: "Paused",
   takeover: "Manual Control",
   completed: "Session Complete",
   failed: "Session Failed",
 };
 
-const PIPELINE_STEPS = ["intake", "coaching", "awaiting_coach_review", "discovering", "scoring", "tailoring", "awaiting_review", "applying", "completed"];
+const PIPELINE_STEPS = ["intake", "coaching", "awaiting_coach_review", "discovering", "scoring", "tailoring", "awaiting_review", "applying", "verifying", "reporting", "completed"];
 
 export default function SessionPage() {
   const params = useParams();
@@ -87,6 +113,12 @@ export default function SessionPage() {
   const [coachReviewOpen, setCoachReviewOpen] = useState(false);
   const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(null);
   const [coachReviewSubmitting, setCoachReviewSubmitting] = useState(false);
+  const [shortlistReviewOpen, setShortlistReviewOpen] = useState(false);
+  const [shortlistJobs, setShortlistJobs] = useState<ScoredJobData[]>([]);
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const [shortlistSubmitting, setShortlistSubmitting] = useState(false);
+  const [stepProgress, setStepProgress] = useState(0); // latest progress % from *_progress events
+  const [sessionSummary, setSessionSummary] = useState<SessionSummaryData | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const eventsEndRef = useRef<HTMLDivElement>(null);
@@ -129,17 +161,22 @@ export default function SessionPage() {
         return [...prev, evt];
       });
 
+      // Track step progress from *_progress events
+      if (evt.event?.endsWith("_progress") && typeof evt.progress === "number") {
+        setStepProgress(evt.progress);
+      }
+
       // Update session from event data
       setSession((prev) => {
         if (!prev) return prev;
         const updates: Partial<SessionData> = {};
-        // Only update pipeline status from "status" or "done" events —
-        // agent_complete events have status:"done" meaning the *agent* is done,
-        // not the pipeline, so we must not overwrite session.status with that.
-        if (evt.status && (evt.event === "status" || evt.event === "done" || evt.event === "coach_review")) {
+        // Only update pipeline status from "status", "done", "coach_review", or "shortlist_review" events
+        if (evt.status && (evt.event === "status" || evt.event === "done" || evt.event === "coach_review" || evt.event === "shortlist_review")) {
           updates.status = evt.status;
+          // Reset step progress when status changes (new stage starting)
+          setStepProgress(0);
         }
-        if (evt.coach_output) updates.coach_output = evt.coach_output as SessionData["coach_output"];
+        if (evt.coach_output) updates.coach_output = evt.coach_output as unknown as SessionData["coach_output"];
         if (Array.isArray(evt.keywords) && evt.keywords.length > 0) updates.keywords = evt.keywords;
         return { ...prev, ...updates };
       });
@@ -163,15 +200,40 @@ export default function SessionPage() {
         setCoachReviewOpen(false);
       }
 
+      // Open shortlist review modal
+      if (evt.event === "shortlist_review" && evt.scored_jobs) {
+        const jobs = evt.scored_jobs as ScoredJobData[];
+        setShortlistJobs(jobs);
+        setSelectedJobIds(new Set(jobs.map((sj) => sj.job.id)));
+        setSession((prev) => {
+          if (prev && (prev.status === "tailoring" || prev.status === "awaiting_review")) {
+            setShortlistReviewOpen(true);
+          }
+          return prev;
+        });
+      }
+      // Close shortlist modal if pipeline moved past review
+      if (evt.event === "status" && evt.status && evt.status !== "tailoring" && evt.status !== "awaiting_review") {
+        setShortlistReviewOpen(false);
+      }
+
+      // Capture session summary from done event
+      if (evt.event === "done" && evt.session_summary) {
+        setSessionSummary(evt.session_summary);
+      }
+
       // Auto-scroll events
       setTimeout(() => eventsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
     return cleanup;
   }, [sessionId]);
 
-  // WebSocket for screenshot feed
+  // WebSocket for screenshot feed + notify backend of mode switch
   useEffect(() => {
-    if (viewMode !== "screenshot") return;
+    if (viewMode !== "screenshot" && viewMode !== "takeover") return;
+
+    // Tell the backend to enable screenshot streaming
+    sendSteer(sessionId, { message: `Switched to ${viewMode} mode`, mode: viewMode }).catch(() => {});
 
     const cleanup = connectWebSocket(sessionId, (data) => {
       if (data.type === "screenshot" && data.image) {
@@ -181,7 +243,12 @@ export default function SessionPage() {
         setChatMessages((prev) => [...prev, { role: "agent", text: data.message as string }]);
       }
     });
-    return cleanup;
+
+    return () => {
+      cleanup();
+      // Revert to status mode when leaving screenshot/takeover
+      sendSteer(sessionId, { message: "Switched back to status mode", mode: "status" }).catch(() => {});
+    };
   }, [sessionId, viewMode]);
 
   const handleSendChat = useCallback(async () => {
@@ -196,13 +263,27 @@ export default function SessionPage() {
     }
   }, [chatInput, sessionId, viewMode]);
 
-  const handleApproveJobs = async (jobIds: string[]) => {
+  const handleApproveShortlist = async () => {
+    setShortlistSubmitting(true);
     try {
+      const jobIds = Array.from(selectedJobIds);
       await submitReview(sessionId, { approved_job_ids: jobIds, feedback: "" });
+      setShortlistReviewOpen(false);
       setSession((prev) => prev ? { ...prev, status: "applying" } : prev);
     } catch (e) {
       console.error("Failed to submit review:", e);
+    } finally {
+      setShortlistSubmitting(false);
     }
+  };
+
+  const toggleJobSelection = (jobId: string) => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
   };
 
   const handleApproveCoachReview = async () => {
@@ -249,9 +330,13 @@ export default function SessionPage() {
       <div className="px-6 py-3 border-b border-zinc-100 dark:border-zinc-900">
         <div className="max-w-5xl mx-auto flex items-center gap-4">
           <Progress value={progressPct} className="flex-1" />
-          <span className="text-xs text-zinc-500 whitespace-nowrap">
-            Step {currentStepIndex + 1} of {PIPELINE_STEPS.length}
-          </span>
+          {session.status !== "completed" && session.status !== "failed" ? (
+            <CircularProgress value={stepProgress} size={36} strokeWidth={3} showValue />
+          ) : (
+            <span className="text-xs text-zinc-500 whitespace-nowrap">
+              {session.status === "completed" ? "Done" : "Failed"}
+            </span>
+          )}
         </div>
         <div className="max-w-5xl mx-auto flex justify-between mt-2">
           {PIPELINE_STEPS.map((step, i) => (
@@ -288,9 +373,9 @@ export default function SessionPage() {
                   {events.map((evt, i) => {
                     const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : "";
 
-                    // Progress events get special rendering
-                    if (evt.event === "coaching_progress" || evt.event === "discovery_progress") {
-                      const label = evt.event === "coaching_progress" ? "coach" : `discovery`;
+                    // Progress events get special rendering (any *_progress event)
+                    if (evt.event?.endsWith("_progress")) {
+                      const label = evt.event.replace("_progress", "");
                       const pct = typeof evt.progress === "number" ? evt.progress : undefined;
                       return (
                         <div key={i} className="flex items-center gap-2">
@@ -298,7 +383,7 @@ export default function SessionPage() {
                           <Badge variant="secondary" className="text-xs">{label}</Badge>
                           <span className="text-blue-600 dark:text-blue-400">{evt.step}</span>
                           {pct !== undefined && pct >= 0 && (
-                            <span className="text-xs text-zinc-400 ml-auto">{pct}%</span>
+                            <CircularProgress value={pct} size={24} strokeWidth={2.5} showValue className="ml-auto" />
                           )}
                         </div>
                       );
@@ -417,30 +502,69 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {/* Job shortlist (for review) */}
-          {session.status === "awaiting_review" && session.scored_jobs && (
+          {/* Shortlist summary (shown when review data is available) */}
+          {shortlistJobs.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Review Shortlist</CardTitle>
+                <CardTitle className="text-sm">Shortlist</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {session.scored_jobs.slice(0, 10).map((sj) => (
-                  <div key={sj.job.id} className="border rounded p-2 text-xs">
-                    <p className="font-medium">{sj.job.title}</p>
-                    <p className="text-zinc-500">{sj.job.company} — {sj.job.location}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="secondary">{sj.score}/100</Badge>
-                      <Badge variant="secondary">{sj.job.board}</Badge>
+              <CardContent className="space-y-1 text-sm">
+                <p><span className="text-zinc-500">Jobs scored:</span> {shortlistJobs.length}</p>
+                <p><span className="text-zinc-500">Top score:</span> {shortlistJobs[0]?.score}/100</p>
+                {session.status === "awaiting_review" && (
+                  <Button size="sm" className="w-full mt-2" onClick={() => setShortlistReviewOpen(true)}>
+                    Review Shortlist
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Session Summary (shown when completed) */}
+          {sessionSummary && session.status === "completed" && (
+            <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-green-800 dark:text-green-200">Session Complete</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="grid grid-cols-2 gap-1">
+                  <span className="text-zinc-500">Discovered:</span>
+                  <span className="font-medium">{sessionSummary.total_discovered}</span>
+                  <span className="text-zinc-500">Scored:</span>
+                  <span className="font-medium">{sessionSummary.total_scored}</span>
+                  <span className="text-zinc-500">Applied:</span>
+                  <span className="font-medium text-green-700 dark:text-green-300">{sessionSummary.total_applied}</span>
+                  <span className="text-zinc-500">Failed:</span>
+                  <span className="font-medium text-red-600">{sessionSummary.total_failed}</span>
+                  <span className="text-zinc-500">Skipped:</span>
+                  <span className="font-medium">{sessionSummary.total_skipped}</span>
+                  <span className="text-zinc-500">Avg Fit:</span>
+                  <span className="font-medium">{sessionSummary.avg_fit_score}/100</span>
+                  <span className="text-zinc-500">Duration:</span>
+                  <span className="font-medium">{sessionSummary.duration_minutes}m</span>
+                </div>
+                {sessionSummary.top_companies.length > 0 && (
+                  <div>
+                    <p className="text-zinc-500 text-xs mb-1">Top Companies:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {sessionSummary.top_companies.slice(0, 5).map((c, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs">{c}</Badge>
+                      ))}
                     </div>
                   </div>
-                ))}
-                <Button
-                  size="sm"
-                  className="w-full mt-2"
-                  onClick={() => handleApproveJobs(session.scored_jobs.map((sj) => sj.job.id))}
-                >
-                  Approve All & Start Applying
-                </Button>
+                )}
+                {sessionSummary.next_steps.length > 0 && (
+                  <div>
+                    <p className="text-zinc-500 text-xs mb-1">Next Steps:</p>
+                    <ul className="space-y-1">
+                      {sessionSummary.next_steps.map((step, i) => (
+                        <li key={i} className="text-xs text-zinc-700 dark:text-zinc-300">
+                          {i + 1}. {step}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -491,6 +615,77 @@ export default function SessionPage() {
             >
               {coachReviewSubmitting ? "Approving..." : "Approve & Start Job Discovery"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Shortlist Review Modal */}
+      <Dialog open={shortlistReviewOpen} onOpenChange={setShortlistReviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review Job Shortlist</DialogTitle>
+            <DialogDescription>
+              Select the jobs you want to apply to. Tailored resumes have been prepared for each one. Deselect any you want to skip.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[55vh] overflow-y-auto">
+            {shortlistJobs.map((sj) => {
+              const selected = selectedJobIds.has(sj.job.id);
+              return (
+                <div
+                  key={sj.job.id}
+                  className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                    selected
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
+                      : "border-zinc-200 dark:border-zinc-800 opacity-60"
+                  }`}
+                  onClick={() => toggleJobSelection(sj.job.id)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{sj.job.title}</p>
+                      <p className="text-xs text-zinc-500">{sj.job.company} — {sj.job.location}</p>
+                      {sj.reasons && sj.reasons.length > 0 && (
+                        <ul className="mt-1 space-y-0.5">
+                          {sj.reasons.map((r, ri) => (
+                            <li key={ri} className="text-xs text-zinc-600 dark:text-zinc-400">- {r}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 ml-3">
+                      <CircularProgress value={sj.score} size={36} strokeWidth={3} showValue />
+                      <Badge variant="secondary" className="text-xs">{sj.job.board}</Badge>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                        selected ? "border-blue-500 bg-blue-500 text-white" : "border-zinc-300"
+                      }`}>
+                        {selected && <span className="text-xs">✓</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="flex items-center justify-between">
+            <span className="text-sm text-zinc-500">
+              {selectedJobIds.size} of {shortlistJobs.length} jobs selected
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShortlistReviewOpen(false)}
+                disabled={shortlistSubmitting}
+              >
+                Review Later
+              </Button>
+              <Button
+                onClick={handleApproveShortlist}
+                disabled={shortlistSubmitting || selectedJobIds.size === 0}
+              >
+                {shortlistSubmitting ? "Submitting..." : `Apply to ${selectedJobIds.size} Jobs`}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

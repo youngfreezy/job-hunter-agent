@@ -15,6 +15,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.shared.config import settings
+from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     JobListing,
     ScoredJob,
@@ -151,12 +152,14 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # Step 2: Batch
         batches = _batch(unique_jobs, SCORING_BATCH_SIZE)
 
-        # Step 3: Score each batch via LLM (JSON mode for structured output)
+        # Step 3: Score each batch via LLM
+        session_id = state.get("session_id", "")
         llm = ChatAnthropic(
             model=DEFAULT_MODEL,
             api_key=settings.ANTHROPIC_API_KEY,
             max_tokens=4096,
             temperature=0.0,  # deterministic scoring
+            timeout=120,
         )
 
         all_scores: List[dict] = []
@@ -168,6 +171,15 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 len(batches),
                 len(batch_jobs),
             )
+
+            batch_pct = int((batch_idx / len(batches)) * 100)
+            await emit_agent_event(session_id, "scoring_progress", {
+                "step": f"Scoring batch {batch_idx + 1} of {len(batches)} ({len(batch_jobs)} jobs)...",
+                "progress": batch_pct,
+                "batch": batch_idx + 1,
+                "total_batches": len(batches),
+            })
+
             jobs_text = _jobs_to_prompt_text(batch_jobs)
 
             user_prompt = (
@@ -190,11 +202,27 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                     for block in raw_text
                 )
 
+            # Strip markdown fences if present
+            if "```json" in raw_text:
+                raw_text = raw_text.split("```json", 1)[1]
+                raw_text = raw_text.rsplit("```", 1)[0]
+            elif "```" in raw_text:
+                raw_text = raw_text.split("```", 1)[1]
+                raw_text = raw_text.rsplit("```", 1)[0]
+            raw_text = raw_text.strip()
+
             parsed = json.loads(raw_text)
             # Handle both {"scores": [...]} and direct [...] responses
             if isinstance(parsed, dict):
                 parsed = parsed.get("scores", parsed.get("results", []))
             all_scores.extend(parsed)
+
+            done_pct = int(((batch_idx + 1) / len(batches)) * 100)
+            await emit_agent_event(session_id, "scoring_progress", {
+                "step": f"Scored {len(all_scores)} jobs so far...",
+                "progress": done_pct,
+                "scored_so_far": len(all_scores),
+            })
 
         # Step 4: Build ScoredJob objects and sort
         # Map job_id -> JobListing for fast lookup

@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
+from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import ScoredJob, TailoredResume
 
 logger = logging.getLogger(__name__)
@@ -211,8 +212,19 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
             top_20_threshold,
         )
 
-        for sj in jobs_to_tailor:
+        session_id = state.get("session_id", "")
+        total_jobs = len(jobs_to_tailor)
+
+        for idx, sj in enumerate(jobs_to_tailor):
             try:
+                pct = int((idx / total_jobs) * 100)
+                await emit_agent_event(session_id, "tailoring_progress", {
+                    "step": f"Tailoring resume for {sj.job.title} at {sj.job.company}...",
+                    "progress": pct,
+                    "current": idx + 1,
+                    "total": total_jobs,
+                })
+
                 is_top_tier = sj.score >= top_20_threshold
                 model = _pick_model(is_top_tier)
                 llm = _build_llm(model)
@@ -227,6 +239,14 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
                 tailored = await _tailor_single(llm, base_resume, sj)
                 tailored_resumes[sj.job.id] = tailored
                 resume_scores[sj.job.id] = tailored.fit_score
+
+                done_pct = int(((idx + 1) / total_jobs) * 100)
+                await emit_agent_event(session_id, "tailoring_progress", {
+                    "step": f"Tailored {idx + 1}/{total_jobs} resumes (fit score: {tailored.fit_score})",
+                    "progress": done_pct,
+                    "current": idx + 1,
+                    "total": total_jobs,
+                })
 
             except Exception as exc:
                 error_msg = f"Failed to tailor resume for job {sj.job.id}: {exc}"
