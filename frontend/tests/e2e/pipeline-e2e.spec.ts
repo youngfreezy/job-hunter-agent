@@ -320,7 +320,8 @@ test.describe("Full Pipeline E2E", () => {
   });
 
   test("GET session caps scored_jobs to 20", async ({ page }) => {
-    test.setTimeout(300_000);
+    // This path runs full live discovery/scoring and can exceed 5 minutes.
+    test.setTimeout(600_000);
 
     // Create session and get to shortlist review
     const createRes = await page.request.post(`${API_BASE}/api/sessions`, {
@@ -342,7 +343,7 @@ test.describe("Full Pipeline E2E", () => {
     {
       const start = Date.now();
       let coachApproved = false;
-      while (Date.now() - start < 480_000) {
+      while (Date.now() - start < 540_000) {
         const res = await page.request.get(
           `${API_BASE}/api/sessions/${sessionId}`
         );
