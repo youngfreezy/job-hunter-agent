@@ -414,6 +414,13 @@ export default function SessionPage() {
             updates.applications_used =
               (evt.submitted || 0) + (evt.failed || 0);
           }
+          // Use counts to build placeholder arrays so .length works in sidebar
+          if (typeof evt.submitted === "number") {
+            updates.applications_submitted = Array(evt.submitted || 0).fill({ job_id: "", status: "submitted" });
+          }
+          if (typeof evt.failed === "number") {
+            updates.applications_failed = Array(evt.failed || 0).fill({ job_id: "", error_message: "" });
+          }
           if (typeof evt.skipped === "number") {
             updates.applications_skipped = evt.skipped;
           }
