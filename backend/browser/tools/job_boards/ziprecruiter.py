@@ -60,10 +60,76 @@ _AUTH_SELECTORS = [
     'div[class*="LoginModal"]',
 ]
 
+# Signup/email gate modal (verified 2026-03) -- appears on first visit
+_SIGNUP_MODAL_SELECTORS = [
+    'div[role="dialog"] button[aria-label="Close"]',
+    'div[aria-modal="true"] button[aria-label="Close"]',
+    'div[role="dialog"] button[aria-label="close"]',
+    'button[data-testid="modal-close"]',
+    # Escape key as last resort
+]
+
+# Hardcoded card selectors (verified 2026-03) + DB fallback
+_HARDCODED_CARD_SELECTORS = [
+    'div[class*="job_result"], article[id^="job-card-"]',
+    'article.job_result, div[class*="JobCard"]',
+]
+
+
+def _get_card_selectors(board: str) -> list[str]:
+    """Return card selectors: DB-learned first, then hardcoded fallbacks."""
+    try:
+        from backend.shared.selector_memory import get_top_selectors
+        db_sels = get_top_selectors(board, limit=3)
+    except Exception:
+        db_sels = []
+    return db_sels + _HARDCODED_CARD_SELECTORS
+
+
+def _build_query_variants(keywords: list[str]) -> list[str]:
+    """Build per-keyword search queries.
+
+    ZipRecruiter treats multi-keyword queries as AND, so search each
+    keyword individually and combine results.
+    """
+    if not keywords:
+        return ["software engineer"]
+    return keywords[:5]
+
 
 async def _dismiss_popups(page: Any) -> bool:
     """Try to dismiss any auth/signup popups. Returns True if one was found."""
     dismissed = False
+
+    # First try the signup modal (most common blocker on ZipRecruiter)
+    for sel in _SIGNUP_MODAL_SELECTORS:
+        try:
+            btn = await page.query_selector(sel)
+            if btn and await btn.is_visible():
+                await btn.click()
+                await page.wait_for_timeout(500)
+                dismissed = True
+                logger.info("ZipRecruiter: dismissed signup modal via %s", sel)
+                return True
+        except Exception:
+            continue
+
+    # Try Escape key to dismiss any modal
+    try:
+        dialog = await page.query_selector('div[role="dialog"], div[aria-modal="true"]')
+        if dialog and await dialog.is_visible():
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(500)
+            # Check if it closed
+            dialog_after = await page.query_selector('div[role="dialog"], div[aria-modal="true"]')
+            if not dialog_after or not await dialog_after.is_visible():
+                dismissed = True
+                logger.info("ZipRecruiter: dismissed modal via Escape key")
+                return True
+    except Exception:
+        pass
+
+    # Generic close buttons
     for sel in _POPUP_CLOSE_SELECTORS:
         try:
             btn = await page.query_selector(sel)
@@ -137,66 +203,79 @@ async def scrape_ziprecruiter(
     listings: List[JobListing] = []
 
     try:
-        query = " ".join(search_config.keywords[:5])
         location = search_config.locations[0] if search_config.locations else ""
+        queries = _build_query_variants(search_config.keywords)
 
-        params: Dict[str, str] = {"search": query}
+        base_params: Dict[str, str] = {}
         if search_config.remote_only:
-            # Remote filter — skip location so ZipRecruiter doesn't limit radius
-            params["refine_by_location_type"] = "only_remote"
+            base_params["refine_by_location_type"] = "only_remote"
         elif location and location.lower() != "remote":
-            params["location"] = location
-            params["radius"] = "100"
+            base_params["location"] = location
+            base_params["radius"] = "100"
 
-        param_str = "&".join(f"{k}={v}" for k, v in params.items())
-        search_url = f"{ZIPRECRUITER_JOBS}?{param_str}"
-
-        logger.info("ZipRecruiter scraper navigating to: %s", search_url)
-
-        for page_num in range(MAX_PAGES):
+        for query in queries:
             if len(listings) >= max_results:
                 break
 
-            url = search_url if page_num == 0 else f"{search_url}&page={page_num + 1}"
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(random.randint(2000, 4000))
+            params = {**base_params, "search": query}
+            param_str = "&".join(f"{k}={v}" for k, v in params.items())
+            search_url = f"{ZIPRECRUITER_JOBS}?{param_str}"
 
-            # Dismiss any signup/auth popups
-            await _dismiss_popups(page)
+            logger.info("ZipRecruiter scraper navigating to: %s", search_url)
 
-            # Check for captcha / block / auth wall
-            if await _is_blocked(page):
-                logger.warning(
-                    "ZipRecruiter: blocked on page %d -- returning %d partial results",
-                    page_num + 1, len(listings),
-                )
-                break
-
-            try:
-                await page.wait_for_selector(
-                    'div[class*="job_result"], article.job_result, div[class*="JobCard"]',
-                    timeout=10000,
-                )
-            except Exception:
-                logger.warning("ZipRecruiter: no job cards on page %d", page_num + 1)
-                break
-
-            cards = await page.query_selector_all(
-                'div[class*="job_result"], article.job_result, div[class*="JobCard"]'
-            )
-
-            for card in cards:
+            for page_num in range(MAX_PAGES):
                 if len(listings) >= max_results:
                     break
-                try:
-                    listing = await _parse_ziprecruiter_card(card)
-                    if listing:
-                        listings.append(listing)
-                except Exception:
-                    logger.debug("Failed to parse a ZipRecruiter card", exc_info=True)
 
-            if page_num < MAX_PAGES - 1:
-                await page.wait_for_timeout(random.randint(2000, 5000))
+                url = search_url if page_num == 0 else f"{search_url}&page={page_num + 1}"
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(random.randint(2000, 4000))
+
+                # Dismiss any signup/auth popups
+                await _dismiss_popups(page)
+
+                # Check for captcha / block / auth wall
+                if await _is_blocked(page):
+                    logger.warning(
+                        "ZipRecruiter: blocked on page %d -- returning %d partial results",
+                        page_num + 1, len(listings),
+                    )
+                    break
+
+                # Wait for job cards (try DB selectors too)
+                card_selectors = _get_card_selectors("ziprecruiter")
+                found_cards = False
+                for sel in card_selectors:
+                    try:
+                        await page.wait_for_selector(sel, timeout=6000)
+                        found_cards = True
+                        break
+                    except Exception:
+                        continue
+
+                if not found_cards:
+                    logger.warning("ZipRecruiter: no job cards on page %d (query: %s)", page_num + 1, query)
+                    break
+
+                # Try all card selectors to find elements
+                cards: list = []
+                for sel in card_selectors:
+                    cards = await page.query_selector_all(sel)
+                    if cards:
+                        break
+
+                for card in cards:
+                    if len(listings) >= max_results:
+                        break
+                    try:
+                        listing = await _parse_ziprecruiter_card(card)
+                        if listing:
+                            listings.append(listing)
+                    except Exception:
+                        logger.debug("Failed to parse a ZipRecruiter card", exc_info=True)
+
+                if page_num < MAX_PAGES - 1:
+                    await page.wait_for_timeout(random.randint(2000, 5000))
 
         logger.info("ZipRecruiter scraper found %d listings", len(listings))
 
