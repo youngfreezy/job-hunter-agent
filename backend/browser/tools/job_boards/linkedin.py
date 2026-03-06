@@ -205,10 +205,6 @@ async def scrape_linkedin(
                 if page_num < MAX_PAGES - 1:
                     await page.wait_for_timeout(random.randint(3000, 6000))
 
-            # If this query found results, stop trying broader queries
-            if listings:
-                break
-
         logger.info("LinkedIn scraper found %d listings", len(listings))
 
     except Exception:

@@ -15,6 +15,7 @@ import aiohttp
 
 from backend.browser.manager import BrowserManager
 from backend.browser.tools.job_boards import (
+    rank_by_relevance,
     scrape_glassdoor,
     scrape_indeed,
     scrape_linkedin,
@@ -34,8 +35,12 @@ _BOARD_SCRAPERS = {
     "ziprecruiter": scrape_ziprecruiter,
 }
 
-# Per-board timeout in seconds
-_BOARD_TIMEOUT = 60
+# Per-board timeout (higher to allow per-keyword searches)
+_BOARD_TIMEOUT = 180
+
+# Collect broadly, then rank down to this many per board
+_COLLECT_CAP = 50
+_RETURN_PER_BOARD = 5
 
 
 async def _scrape_board(
@@ -45,7 +50,7 @@ async def _scrape_board(
     session_id: str,
     max_results: int,
 ) -> List[JobListing]:
-    """Scrape a single board using its dedicated Playwright scraper."""
+    """Scrape a single board, rank results by relevance, return top N."""
     scraper_fn = _BOARD_SCRAPERS.get(board)
     if not scraper_fn:
         logger.warning("No direct scraper for board %s, skipping", board)
@@ -60,20 +65,29 @@ async def _scrape_board(
         proxy=settings.PROXY_URL,
     )
     try:
+        # Collect broadly -- scrapers search per-keyword internally
         listings = await asyncio.wait_for(
-            scraper_fn(context, search_config, max_results=max_results),
+            scraper_fn(context, search_config, max_results=_COLLECT_CAP),
             timeout=_BOARD_TIMEOUT,
         )
-        logger.info("Direct scrape of %s: %d jobs", board, len(listings))
+        logger.info("Direct scrape of %s: %d raw jobs", board, len(listings))
 
+        # LLM-rank and return top N per board
         if listings:
+            ranked = await rank_by_relevance(
+                listings, search_config.keywords, limit=max_results,
+            )
+            logger.info(
+                "Ranked %s: %d -> %d jobs", board, len(listings), len(ranked),
+            )
             await emit_agent_event(session_id, "discovery_progress", {
                 "board": board,
-                "step": f"Found {len(listings)} jobs on {board.title()}",
-                "count": len(listings),
+                "step": f"Found {len(ranked)} top jobs on {board.title()}",
+                "count": len(ranked),
             })
+            return ranked
 
-        return listings
+        return []
 
     except asyncio.TimeoutError:
         logger.warning("Direct scrape of %s timed out after %ds", board, _BOARD_TIMEOUT)
@@ -115,7 +129,7 @@ async def discover_all_boards(
     boards: List[str],
     search_config: SearchConfig,
     session_id: str,
-    max_per_board: int = 20,
+    max_per_board: int = _RETURN_PER_BOARD,
 ) -> List[JobListing]:
     """Hybrid discovery: direct Playwright first, browser-use fallback.
 
