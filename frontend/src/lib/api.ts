@@ -194,6 +194,35 @@ export type SkippedJob = {
   cover_letter_template: string;
 };
 
+export type ApplicationLogEntry = {
+  status: "submitted" | "failed" | "skipped";
+  job: {
+    id?: string;
+    title?: string;
+    company?: string;
+    location?: string;
+    url?: string;
+    board?: string;
+  };
+  error: string | null;
+  cover_letter: string;
+  tailored_resume: {
+    tailored_text: string;
+    fit_score: number;
+    changes_made: string[];
+  } | null;
+  duration: number | null;
+  submitted_at: string | null;
+};
+
+export async function getApplicationLog(
+  sessionId: string
+): Promise<{ entries: ApplicationLogEntry[] }> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/application-log`);
+  if (!res.ok) throw new Error(`Failed to get application log: ${res.statusText}`);
+  return res.json();
+}
+
 export async function sendSteer(
   sessionId: string,
   data: { message: string; mode?: string }

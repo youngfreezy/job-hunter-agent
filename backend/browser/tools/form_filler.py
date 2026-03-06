@@ -52,7 +52,7 @@ Rules:
 - For dropdowns (select), pick the best matching option value
 - For react-select fields (type "react-select"), use action "react_select". The options array lists the actual available choices. Set value to the EXACT text of the option you want to select (must match one of the provided options). If no options are listed, use short unambiguous text to search. Examples: "United States", "Yes", "No", "Decline To Self Identify"
 - For checkboxes, set value to "true" if it should be checked
-- For file uploads, set action to "upload" and value to the file path
+- For file uploads (type "file"), set action to "upload" with an empty value — the system provides the actual file path separately
 - For "are you authorized to work" questions, always "Yes"
 - For "do you need sponsorship" questions, answer based on resume context
 - For salary fields, provide a reasonable number based on the job
@@ -338,9 +338,8 @@ async def fill_form(
                 filled += 1
 
             elif action == "upload":
-                file_path = resume_file_path if resume_file_path else str(value)
-                if file_path:
-                    await el.set_input_files(file_path)
+                if resume_file_path:
+                    await el.set_input_files(resume_file_path)
                     filled += 1
                 else:
                     skipped += 1

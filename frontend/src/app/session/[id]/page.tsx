@@ -410,20 +410,13 @@ export default function SessionPage() {
           updates.keywords = evt.keywords;
         // Track application counts from progress events
         if (evt.event === "application_progress") {
-          if (typeof evt.submitted === "number") {
-            updates.applications_used =
-              (evt.submitted || 0) + (evt.failed || 0);
-          }
-          // Use counts to build placeholder arrays so .length works in sidebar
-          if (typeof evt.submitted === "number") {
-            updates.applications_submitted = Array(evt.submitted || 0).fill({ job_id: "", status: "submitted" });
-          }
-          if (typeof evt.failed === "number") {
-            updates.applications_failed = Array(evt.failed || 0).fill({ job_id: "", error_message: "" });
-          }
-          if (typeof evt.skipped === "number") {
-            updates.applications_skipped = evt.skipped;
-          }
+          const sub = typeof evt.submitted === "number" ? evt.submitted : 0;
+          const fail = typeof evt.failed === "number" ? evt.failed : 0;
+          const skip = typeof evt.skipped === "number" ? evt.skipped : 0;
+          updates.applications_used = sub + fail + skip;
+          updates.applications_submitted = Array(sub).fill({ job_id: "", status: "submitted" });
+          updates.applications_failed = Array(fail).fill({ job_id: "", error_message: "" });
+          updates.applications_skipped = skip;
         }
         return { ...prev, ...updates };
       });

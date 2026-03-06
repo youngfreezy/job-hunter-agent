@@ -953,6 +953,97 @@ async def get_skipped_jobs(session_id: str, request: Request):
     return {"skipped_jobs": results}
 
 
+@router.get("/{session_id}/application-log")
+async def get_application_log(session_id: str, request: Request):
+    """Return all application attempts (submitted, failed, skipped) with job details."""
+    checkpointer = request.app.state.checkpointer
+    config = {"configurable": {"thread_id": session_id}}
+
+    try:
+        state = await checkpointer.aget(config)
+    except Exception:
+        state = None
+
+    if state is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    checkpoint = state
+    if hasattr(state, "checkpoint"):
+        checkpoint = state.checkpoint
+    if isinstance(checkpoint, dict) and "channel_values" in checkpoint:
+        cv = checkpoint["channel_values"]
+    else:
+        cv = checkpoint
+
+    # Build job lookup from scored_jobs + discovered_jobs
+    scored_jobs = cv.get("scored_jobs") or []
+    job_map = {}
+    for sj in scored_jobs:
+        job = sj.job if hasattr(sj, "job") else sj.get("job", {})
+        job_id = job.id if hasattr(job, "id") else job.get("id")
+        if job_id:
+            job_map[job_id] = _serialize(job)
+
+    for dj in cv.get("discovered_jobs") or []:
+        job_id = dj.id if hasattr(dj, "id") else dj.get("id")
+        if job_id and job_id not in job_map:
+            job_map[job_id] = _serialize(dj)
+
+    tailored = cv.get("tailored_resumes") or {}
+    cover_template = cv.get("cover_letter_template") or ""
+
+    entries = []
+
+    # Submitted
+    for ar in cv.get("applications_submitted") or []:
+        ar_dict = _serialize(ar)
+        job_id = ar_dict.get("job_id", "")
+        job_data = job_map.get(job_id, {})
+        tr = tailored.get(job_id)
+        entries.append({
+            "status": "submitted",
+            "job": job_data,
+            "error": None,
+            "cover_letter": ar_dict.get("cover_letter_used") or cover_template,
+            "tailored_resume": _serialize(tr) if tr else None,
+            "duration": ar_dict.get("duration_seconds"),
+            "submitted_at": ar_dict.get("submitted_at"),
+        })
+
+    # Failed
+    for ar in cv.get("applications_failed") or []:
+        ar_dict = _serialize(ar)
+        job_id = ar_dict.get("job_id", "")
+        job_data = job_map.get(job_id, {})
+        tr = tailored.get(job_id)
+        entries.append({
+            "status": "failed",
+            "job": job_data,
+            "error": ar_dict.get("error_message"),
+            "cover_letter": cover_template,
+            "tailored_resume": _serialize(tr) if tr else None,
+            "duration": ar_dict.get("duration_seconds"),
+            "submitted_at": None,
+        })
+
+    # Skipped
+    skipped_ids = set(cv.get("applications_skipped") or [])
+    for jid in skipped_ids:
+        job_data = job_map.get(jid, {})
+        tr = tailored.get(jid)
+        entries.append({
+            "status": "skipped",
+            "job": job_data,
+            "error": "Skipped — requires login or unsupported form",
+            "cover_letter": cover_template,
+            "tailored_resume": _serialize(tr) if tr else None,
+            "duration": None,
+            "submitted_at": None,
+        })
+
+    return {"entries": entries}
+
+
 @router.get("/{session_id}/checkpoints")
 async def list_checkpoints(session_id: str, request: Request):
     """List all checkpoints for a session (for rewind UI)."""
