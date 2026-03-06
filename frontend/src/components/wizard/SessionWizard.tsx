@@ -50,6 +50,7 @@ export function SessionWizard() {
           remote_only: values.remoteOnly,
           salary_min: values.salaryMin ? parseInt(values.salaryMin) : null,
           resume_text: values.resumeText,
+          resume_file_path: values.resumeFilePath || null,
           linkedin_url: values.linkedinUrl || null,
           preferences: {},
         });

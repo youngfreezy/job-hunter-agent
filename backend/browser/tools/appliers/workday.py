@@ -110,12 +110,12 @@ class WorkdayApplier(BaseApplier):
                         error_message=f"Workday detected after submit: {failure}",
                     )
 
-                # Submit clicked, no confirmation -- optimistic success
-                logger.info("Workday: submit clicked, no confirmation -- assuming success")
+                # Submit clicked, no confirmation — FAILED
+                logger.info("Workday: submit clicked, no confirmation -- FAILED")
                 await self._emit_step("Application submitted (no explicit confirmation).")
                 return self._make_result(
-                    job.id, ApplicationStatus.SUBMITTED,
-                    cover_letter_used=cover_letter,
+                    job.id, ApplicationStatus.FAILED,
+                    error_message="Submit clicked but no confirmation detected",
                 )
 
             # Try Next button to advance the wizard

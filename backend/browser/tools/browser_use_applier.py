@@ -180,6 +180,11 @@ async def apply_with_browser_use(
         if has_failure:
             is_success = False
 
+        # Login wall / auth required → SKIPPED (not a real failure)
+        auth_keywords = ["login wall", "login required", "sign in to apply",
+                         "log in to apply", "create an account", "sign up to apply"]
+        is_auth_wall = any(kw in final_lower for kw in auth_keywords)
+
         # Also check for success keywords in case is_successful is unreliable
         if not is_success and not has_failure:
             success_keywords = [
@@ -198,6 +203,14 @@ async def apply_with_browser_use(
                 status=ApplicationStatus.SUBMITTED,
                 cover_letter_used=cover_letter,
                 submitted_at=datetime.now(timezone.utc),
+                duration_seconds=duration,
+            )
+        elif is_auth_wall:
+            logger.info("browser-use hit auth wall for %s — skipping", job.id)
+            return ApplicationResult(
+                job_id=job.id,
+                status=ApplicationStatus.SKIPPED,
+                error_message="auth_required",
                 duration_seconds=duration,
             )
         else:

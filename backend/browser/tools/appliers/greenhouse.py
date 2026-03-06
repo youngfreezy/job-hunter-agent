@@ -53,7 +53,7 @@ class GreenhouseApplier(BaseApplier):
         clicked = await self._click_selector(_APPLY_SELECTORS, "apply_button", timeout=5000)
         if clicked:
             await self._random_delay(1.0, 2.0)
-            await self._wait_for_navigation()
+            await self._wait_for_navigation(timeout=15000)
 
         # Step 2: Verify the form is present
         form_found = False
@@ -101,10 +101,22 @@ class GreenhouseApplier(BaseApplier):
                 error_message="Could not find Greenhouse submit button",
             )
 
-        await self._random_delay(1.5, 3.0)
-        await self._wait_for_navigation()
+        await self._random_delay(3.0, 5.0)
+        await self._wait_for_navigation(timeout=15000)
 
-        # Step 6: Detect confirmation
+        # Step 6: Take post-submit screenshot for verification
+        try:
+            import os, tempfile
+            screenshot_dir = os.path.join(tempfile.gettempdir(), "jobhunter_screenshots")
+            os.makedirs(screenshot_dir, exist_ok=True)
+            safe_name = f"{job.company}_{job.title}".replace(" ", "_").replace("/", "_")[:60]
+            screenshot_path = os.path.join(screenshot_dir, f"{safe_name}_submitted.png")
+            await self.page.screenshot(path=screenshot_path, full_page=True)
+            logger.info("Post-submit screenshot saved: %s", screenshot_path)
+        except Exception:
+            logger.debug("Screenshot capture failed", exc_info=True)
+
+        # Step 7: Detect confirmation
         if await self._detect_confirmation():
             await self._emit_step("Application submitted!")
             return self._make_result(
@@ -120,10 +132,10 @@ class GreenhouseApplier(BaseApplier):
                 error_message=f"Greenhouse detected: {failure}",
             )
 
-        # Submit was clicked but no confirmation detected -- optimistic success
-        logger.info("Greenhouse: submit clicked, no confirmation detected -- assuming success")
-        await self._emit_step("Application submitted (no explicit confirmation).")
+        # Submit was clicked but no confirmation detected — report honestly as FAILED
+        logger.warning("Greenhouse: submit clicked but no confirmation detected — FAILED")
+        await self._emit_step("Submission not confirmed — form may have validation errors.")
         return self._make_result(
-            job.id, ApplicationStatus.SUBMITTED,
-            cover_letter_used=cover_letter,
+            job.id, ApplicationStatus.FAILED,
+            error_message="Submit clicked but no confirmation page detected",
         )

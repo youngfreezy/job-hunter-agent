@@ -56,8 +56,9 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
     session_id: str = state.get("session_id", "")
     search_config = _get_search_config(state)
-    # Indeed last — it's slowest and most anti-bot
-    _BOARD_ORDER = ["linkedin", "glassdoor", "ziprecruiter", "indeed"]
+    # greenhouse_lever first — public ATS forms we can actually apply to
+    # Indeed last — slowest and most anti-bot
+    _BOARD_ORDER = ["greenhouse_lever", "linkedin", "glassdoor", "ziprecruiter", "indeed"]
     boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS]
 
     logger.info(

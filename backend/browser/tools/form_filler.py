@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class FillInstruction(BaseModel):
     """A single instruction for filling a form field."""
     selector: str = Field(description="CSS selector for the field")
-    action: Literal["fill", "select", "check", "upload", "click", "skip"] = Field(
+    action: Literal["fill", "select", "check", "upload", "click", "react_select", "skip"] = Field(
         description="The action to perform on the field"
     )
     value: str = Field(default="", description="Value to fill, select, or use")
@@ -50,6 +50,7 @@ For each field, determine the best value to fill in.
 Rules:
 - For text inputs, use appropriate values from the resume/cover letter
 - For dropdowns (select), pick the best matching option value
+- For react-select fields (type "react-select"), use action "react_select". The options array lists the actual available choices. Set value to the EXACT text of the option you want to select (must match one of the provided options). If no options are listed, use short unambiguous text to search. Examples: "United States", "Yes", "No", "Decline To Self Identify"
 - For checkboxes, set value to "true" if it should be checked
 - For file uploads, set action to "upload" and value to the file path
 - For "are you authorized to work" questions, always "Yes"
@@ -57,6 +58,62 @@ Rules:
 - For salary fields, provide a reasonable number based on the job
 - Skip fields you cannot determine (use action "skip")
 """
+
+
+async def _discover_react_select_options(page: Any, selector: str) -> List[Dict[str, str]]:
+    """Open a React Select dropdown, capture all visible options, then close it.
+
+    Returns a list of dicts with keys: value, text.
+    """
+    try:
+        el = await page.query_selector(selector)
+        if not el:
+            return []
+
+        # Click to open the dropdown
+        await el.click()
+        await page.wait_for_timeout(400)
+
+        # Capture all visible options from the dropdown menu
+        # React Select renders options in a container with class *select__menu*
+        options = await page.evaluate("""(inputSelector) => {
+            // Find the React Select container from the input
+            const input = document.querySelector(inputSelector);
+            if (!input) return [];
+
+            // Walk up to the select container
+            const container = input.closest('[class*="select__container"], [class*="indicatorContainer"]')
+                ?.closest('[class*="select__container"]')
+                || input.closest('[class*="select"]');
+
+            // Find the menu — it may be a sibling of the container or inside it
+            let menu = container?.querySelector('[class*="select__menu"]');
+            if (!menu) {
+                // Menu might be rendered as a portal at document body level
+                menu = document.querySelector('[class*="select__menu"]');
+            }
+            if (!menu) return [];
+
+            const optionEls = menu.querySelectorAll('[class*="select__option"]');
+            return Array.from(optionEls).map(o => ({
+                value: o.textContent.trim(),
+                text: o.textContent.trim(),
+            }));
+        }""", selector)
+
+        # Close the dropdown by pressing Escape
+        await el.press("Escape")
+        await page.wait_for_timeout(200)
+
+        return options or []
+    except Exception as exc:
+        logger.debug("Failed to discover options for %s: %s", selector, exc)
+        # Try to close any open dropdown
+        try:
+            await page.keyboard.press("Escape")
+        except Exception:
+            pass
+        return []
 
 
 async def extract_form_fields(page: Any) -> List[Dict[str, Any]]:
@@ -85,6 +142,14 @@ async def extract_form_fields(page: Any) -> List[Dict[str, Any]]:
                 const parentLabel = el.closest('label');
                 if (parentLabel) label = parentLabel.textContent.trim();
             }
+            // Check aria-labelledby (used by React Select / Greenhouse)
+            if (!label) {
+                const labelledBy = el.getAttribute('aria-labelledby');
+                if (labelledBy) {
+                    const lblEl = document.getElementById(labelledBy);
+                    if (lblEl) label = lblEl.textContent.trim();
+                }
+            }
             // Check aria-label
             if (!label) label = el.getAttribute('aria-label') || '';
             // Check placeholder
@@ -111,9 +176,14 @@ async def extract_form_fields(page: Any) -> List[Dict[str, Any]]:
                 selector = `${el.tagName.toLowerCase()}:nth-of-type(${idx + 1})`;
             }
 
+            // Detect React Select combobox inputs
+            const isReactSelect = el.getAttribute('role') === 'combobox' &&
+                !!el.closest('[class*="select__container"], [class*="select__control"]');
+            const fieldType = isReactSelect ? 'react-select' : (el.type || el.tagName.toLowerCase());
+
             fields.push({
                 selector: selector,
-                type: el.type || el.tagName.toLowerCase(),
+                type: fieldType,
                 name: el.name || '',
                 label: label.substring(0, 200),
                 required: el.required || el.getAttribute('aria-required') === 'true',
@@ -123,7 +193,21 @@ async def extract_form_fields(page: Any) -> List[Dict[str, Any]]:
         return fields;
     }""")
 
-    logger.info("Extracted %d form fields from page", len(fields))
+    # Filter out unlabeled ghost inputs (React Select renders invisible sibling inputs)
+    fields = [f for f in fields if f.get("label") or f.get("name") or f.get("type") in ("react-select", "file")]
+
+    # Discover actual options for React Select fields by opening each dropdown
+    react_fields = [f for f in fields if f.get("type") == "react-select"]
+    if react_fields:
+        logger.info("Discovering options for %d React Select fields...", len(react_fields))
+        for field in react_fields:
+            options = await _discover_react_select_options(page, field["selector"])
+            if options:
+                field["options"] = options
+                logger.info("  %s: %d options discovered", field.get("label", field["selector"]), len(options))
+
+    react_count = len(react_fields)
+    logger.info("Extracted %d form fields from page (%d react-select)", len(fields), react_count)
     return fields
 
 
@@ -260,6 +344,36 @@ async def fill_form(
                     filled += 1
                 else:
                     skipped += 1
+
+            elif action == "react_select":
+                # React Select: click → clear → type value → select option
+                await el.click()
+                await page.wait_for_timeout(300)
+                await el.fill("")
+                await page.wait_for_timeout(100)
+                await el.fill(str(value))
+                await page.wait_for_timeout(600)
+
+                # Try to click the exact matching option text first
+                option_clicked = False
+                try:
+                    option_el = page.locator(
+                        f'[class*="select__option"]:has-text("{value}")'
+                    ).first
+                    if await option_el.is_visible(timeout=1000):
+                        await option_el.click()
+                        option_clicked = True
+                except Exception:
+                    pass
+
+                if not option_clicked:
+                    # Fallback: ArrowDown + Enter
+                    await el.press("ArrowDown")
+                    await page.wait_for_timeout(200)
+                    await el.press("Enter")
+
+                await page.wait_for_timeout(300)
+                filled += 1
 
             elif action == "click":
                 await el.click(force=True)

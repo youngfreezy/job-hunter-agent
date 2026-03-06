@@ -28,6 +28,9 @@ export function FormikFileUpload() {
     try {
       const result = await parseResume(file);
       setFieldValue("resumeText", result.text);
+      if (result.file_path) {
+        setFieldValue("resumeFilePath", result.file_path);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to parse file";
       setError(msg);

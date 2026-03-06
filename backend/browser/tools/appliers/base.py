@@ -150,13 +150,92 @@ class BaseApplier(ABC):
         return result
 
     async def _detect_confirmation(self) -> bool:
-        """Check if current page shows a success/confirmation message."""
+        """Check if current page shows a real submission confirmation.
+
+        Strict verification — only returns True when we have strong evidence
+        the application was accepted.  Never matches single keywords in job
+        description text (previous version false-positived on 'success' in h1/h2).
+        """
         try:
-            text = await self.page.evaluate("() => document.body.innerText.toLowerCase()")
-            for kw in _CONFIRM_KEYWORDS:
-                if kw in text:
-                    logger.info("Confirmation detected: '%s'", kw)
+            result = await self.page.evaluate("""() => {
+                const text = document.body.innerText.toLowerCase();
+                const url = window.location.href.toLowerCase();
+
+                // NEGATIVE: submit button still visible means form didn't go through
+                const submitVisible = !!(
+                    document.querySelector('button[type="submit"]')?.offsetParent ||
+                    document.querySelector('input[type="submit"]')?.offsetParent
+                );
+                // NEGATIVE: validation errors present
+                const hasErrors = [...document.querySelectorAll(
+                    '.field--error, [class*="error-message"], [class*="field-error"]'
+                )].some(el => el.offsetParent !== null);
+
+                // Confirmation-specific elements (NOT generic h1/h2/headings)
+                const confirmSels = [
+                    '[class*="flash--success"]', '[class*="confirmation"]',
+                    '[class*="thank-you"]', '[class*="success-message"]',
+                    '[class*="application-confirmation"]',
+                ];
+                let confirmElText = '';
+                for (const sel of confirmSels) {
+                    document.querySelectorAll(sel).forEach(el => {
+                        if (el.offsetParent !== null) {
+                            confirmElText += ' ' + el.textContent.toLowerCase();
+                        }
+                    });
+                }
+
+                // URL change to a confirmation page
+                const urlConfirm = url.includes('thank') || url.includes('confirm') ||
+                                   url.includes('/submitted');
+
+                return {
+                    text: text.substring(0, 3000),
+                    confirmElText,
+                    submitVisible,
+                    hasErrors,
+                    urlConfirm,
+                };
+            }""")
+
+            submit_visible = result.get("submitVisible", True)
+            has_errors = result.get("hasErrors", False)
+            confirm_el_text = result.get("confirmElText", "")
+            text = result.get("text", "")
+            url_confirm = result.get("urlConfirm", False)
+
+            # Hard negatives — form didn't submit
+            if has_errors:
+                logger.info("Confirmation: validation errors present — NOT confirmed")
+                return False
+            if submit_visible:
+                logger.info("Confirmation: submit button still visible — NOT confirmed")
+                return False
+
+            # URL redirected to confirmation page
+            if url_confirm:
+                logger.info("Confirmation: URL indicates success")
+                return True
+
+            # Multi-word phrases that only appear in real confirmation messages
+            _SAFE_PHRASES = [
+                "application has been submitted", "thanks for applying",
+                "thank you for applying", "application received",
+                "successfully submitted", "we have received your application",
+                "your application has been received",
+            ]
+            for phrase in _SAFE_PHRASES:
+                if phrase in text:
+                    logger.info("Confirmation detected (phrase): '%s'", phrase)
                     return True
+
+            # Confirmation-specific elements only
+            for kw in ["submitted", "received", "thank you"]:
+                if kw in confirm_el_text:
+                    logger.info("Confirmation detected (confirm element): '%s'", kw)
+                    return True
+
         except Exception:
             pass
         return False

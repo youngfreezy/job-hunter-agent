@@ -258,7 +258,7 @@ async def _run_pipeline(
             "remote_only": request_body.remote_only,
             "salary_min": request_body.salary_min,
             "resume_text": request_body.resume_text or "",
-            "resume_file_path": None,
+            "resume_file_path": request_body.resume_file_path,
             "linkedin_url": request_body.linkedin_url,
             "preferences": request_body.preferences,
             "status": "intake",
@@ -1398,7 +1398,18 @@ async def parse_resume(file: UploadFile = File(...)):
     if not text:
         raise HTTPException(status_code=422, detail="Could not extract any text from the file")
 
-    return {"text": text, "filename": file.filename}
+    # Save the resume file to a temp path so it can be uploaded to ATS forms later
+    import tempfile
+    import os
+    resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
+    os.makedirs(resume_dir, exist_ok=True)
+    safe_name = file.filename.replace("/", "_").replace("\\", "_")
+    resume_path = os.path.join(resume_dir, safe_name)
+    with open(resume_path, "wb") as f:
+        f.write(raw)
+    logger.info("Resume saved to %s", resume_path)
+
+    return {"text": text, "filename": file.filename, "file_path": resume_path}
 
 
 # ---------------------------------------------------------------------------

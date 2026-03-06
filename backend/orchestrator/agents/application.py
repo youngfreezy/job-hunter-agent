@@ -170,28 +170,87 @@ async def _find_external_apply_link(page: Any) -> str | None:
     """Look for an external apply link on a board job page.
 
     Returns the external URL if found, None otherwise.
+    Handles LinkedIn's externalApply redirect pattern where the real ATS
+    URL is URL-encoded inside a query parameter.
     """
+    from urllib.parse import urlparse, parse_qs, unquote
+
+    def _extract_ats_url(href: str) -> str | None:
+        """Extract the real ATS URL from a link, handling redirects."""
+        if not href:
+            return None
+        href_lower = href.lower()
+
+        # LinkedIn externalApply pattern: ...externalApply/ID?url=ENCODED_ATS_URL
+        if "externalapply" in href_lower:
+            try:
+                parsed = urlparse(href)
+                params = parse_qs(parsed.query)
+                if "url" in params:
+                    decoded = unquote(params["url"][0])
+                    if any(d in decoded.lower() for d in _EXTERNAL_ATS_DOMAINS):
+                        return decoded
+            except Exception:
+                pass
+
+        # Direct ATS link
+        if any(d in href_lower for d in _EXTERNAL_ATS_DOMAINS):
+            return href
+
+        return None
+
+    # Try targeted selectors first
     for sel in _EXTERNAL_APPLY_SELECTORS:
         try:
             el = await page.query_selector(sel)
             if el:
                 href = await el.get_attribute("href")
-                if href and any(domain in href.lower() for domain in _EXTERNAL_ATS_DOMAINS):
-                    return href
+                result = _extract_ats_url(href)
+                if result:
+                    return result
         except Exception:
             continue
 
-    # Fallback: scan all links on the page for external ATS domains
+    # Scan ALL links on the page (not just apply-text links)
     try:
         links = await page.evaluate("""() => {
             return Array.from(document.querySelectorAll('a[href]'))
-                .map(a => ({ href: a.href, text: a.innerText.trim().toLowerCase() }))
-                .filter(l => l.text.includes('apply') || l.text.includes('submit'))
+                .map(a => a.href)
         }""")
-        for link in (links or []):
-            href = link.get("href", "")
-            if any(domain in href.lower() for domain in _EXTERNAL_ATS_DOMAINS):
-                return href
+        for href in (links or []):
+            result = _extract_ats_url(href)
+            if result:
+                return result
+    except Exception:
+        pass
+
+    # LinkedIn-specific: check for the "Apply" button that triggers external redirect.
+    # LinkedIn shows a "Sign up" modal with an embedded external link.
+    try:
+        # Click the Apply button if it exists (non-Easy-Apply)
+        apply_btn = await page.query_selector(
+            'button.sign-up-modal__outlet-btn, '
+            'button[data-tracking-control-name*="apply"]'
+        )
+        if apply_btn:
+            btn_text = await apply_btn.inner_text()
+            if "easy" not in btn_text.lower():
+                await apply_btn.click()
+                await asyncio.sleep(1.5)
+                # Check if a modal appeared with external link
+                modal_links = await page.evaluate("""() => {
+                    return Array.from(document.querySelectorAll('a[href]'))
+                        .map(a => a.href)
+                        .filter(h => h.includes('externalApply') ||
+                                    h.includes('greenhouse') ||
+                                    h.includes('lever.co') ||
+                                    h.includes('myworkdayjobs') ||
+                                    h.includes('smartrecruiters'))
+                }""")
+                for href in (modal_links or []):
+                    result = _extract_ats_url(href)
+                    if result:
+                        return result
     except Exception:
         pass
 
@@ -209,6 +268,22 @@ async def _has_auth_wall(page: Any) -> bool:
         for indicator in _AUTH_WALL_INDICATORS:
             if indicator in text:
                 return True
+    except Exception:
+        pass
+    return False
+
+
+async def _is_dead_page(page: Any) -> bool:
+    """Check if the job page is a 404 / expired / removed listing."""
+    try:
+        text = await page.evaluate("() => document.body.innerText.substring(0, 1000).toLowerCase()")
+        for indicator in _NOT_FOUND_INDICATORS:
+            if indicator in text:
+                return True
+        # Also check very short pages (likely errors)
+        full_len = await page.evaluate("() => document.body.innerText.length")
+        if full_len < 100:
+            return True
     except Exception:
         pass
     return False
@@ -272,6 +347,20 @@ async def _apply_to_job(
     start_time = time.monotonic()
     detected_ats = "unknown"
 
+    # Pre-flight: skip "Easy Apply" jobs (need board login)
+    if getattr(job, "is_easy_apply", False):
+        logger.info("Easy Apply job — skipping %s (needs %s login)", job.title, job.board.value)
+        await emit_agent_event(session_id, "application_progress", {
+            "job_id": job_id,
+            "step": f"Skipped — {job.board.value} Easy Apply requires login",
+        })
+        return ApplicationResult(
+            job_id=job_id,
+            status=ApplicationStatus.SKIPPED,
+            error_message="auth_required",
+            duration_seconds=int(time.monotonic() - start_time),
+        )
+
     try:
         from backend.browser.tools.cover_letter import generate_cover_letter
 
@@ -293,7 +382,21 @@ async def _apply_to_job(
             await page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(1)  # settle
 
-            # --- Step 1b: Check if redirected to login page ---
+            # --- Step 1b: Check if page is dead (404/expired) ---
+            if await _is_dead_page(page):
+                logger.info("Dead page (404/expired) — skipping %s", job.title)
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": f"Skipped — job listing expired or removed",
+                })
+                return ApplicationResult(
+                    job_id=job_id,
+                    status=ApplicationStatus.SKIPPED,
+                    error_message="job_expired",
+                    duration_seconds=int(time.monotonic() - start_time),
+                )
+
+            # --- Step 1c: Check if redirected to login page ---
             final_url = page.url
             if _is_login_page(final_url):
                 logger.info("Login page detected (%s) — skipping %s", final_url, job.title)
@@ -312,7 +415,10 @@ async def _apply_to_job(
             # Many board pages (LinkedIn, ZipRecruiter, etc.) have an
             # "Apply on company site" link that goes to an external ATS
             # (Greenhouse, Lever, Workday).  Follow it if found.
-            external_url = await _find_external_apply_link(page)
+            # Skip if already on an ATS domain (avoid leaving a form page).
+            current_lower = page.url.lower()
+            already_on_ats = any(d in current_lower for d in _EXTERNAL_ATS_DOMAINS)
+            external_url = None if already_on_ats else await _find_external_apply_link(page)
             if external_url:
                 logger.info(
                     "Found external apply link: %s → %s",
@@ -394,7 +500,13 @@ async def _apply_to_job(
             )
 
             # --- Step 7: Fallback to browser-use if SKIPPED ---
-            if result.status == ApplicationStatus.SKIPPED:
+            # Only fall back for non-auth skips (e.g., complex form).
+            # Auth-related skips are hopeless — browser-use can't log in either.
+            skip_reason = (result.error_message or "").lower()
+            auth_skip = any(kw in skip_reason for kw in [
+                "auth", "login", "sign in", "easy apply",
+            ])
+            if result.status == ApplicationStatus.SKIPPED and not auth_skip:
                 logger.warning(
                     "Applier returned SKIPPED for %s — falling back to browser-use",
                     job.title,
