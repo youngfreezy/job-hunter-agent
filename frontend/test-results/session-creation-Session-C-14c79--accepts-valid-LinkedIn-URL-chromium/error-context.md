@@ -1,0 +1,45 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - link "JobHunter Agent" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - link "Dashboard" [ref=e5] [cursor=pointer]:
+        - /url: /dashboard
+    - generic [ref=e6]:
+      - heading "New Session" [level=1] [ref=e7]
+      - paragraph [ref=e8]: Configure your job search. The AI will coach your resume, discover jobs, and apply for you.
+      - navigation "Form progress" [ref=e9]:
+        - list [ref=e10]:
+          - listitem [ref=e11]:
+            - generic [ref=e12]:
+              - img [ref=e14]
+              - generic [ref=e16]: Job Search
+          - listitem [ref=e18]:
+            - generic [ref=e19]:
+              - generic [ref=e20]: "2"
+              - generic [ref=e21]: Resume & Profile
+          - listitem [ref=e23]:
+            - generic [ref=e24]:
+              - generic [ref=e25]: "3"
+              - generic [ref=e26]: Review & Launch
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - generic [ref=e30]: Your Resume
+          - generic [ref=e31]:
+            - generic [ref=e34] [cursor=pointer]:
+              - generic [ref=e35]: Click to upload your resume
+              - paragraph [ref=e36]: .txt, .pdf, or .docx
+            - paragraph [ref=e37]: Upload your resume and we'll extract the text automatically. The AI Career Coach will analyze, score, and rewrite it before applying.
+        - generic [ref=e38]:
+          - generic [ref=e40]: LinkedIn Profile (Optional)
+          - generic [ref=e41]:
+            - textbox "https://linkedin.com/in/yourprofile" [ref=e43]
+            - paragraph [ref=e44]: If provided, the Career Coach will advise on profile improvements.
+        - generic [ref=e45]:
+          - button "Back" [ref=e46] [cursor=pointer]
+          - button "Next" [active] [ref=e47] [cursor=pointer]
+  - alert [ref=e48]
+```

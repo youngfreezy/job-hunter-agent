@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { login } from "./helpers/auth";
 
 const API_BASE = "http://localhost:8000";
 
@@ -15,6 +16,8 @@ test.describe("Session Persistence and Dashboard", () => {
   // -- Dashboard --
 
   test("dashboard fetches and displays sessions from API", async ({ page }) => {
+    await login(page);
+
     await page.route("**/api/sessions", async (route) => {
       if (
         route.request().method() === "GET" &&
@@ -48,10 +51,13 @@ test.describe("Session Persistence and Dashboard", () => {
 
     await expect(page.getByText("No sessions yet")).not.toBeVisible();
     await expect(page.getByText("React, Python")).toBeVisible();
-    await expect(page.getByText("completed")).toBeVisible();
+    // STATUS_LABELS maps "completed" → "Completed"
+    await expect(page.getByText("Completed").first()).toBeVisible();
   });
 
   test("dashboard shows empty state when no sessions", async ({ page }) => {
+    await login(page);
+
     await page.route("**/api/sessions", async (route) => {
       if (
         route.request().method() === "GET" &&
@@ -72,6 +78,8 @@ test.describe("Session Persistence and Dashboard", () => {
   });
 
   test("dashboard session card links to session page", async ({ page }) => {
+    await login(page);
+
     await page.route("**/api/sessions", async (route) => {
       if (
         route.request().method() === "GET" &&
@@ -102,12 +110,15 @@ test.describe("Session Persistence and Dashboard", () => {
     });
 
     await page.goto("/dashboard");
-    const sessionLink = page.getByRole("link", { name: /DevOps/ });
+    // The card is a Link wrapping the whole card, keyword text inside
+    const sessionLink = page.locator('a[href="/session/nav-test-001"]');
     await expect(sessionLink).toBeVisible();
-    await expect(sessionLink).toHaveAttribute("href", "/session/nav-test-001");
+    await expect(page.getByText("DevOps")).toBeVisible();
   });
 
   test("dashboard stats reflect session data", async ({ page }) => {
+    await login(page);
+
     await page.route("**/api/sessions", async (route) => {
       if (
         route.request().method() === "GET" &&
@@ -160,9 +171,9 @@ test.describe("Session Persistence and Dashboard", () => {
     await expect(
       page.locator("text=Applications Sent").locator("..").getByText("5")
     ).toBeVisible();
-    // Completed = 1
+    // Completed = 1 — use first() since "Completed" appears in stats label + badge
     await expect(
-      page.locator("text=Completed").locator("..").getByText("1")
+      page.locator("text=Completed").locator("..").getByText("1").first()
     ).toBeVisible();
   });
 
@@ -171,6 +182,7 @@ test.describe("Session Persistence and Dashboard", () => {
   test("session page shows keywords from getSession registry fallback", async ({
     page,
   }) => {
+    await login(page);
     const mockId = "persist-test-001";
 
     await page.route(`**/api/sessions/${mockId}`, async (route) => {
@@ -218,9 +230,12 @@ test.describe("Session Persistence and Dashboard", () => {
 
     await page.goto(`/session/${mockId}`);
 
-    // Keywords should be visible in the sidebar
+    // Keywords are shown as individual badges in the sidebar
     await expect(
-      page.getByText("Machine Learning, Data Scientist")
+      page.getByText("Machine Learning").first()
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByText("Data Scientist").first()
     ).toBeVisible({ timeout: 10_000 });
   });
 
@@ -229,6 +244,7 @@ test.describe("Session Persistence and Dashboard", () => {
   test("session page refresh preserves events via SSE replay", async ({
     page,
   }) => {
+    await login(page);
     const mockId = "replay-test-001";
 
     await page.route(`**/api/sessions/${mockId}`, async (route) => {
@@ -253,7 +269,6 @@ test.describe("Session Persistence and Dashboard", () => {
     });
 
     await page.route(`**/api/sessions/${mockId}/stream`, async (route) => {
-      // Simulate replayed events (backend stores and replays these)
       const body = [
         `event: status\ndata: ${JSON.stringify({
           status: "intake",
@@ -301,10 +316,12 @@ test.describe("Session Persistence and Dashboard", () => {
     await expect(page.getByText("Pipeline started")).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByText(/Found 15 jobs/)).toBeVisible({
+    // Discovery event renders as "Found 15 matching jobs"
+    await expect(page.getByText(/Found 15/)).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByText(/Scored 10 jobs/)).toBeVisible({
+    // Scoring event renders as "Ranked 10 jobs by fit"
+    await expect(page.getByText(/Ranked 10/)).toBeVisible({
       timeout: 10_000,
     });
   });
