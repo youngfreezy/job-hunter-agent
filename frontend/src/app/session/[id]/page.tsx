@@ -73,6 +73,7 @@ type SessionData = {
   linkedin_url?: string;
   steering_mode: string;
   applications_used: number;
+  applications_skipped: string[] | number;
 };
 
 type SessionSummaryData = {
@@ -124,6 +125,7 @@ type SSEEvent = {
   count?: number;
   submitted?: number;
   failed?: number;
+  skipped?: number;
   current?: number;
   total?: number;
   section?: string;
@@ -294,6 +296,7 @@ export default function SessionPage() {
       .then((data) => {
         const s = data as unknown as SessionData;
         setSession(s);
+        latestStatusRef.current = s.status;
         const pastCoach = [
           "discovering",
           "scoring",
@@ -345,6 +348,7 @@ export default function SessionPage() {
           applications_failed: [],
           steering_mode: "status",
           applications_used: 0,
+          applications_skipped: 0,
         });
       });
   }, [sessionId]);
@@ -391,8 +395,13 @@ export default function SessionPage() {
             evt.event === "coach_review" ||
             evt.event === "shortlist_review")
         ) {
-          updates.status = evt.status;
-          setStepProgress(0);
+          // Prevent SSE replay from regressing the pipeline status backwards
+          const prevIdx = PIPELINE_STEPS.indexOf(prev.status);
+          const nextIdx = PIPELINE_STEPS.indexOf(evt.status);
+          if (nextIdx >= prevIdx || nextIdx === -1 || evt.event === "done") {
+            updates.status = evt.status;
+            setStepProgress(0);
+          }
         }
         if (evt.coach_output)
           updates.coach_output =
@@ -404,6 +413,9 @@ export default function SessionPage() {
           if (typeof evt.submitted === "number") {
             updates.applications_used =
               (evt.submitted || 0) + (evt.failed || 0);
+          }
+          if (typeof evt.skipped === "number") {
+            updates.applications_skipped = evt.skipped;
           }
         }
         return { ...prev, ...updates };
@@ -427,7 +439,17 @@ export default function SessionPage() {
         getSession(sessionId)
           .then((data) => {
             const s = data as unknown as SessionData;
-            setSession(s);
+            // Apply same monotonic guard — don't let refetch regress status
+            setSession((prev) => {
+              if (!prev) return s;
+              const prevIdx = PIPELINE_STEPS.indexOf(prev.status);
+              const fetchedIdx = PIPELINE_STEPS.indexOf(s.status);
+              if (fetchedIdx < prevIdx && prevIdx !== -1 && fetchedIdx !== -1) {
+                // Keep current (more advanced) status, merge other fields
+                return { ...s, status: prev.status };
+              }
+              return s;
+            });
           })
           .catch(() => {});
       }
@@ -575,6 +597,7 @@ export default function SessionPage() {
       await submitReview(sessionId, { approved_job_ids: jobIds, feedback: "" });
       shortlistApprovedRef.current = true;
       setShortlistReviewOpen(false);
+      setShortlistSubmitting(false);
       setSession((prev) => (prev ? { ...prev, status: "applying" } : prev));
     } catch (e) {
       console.error("Failed to submit review:", e);
@@ -726,6 +749,26 @@ export default function SessionPage() {
           >
             JobHunter Agent
           </Link>
+          <div className="hidden sm:flex items-center gap-1">
+            <Link
+              href={`/session/${sessionId}`}
+              className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary/10 text-primary"
+            >
+              Activity
+            </Link>
+            <Link
+              href={`/session/${sessionId}/manual-apply`}
+              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              Manual Apply
+            </Link>
+            <Link
+              href={`/session/${sessionId}/settings`}
+              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              Settings
+            </Link>
+          </div>
           <div className="flex items-center gap-3">
             <Badge
               variant={session.status === "completed" ? "default" : "secondary"}
@@ -1019,7 +1062,11 @@ export default function SessionPage() {
                         >
                           {AGENT_DISPLAY_NAMES[label] || label}
                         </span>
-                        <span className="text-sm text-foreground/80 flex-1 min-w-0 break-words">
+                        <span className={`text-sm flex-1 min-w-0 break-words ${
+                          typeof evt.step === 'string' && evt.step.startsWith('Skipped')
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-foreground/80'
+                        }`}>
                           {evt.step}
                         </span>
                         {pct !== undefined && pct >= 0 && (
@@ -1129,31 +1176,18 @@ export default function SessionPage() {
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="text-center p-2 rounded-lg bg-white/60 dark:bg-white/5">
-                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                    {session.applications_used || 0}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                    Applied
-                  </p>
-                </div>
-                <div className="text-center p-2 rounded-lg bg-white/60 dark:bg-white/5">
-                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                    {session.applications_submitted?.length || 0}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                    Submitted
-                  </p>
-                </div>
-                <div className="text-center p-2 rounded-lg bg-white/60 dark:bg-white/5">
-                  <p className="text-lg font-bold text-red-500">
-                    {session.applications_failed?.length || 0}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                    Failed
-                  </p>
-                </div>
+              <div className="grid grid-cols-2 gap-2 w-full pt-1">
+                {[
+                  { value: session.applications_used ?? 0, label: "Applied", color: "text-blue-600 dark:text-blue-400" },
+                  { value: session.applications_submitted?.length ?? 0, label: "Submitted", color: "text-emerald-600 dark:text-emerald-400" },
+                  { value: session.applications_failed?.length ?? 0, label: "Failed", color: "text-red-500" },
+                  { value: Array.isArray(session.applications_skipped) ? session.applications_skipped.length : session.applications_skipped ?? 0, label: "Skipped", color: "text-amber-600 dark:text-amber-400" },
+                ].map(({ value, label, color }) => (
+                  <div key={label} className="text-center py-2.5 rounded-lg bg-white/60 dark:bg-white/5">
+                    <p className={`text-xl font-bold ${color}`}>{value}</p>
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

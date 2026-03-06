@@ -331,13 +331,24 @@ async def _parse_ziprecruiter_card(card: Any) -> Optional[JobListing]:
         elif text.lower() in ("quick apply", "1-click apply"):
             is_easy_apply = True
 
-    # URL — extract from article id (job-card-{job_key})
-    article_el = await card.query_selector("article[id^='job-card-']")
-    job_key = None
-    if article_el:
-        article_id = await article_el.get_attribute("id") or ""
-        job_key = article_id.replace("job-card-", "")
-    url = f"{ZIPRECRUITER_BASE}/jobs/{job_key}" if job_key else f"{ZIPRECRUITER_BASE}/jobs/{uuid4().hex[:12]}"
+    # URL — extract actual href from the job title link or any link in the card
+    url = None
+    # Try the title button's parent link or a direct <a> with the job URL
+    link_el = await card.query_selector('a[href*="/jobs/"], a[href*="/job/"]')
+    if link_el:
+        url = await link_el.get_attribute("href") or None
+    # Fallback: try the title button which may have a data-href or onclick target
+    if not url and title_el:
+        url = await title_el.get_attribute("data-href") or None
+    # Last resort: construct from article ID (may 404)
+    if not url:
+        article_el = await card.query_selector("article[id^='job-card-']")
+        if article_el:
+            article_id = await article_el.get_attribute("id") or ""
+            job_key = article_id.replace("job-card-", "")
+            url = f"{ZIPRECRUITER_BASE}/jobs/{job_key}"
+    if not url:
+        url = f"{ZIPRECRUITER_BASE}/jobs/{uuid4().hex[:12]}"
 
     is_remote = bool(location and "remote" in location.lower())
 

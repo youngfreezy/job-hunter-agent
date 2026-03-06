@@ -167,6 +167,32 @@ export async function getSession(
   return res.json();
 }
 
+export async function getSkippedJobs(
+  sessionId: string
+): Promise<{ skipped_jobs: SkippedJob[] }> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/skipped-jobs`);
+  if (!res.ok) throw new Error(`Failed to get skipped jobs: ${res.statusText}`);
+  return res.json();
+}
+
+export type SkippedJob = {
+  job: {
+    id: string;
+    title: string;
+    company: string;
+    location: string;
+    url: string;
+    board: string;
+  };
+  score: number;
+  tailored_resume: {
+    tailored_text: string;
+    fit_score: number;
+    changes_made: string[];
+  } | null;
+  cover_letter_template: string;
+};
+
 export async function sendSteer(
   sessionId: string,
   data: { message: string; mode?: string }

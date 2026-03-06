@@ -71,8 +71,8 @@ class LinkedInApplier(BaseApplier):
             clicked = await self._click_selector(APPLY_BUTTON, "apply_button")
             if not clicked:
                 return self._make_result(
-                    job_id, ApplicationStatus.FAILED,
-                    error_message="Easy Apply button not found -- job may require external application",
+                    job_id, ApplicationStatus.SKIPPED,
+                    error_message="Easy Apply button not found — likely requires auth",
                 )
 
             await self._random_delay(1.0, 2.0)

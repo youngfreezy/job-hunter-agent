@@ -70,15 +70,25 @@ async def lifespan(app: FastAPI):
         await checkpointer.setup()
         logger.info("Using AsyncPostgresSaver with pool (dsn=%s...)", settings.DATABASE_URL[:40])
 
-        # Ensure selector memory tables exist
-        from backend.shared.selector_memory import ensure_table
+        # Ensure selector tables exist and seed defaults
+        from backend.shared.selector_memory import (
+            ensure_table,
+            seed_defaults as seed_discovery_defaults,
+        )
         await ensure_table()
+        await seed_discovery_defaults()
+
         from backend.browser.tools.apply_selectors import (
             ensure_table as ensure_apply_table,
             seed_defaults as seed_apply_defaults,
         )
         await ensure_apply_table()
         await seed_apply_defaults()
+
+        # Schedule daily selector health-check
+        from backend.shared.scheduler import schedule
+        from backend.shared.selector_health import run_selector_health_check
+        schedule("selector-health-check", run_selector_health_check, interval_hours=24.0)
     except Exception as exc:
         logger.warning(
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
@@ -100,6 +110,9 @@ async def lifespan(app: FastAPI):
 
     # --- Shutdown ---
     logger.info("Shutting down JobHunter gateway")
+    from backend.shared.scheduler import cancel_all
+    cancel_all()
+
     if pool is not None:
         await pool.close()
     elif hasattr(checkpointer, "close"):

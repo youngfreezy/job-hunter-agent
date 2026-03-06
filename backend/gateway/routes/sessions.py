@@ -894,6 +894,65 @@ async def get_session(session_id: str, request: Request):
     raise HTTPException(status_code=404, detail="Session not found")
 
 
+@router.get("/{session_id}/skipped-jobs")
+async def get_skipped_jobs(session_id: str, request: Request):
+    """Return skipped jobs with enriched details for manual application."""
+    checkpointer = request.app.state.checkpointer
+    config = {"configurable": {"thread_id": session_id}}
+
+    try:
+        state = await checkpointer.aget(config)
+    except Exception:
+        state = None
+
+    if state is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    checkpoint = state
+    if hasattr(state, "checkpoint"):
+        checkpoint = state.checkpoint
+    if isinstance(checkpoint, dict) and "channel_values" in checkpoint:
+        cv = checkpoint["channel_values"]
+    else:
+        cv = checkpoint
+
+    skipped_ids = set(cv.get("applications_skipped") or [])
+    if not skipped_ids:
+        return {"skipped_jobs": []}
+
+    # Build a lookup of all jobs from scored_jobs
+    scored_jobs = cv.get("scored_jobs") or []
+    job_map = {}
+    for sj in scored_jobs:
+        job = sj.job if hasattr(sj, "job") else sj.get("job", {})
+        job_id = job.id if hasattr(job, "id") else job.get("id")
+        if job_id:
+            job_map[job_id] = _serialize(sj)
+
+    # Also check discovered_jobs
+    for dj in cv.get("discovered_jobs") or []:
+        job_id = dj.id if hasattr(dj, "id") else dj.get("id")
+        if job_id and job_id not in job_map:
+            job_map[job_id] = {"job": _serialize(dj), "score": 0}
+
+    tailored = cv.get("tailored_resumes") or {}
+    cover_template = cv.get("cover_letter_template") or ""
+
+    results = []
+    for jid in skipped_ids:
+        entry = job_map.get(jid)
+        if not entry:
+            continue
+        tr = tailored.get(jid)
+        results.append({
+            **entry,
+            "tailored_resume": _serialize(tr) if tr else None,
+            "cover_letter_template": cover_template,
+        })
+
+    return {"skipped_jobs": results}
+
+
 @router.get("/{session_id}/checkpoints")
 async def list_checkpoints(session_id: str, request: Request):
     """List all checkpoints for a session (for rewind UI)."""
