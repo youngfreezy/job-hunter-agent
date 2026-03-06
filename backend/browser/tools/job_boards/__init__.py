@@ -65,14 +65,16 @@ async def rank_by_relevance(
             "location": job.location or "",
         })
 
-    prompt = f"""You are a job relevance ranker. Given these search keywords and job listings, return the indices of the {limit} most relevant jobs, ranked best first.
+    prompt = f"""You are a job relevance ranker for a Senior AI Engineer. Rank these jobs by relevance to ALL of the search keywords, not just one.
+
+IMPORTANT: Prioritize jobs that match MULTIPLE keywords (especially AI/ML/LLM keywords over generic frontend ones). A job matching "Agentic AI" + "LangGraph" is far more relevant than a generic "React Developer" role. Avoid picking multiple similar roles -- diversify across different job types and companies.
 
 Keywords: {', '.join(keywords)}
 
 Jobs:
 {json.dumps(job_summaries, indent=1)}
 
-Return ONLY a JSON array of the top {limit} indices, e.g. [3, 0, 7, 1, 5]. No explanation."""
+Return ONLY a JSON array of the top {limit} indices, ranked best first, e.g. [3, 0, 7, 1, 5]. No explanation."""
 
     try:
         llm = build_llm(model=HAIKU_MODEL, max_tokens=256, temperature=0.0)
