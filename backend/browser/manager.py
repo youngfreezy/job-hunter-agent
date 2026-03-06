@@ -1,13 +1,21 @@
 """Browser lifecycle manager for the JobHunter Agent.
 
-Manages Playwright browser instances using Patchright (a patched build of
-Playwright with built-in anti-detection).  Each user session gets an isolated
-BrowserContext with randomised fingerprints and optional proxy support.
+Manages Playwright browser instances using either:
+1. Patchright (patched Chromium with anti-detection) — default for discovery
+2. Real Chrome via CDP — for applications (bypasses reCAPTCHA Enterprise)
+
+Each user session gets an isolated BrowserContext with randomised fingerprints
+and optional proxy support.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import platform
+import subprocess
+import time
+from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -24,16 +32,52 @@ from backend.shared.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Persistent Chrome profile for building reCAPTCHA trust over time
+_CHROME_PROFILE_DIR = Path.home() / ".jobhunter" / "chrome-profile"
+_CDP_PORT = 9222
+
+
+def _find_chrome_binary() -> Optional[str]:
+    """Auto-detect the real Google Chrome binary on the system."""
+    system = platform.system()
+    candidates: list[str] = []
+
+    if system == "Darwin":
+        candidates = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        ]
+    elif system == "Linux":
+        candidates = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+        ]
+    elif system == "Windows":
+        for base in [os.environ.get("PROGRAMFILES", ""), os.environ.get("PROGRAMFILES(X86)", "")]:
+            if base:
+                candidates.append(os.path.join(base, "Google", "Chrome", "Application", "chrome.exe"))
+
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return None
+
 
 class BrowserManager:
     """Manages a single Chromium browser process and multiple isolated contexts.
 
+    Supports two modes:
+    - ``start()`` — launches Patchright's built-in Chromium (fast, good for scraping)
+    - ``start_cdp()`` — launches real Chrome with CDP (bypasses reCAPTCHA)
+
     Usage::
 
         mgr = BrowserManager()
-        await mgr.start()
+        await mgr.start_cdp()  # or await mgr.start()
 
-        ctx_id, context = await mgr.new_context(proxy="http://user:pass@host:port")
+        ctx_id, context = await mgr.new_context()
         page = await context.new_page()
         ...
         await mgr.close_context(ctx_id)
@@ -46,23 +90,15 @@ class BrowserManager:
         self._browser: Optional[Browser] = None
         self._contexts: Dict[str, BrowserContext] = {}
         self._running: bool = False
+        self._chrome_process: Optional[subprocess.Popen] = None
+        self._mode: str = "patchright"  # "patchright" or "cdp"
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     async def start(self, headless: Optional[bool] = None) -> None:
-        """Launch the Playwright runtime and browser process.
-
-        Uses Patchright's Chromium build which includes anti-detection
-        patches at the browser level.
-
-        Parameters
-        ----------
-        headless:
-            Override the ``BROWSER_HEADLESS`` setting.  Pass ``False`` to
-            force a visible window (e.g. during the application step).
-        """
+        """Launch Patchright's built-in Chromium (default mode)."""
         if self._running:
             logger.warning("BrowserManager.start() called but already running")
             return
@@ -82,7 +118,109 @@ class BrowserManager:
 
         self._browser = await self._playwright.chromium.launch(**launch_kwargs)
         self._running = True
+        self._mode = "patchright"
         logger.info("Browser engine started (pid=%s)", self._browser.contexts)
+
+    async def start_cdp(self, headless: bool = False) -> None:
+        """Launch real Chrome with CDP and connect Playwright to it.
+
+        This uses the user's actual Chrome binary with a persistent profile,
+        which builds reCAPTCHA trust over time. The persistent profile is
+        stored at ~/.jobhunter/chrome-profile/ and reused across sessions.
+        """
+        if self._running:
+            logger.warning("BrowserManager.start_cdp() called but already running")
+            return
+
+        chrome_path = _find_chrome_binary()
+        if not chrome_path:
+            logger.warning("Chrome not found — falling back to Patchright")
+            await self.start(headless=headless)
+            return
+
+        # Ensure persistent profile directory exists
+        _CHROME_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Launch Chrome with remote debugging
+        chrome_args = [
+            chrome_path,
+            f"--remote-debugging-port={_CDP_PORT}",
+            f"--user-data-dir={_CHROME_PROFILE_DIR}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-hang-monitor",
+            "--disable-popup-blocking",
+            "--disable-infobars",
+            "--window-size=1920,1080",
+        ]
+        if headless:
+            chrome_args.append("--headless=new")
+
+        logger.info("Launching Chrome CDP: %s (port=%d, profile=%s)", chrome_path, _CDP_PORT, _CHROME_PROFILE_DIR)
+
+        try:
+            self._chrome_process = subprocess.Popen(
+                chrome_args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as exc:
+            logger.warning("Failed to launch Chrome (%s) — falling back to Patchright", exc)
+            await self.start(headless=headless)
+            return
+
+        # Wait for Chrome to start accepting CDP connections
+        import asyncio
+        import aiohttp
+
+        cdp_url = f"http://127.0.0.1:{_CDP_PORT}"
+        for attempt in range(15):
+            try:
+                async with aiohttp.ClientSession() as http:
+                    async with http.get(f"{cdp_url}/json/version", timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                        if resp.status == 200:
+                            version_info = await resp.json()
+                            logger.info("Chrome CDP ready: %s", version_info.get("Browser", "unknown"))
+                            break
+            except Exception:
+                pass
+            await asyncio.sleep(1)
+        else:
+            logger.warning("Chrome CDP didn't respond after 15s — falling back to Patchright")
+            self._kill_chrome()
+            await self.start(headless=headless)
+            return
+
+        # Connect Playwright to Chrome via CDP
+        self._playwright = await async_playwright().start()
+        try:
+            self._browser = await self._playwright.chromium.connect_over_cdp(cdp_url)
+            self._running = True
+            self._mode = "cdp"
+            logger.info("Connected to Chrome via CDP (contexts=%d)", len(self._browser.contexts))
+        except Exception as exc:
+            logger.warning("CDP connection failed (%s) — falling back to Patchright", exc)
+            self._kill_chrome()
+            if self._playwright:
+                await self._playwright.stop()
+                self._playwright = None
+            await self.start(headless=headless)
+
+    def _kill_chrome(self) -> None:
+        """Terminate the Chrome process we launched."""
+        if self._chrome_process:
+            try:
+                self._chrome_process.terminate()
+                self._chrome_process.wait(timeout=5)
+            except Exception:
+                try:
+                    self._chrome_process.kill()
+                except Exception:
+                    pass
+            self._chrome_process = None
 
     async def stop(self) -> None:
         """Gracefully shut down all contexts and the browser process."""
@@ -96,12 +234,18 @@ class BrowserManager:
             await self.close_context(ctx_id)
 
         if self._browser:
-            await self._browser.close()
+            try:
+                await self._browser.close()
+            except Exception:
+                pass
             self._browser = None
 
         if self._playwright:
             await self._playwright.stop()
             self._playwright = None
+
+        # Kill Chrome process if we launched it
+        self._kill_chrome()
 
         self._running = False
         logger.info("BrowserManager stopped")
@@ -116,22 +260,20 @@ class BrowserManager:
     ) -> tuple[str, BrowserContext]:
         """Create a new isolated BrowserContext with anti-detection settings.
 
-        Parameters
-        ----------
-        proxy:
-            Optional proxy URL (``http://user:pass@host:port``).  Falls back
-            to ``settings.PROXY_URL`` if not provided and the env var is set.
-
-        Returns
-        -------
-        tuple[str, BrowserContext]
-            A ``(context_id, context)`` pair.  Use the *context_id* later to
-            close the context via :meth:`close_context`.
+        In CDP mode, if the browser already has a default context, reuse it
+        (Chrome CDP exposes existing contexts rather than creating new ones).
         """
         if not self._running or self._browser is None:
             raise RuntimeError("BrowserManager is not running. Call start() first.")
 
         ctx_id = uuid4().hex[:12]
+
+        # In CDP mode, reuse the default context if available
+        if self._mode == "cdp" and self._browser.contexts:
+            context = self._browser.contexts[0]
+            self._contexts[ctx_id] = context
+            logger.info("Reusing Chrome CDP default context as %s", ctx_id)
+            return ctx_id, context
 
         # Randomise fingerprint
         user_agent = get_random_user_agent()
@@ -188,11 +330,17 @@ class BrowserManager:
         """Close and remove the context identified by *context_id*.
 
         Silently does nothing if the context has already been closed or does
-        not exist.
+        not exist.  In CDP mode, doesn't close the default context (Chrome
+        would exit).
         """
         context = self._contexts.pop(context_id, None)
         if context is None:
             logger.debug("Context %s not found (already closed?)", context_id)
+            return
+
+        # In CDP mode, don't close the default context — just remove tracking
+        if self._mode == "cdp" and self._browser and context in self._browser.contexts:
+            logger.info("Released CDP context %s (not closing — it's Chrome's default)", context_id)
             return
 
         try:
@@ -235,3 +383,8 @@ class BrowserManager:
     def open_contexts(self) -> int:
         """Return the number of open browser contexts."""
         return len(self._contexts)
+
+    @property
+    def mode(self) -> str:
+        """Return the current browser mode: 'patchright' or 'cdp'."""
+        return self._mode
