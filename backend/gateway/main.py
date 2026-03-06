@@ -70,9 +70,15 @@ async def lifespan(app: FastAPI):
         await checkpointer.setup()
         logger.info("Using AsyncPostgresSaver with pool (dsn=%s...)", settings.DATABASE_URL[:40])
 
-        # Ensure selector memory table exists
+        # Ensure selector memory tables exist
         from backend.shared.selector_memory import ensure_table
         await ensure_table()
+        from backend.browser.tools.apply_selectors import (
+            ensure_table as ensure_apply_table,
+            seed_defaults as seed_apply_defaults,
+        )
+        await ensure_apply_table()
+        await seed_apply_defaults()
     except Exception as exc:
         logger.warning(
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
@@ -125,6 +131,7 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.auth import router as auth_router
     from backend.gateway.routes.health import router as health_router
     from backend.gateway.routes.payments import router as payments_router
+    from backend.gateway.routes.selectors import router as selectors_router
     from backend.gateway.routes.sessions import router as sessions_router
     from backend.gateway.routes.ws import router as ws_router
 
@@ -132,6 +139,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(sessions_router)
     app.include_router(payments_router)
+    app.include_router(selectors_router)
     app.include_router(ws_router)
 
     return app

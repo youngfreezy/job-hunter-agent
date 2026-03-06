@@ -289,7 +289,6 @@ export default function SessionPage() {
   }, [sessionStartTime, session?.status]);
   const elapsedMin = Math.floor(elapsedSeconds / 60);
   const elapsedSec = elapsedSeconds % 60;
-
   useEffect(() => {
     getSession(sessionId)
       .then((data) => {
@@ -1104,14 +1103,16 @@ export default function SessionPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2.5 text-sm">
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/30">
-                <span className="text-muted-foreground text-xs uppercase tracking-wider">
-                  Elapsed
-                </span>
-                <span className="font-mono text-lg font-bold text-blue-600 dark:text-blue-400">
-                  {elapsedMin}:{elapsedSec.toString().padStart(2, "0")}
-                </span>
-              </div>
+              {isActive && (
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/30">
+                  <span className="text-muted-foreground text-xs uppercase tracking-wider">
+                    Elapsed
+                  </span>
+                  <span className="font-mono text-lg font-bold text-blue-600 dark:text-blue-400">
+                    {elapsedMin}:{elapsedSec.toString().padStart(2, "0")}
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="text-muted-foreground text-xs uppercase tracking-wider">
                   Keywords
