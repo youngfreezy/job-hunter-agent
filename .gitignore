@@ -28,6 +28,9 @@ docs/
 # Claude Code
 CLAUDE.md
 
+# Logs
+*.log
+
 # OS
 .DS_Store
 frontend/playwright-report/

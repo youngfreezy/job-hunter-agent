@@ -83,6 +83,76 @@ def _find_job_in_state(job_id: str, state: JobHunterState) -> Optional[JobListin
 
 
 # ---------------------------------------------------------------------------
+# Board login URLs
+# ---------------------------------------------------------------------------
+
+_BOARD_LOGIN_URLS = {
+    "linkedin": "https://www.linkedin.com/login",
+    "indeed": "https://secure.indeed.com/account/login",
+    "glassdoor": "https://www.glassdoor.com/profile/login_input.htm",
+    "ziprecruiter": "https://www.ziprecruiter.com/authn/login",
+}
+
+
+async def _pre_login_flow(
+    application_queue: List[str],
+    state: JobHunterState,
+    browser: Any,
+    session_id: str,
+) -> None:
+    """Navigate to each required board's login page and wait for the user.
+
+    The browser stays open while the user logs in manually. An SSE event
+    tells the frontend to show a "Please log in" modal, and a REST
+    endpoint signals completion.
+    """
+    from backend.orchestrator.agents._login_sync import wait_for_login, cleanup
+
+    # Determine which boards are in the queue
+    boards_needed: set[str] = set()
+    for job_id in application_queue:
+        job = _find_job_in_state(job_id, state)
+        if job:
+            boards_needed.add(job.board.value)
+
+    boards_with_login = [b for b in boards_needed if b in _BOARD_LOGIN_URLS]
+    if not boards_with_login:
+        return
+
+    logger.info("Pre-login flow starting for boards: %s", boards_with_login)
+
+    # Start the browser so we can navigate before the Agent takes over
+    await browser.start()
+
+    try:
+        for board in boards_with_login:
+            login_url = _BOARD_LOGIN_URLS[board]
+            page = await browser.must_get_current_page()
+            await page.goto(login_url, wait_until="domcontentloaded")
+
+            await emit_agent_event(session_id, "login_required", {
+                "board": board,
+                "message": (
+                    f"Please log in to {board.title()} in the browser window, "
+                    f"then click Continue in the app."
+                ),
+            })
+
+            logger.info("Waiting for user to log in to %s...", board)
+            try:
+                await wait_for_login(session_id, timeout=300.0)
+                logger.info("User confirmed login to %s", board)
+            except asyncio.TimeoutError:
+                logger.warning("Login timeout for %s — proceeding anyway", board)
+
+        await emit_agent_event(session_id, "login_complete", {
+            "message": "All logins complete. Starting applications...",
+        })
+    finally:
+        cleanup(session_id)
+
+
+# ---------------------------------------------------------------------------
 # browser-use application
 # ---------------------------------------------------------------------------
 
@@ -270,6 +340,11 @@ async def run_application_agent(state: JobHunterState) -> dict:
         # on each application. browser-use's first launch can take 10-30s.
         from browser_use import Browser
         shared_browser = Browser(headless=False, disable_security=True)
+
+        # Let the user log in to each required job board before applying
+        await _pre_login_flow(
+            application_queue, state, shared_browser, session_id,
+        )
 
         total_in_queue = len(application_queue)
 

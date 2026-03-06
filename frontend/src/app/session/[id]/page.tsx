@@ -38,6 +38,7 @@ import {
   listCheckpoints,
   rewindSession,
   resumeSession,
+  confirmLogin,
 } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
@@ -265,6 +266,11 @@ export default function SessionPage() {
   const [sseKey, setSseKey] = useState(0);
   const [linkedinProgress, setLinkedinProgress] =
     useState<LinkedInProgress | null>(null);
+  const [loginPrompt, setLoginPrompt] = useState<{
+    board: string;
+    message: string;
+  } | null>(null);
+  const [loginConfirming, setLoginConfirming] = useState(false);
 
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const latestStatusRef = useRef("intake");
@@ -495,6 +501,18 @@ export default function SessionPage() {
         setSubmitConfirmData(null);
       }
 
+      // Pre-login flow: show login modal when apply agent needs authentication
+      if (evt.event === "login_required") {
+        const d = (evt.data || evt) as Record<string, unknown>;
+        setLoginPrompt({
+          board: String(d.board || "unknown"),
+          message: String(d.message || "Please log in in the browser window."),
+        });
+      }
+      if (evt.event === "login_complete") {
+        setLoginPrompt(null);
+      }
+
       // LinkedIn update SSE events
       if (
         evt.event === "linkedin_update_progress" ||
@@ -516,10 +534,12 @@ export default function SessionPage() {
         });
       }
 
-      setTimeout(
-        () => eventsEndRef.current?.scrollIntoView({ behavior: "smooth" }),
-        100
-      );
+      setTimeout(() => {
+        const el = eventsEndRef.current;
+        if (el?.parentElement) {
+          el.parentElement.scrollTop = el.parentElement.scrollHeight;
+        }
+      }, 100);
     });
     return cleanup;
   }, [sessionId, sseKey]);
@@ -546,7 +566,6 @@ export default function SessionPage() {
       setSession((prev) => (prev ? { ...prev, status: "applying" } : prev));
     } catch (e) {
       console.error("Failed to submit review:", e);
-    } finally {
       setShortlistSubmitting(false);
     }
   };
@@ -569,7 +588,6 @@ export default function SessionPage() {
       setSession((prev) => (prev ? { ...prev, status: "discovering" } : prev));
     } catch (e) {
       console.error("Failed to submit coach review:", e);
-    } finally {
       setCoachReviewSubmitting(false);
     }
   };
@@ -943,7 +961,7 @@ export default function SessionPage() {
                   </span>
                 </div>
               </CardHeader>
-              <CardContent className="flex-1 overflow-y-auto max-h-[500px] py-3 space-y-1">
+              <CardContent className="flex-1 overflow-y-auto min-h-0 max-h-[calc(100vh-220px)] py-3 space-y-1">
                 {events.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <svg
@@ -1654,6 +1672,40 @@ export default function SessionPage() {
                 Apply to {selectedJobIds.size} Jobs
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pre-login modal */}
+      <Dialog open={!!loginPrompt} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Log in to {loginPrompt?.board?.replace(/^\w/, c => c.toUpperCase())}</DialogTitle>
+            <DialogDescription>
+              {loginPrompt?.message}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-muted/50 rounded p-3 text-sm text-muted-foreground">
+            A browser window has opened with the login page.
+            Log in with your account, then click the button below to continue.
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={async () => {
+                setLoginConfirming(true);
+                try {
+                  await confirmLogin(sessionId);
+                  setLoginPrompt(null);
+                } catch (e) {
+                  console.error("Failed to confirm login:", e);
+                } finally {
+                  setLoginConfirming(false);
+                }
+              }}
+              loading={loginConfirming}
+            >
+              I&apos;ve Logged In — Continue
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -226,11 +226,17 @@ function findPython() {
       "8000",
       "--reload",
       "--reload-exclude",
-      "venv/*",
+      "backend/venv/*",
+      "--reload-exclude",
+      "*/venv/*",
       "--reload-exclude",
       "frontend/*",
       "--reload-exclude",
       "node_modules/*",
+      "--reload-exclude",
+      "test_*",
+      "--reload-exclude",
+      "*.log",
     ],
     { cwd: ROOT }
   );

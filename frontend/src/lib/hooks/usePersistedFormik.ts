@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FormikConfig, FormikValues, useFormik } from "formik";
 
 const STORAGE_PREFIX = "jh_form_";
@@ -18,16 +18,17 @@ export function usePersistedFormik<T extends FormikValues>({
   ...formikConfig
 }: UsePersistedFormikOptions<T>) {
   const storageKey = `${STORAGE_PREFIX}${persistKey}`;
+  const [hydrated, setHydrated] = useState(false);
   const hydratedRef = useRef(false);
 
-  // Always start with initialValues to match server-rendered HTML (prevents hydration mismatch)
+  // Always start with initialValues to match server-rendered HTML
   const formik = useFormik<T>({
     ...formikConfig,
     initialValues,
     enableReinitialize: false,
   });
 
-  // Hydrate from localStorage after mount (avoids SSR/client mismatch)
+  // Hydrate from localStorage after mount
   useEffect(() => {
     if (hydratedRef.current) return;
     hydratedRef.current = true;
@@ -41,6 +42,7 @@ export function usePersistedFormik<T extends FormikValues>({
     } catch {
       // Corrupted data -- ignore
     }
+    setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -81,5 +83,5 @@ export function usePersistedFormik<T extends FormikValues>({
     }
   }, [storageKey]);
 
-  return { formik, clearPersistedValues };
+  return { formik, clearPersistedValues, hydrated };
 }

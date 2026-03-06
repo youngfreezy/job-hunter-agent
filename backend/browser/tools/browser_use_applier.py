@@ -53,7 +53,7 @@ RULES:
 - Only use information provided above. Do NOT fabricate experience or details.
 - If a field asks for something not provided, skip it or select a reasonable default (e.g., "No" for sponsorship, earliest available start date).
 - If you hit a CAPTCHA, stop and report it.
-- If you see a login wall, try creating an account with the applicant's email.
+- You should already be logged in. If you encounter a login wall, report "login wall" and stop.
 - Stay focused on completing this one application. Do not navigate away.
 - For multi-step modals (like LinkedIn Easy Apply), complete ALL steps before reporting done.
 """

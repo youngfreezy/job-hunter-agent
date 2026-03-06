@@ -17,10 +17,12 @@ from backend.browser.tools.job_boards.glassdoor import scrape_glassdoor
 from backend.browser.tools.job_boards.google_jobs import scrape_google_jobs
 from backend.browser.tools.job_boards.indeed import scrape_indeed
 from backend.browser.tools.job_boards.linkedin import scrape_linkedin
+from backend.browser.tools.job_boards.ziprecruiter import scrape_ziprecruiter
 
 __all__ = [
     "scrape_glassdoor",
     "scrape_google_jobs",
     "scrape_indeed",
     "scrape_linkedin",
+    "scrape_ziprecruiter",
 ]

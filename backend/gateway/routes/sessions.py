@@ -1063,6 +1063,17 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
     }
 
 
+@router.post("/{session_id}/login-complete")
+async def confirm_login(session_id: str):
+    """Signal the application agent that the user has logged in to a job board."""
+    from backend.orchestrator.agents._login_sync import signal_login_complete
+
+    signal_login_complete(session_id)
+    logger.info("User confirmed login for session %s", session_id)
+
+    return {"status": "ok", "message": "Login confirmation received"}
+
+
 @router.post("/{session_id}/resume-intervention")
 async def resume_intervention(session_id: str):
     """Signal the application agent to continue after user intervention."""
@@ -1301,6 +1312,21 @@ async def parse_resume(file: UploadFile = File(...)):
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(raw))
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        # OCR fallback for image-based PDFs
+        if not text.strip():
+            try:
+                import fitz
+                import pytesseract
+                from PIL import Image
+                doc = fitz.open(stream=raw, filetype="pdf")
+                ocr_parts = []
+                for page in doc:
+                    pix = page.get_pixmap(dpi=300)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    ocr_parts.append(pytesseract.image_to_string(img))
+                text = "\n".join(ocr_parts)
+            except Exception as ocr_err:
+                logger.warning("OCR fallback failed: %s", ocr_err)
     elif suffix in ("docx", "doc"):
         import io
         from docx import Document

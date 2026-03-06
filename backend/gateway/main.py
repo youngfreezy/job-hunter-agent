@@ -13,12 +13,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Configure logging for all backend modules (Python default is WARNING only)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s %(name)s: %(message)s",
-)
-for _noisy in ("httpcore", "httpx", "neo4j", "urllib3", "watchfiles", "asyncio"):
-    logging.getLogger(_noisy).setLevel(logging.WARNING)
+_log_fmt = logging.Formatter("%(levelname)s %(name)s: %(message)s")
+_console = logging.StreamHandler()
+_console.setFormatter(_log_fmt)
+_file = logging.FileHandler("backend.log", mode="a")
+_file.setFormatter(_log_fmt)
+logging.basicConfig(level=logging.INFO, handlers=[_console, _file])
+for _noisy in (
+    "httpcore", "httpx", "neo4j", "urllib3", "watchfiles", "asyncio",
+    "browser_use", "cdp_use", "bubus",
+):
+    logging.getLogger(_noisy).setLevel(logging.CRITICAL if _noisy == "bubus" else logging.ERROR)
 
 from backend.shared.config import get_settings
 from backend.shared import patches
@@ -64,6 +69,10 @@ async def lifespan(app: FastAPI):
         checkpointer = AsyncPostgresSaver(pool)
         await checkpointer.setup()
         logger.info("Using AsyncPostgresSaver with pool (dsn=%s...)", settings.DATABASE_URL[:40])
+
+        # Ensure selector memory table exists
+        from backend.shared.selector_memory import ensure_table
+        await ensure_table()
     except Exception as exc:
         logger.warning(
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
