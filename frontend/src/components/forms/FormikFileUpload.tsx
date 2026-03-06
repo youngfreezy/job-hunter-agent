@@ -47,7 +47,7 @@ export function FormikFileUpload() {
       <div className="border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-6 text-center">
         <input
           type="file"
-          accept=".txt,.pdf,.doc,.docx"
+          accept=".txt,.pdf,.docx"
           onChange={handleFileUpload}
           className="hidden"
           id="resume-upload"

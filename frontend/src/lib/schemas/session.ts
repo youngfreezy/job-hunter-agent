@@ -39,7 +39,8 @@ export const resumeProfileSchema = Yup.object({
         if (!value || value === "") return true;
         try {
           const url = new URL(value);
-          return url.hostname.includes("linkedin.com");
+          const host = url.hostname.toLowerCase();
+          return host === "linkedin.com" || host.endsWith(".linkedin.com");
         } catch {
           return false;
         }
