@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { CircularProgress } from "@/components/ui/circular-progress";
+import { ChatPanel, type ChatMessage } from "@/components/ChatPanel";
 import {
   Tooltip,
   TooltipContent,
@@ -258,10 +258,7 @@ export default function SessionPage() {
     screenshot?: string;
   } | null>(null);
 
-  const [chatMessages, setChatMessages] = useState<
-    Array<{ role: string; text: string }>
-  >([]);
-  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [rewindLoading, setRewindLoading] = useState(false);
   const [resumeLoading, setResumeLoading] = useState(false);
@@ -509,6 +506,19 @@ export default function SessionPage() {
         setSessionSummary(evt.session_summary);
       }
 
+      if (evt.event === "status" && evt.status === "steering" && evt.message) {
+        setChatMessages((prev) => [
+          ...prev,
+          { role: "agent", text: evt.message || "Steering updated." },
+        ]);
+      }
+      if (evt.event === "error" && evt.message) {
+        setChatMessages((prev) => [
+          ...prev,
+          { role: "system", text: evt.message || "An error occurred." },
+        ]);
+      }
+
       // Handle agent intervention request
       if (evt.event === "needs_intervention") {
         const d = (evt.data || evt) as Record<string, unknown>;
@@ -591,17 +601,22 @@ export default function SessionPage() {
     return cleanup;
   }, [sessionId, sseKey]);
 
-  const handleSendChat = useCallback(async () => {
-    if (!chatInput.trim()) return;
-    const msg = chatInput.trim();
-    setChatInput("");
+  const handleSendChat = async (message: string) => {
+    const msg = message.trim();
+    if (!msg) return;
+
     setChatMessages((prev) => [...prev, { role: "user", text: msg }]);
+
     try {
       await sendSteer(sessionId, { message: msg, mode: "status" });
     } catch (e) {
       console.error("Failed to send steering message:", e);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "system", text: "Could not send message to the agent." },
+      ]);
     }
-  }, [chatInput, sessionId]);
+  };
 
   const handleApproveShortlist = async () => {
     setShortlistSubmitting(true);
@@ -1206,6 +1221,22 @@ export default function SessionPage() {
                   </a>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">
+                Session Steering
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 h-72">
+              <ChatPanel
+                messages={chatMessages}
+                onSend={handleSendChat}
+                disabled={!isActive}
+                placeholder="Ask the agent to adjust..."
+              />
             </CardContent>
           </Card>
 

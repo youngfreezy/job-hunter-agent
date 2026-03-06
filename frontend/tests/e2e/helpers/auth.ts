@@ -11,19 +11,34 @@ export async function login(
   email = "test@example.com",
   password = "testpass123"
 ): Promise<void> {
-  await page.goto("/auth/login");
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await page.goto("/auth/login");
+    await expect(page.getByPlaceholder("Email")).toBeVisible({
+      timeout: 30_000,
+    });
 
-  // Fill in the email/password form
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
+    // Fill in the email/password form
+    await page.getByPlaceholder("Email").fill(email);
+    await page.getByPlaceholder("Password").fill(password);
 
-  // Click the Sign In button
-  await page.getByRole("button", { name: "Sign In" }).click();
+    // Click the Sign In button
+    await page.getByRole("button", { name: "Sign In" }).click();
 
-  // Wait for navigation away from the login page.
-  // The login handler redirects to /dashboard on success.
-  await page.waitForURL("**/dashboard", { timeout: 15_000 });
-
-  // Verify we actually landed on the dashboard
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    try {
+      // The login handler redirects to /dashboard on success.
+      await page.waitForURL("**/dashboard", { timeout: 30_000 });
+      await expect(
+        page.getByRole("heading", { name: "Dashboard" })
+      ).toBeVisible();
+      return;
+    } catch {
+      const url = page.url();
+      // Occasionally in dev mode, the form submits before hydration and
+      // lands back on /auth/login with query params. Retry once.
+      if (attempt < 2 && url.includes("/auth/login?")) {
+        continue;
+      }
+      throw new Error(`Login failed, current URL: ${url}`);
+    }
+  }
 }

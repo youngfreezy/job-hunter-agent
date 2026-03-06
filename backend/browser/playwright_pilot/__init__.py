@@ -15,8 +15,11 @@ Usage::
     async with Pilot() as pilot:
         page = await pilot.new_page()
         await pilot.navigate(page, "https://example.com/apply")
-        fields = await pilot.extract_fields(page)
-        await pilot.fill_form(page, fields, user_data={...})
+        result = await pilot.auto_fill(
+            page=page,
+            resume_text="John Doe\\nSoftware Engineer...",
+            cover_letter="Dear Hiring Manager,...",
+        )
 """
 
 from backend.browser.playwright_pilot.pilot import Pilot
