@@ -98,6 +98,10 @@ export class WebSocketManager {
     this.send({ type: "takeover", action: "release" });
   }
 
+  sendTakeoverInput(data: Record<string, unknown>): void {
+    this.send({ type: "takeover_input", ...data });
+  }
+
   disconnect(): void {
     this.shouldReconnect = false;
     if (this.reconnectTimer) {

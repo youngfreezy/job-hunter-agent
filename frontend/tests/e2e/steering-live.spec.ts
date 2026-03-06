@@ -4,7 +4,7 @@ import { login } from "./helpers/auth";
 const API_BASE = "http://localhost:8000";
 
 test.describe("Live Steering Integration", () => {
-  test("chat steering sends command to live backend and receives acknowledgement", async ({
+  test("chat steering uses the live LLM judge and returns a status-grounded reply", async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -32,7 +32,7 @@ test.describe("Live Steering Integration", () => {
       timeout: 20_000,
     });
 
-    const command = "skip next job";
+    const command = "what are you doing right now?";
     await page.getByPlaceholder("Ask the agent to adjust...").fill(command);
     await page.getByRole("button", { name: "Send" }).click();
 
@@ -45,8 +45,9 @@ test.describe("Live Steering Integration", () => {
       timeout: 10_000,
     });
 
-    // Backend acknowledgement from /steer should stream back into the UI.
-    await expect(steeringPanel.getByText(`Got it — adjusting based on your feedback: ${command}`).first()).toBeVisible({
+    // The live steering judge should answer from session context rather than
+    // echoing a canned acknowledgement.
+    await expect(steeringPanel.getByText(/^Right now I'm/i).first()).toBeVisible({
       timeout: 20_000,
     });
   });

@@ -226,13 +226,14 @@ export async function getApplicationLog(
 export async function sendSteer(
   sessionId: string,
   data: { message: string; mode?: string }
-): Promise<void> {
+): Promise<{ status: string; message: string; directives: Record<string, unknown>[] }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/steer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to send steer: ${res.statusText}`);
+  return res.json();
 }
 
 export async function submitCoachReview(
@@ -516,4 +517,3 @@ export async function startLinkedInUpdate(
   if (!res.ok) throw new Error(`LinkedIn update failed: ${res.statusText}`);
   return res.json();
 }
-

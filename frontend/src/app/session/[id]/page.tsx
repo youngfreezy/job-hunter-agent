@@ -23,6 +23,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
+import { TakeoverViewer } from "@/components/TakeoverViewer";
 import {
   LinkedInUpdateButton,
   type LinkedInProgress,
@@ -42,6 +43,7 @@ import {
 } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
+import { WebSocketManager } from "@/lib/websocket";
 
 type SessionData = {
   session_summary?: boolean;
@@ -138,6 +140,8 @@ type SSEEvent = {
   }>;
 };
 
+type WebSocketStatus = "connecting" | "connected" | "disconnected" | "error";
+
 const STATUS_LABELS: Record<string, string> = {
   intake: "Setting Up",
   coaching: "Coaching Resume",
@@ -169,6 +173,11 @@ const PIPELINE_STEPS = [
   "reporting",
   "completed",
 ];
+
+function normalizeScreenshotSrc(image: string): string {
+  if (!image) return image;
+  return image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`;
+}
 
 const STEP_LABELS: Record<string, string> = {
   intake: "Setup",
@@ -270,8 +279,15 @@ export default function SessionPage() {
     message: string;
   } | null>(null);
   const [loginConfirming, setLoginConfirming] = useState(false);
+  const [liveBrowserImage, setLiveBrowserImage] = useState<string | null>(null);
+  const [liveBrowserUrl, setLiveBrowserUrl] = useState("");
+  const [takeoverActive, setTakeoverActive] = useState(false);
+  const [takeoverMessage, setTakeoverMessage] = useState<string | null>(null);
+  const [takeoverWsStatus, setTakeoverWsStatus] =
+    useState<WebSocketStatus>("connecting");
 
   const eventsEndRef = useRef<HTMLDivElement>(null);
+  const wsManagerRef = useRef<WebSocketManager | null>(null);
   const latestStatusRef = useRef("intake");
   const coachApprovedRef = useRef(false);
   const shortlistApprovedRef = useRef(false);
@@ -507,10 +523,14 @@ export default function SessionPage() {
       }
 
       if (evt.event === "status" && evt.status === "steering" && evt.message) {
-        setChatMessages((prev) => [
-          ...prev,
-          { role: "agent", text: evt.message || "Steering updated." },
-        ]);
+        setChatMessages((prev) => {
+          const nextText = String(evt.message || "Steering updated.");
+          const last = prev[prev.length - 1];
+          if (last?.role === "agent" && last.text === nextText) {
+            return prev;
+          }
+          return [...prev, { role: "agent", text: nextText }];
+        });
       }
       if (evt.event === "error" && evt.message) {
         setChatMessages((prev) => [
@@ -601,6 +621,54 @@ export default function SessionPage() {
     return cleanup;
   }, [sessionId, sseKey]);
 
+  useEffect(() => {
+    const apiBase =
+      process.env.NEXT_PUBLIC_API_URL ||
+      (window.location.port === "3000"
+        ? "http://localhost:8000"
+        : window.location.origin);
+    const wsUrl = apiBase.replace(/^http/, "ws") + `/ws/sessions/${sessionId}`;
+
+    const manager = new WebSocketManager(
+      wsUrl,
+      (payload) => {
+        const messageType = String(payload.type || "");
+        if (messageType === "screenshot" || messageType === "takeover_frame") {
+          if (typeof payload.image === "string") {
+            setLiveBrowserImage(normalizeScreenshotSrc(String(payload.image)));
+          }
+          if (typeof payload.url === "string") {
+            setLiveBrowserUrl(String(payload.url));
+          }
+          return;
+        }
+
+        if (messageType === "takeover_status") {
+          setTakeoverActive(Boolean(payload.active));
+          if (typeof payload.reason === "string" && payload.reason.trim()) {
+            setTakeoverMessage(String(payload.reason));
+          } else {
+            setTakeoverMessage(null);
+          }
+          if (typeof payload.url === "string") {
+            setLiveBrowserUrl(String(payload.url));
+          }
+        }
+      },
+      (status) => {
+        setTakeoverWsStatus(status);
+      }
+    );
+
+    wsManagerRef.current = manager;
+    manager.connect();
+
+    return () => {
+      wsManagerRef.current?.disconnect();
+      wsManagerRef.current = null;
+    };
+  }, [sessionId]);
+
   const handleSendChat = async (message: string) => {
     const msg = message.trim();
     if (!msg) return;
@@ -608,7 +676,16 @@ export default function SessionPage() {
     setChatMessages((prev) => [...prev, { role: "user", text: msg }]);
 
     try {
-      await sendSteer(sessionId, { message: msg, mode: "status" });
+      const response = await sendSteer(sessionId, { message: msg, mode: "status" });
+      if (response.message) {
+        setChatMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "agent" && last.text === response.message) {
+            return prev;
+          }
+          return [...prev, { role: "agent", text: response.message }];
+        });
+      }
     } catch (e) {
       console.error("Failed to send steering message:", e);
       setChatMessages((prev) => [
@@ -616,6 +693,30 @@ export default function SessionPage() {
         { role: "system", text: "Could not send message to the agent." },
       ]);
     }
+  };
+
+  const handleRequestTakeover = () => {
+    setTakeoverMessage(null);
+    wsManagerRef.current?.requestControl();
+  };
+
+  const handleReleaseTakeover = () => {
+    wsManagerRef.current?.releaseControl();
+    setTakeoverActive(false);
+  };
+
+  const handleTakeoverMouseAction = (payload: Record<string, unknown>) => {
+    wsManagerRef.current?.sendTakeoverInput({
+      input_type: "mouse",
+      ...payload,
+    });
+  };
+
+  const handleTakeoverKeyboardAction = (payload: Record<string, unknown>) => {
+    wsManagerRef.current?.sendTakeoverInput({
+      input_type: "keyboard",
+      ...payload,
+    });
   };
 
   const handleApproveShortlist = async () => {
@@ -956,8 +1057,8 @@ export default function SessionPage() {
                 {interventionData.reason}
               </p>
               <p className="text-xs text-amber-500 mt-2">
-                The browser window is open on your desktop. Fix the issue there,
-                then click Resume.
+                Use Browser Takeover below to interact with the live page, or
+                fix it directly on the desktop browser, then click Resume.
               </p>
             </div>
             <Button
@@ -1004,8 +1105,8 @@ export default function SessionPage() {
                 in the browser window before submitting.
               </p>
               <p className="text-xs text-blue-500 mt-2">
-                The browser is paused with the filled form visible on your
-                desktop.
+                Review the live page below in Browser Takeover, then submit or
+                skip this application.
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -1031,7 +1132,32 @@ export default function SessionPage() {
       <div className="flex-1 flex max-w-7xl mx-auto w-full">
         {/* Left: Main viewer */}
         <div className="flex-1 p-5 flex flex-col">
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col gap-4">
+            <Card className="overflow-hidden">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold">
+                  Browser Takeover
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <TakeoverViewer
+                  imageUrl={liveBrowserImage}
+                  currentUrl={liveBrowserUrl}
+                  wsStatus={takeoverWsStatus}
+                  controlActive={takeoverActive}
+                  onRequestControl={handleRequestTakeover}
+                  onReleaseControl={handleReleaseTakeover}
+                  onMouseAction={handleTakeoverMouseAction}
+                  onKeyboardAction={handleTakeoverKeyboardAction}
+                />
+                {takeoverMessage && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {takeoverMessage}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
             <Card className="flex-1 flex flex-col overflow-hidden">
               <CardHeader className="pb-2 border-b border-border/50">
                 <div className="flex items-center justify-between">
