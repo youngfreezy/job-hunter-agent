@@ -30,6 +30,38 @@ from backend.shared.models.schemas import (
     JobListing,
 )
 
+# Login page indicators — if the final URL contains any of these after
+# navigation, the page requires authentication and should be skipped.
+_LOGIN_INDICATORS = [
+    "login", "signin", "sign-in", "sign_in", "auth",
+    "accounts.google.com", "login.microsoftonline.com",
+    "sso.", "oauth", "authenticate",
+]
+
+# Text on page that indicates an auth wall / signup gate is blocking access.
+# These appear in the page body when the board shows a login overlay instead
+# of redirecting to a /login URL.
+_AUTH_WALL_INDICATORS = [
+    "sign in to apply",
+    "log in to apply",
+    "create an account",
+    "sign up to apply",
+    "join now to apply",
+    "sign in to continue",
+    "please sign in",
+    "please log in",
+    "email address to apply",
+    "enter your email",
+]
+
+# Page-not-found indicators — skip expired/removed job pages fast.
+_NOT_FOUND_INDICATORS = [
+    "404", "page not found", "this page could not be found",
+    "job has been removed", "no longer available",
+    "this job has expired", "position has been filled",
+    "job posting has been removed", "this listing has expired",
+]
+
 logger = logging.getLogger(__name__)
 
 # Circuit-breaker threshold
@@ -86,76 +118,100 @@ def _find_job_in_state(job_id: str, state: JobHunterState) -> Optional[JobListin
     return None
 
 
-# ---------------------------------------------------------------------------
-# Board login URLs
-# ---------------------------------------------------------------------------
-
-_BOARD_LOGIN_URLS = {
-    "linkedin": "https://www.linkedin.com/login",
-    "indeed": "https://secure.indeed.com/account/login",
-    "glassdoor": "https://www.glassdoor.com/profile/login_input.htm",
-    "ziprecruiter": "https://www.ziprecruiter.com/authn/login",
-}
+def _is_login_page(url: str) -> bool:
+    """Return True if the URL looks like a login/authentication page."""
+    url_lower = url.lower()
+    return any(ind in url_lower for ind in _LOGIN_INDICATORS)
 
 
-async def _pre_login_flow(
-    application_queue: List[str],
-    state: JobHunterState,
-    context: Any,
-    session_id: str,
-) -> None:
-    """Navigate to each required board's login page and wait for the user.
+# Domains that host external ATS application forms (public, no auth needed)
+_EXTERNAL_ATS_DOMAINS = [
+    "greenhouse.io", "boards.greenhouse.io",
+    "lever.co", "jobs.lever.co",
+    "myworkdayjobs.com", "wd1.myworkdayjobs.com", "wd3.myworkdayjobs.com", "wd5.myworkdayjobs.com",
+    "smartrecruiters.com", "jobs.smartrecruiters.com",
+    "icims.com",
+    "jobvite.com",
+    "ashbyhq.com",
+    "bamboohr.com",
+    "breezy.hr",
+    "recruitee.com",
+    "workable.com",
+    "jazz.co",
+    "applytojob.com",
+]
 
-    Uses real Playwright page.goto(wait_until="domcontentloaded") for fast,
-    reliable page loads. The authenticated context persists cookies for all
-    subsequent applications.
+# Selectors for "Apply on company website" / external apply links on board pages
+_EXTERNAL_APPLY_SELECTORS = [
+    # LinkedIn
+    'a.apply-button[href*="greenhouse"]',
+    'a.apply-button[href*="lever"]',
+    'a.apply-button[href*="workday"]',
+    'a[href*="greenhouse.io"]',
+    'a[href*="lever.co"]',
+    'a[href*="myworkdayjobs.com"]',
+    'a[href*="smartrecruiters.com"]',
+    'a[href*="icims.com"]',
+    'a[href*="jobvite.com"]',
+    'a[href*="ashbyhq.com"]',
+    # Generic "Apply on company site" patterns
+    'a:has-text("Apply on company")',
+    'a:has-text("Apply on employer")',
+    'a:has-text("apply on company")',
+    'a:has-text("External Apply")',
+    'a:has-text("Apply Now")',
+    # ZipRecruiter external link
+    'a.job_apply_url',
+    'a[data-testid="apply-link"]',
+]
+
+
+async def _find_external_apply_link(page: Any) -> str | None:
+    """Look for an external apply link on a board job page.
+
+    Returns the external URL if found, None otherwise.
     """
-    from backend.orchestrator.agents._login_sync import wait_for_login, cleanup
+    for sel in _EXTERNAL_APPLY_SELECTORS:
+        try:
+            el = await page.query_selector(sel)
+            if el:
+                href = await el.get_attribute("href")
+                if href and any(domain in href.lower() for domain in _EXTERNAL_ATS_DOMAINS):
+                    return href
+        except Exception:
+            continue
 
-    boards_needed: set[str] = set()
-    for job_id in application_queue:
-        job = _find_job_in_state(job_id, state)
-        if job:
-            boards_needed.add(job.board.value)
-
-    boards_with_login = [b for b in boards_needed if b in _BOARD_LOGIN_URLS]
-    if not boards_with_login:
-        return
-
-    logger.info("Pre-login flow starting for boards: %s", boards_with_login)
-
+    # Fallback: scan all links on the page for external ATS domains
     try:
-        for board in boards_with_login:
-            login_url = _BOARD_LOGIN_URLS[board]
-            page = await context.new_page()
-            await apply_stealth(page)
+        links = await page.evaluate("""() => {
+            return Array.from(document.querySelectorAll('a[href]'))
+                .map(a => ({ href: a.href, text: a.innerText.trim().toLowerCase() }))
+                .filter(l => l.text.includes('apply') || l.text.includes('submit'))
+        }""")
+        for link in (links or []):
+            href = link.get("href", "")
+            if any(domain in href.lower() for domain in _EXTERNAL_ATS_DOMAINS):
+                return href
+    except Exception:
+        pass
 
-            await page.goto(login_url, wait_until="domcontentloaded", timeout=30000)
-            # Extra settle time for JS-heavy login pages
-            await asyncio.sleep(2)
+    return None
 
-            await emit_agent_event(session_id, "login_required", {
-                "board": board,
-                "message": (
-                    f"Please log in to {board.title()} in the browser window, "
-                    f"then click Continue in the app."
-                ),
-            })
 
-            logger.info("Waiting for user to log in to %s...", board)
-            try:
-                await wait_for_login(session_id, timeout=300.0)
-                logger.info("User confirmed login to %s", board)
-            except asyncio.TimeoutError:
-                logger.warning("Login timeout for %s — proceeding anyway", board)
+async def _has_auth_wall(page: Any) -> bool:
+    """Check if the current page shows an auth wall/signup gate.
 
-            await page.close()
-
-        await emit_agent_event(session_id, "login_complete", {
-            "message": "All logins complete. Starting applications...",
-        })
-    finally:
-        cleanup(session_id)
+    Some boards (ZipRecruiter, LinkedIn) don't redirect to a /login URL
+    but show an overlay or gate that blocks the apply flow.
+    """
+    try:
+        text = await page.evaluate("() => document.body.innerText.toLowerCase()")
+        for indicator in _AUTH_WALL_INDICATORS:
+            if indicator in text:
+                return True
+    except Exception:
+        pass
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -205,18 +261,18 @@ async def _apply_to_job(
     """Apply to a single job using direct Playwright + LLM form analysis.
 
     Dispatch chain:
-    1. Open new tab in shared context (preserves auth cookies)
+    1. Open new tab in shared headless context
     2. Navigate to job URL
-    3. Detect ATS type from URL/page
-    4. Select board/ATS-specific applier
-    5. Run direct Playwright application
-    6. If applier returns SKIPPED → fallback to browser-use
+    3. Check for login redirect → skip if auth required
+    4. Detect ATS type from URL/page
+    5. Select board/ATS-specific applier
+    6. Run direct Playwright application
+    7. If applier returns SKIPPED → fallback to browser-use
     """
     start_time = time.monotonic()
     detected_ats = "unknown"
 
     try:
-        # --- Step 1: Generate tailored cover letter ---
         from backend.browser.tools.cover_letter import generate_cover_letter
 
         resume_text = state.get("coached_resume") or state.get("resume_text", "")
@@ -229,23 +285,7 @@ async def _apply_to_job(
             "url": job.url,
         })
 
-        cover_letter = await generate_cover_letter(
-            job=job,
-            resume_text=resume_text,
-            template=cover_letter_template,
-        )
-        cover_letter_text = cover_letter.text
-
-        await emit_agent_event(session_id, "application_cover_letter_ready", {
-            "job_id": job_id,
-            "cover_letter_preview": cover_letter_text[:200],
-        })
-
-        # --- Step 2: Extract user profile ---
-        user_profile = await _extract_user_profile(state)
-        resume_file = state.get("resume_file_path")
-
-        # --- Step 3: Open tab and navigate ---
+        # --- Step 1: Open tab and navigate (before cover letter to save LLM calls) ---
         page = await context.new_page()
         await apply_stealth(page)
 
@@ -253,10 +293,87 @@ async def _apply_to_job(
             await page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(1)  # settle
 
+            # --- Step 1b: Check if redirected to login page ---
+            final_url = page.url
+            if _is_login_page(final_url):
+                logger.info("Login page detected (%s) — skipping %s", final_url, job.title)
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": f"Skipped — requires authentication ({job.board.value})",
+                })
+                return ApplicationResult(
+                    job_id=job_id,
+                    status=ApplicationStatus.SKIPPED,
+                    error_message="auth_required",
+                    duration_seconds=int(time.monotonic() - start_time),
+                )
+
+            # --- Step 1c: Check for external apply link ---
+            # Many board pages (LinkedIn, ZipRecruiter, etc.) have an
+            # "Apply on company site" link that goes to an external ATS
+            # (Greenhouse, Lever, Workday).  Follow it if found.
+            external_url = await _find_external_apply_link(page)
+            if external_url:
+                logger.info(
+                    "Found external apply link: %s → %s",
+                    job.url, external_url,
+                )
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": f"Following external apply link...",
+                })
+                await page.goto(external_url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(1)
+
+                # Re-check for login redirect on the new page
+                final_url = page.url
+                if _is_login_page(final_url):
+                    logger.info("External link led to login page — skipping %s", job.title)
+                    await emit_agent_event(session_id, "application_progress", {
+                        "job_id": job_id,
+                        "step": f"Skipped — external page requires authentication",
+                    })
+                    return ApplicationResult(
+                        job_id=job_id,
+                        status=ApplicationStatus.SKIPPED,
+                        error_message="auth_required",
+                        duration_seconds=int(time.monotonic() - start_time),
+                    )
+
+            # --- Step 1d: Check for in-page auth wall (signup gate) ---
+            if await _has_auth_wall(page):
+                logger.info("Auth wall detected on page — skipping %s", job.title)
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": f"Skipped — page requires login to apply ({job.board.value})",
+                })
+                return ApplicationResult(
+                    job_id=job_id,
+                    status=ApplicationStatus.SKIPPED,
+                    error_message="auth_required",
+                    duration_seconds=int(time.monotonic() - start_time),
+                )
+
+            # --- Step 2: Generate cover letter (only if we'll actually apply) ---
+            await emit_agent_event(session_id, "application_progress", {
+                "job_id": job_id,
+                "step": "Generating tailored cover letter...",
+            })
+            cover_letter = await generate_cover_letter(
+                job=job,
+                resume_text=resume_text,
+                template=cover_letter_template,
+            )
+            cover_letter_text = cover_letter.text
+
+            # --- Step 3: Extract user profile ---
+            user_profile = await _extract_user_profile(state)
+            resume_file = state.get("resume_file_path")
+
             # --- Step 4: Detect ATS type ---
             ats_type = await detect_ats_type(page)
             detected_ats = ats_type.value
-            logger.info("ATS detected: %s for %s", detected_ats, job.url)
+            logger.info("ATS detected: %s for %s", detected_ats, page.url)
 
             # --- Step 5: Get appropriate applier ---
             applier = get_applier(job.board.value, ats_type, page, session_id)
@@ -364,6 +481,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
     errors: List[str] = []
     submitted: List[ApplicationResult] = []
     failed: List[ApplicationResult] = []
+    skipped: List[ApplicationResult] = []
     consecutive_failures: int = state.get("consecutive_failures", 0)
     session_id: str = state.get("session_id", "unknown")
 
@@ -388,24 +506,19 @@ async def run_application_agent(state: JobHunterState) -> dict:
             len(application_queue),
         )
 
-        # Start BrowserManager (Patchright, visible window)
+        # Start BrowserManager (Patchright, fully headless — no auth)
         manager = BrowserManager()
-        await manager.start(headless=False)
+        await manager.start(headless=True)
 
-        # Create a shared context -- cookies persist across all tabs
+        # Create a shared context
         ctx_id, context = await manager.new_context()
-
-        # Pre-login: open login pages, user logs in, cookies saved in context
-        await _pre_login_flow(
-            application_queue, state, context, session_id,
-        )
 
         total_in_queue = len(application_queue)
 
         for app_idx, job_id in enumerate(application_queue):
             # Rate-limit cooldown between jobs (skip for first job)
             if app_idx > 0:
-                cooldown = 30  # seconds -- reduced from 60s (direct Playwright is less suspicious)
+                cooldown = 5  # seconds -- direct Playwright is fast, minimal delay needed
                 await emit_agent_event(session_id, "application_progress", {
                     "step": f"Waiting {cooldown}s before next application...",
                     "progress": int((app_idx / total_in_queue) * 100),
@@ -433,6 +546,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 return {
                     "applications_submitted": submitted,
                     "applications_failed": failed,
+                    "applications_skipped": [r.job_id for r in skipped],
                     "consecutive_failures": consecutive_failures,
                     "status": "paused",
                     "agent_statuses": {
@@ -469,15 +583,18 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         )
                 else:
                     # SKIPPED or other status
+                    skipped.append(result)
                     logger.info("Application %s status: %s", job_id, result.status)
                     consecutive_failures = 0
 
                 done_pct = int(((app_idx + 1) / total_in_queue) * 100)
+                skipped_msg = f", {len(skipped)} skipped" if skipped else ""
                 await emit_agent_event(session_id, "application_progress", {
-                    "step": f"{len(submitted)} submitted, {len(failed)} failed — {app_idx + 1} of {total_in_queue} processed",
+                    "step": f"{len(submitted)} submitted, {len(failed)} failed{skipped_msg} — {app_idx + 1} of {total_in_queue} processed",
                     "progress": done_pct,
                     "submitted": len(submitted),
                     "failed": len(failed),
+                    "skipped": len(skipped),
                 })
 
             except Exception as exc:
@@ -513,6 +630,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
     return {
         "applications_submitted": submitted,
         "applications_failed": failed,
+        "applications_skipped": [r.job_id for r in skipped],
         "consecutive_failures": consecutive_failures,
         "status": "applying",
         "agent_statuses": {"application": agent_status},

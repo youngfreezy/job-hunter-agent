@@ -184,11 +184,22 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 "Score each job."
             )
 
-            result: ScoringBatchResult = await invoke_with_retry(structured_llm, [
+            messages = [
                 SystemMessage(content=SCORING_SYSTEM_PROMPT),
                 HumanMessage(content=user_prompt),
-            ])
-            return [s.model_dump() for s in result.scores]
+            ]
+            # Retry up to 2 times if structured output returns invalid/empty data
+            last_exc: Exception | None = None
+            for _attempt in range(3):
+                try:
+                    result: ScoringBatchResult = await invoke_with_retry(structured_llm, messages)
+                    if result and hasattr(result, "scores") and result.scores:
+                        return [s.model_dump() for s in result.scores]
+                    logger.warning("Scoring batch %d returned empty result, retrying...", batch_idx + 1)
+                except Exception as e:
+                    last_exc = e
+                    logger.warning("Scoring batch %d attempt %d failed: %s", batch_idx + 1, _attempt + 1, e)
+            raise last_exc or ValueError("Scoring returned empty results after 3 attempts")
 
         # Process in concurrent waves of CONCURRENCY
         for wave_start in range(0, total_batches, CONCURRENCY):

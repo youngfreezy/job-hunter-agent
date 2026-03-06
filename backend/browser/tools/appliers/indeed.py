@@ -59,8 +59,8 @@ class IndeedApplier(BaseApplier):
             clicked = await self._click_selector(APPLY_BUTTON, "apply_button")
             if not clicked:
                 return self._make_result(
-                    job_id, ApplicationStatus.FAILED,
-                    error_message="Apply button not found on Indeed listing",
+                    job_id, ApplicationStatus.SKIPPED,
+                    error_message="Apply button not found — likely requires auth",
                 )
 
             await self._random_delay(1.5, 2.5)
