@@ -22,6 +22,7 @@ from backend.browser.manager import BrowserManager, apply_stealth
 from backend.browser.tools.ats_detector import detect_ats_type
 from backend.browser.tools.appliers import get_applier
 from backend.orchestrator.pipeline.state import JobHunterState
+from backend.shared.application_store import record_result as _db_record_result
 from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
@@ -551,6 +552,21 @@ async def _apply_to_job(
                 "error": result.error_message or "Application did not complete",
             })
 
+        # Persist to DB immediately (survives restarts)
+        _db_record_result(
+            session_id=session_id,
+            job_id=job_id,
+            status=result.status.value,
+            job_title=job.title,
+            job_company=job.company,
+            job_url=job.url,
+            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+            job_location=job.location or "",
+            error_message=result.error_message,
+            cover_letter=result.cover_letter_used,
+            duration_seconds=result.duration_seconds,
+        )
+
         return result
 
     except Exception as exc:
@@ -565,6 +581,19 @@ async def _apply_to_job(
             "company": job.company,
             "error": str(exc),
         })
+
+        _db_record_result(
+            session_id=session_id,
+            job_id=job_id,
+            status="failed",
+            job_title=job.title,
+            job_company=job.company,
+            job_url=job.url,
+            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+            job_location=job.location or "",
+            error_message=str(exc),
+            duration_seconds=duration,
+        )
 
         return ApplicationResult(
             job_id=job_id,
@@ -721,6 +750,17 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 )
                 failed.append(fail_result)
                 consecutive_failures += 1
+
+                # Persist to DB (job may not be found if error was in lookup)
+                if job is not None:
+                    _db_record_result(
+                        session_id=session_id, job_id=job_id, status="failed",
+                        job_title=job.title, job_company=job.company,
+                        job_url=job.url,
+                        job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+                        job_location=job.location or "",
+                        error_message=str(exc),
+                    )
 
         agent_status = (
             f"completed -- "
