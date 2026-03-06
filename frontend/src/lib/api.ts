@@ -127,6 +127,7 @@ export async function startSession(params: {
   remote_only: boolean;
   salary_min: number | null;
   resume_text: string | null;
+  resume_file_path: string | null;
   linkedin_url: string | null;
   preferences: Record<string, unknown>;
 }): Promise<{ session_id: string }> {
@@ -447,7 +448,7 @@ export function connectWebSocket(
 
 export async function parseResume(
   file: File
-): Promise<{ text: string; filename: string }> {
+): Promise<{ text: string; filename: string; file_path?: string }> {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${API_BASE}/api/sessions/parse-resume`, {

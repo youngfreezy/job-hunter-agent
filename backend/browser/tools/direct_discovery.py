@@ -21,6 +21,7 @@ from backend.browser.tools.job_boards import (
     scrape_linkedin,
     scrape_ziprecruiter,
 )
+from backend.browser.tools.job_boards.greenhouse_boards import scrape_greenhouse_lever
 from backend.shared.config import settings
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import JobListing, SearchConfig
@@ -33,6 +34,7 @@ _BOARD_SCRAPERS = {
     "indeed": scrape_indeed,
     "glassdoor": scrape_glassdoor,
     "ziprecruiter": scrape_ziprecruiter,
+    "greenhouse_lever": scrape_greenhouse_lever,
 }
 
 # Per-board timeout (higher to allow per-keyword searches)
@@ -149,8 +151,12 @@ async def discover_all_boards(
                 fallback_boards.append(board)
                 continue
 
+            # Greenhouse/Lever jobs have public forms we can apply to directly,
+            # so collect more of them vs. board-hosted jobs that often need auth.
+            board_max = max_per_board * 3 if board == "greenhouse_lever" else max_per_board
+
             listings = await _scrape_board(
-                board, manager, search_config, session_id, max_per_board,
+                board, manager, search_config, session_id, board_max,
             )
 
             if listings:

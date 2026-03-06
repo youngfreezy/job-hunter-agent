@@ -51,6 +51,7 @@ class ATSType(str, Enum):
     WORKDAY = "workday"
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
+    ASHBY = "ashby"
     ICIMS = "icims"
     TALEO = "taleo"
     LINKEDIN = "linkedin"
@@ -208,6 +209,7 @@ class StartSessionRequest(BaseModel):
     remote_only: bool = False
     salary_min: Optional[int] = None
     resume_text: Optional[str] = None
+    resume_file_path: Optional[str] = None
     linkedin_url: Optional[str] = None
     preferences: Dict[str, Any] = Field(default_factory=dict)
 

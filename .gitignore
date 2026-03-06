@@ -38,3 +38,4 @@ frontend/playwright-report/
 # Test artifacts
 test_screenshots/
 test_apply_screenshots/
+screenshots/

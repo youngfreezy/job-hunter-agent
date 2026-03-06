@@ -20,6 +20,7 @@ _URL_PATTERNS = [
     (re.compile(r"myworkday(jobs)?\.com|workday\.com", re.I), ATSType.WORKDAY),
     (re.compile(r"greenhouse\.io|boards\.greenhouse", re.I), ATSType.GREENHOUSE),
     (re.compile(r"lever\.co|jobs\.lever", re.I), ATSType.LEVER),
+    (re.compile(r"ashbyhq\.com|jobs\.ashbyhq", re.I), ATSType.ASHBY),
     (re.compile(r"icims\.com|careers-.*\.icims", re.I), ATSType.ICIMS),
     (re.compile(r"taleo\.(net|com)|oracle.*cloud.*taleo", re.I), ATSType.TALEO),
 ]
@@ -53,6 +54,7 @@ async def detect_ats_type(page: Any) -> ATSType:
                 has_workday: html.includes('workday') || html.includes('wd-') || html.includes('wday'),
                 has_greenhouse: html.includes('greenhouse') || html.includes('grnhse'),
                 has_lever: html.includes('lever.co') || html.includes('lever-jobs'),
+                has_ashby: html.includes('ashbyhq') || html.includes('ashby'),
                 has_icims: html.includes('icims') || html.includes('pageobject'),
                 has_taleo: html.includes('taleo') || html.includes('oracle.*careers'),
             };
@@ -64,6 +66,8 @@ async def detect_ats_type(page: Any) -> ATSType:
             return ATSType.GREENHOUSE
         if content_checks.get("has_lever"):
             return ATSType.LEVER
+        if content_checks.get("has_ashby"):
+            return ATSType.ASHBY
         if content_checks.get("has_icims"):
             return ATSType.ICIMS
         if content_checks.get("has_taleo"):

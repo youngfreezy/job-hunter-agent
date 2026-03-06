@@ -29,6 +29,7 @@ export const resumeProfileSchema = Yup.object({
     "Upload a resume file (.pdf, .docx, or .txt)."
   ),
   resumeFileName: Yup.string().default(""),
+  resumeFilePath: Yup.string().default(""),
   linkedinUrl: Yup.string()
     .default("")
     .test(
@@ -63,6 +64,7 @@ export const sessionInitialValues: SessionFormValues = {
   salaryMin: "",
   resumeText: "",
   resumeFileName: "",
+  resumeFilePath: "",
   linkedinUrl: "",
 };
 

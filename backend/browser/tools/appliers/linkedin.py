@@ -147,10 +147,10 @@ class LinkedInApplier(BaseApplier):
                     cover_letter_used=cover_letter,
                 )
 
-            # No confirmation text but submit was clicked -- optimistic success
+            # No confirmation text but submit was clicked — FAILED
             return self._make_result(
-                job_id, ApplicationStatus.SUBMITTED,
-                cover_letter_used=cover_letter,
+                job_id, ApplicationStatus.FAILED,
+                error_message="Submit clicked but no confirmation detected",
             )
 
         except Exception as exc:

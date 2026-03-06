@@ -120,10 +120,10 @@ class LeverApplier(BaseApplier):
                 error_message=f"Lever detected: {failure}",
             )
 
-        # Submit was clicked but no confirmation detected -- optimistic success
-        logger.info("Lever: submit clicked, no confirmation detected -- assuming success")
+        # Submit was clicked but no confirmation detected — FAILED
+        logger.info("Lever: submit clicked, no confirmation detected -- FAILED")
         await self._emit_step("Application submitted (no explicit confirmation).")
         return self._make_result(
-            job.id, ApplicationStatus.SUBMITTED,
-            cover_letter_used=cover_letter,
+            job.id, ApplicationStatus.FAILED,
+            error_message="Submit clicked but no confirmation detected",
         )
