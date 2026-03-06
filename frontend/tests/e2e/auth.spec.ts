@@ -93,7 +93,7 @@ test.describe("Authentication Flow", () => {
     test("after login, can access /dashboard", async ({ page }) => {
       await login(page);
 
-      await page.goto("/dashboard");
+      await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(/\/dashboard/);
       await expect(
         page.getByRole("heading", { name: "Dashboard" })
@@ -103,7 +103,7 @@ test.describe("Authentication Flow", () => {
     test("after login, can access /session/new", async ({ page }) => {
       await login(page);
 
-      await page.goto("/session/new");
+      await page.goto("/session/new", { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(/\/session\/new/);
       await expect(
         page.getByRole("heading", { name: "New Session" })

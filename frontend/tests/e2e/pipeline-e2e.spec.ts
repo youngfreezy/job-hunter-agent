@@ -12,11 +12,17 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { login } from "./helpers/auth";
+import path from "path";
+import fs from "fs";
 
 const API_BASE = "http://localhost:8000";
+const RESUME_TEXT =
+  "John Doe\nSenior Backend Engineer\nSan Francisco, CA\njohn@example.com\n\n" +
+  "Experience:\n- 5 years Python, FastAPI, Django\n- AWS, Docker, Kubernetes\n" +
+  "- PostgreSQL, Redis\n- CI/CD pipelines\n\nEducation:\nBS Computer Science, UC Berkeley";
 
-// Helper: fill wizard and submit to create a session
-async function createSessionViaWizard(page: Page): Promise<string> {
+// Helper: create a resume file and fill wizard to create a session
+async function createSessionViaWizard(page: Page, resumeFilePath: string): Promise<string> {
   await page.goto("/session/new");
   await expect(
     page.getByRole("heading", { name: "New Session" })
@@ -32,14 +38,9 @@ async function createSessionViaWizard(page: Page): Promise<string> {
   await page.getByRole("button", { name: "Next" }).click();
   await page.waitForTimeout(500);
 
-  // Step 2: Resume
-  await page
-    .getByPlaceholder("Paste your full resume text here...")
-    .fill(
-      "John Doe\nSenior Backend Engineer\nSan Francisco, CA\njohn@example.com\n\n" +
-        "Experience:\n- 5 years Python, FastAPI, Django\n- AWS, Docker, Kubernetes\n" +
-        "- PostgreSQL, Redis\n- CI/CD pipelines\n\nEducation:\nBS Computer Science, UC Berkeley"
-    );
+  // Step 2: Resume — upload file
+  await page.locator("#resume-upload").setInputFiles(resumeFilePath);
+  await page.waitForTimeout(500);
   await page.getByRole("button", { name: "Next" }).click();
   await page.waitForTimeout(500);
 
@@ -47,7 +48,7 @@ async function createSessionViaWizard(page: Page): Promise<string> {
   await expect(
     page.getByText("Review & Launch", { exact: true }).first()
   ).toBeVisible();
-  await page.getByRole("button", { name: /Launch|Submit|Start/ }).click();
+  await page.getByRole("button", { name: "Start Job Hunt Session" }).click();
 
   // Wait for redirect to session page
   await page.waitForURL(/\/session\/[a-f0-9-]+/, { timeout: 15_000 });
@@ -84,6 +85,18 @@ async function waitForStatus(
 }
 
 test.describe("Full Pipeline E2E", () => {
+  let resumeFilePath: string;
+
+  test.beforeAll(() => {
+    resumeFilePath = path.join(__dirname, "fixtures", "test-resume-pipeline.txt");
+    fs.mkdirSync(path.dirname(resumeFilePath), { recursive: true });
+    fs.writeFileSync(resumeFilePath, RESUME_TEXT);
+  });
+
+  test.afterAll(() => {
+    try { fs.unlinkSync(resumeFilePath); } catch { /* ignore */ }
+  });
+
   test.beforeEach(async ({ page, request }) => {
     const health = await request.get(`${API_BASE}/api/health`);
     expect(health.status()).toBe(200);
@@ -95,11 +108,11 @@ test.describe("Full Pipeline E2E", () => {
   }) => {
     test.setTimeout(120_000);
 
-    const sessionId = await createSessionViaWizard(page);
+    const sessionId = await createSessionViaWizard(page, resumeFilePath);
     expect(sessionId).toBeTruthy();
 
-    // Verify session page loaded
-    await expect(page.getByText("Status Feed")).toBeVisible({
+    // Verify session page loaded — main card is "Live Status"
+    await expect(page.getByText("Live Status")).toBeVisible({
       timeout: 10_000,
     });
 
@@ -108,8 +121,8 @@ test.describe("Full Pipeline E2E", () => {
       timeout: 10_000,
     });
 
-    // Wait for coaching to begin
-    await expect(page.getByText(/coaching/i).first()).toBeVisible({
+    // Wait for coaching to begin — look for Coach step label
+    await expect(page.getByText(/coach/i).first()).toBeVisible({
       timeout: 15_000,
     });
 
@@ -137,23 +150,17 @@ test.describe("Full Pipeline E2E", () => {
 
     // Navigate to session page and connect SSE
     await page.goto(`/session/${sessionId}`);
-    await expect(page.getByText("Status Feed")).toBeVisible({
+    await expect(page.getByText("Live Status")).toBeVisible({
       timeout: 10_000,
     });
 
     // Wait for coaching to complete and coach review modal to appear
-    // The modal has a DialogTitle with "Resume Coach Review" or similar
-    await expect(page.getByRole("dialog").first()).toBeVisible({
-      timeout: 120_000,
-    });
+    const dialog = page.getByRole("dialog").first();
+    await expect(dialog).toBeVisible({ timeout: 120_000 });
 
     await page.screenshot({
       path: "test-results/pipeline-coach-review-modal.png",
     });
-
-    // The modal should show coach output (rewritten resume, score, etc.)
-    const dialog = page.getByRole("dialog").first();
-    await expect(dialog).toBeVisible();
 
     // Click Approve button
     const approveBtn = dialog.getByRole("button", {
@@ -166,7 +173,7 @@ test.describe("Full Pipeline E2E", () => {
     await expect(dialog).not.toBeVisible({ timeout: 10_000 });
 
     // Status should advance past coaching
-    await expect(page.getByText(/discover/i).first()).toBeVisible({
+    await expect(page.getByText(/discover|search|finding/i).first()).toBeVisible({
       timeout: 30_000,
     });
 
@@ -178,7 +185,7 @@ test.describe("Full Pipeline E2E", () => {
   test("shortlist review shows max 20 jobs and approval works", async ({
     page,
   }) => {
-    test.setTimeout(600_000); // 10 min — discovery + scoring takes time
+    test.setTimeout(600_000);
 
     // Create session via API
     const createRes = await page.request.post(`${API_BASE}/api/sessions`, {
@@ -197,18 +204,16 @@ test.describe("Full Pipeline E2E", () => {
     expect(createRes.status()).toBe(200);
     const { session_id: sessionId } = await createRes.json();
 
-    // Navigate to session page immediately so we receive SSE events in real-time
+    // Navigate to session page immediately
     await page.goto(`/session/${sessionId}`);
-    await expect(page.getByText("Status Feed")).toBeVisible({
+    await expect(page.getByText("Live Status")).toBeVisible({
       timeout: 10_000,
     });
 
-    // Wait for coach review modal, approve it, then wait for shortlist review
-    // The coach review dialog appears first
+    // Wait for coach review modal, approve it
     const coachDialog = page.getByRole("dialog").first();
     await expect(coachDialog).toBeVisible({ timeout: 120_000 });
 
-    // Approve coach review via the dialog button
     const coachApproveBtn = coachDialog.getByRole("button", {
       name: /Approve|Continue/i,
     });
@@ -216,8 +221,7 @@ test.describe("Full Pipeline E2E", () => {
     await coachApproveBtn.click();
     await expect(coachDialog).not.toBeVisible({ timeout: 10_000 });
 
-    // Now wait for the shortlist review dialog (after discovery + scoring + tailoring)
-    // This can take 5-8 minutes
+    // Wait for shortlist review dialog (after discovery + scoring + tailoring)
     const dialog = page.getByRole("dialog").first();
     await expect(dialog).toBeVisible({ timeout: 540_000 });
 
@@ -225,14 +229,12 @@ test.describe("Full Pipeline E2E", () => {
       path: "test-results/pipeline-shortlist-review.png",
     });
 
-    // COUNT the job items in the shortlist — must be <= 20
-    // Look for job cards/rows in the dialog
+    // COUNT the job items — must be <= 20
     const jobItems = dialog.locator(
       '[data-testid="job-item"], tr, [class*="job"], [class*="Job"]'
     );
     const jobCount = await jobItems.count();
 
-    // If no specific selectors match, count by looking for checkboxes (each job has one)
     let actualCount = jobCount;
     if (jobCount === 0) {
       const checkboxes = dialog.locator('input[type="checkbox"]');
@@ -243,17 +245,12 @@ test.describe("Full Pipeline E2E", () => {
     expect(actualCount).toBeLessThanOrEqual(20);
     expect(actualCount).toBeGreaterThan(0);
 
-    await page.screenshot({
-      path: "test-results/pipeline-shortlist-count.png",
-    });
-
-    // Approve the shortlist — click "Approve" or "Apply to Selected"
+    // Approve the shortlist
     const approveBtn = dialog.getByRole("button", {
       name: /Approve|Apply|Submit|Continue/i,
     });
     await expect(approveBtn).toBeVisible({ timeout: 5_000 });
 
-    // Click and verify it doesn't hang (returns within 10s)
     const startTime = Date.now();
     await approveBtn.click();
     const elapsed = Date.now() - startTime;
@@ -341,7 +338,7 @@ test.describe("Full Pipeline E2E", () => {
     expect(createRes.status()).toBe(200);
     const { session_id: sessionId } = await createRes.json();
 
-    // Poll until we reach awaiting_review, auto-approving coach review along the way
+    // Poll until we reach awaiting_review, auto-approving coach review
     {
       const start = Date.now();
       let coachApproved = false;
