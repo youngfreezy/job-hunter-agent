@@ -1,9 +1,31 @@
 # JobHunter Agent — Autonomous Job Application Platform
 
-## Context
-Job hunting is tedious and time-consuming regardless of role or industry. This platform creates a **keyword-driven, industry-agnostic** multi-agent system that discovers, scores, and applies to jobs autonomously — with a **live steerable video feed** so the user can watch and intervene in real-time. The user provides their own keywords (e.g., "Nurse Practitioner", "Data Engineer", "Marketing Manager", "Plumber"), resume, and preferences — the agent handles the rest. Built as a **weekly subscription SaaS**, US users only.
+## Current Status
 
-Architecture is modeled after the mayo-clinic-validator's proven LangGraph patterns: parallel agent fan-out via Send API, SSE streaming, PostgresCheckpointer for HITL, and a Next.js frontend — but redesigned for multi-tenant scale with microservice separation, job queues, and tiered resource allocation.
+**Phases 1-3 complete. Phase 4 partially complete.** The core pipeline is fully functional: 8 LangGraph agents, 7 job board scrapers, 9 ATS-specific appliers, self-healing CSS selector memory, daily health-check scheduler, and a Next.js frontend with live session viewer. 64 Playwright E2E tests passing.
+
+**What works today:**
+- 3-step session wizard (keywords, resume upload, review) with form persistence
+- 8-agent LangGraph pipeline: Intake -> Coach -> Discovery -> Scoring -> Tailor -> Apply -> Verify -> Report
+- 2 HITL gates: coach review + shortlist approval
+- Job discovery across LinkedIn, Indeed, Glassdoor, ZipRecruiter, Google Jobs, Greenhouse
+- ATS-aware application: dedicated appliers for LinkedIn, Indeed, Glassdoor, ZipRecruiter, Greenhouse, Lever, Workday, Ashby + generic fallback
+- Selector learning: both discovery and apply selectors stored in Postgres, ranked by success rate
+- Daily automated health-check validates all CSS selectors against live pages
+- Application results persisted to Postgres with full audit trail
+- SSE + WebSocket real-time updates, screenshot streaming
+- NextAuth authentication, manual apply page, session rewind via checkpoints
+
+**Not yet implemented:** Stripe payments, full session DB persistence, production deployment, US-only geofencing, resume encryption.
+
+See [docs/PLAN.md](docs/PLAN.md) for detailed implementation phases.
+
+---
+
+## Context
+Job hunting is tedious and time-consuming regardless of role or industry. This platform creates a **keyword-driven, industry-agnostic** multi-agent system that discovers, scores, and applies to jobs autonomously — with a **live steerable video feed** so the user can watch and intervene in real-time. The user provides their own keywords (e.g., "Nurse Practitioner", "Data Engineer", "Marketing Manager", "Plumber"), resume, and preferences — the agent handles the rest.
+
+Architecture uses LangGraph for agent orchestration with parallel fan-out, SSE streaming, AsyncPostgresSaver for HITL checkpointing, and a Next.js 14 frontend.
 
 ---
 
@@ -152,74 +174,52 @@ Users can steer the agent via the chat panel throughout the session:
 
 ---
 
-## System Architecture (Microservice Split)
+## System Architecture
 
-**Critical design decision**: Split the monolith into 3 services to prevent browser crashes from taking down the API, and to scale browser workers independently.
-
-```
-┌─────────┐     ┌───────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│ Vercel  │     │ API Gateway   │     │ Orchestrator     │     │ Browser Workers  │
-│ (Next.js│────►│ (FastAPI)     │────►│ (LangGraph +     │────►│ (Playwright +    │
-│ frontend│     │               │     │  ARQ consumer)   │     │  browser-use)    │
-│         │◄────│ Auth, Stripe, │◄────│                  │◄────│                  │
-│         │ SSE │ SSE, REST     │Redis│ Agent pipeline   │Redis│ Per-user browser │
-│         │     │               │pub/ │ Session mgmt     │pub/ │ contexts         │
-│         │     │               │sub  │                  │sub  │                  │
-└─────────┘     └───────┬───────┘     └────────┬─────────┘     └──────────────────┘
-                        │                      │
-                   ┌────▼────┐            ┌────▼────┐
-                   │ Neon    │            │ Neo4j   │
-                   │Postgres │            │ Aura    │
-                   │         │            │         │
-                   └─────────┘            └─────────┘
-```
-
-### Service Responsibilities
-
-| Service | Runs On | Responsibility |
-|---------|---------|---------------|
-| **Frontend + API** | Vercel | Next.js 14 (App Router + API Routes). Auth (NextAuth), Stripe webhooks, REST endpoints, SSE streaming. Inngest functions for pipeline orchestration. |
-| **Browser Workers** | Railway (dedicated containers) | FastAPI internal API. Playwright browser instances. One browser process per user. ARQ consumer for browser tasks. Optional noVNC on demand. |
-
-**Key simplification**: By using Inngest on Vercel, we eliminate the separate API Gateway and Orchestrator services. Inngest functions run as Vercel serverless functions — they handle the LangGraph pipeline orchestration with step-level retry. Only browser-bound work runs on Railway.
-
-### Job Queue — Inngest (Vercel-native) + ARQ (Browser Workers)
-
-**Hybrid approach**: Inngest for orchestration logic (runs on Vercel), ARQ for browser-bound work (runs on Railway).
-
-**Why Inngest?** It runs your code on Vercel — no separate runtime to manage. It splits long-running workflows into individually retried steps, persists output across steps, and handles failures/retries automatically. Perfect for the LangGraph pipeline orchestration.
-
-**Why keep ARQ for browsers?** Playwright needs persistent containers with Chromium, which can't run on Vercel's serverless functions. Browser workers stay on Railway with ARQ for browser-specific tasks.
+**Current architecture**: Single-service monolith for development simplicity. All components (API, LangGraph pipeline, browser automation) run in one FastAPI process.
 
 ```
-User clicks "Start Session"
+┌─────────────┐     ┌──────────────────────────────────────┐
+│  Next.js 14 │     │ FastAPI (port 8000)                  │
+│  (port 3000)│────►│                                      │
+│             │     │  ├── API Routes (REST + SSE + WS)    │
+│  App Router │◄────│  ├── LangGraph Pipeline              │
+│  NextAuth   │ SSE │  │   └── 8 agents (StateGraph)       │
+│  shadcn/ui  │     │  ├── Browser Manager (Patchright)    │
+│  Formik     │     │  ├── Selector Health Scheduler       │
+│             │     │  └── Event Bus (pub/sub)             │
+└─────────────┘     └──────────┬────────────┬──────────────┘
+                               │            │
+                          ┌────▼────┐  ┌────▼────┐
+                          │Postgres │  │  Redis  │
+                          │ :5433   │  │  :6379  │
+                          └─────────┘  └─────────┘
+```
+
+**How a session runs:**
+
+```
+User clicks "Start Job Hunt Session"
   ↓
-Next.js API route → Stripe check → triggers Inngest function
+POST /api/sessions → starts LangGraph pipeline (async)
   ↓
-Inngest orchestrates pipeline steps (each step is individually retryable):
-  step.run("intake")       → Claude API call (runs on Vercel)
-  step.run("discovery")    → enqueues browser task to ARQ → waits for result
-  step.run("scoring")      → Claude API call (runs on Vercel)
-  step.run("resume-tailor")→ Claude API call (runs on Vercel)
-  step.waitForEvent("user-approval")  → HITL pause (built-in!)
-  step.run("apply-batch")  → enqueues browser tasks to ARQ → streams progress
-  step.run("verify")       → Claude API call
-  step.run("report")       → Claude API call + email via Resend
+Pipeline executes 9 nodes sequentially:
+  1. Intake        → parse keywords + resume (Claude Sonnet)
+  2. Career Coach  → rewrite resume, score, cover letter template (Claude Opus)
+  3. [HITL Gate]   → interrupt() → user reviews coached resume
+  4. Discovery     → fan-out to 7 job boards (Patchright + stealth)
+  5. Scoring       → rank jobs 0-100 vs profile (10 concurrent Claude calls)
+  6. Resume Tailor → per-job resume adaptation (10 concurrent Claude calls)
+  7. [HITL Gate]   → interrupt() → user approves shortlist
+  8. Application   → submit via ATS-specific appliers (circuit breaker at 3 failures)
+  9. Verification  → screenshot + confirmation check
+  10. Reporting    → session summary
   ↓
-Each step publishes events to Redis pub/sub → SSE/WebSocket to frontend
+Each node publishes SSE events → Redis pub/sub → frontend StatusFeed
+Pipeline state checkpointed to Postgres after each node (rewindable)
 ```
 
-**Inngest advantages over pure ARQ:**
-- Built-in step-level retry with exponential backoff
-- `step.waitForEvent()` is perfect for HITL — no need for LangGraph `interrupt()`
-- Built-in event replay / debugging dashboard
-- Concurrency controls (limit 5 concurrent applications per user)
-- Automatic function versioning
-
-**Task granularity** (3 levels):
-1. **Session function** (Inngest): Orchestrates the full pipeline as a series of steps
-2. **Application task** (ARQ on Railway): One per job — browser context lifecycle
-3. **Form-fill actions**: Individual Playwright actions within an application (for retry)
+**Production target**: Split into API Gateway + Browser Workers (Railway) for isolation. Inngest for step-level retry. See [docs/PLAN.md](docs/PLAN.md) for the planned microservice architecture.
 
 ---
 
@@ -285,142 +285,114 @@ class JobHunterState(TypedDict):
 
 ## Tech Stack
 
-### Backend
-- **Python 3.12** + **FastAPI** (API Gateway, async throughout)
-- **LangGraph** for agent orchestration + state machine
-- **Inngest** for pipeline orchestration (step-level retry, HITL via `waitForEvent`, runs on Vercel)
-- **ARQ** for browser-specific tasks (Redis-backed, runs on Railway workers)
-- **Playwright** (async) for browser automation (discovery scraping)
-- **Patchright** for anti-detection (patched Playwright fork)
-- **browser-use** for AI-driven job application (LLM-controlled browser agent, replaces hardcoded selectors)
-- **Claude API** (Anthropic SDK) — Opus, Sonnet, Haiku
-- **PostgreSQL** + **AsyncPostgresSaver** for checkpointing + data persistence
-- **Neo4j Aura** for application strategy knowledge graph
-- **Redis** for job queue (ARQ), pub/sub (status events, chat), rate limiting
+### Backend (Implemented)
+- **Python 3.11** + **FastAPI** (single service, port 8000, async throughout)
+- **LangGraph** for agent orchestration (9-node StateGraph with 2 HITL interrupt gates)
+- **AsyncPostgresSaver** for pipeline checkpointing + session rewind
+- **Patchright** for anti-detection browser automation (patched Playwright fork)
+- **browser-use** for AI-driven form filling (fallback for unknown ATS platforms)
+- **Claude API** (Anthropic SDK) — Opus, Sonnet, Haiku with smart model routing
+- **PostgreSQL** (Docker, port 5433) — checkpoints, selector memory, application results
+- **Redis** (Docker, port 6379) — pub/sub for SSE events, screenshot streaming, caching
+- **Neo4j** client (optional, graceful degradation)
 
-### Frontend
-- **Next.js 14** (App Router, TypeScript) — from scratch with shadcn/ui
+### Frontend (Implemented)
+- **Next.js 14** (App Router, TypeScript, port 3000)
 - **Tailwind CSS** + **shadcn/ui** component library
-- **Stripe.js** + **Stripe Checkout** (hosted payment page, minimal PCI scope)
-- **NextAuth.js** for authentication (email + Google OAuth)
+- **Formik + Yup** for multi-step forms with localStorage persistence
+- **NextAuth.js** for authentication (email/password credentials)
+- **nextjs-toploader** for route transitions
+- **Playwright** for E2E testing (64 tests across 8 files)
 
-### Infrastructure
-- **Vercel** — Frontend hosting (edge functions, preview deploys, custom domain)
-- **Railway** — API Gateway + Orchestrator + Browser Workers (persistent containers, WebSocket support, autoscaling)
-- **Neon** — Managed Postgres (serverless, connection pooling, branching for dev/staging)
-- **Upstash** — Managed Redis (ARQ queue, pub/sub, rate limiting)
-- **Neo4j Aura** — Knowledge graph (free tier: 200K nodes, 400K relationships)
-- **Cloudflare** — CDN, DDoS protection, US-only WAF geo-restriction
-- **Stripe** — Checkout, Subscriptions, Customer Portal, Webhooks
-- **Resend** — Transactional emails (receipts, session summaries, weekly reports)
-- **Sentry** — Error tracking + performance monitoring
-- **BrightData** or **Oxylabs** — Residential proxy rotation for job board access (~$50-200/mo)
+### Infrastructure (Local Dev)
+- **Docker Compose** — Postgres + Redis
+- **npm start** from root — orchestrates Docker, backend (uvicorn --reload), frontend (next dev)
+
+### Infrastructure (Planned for Production)
+- **Vercel** — Frontend hosting
+- **Railway** — Backend + Browser Workers
+- **Neon** — Managed Postgres
+- **Upstash** — Managed Redis
+- **Stripe** — Payments (per-job pricing model)
+- **Resend** — Transactional emails
+- **Sentry** — Error tracking
+- **BrightData / Oxylabs** — Residential proxy rotation
 
 ---
 
 ## Database Design
 
-### Postgres (Neon) — Relational + Transactional
+### Postgres — Currently Implemented
 ```sql
-users (
-  id UUID PK, email, name, stripe_customer_id, stripe_subscription_id,
-  plan TEXT, geo_country, created_at, updated_at
+-- Discovery selector memory (learns which CSS selectors work per job board)
+board_selectors (
+  id SERIAL PK, board TEXT, selector TEXT,
+  success_count INT, fail_count INT, last_used TIMESTAMPTZ,
+  last_checked TIMESTAMPTZ, last_check_passed BOOLEAN,
+  UNIQUE (board, selector)
 )
 
-sessions (
-  id UUID PK, user_id FK, status, keywords JSONB, locations JSONB,
-  preferences JSONB, applications_target INT, applications_completed INT,
-  started_at, ended_at, resumed_from UUID nullable
+-- Application selector memory (learns apply/next/submit selectors per ATS)
+apply_selectors (
+  id SERIAL PK, platform TEXT, step_type TEXT, selector TEXT,
+  success_count INT, fail_count INT, last_used TIMESTAMPTZ,
+  last_checked TIMESTAMPTZ, last_check_passed BOOLEAN,
+  UNIQUE (platform, step_type, selector)
 )
 
-jobs_discovered (
-  id UUID PK, session_id FK, title, company, url, board,
-  ats_type, score INT, status, discovered_at
+-- Persistent application results log
+application_results (
+  id SERIAL PK, session_id TEXT, job_id TEXT, status TEXT,
+  job_title TEXT, job_company TEXT, job_url TEXT, job_board TEXT,
+  error_message TEXT, cover_letter TEXT, tailored_resume_text TEXT,
+  duration_seconds INT, created_at TIMESTAMPTZ
 )
 
-applications (
-  id UUID PK, session_id FK, job_id FK, status,
-  cover_letter_text, screenshot_url, error_message,
-  submitted_at, duration_seconds INT
-)
-
-resumes (
-  id UUID PK, user_id FK, original_text_encrypted BYTEA,
-  file_url_encrypted BYTEA, uploaded_at
-  -- encrypted with pgcrypto AES-256, auto-deleted after 30 days
-)
-
-stripe_events (
-  id UUID PK, stripe_event_id UNIQUE, type, data JSONB,
-  processed BOOL, idempotency_key, created_at
-)
+-- LangGraph checkpoint tables (auto-created by AsyncPostgresSaver)
+checkpoints, checkpoint_blobs, checkpoint_writes, checkpoint_migrations
 ```
 
-### Neo4j Aura — Knowledge Graph (Cross-Session Learning)
+### Postgres — Planned (Not Yet Implemented)
+```sql
+users, sessions, resumes (encrypted), stripe_events
 ```
-Nodes:
-  (:Company {name, domain, size, industry})
-  (:JobBoard {name})               — Indeed, LinkedIn, Glassdoor, etc.
-  (:ATSPlatform {name, version})   — Workday, Greenhouse, Lever, iCIMS, Taleo
-  (:FormField {label, type, common_values})
-  (:ApplicationStrategy {name, steps_json, success_rate})
-  (:Question {text, category})     — Screening questions encountered
-  (:Answer {text, effectiveness})  — Answers that led to callbacks
 
-Relationships:
-  (:Company)-[:USES_ATS]->(:ATSPlatform)
-  (:Company)-[:POSTS_ON]->(:JobBoard)
-  (:ATSPlatform)-[:HAS_FORM_FIELD]->(:FormField)
-  (:ATSPlatform)-[:REQUIRES_STRATEGY]->(:ApplicationStrategy)
-  (:Question)-[:ASKED_BY]->(:Company)
-  (:Question)-[:BEST_ANSWERED_WITH]->(:Answer)
-
-Value:
-  - Application Agent queries Neo4j before opening a form: "What ATS does Company X use?
-    What fields will I see? What strategy has the highest success rate?"
-  - Cross-session learning: successful patterns feed back into the graph
-  - Scoring Agent uses ATS data to estimate application difficulty
-```
+### Neo4j — Knowledge Graph (Optional)
+Client implemented in `shared/neo4j_client.py`. System degrades gracefully when Neo4j is unavailable — falls back to stateless form filling without cross-session learning.
 
 ---
 
-## Pricing (Weekly Subscription)
+## Pricing (Per-Job Model)
 
-Weekly billing is better than hourly because:
-- Job searches are urgent — people want to solve it *this week*
-- Reduces perceived commitment vs monthly ($49/week feels lower than $200/month)
-- Avoids the anxiety of watching a clock while the bot works
-- Aligns incentives: fast sessions are good for us (less infra), and the user isn't punished for speed
+> Updated March 2026 — Switched from weekly subscriptions to per-job pricing.
+> Full analysis in [docs/phase-4-5-monetization.md](docs/phase-4-5-monetization.md).
 
-| Tier | Price | Applications/Week | Features | Best For |
-|------|-------|-------------------|----------|----------|
-| **Starter** | $49/week | 25 | SSE Status Feed | Dipping toes, light search |
-| **Professional** | $99/week | 75 | SSE + Chat Steering | Active job seekers |
-| **Executive** | $199/week | 200 | SSE + Chat + Priority Support | Serious search, full control |
+**$1.99 per successful application** — users only pay when an application is verified as submitted.
 
-### Payment Flow (Stripe)
-```
-1. User signs up → Stripe Customer created
-2. User selects plan → Stripe Checkout (weekly subscription)
-3. Session starts → Backend checks plan limits (apps remaining this week)
-4. Session runs → applications_used counter increments per submission
-5. Weekly reset → counter resets, subscription renews
-6. Cancel anytime → Stripe Customer Portal
-```
+| Model | Price | Per Job | Discount |
+|-------|-------|---------|----------|
+| Pay-as-you-go | -- | $1.99 | -- |
+| 20-pack | $29.99 | $1.50 | 25% off |
+| 50-pack | $64.99 | $1.30 | 35% off |
+| 100-pack | $119.99 | $1.20 | 40% off |
 
-### Margin Analysis (at 100 subscribers/week)
+**Free tier:** 3 free applications to convert new users.
 
-| | Starter (40%) | Professional (40%) | Executive (20%) |
-|--|---------------|---------------------|-----------------|
-| Revenue/week | 40 × $49 = $1,960 | 40 × $99 = $3,960 | 20 × $199 = $3,980 |
-| Claude API | 40 × $8 = $320 | 40 × $20 = $800 | 20 × $44 = $880 |
-| Infra share | $100 | $200 | $300 |
-| **Weekly total** | **Revenue: $9,900 — Costs: $2,600 — Margin: 74%** |
-| **Monthly** | **Revenue: ~$40K — Gross profit: ~$29K** |
+### Margin Analysis
+
+Estimated LLM cost per job: ~$0.25-0.30. At $1.99/job = ~85% gross margin.
+
+| Jobs/mo | Revenue | LLM Cost | Infra | Margin |
+|---------|---------|----------|-------|--------|
+| 500 (25 users) | $997 | $150 | $50 | 80% |
+| 2,000 (100 users) | $3,980 | $600 | $150 | 81% |
+| 10,000 (500 users) | $19,900 | $3,000 | $500 | 82% |
 
 ---
 
-## US-Only Access
+## TODO: US-Only Access
+
+> Not yet implemented. Planned for production deployment.
 
 ### Geo-Restriction (Defense in Depth)
 1. **Cloudflare WAF** — Firewall rule blocking all non-US traffic at CDN edge (free tier)
@@ -432,25 +404,26 @@ Weekly billing is better than hourly because:
 
 ## Security & Data Privacy
 
-### Resume / PII
+> Most security features below are TODO — planned for production. Currently implemented: NextAuth session-based auth, auth middleware on protected routes, per-session browser isolation.
+
+### TODO: Resume / PII Encryption
 - Encrypt resumes at rest with `pgcrypto` AES-256 in Postgres
 - Auto-delete resumes 30 days after last session unless user opts to retain
 - Field-level encryption for name, email, phone, address
-- "Delete my data" endpoint from day one (CCPA/GDPR compliance)
+- "Delete my data" endpoint (CCPA/GDPR compliance)
 
-### Job Board Credentials
+### Job Board Credentials (Design Principle)
 - **Never store passwords.** Use "bring your own session" model:
   - User logs into job boards during a Takeover phase
   - Agent uses those authenticated browser sessions (cookies only)
   - Encrypted cookie jar stored per user, separate from main DB
-- For boards with OAuth (LinkedIn): use OAuth tokens with scoped permissions
 
-### Payment Security
+### TODO: Payment Security
 - Stripe Checkout (hosted page) — zero PCI scope on our side
 - Never store card details
 - Idempotency keys on all Stripe webhook handlers
 
-### Infrastructure
+### TODO: Production Infrastructure Security
 - Railway private networking between services
 - Neon Postgres with enforced SSL + connection pooling
 - Short-lived JWTs (15-min expiry) + refresh tokens
@@ -461,25 +434,19 @@ Weekly billing is better than hourly because:
 
 ## Resilience & Error Handling
 
-### Circuit Breaker
-- Track `consecutive_failures` in state
-- After 3 consecutive application failures to the same ATS type → pause and alert user
-- "The agent is having trouble with Workday applications. Would you like to skip remaining Workday jobs or take control?"
+### Implemented
+- **Circuit breaker**: Application Agent tracks `consecutive_failures` in LangGraph state. After 3 consecutive failures → pauses and alerts user.
+- **Graceful degradation**: Neo4j down → stateless form filling. Board blocked → skip and continue. Redis drops → SSE auto-reconnects.
+- **Selector self-healing**: Daily health-check validates CSS selectors against live pages. Broken selectors flagged, working ones prioritized by success rate.
+- **Checkpoint persistence**: Pipeline state saved to Postgres after each node. Sessions can be rewound to any checkpoint.
 
-### Per-Application Retry
-- Each application is an independent ARQ subtask
-- If a browser context crashes → spin up new context, retry from scratch
-- If an LLM call fails → exponential backoff, 3 retries
-- Progress saved to Postgres after each successful application → sessions resume from last checkpoint
-
-### Graceful Degradation
-- If LinkedIn blocks the bot → skip LinkedIn, continue with other boards, notify user
-- If Neo4j is down → fall back to stateless form filling (no strategy lookup)
-- If Redis pub/sub drops → SSE reconnects automatically, client polls for missed events
+### TODO
+- **Per-application retry**: Independent subtasks with browser context crash recovery
+- **LLM retry**: Exponential backoff with 3 retries on Claude API failures
 
 ---
 
-## Marketplace & Distribution
+## TODO: Marketplace & Distribution
 
 ### Phase 1: Direct (Week 1-4)
 - Own website with Stripe Checkout at custom domain
@@ -504,138 +471,94 @@ Weekly billing is better than hourly because:
 ```
 job-hunter-agent/
 ├── backend/
-│   ├── gateway/                    # API Gateway service
-│   │   ├── main.py                # FastAPI app
-│   │   ├── routes/
-│   │   │   ├── auth.py            # JWT auth + signup/login
-│   │   │   ├── sessions.py        # Session CRUD + SSE streaming
-│   │   │   ├── payments.py        # Stripe webhooks + checkout
-│   │   │   └── health.py
-│   │   ├── middleware/
-│   │   │   ├── geo.py             # US-only geofencing
-│   │   │   └── rate_limit.py
-│   │   └── config.py
-│   ├── orchestrator/               # LangGraph pipeline service
-│   │   ├── worker.py              # ARQ worker entry point
+│   ├── gateway/
+│   │   ├── main.py                     # FastAPI app, LangGraph setup, scheduler init
+│   │   └── routes/
+│   │       ├── auth.py                 # /me endpoint (NextAuth)
+│   │       ├── health.py              # /api/health
+│   │       ├── sessions.py            # Session CRUD, SSE, HITL endpoints
+│   │       ├── selectors.py           # Selector status + health-check API
+│   │       ├── payments.py            # Stripe webhook handling
+│   │       └── ws.py                  # WebSocket /ws/sessions/{id}
+│   ├── orchestrator/
 │   │   ├── pipeline/
-│   │   │   ├── graph.py           # LangGraph StateGraph definition
-│   │   │   ├── state.py           # JobHunterState TypedDict
-│   │   │   └── nodes.py           # Node wrappers + routing
-│   │   └── agents/
-│   │       ├── intake.py
-│   │       ├── career_coach.py    # Resume rewrite, impostor coaching, LinkedIn advice
-│   │       ├── discovery.py
-│   │       ├── scoring.py
-│   │       ├── resume_tailor.py
-│   │       ├── application.py
-│   │       ├── verification.py
-│   │       └── reporting.py
-│   ├── browser/                    # Browser worker service
-│   │   ├── manager.py             # Browser lifecycle management
+│   │   │   ├── graph.py               # LangGraph StateGraph (9 nodes + 2 HITL gates)
+│   │   │   └── state.py               # JobHunterState TypedDict
+│   │   └── agents/                    # 8 specialized agents
+│   │       ├── intake.py, career_coach.py, discovery.py, scoring.py
+│   │       ├── resume_tailor.py, application.py, verification.py, reporting.py
+│   │       └── _login_sync.py
+│   ├── browser/
+│   │   ├── manager.py                 # BrowserManager lifecycle
+│   │   ├── playwright_pilot/pilot.py  # Playwright API wrapper
+│   │   ├── streaming/                 # Screenshot + VNC streaming
 │   │   ├── tools/
-│   │   │   ├── job_boards/
-│   │   │   │   ├── indeed.py
-│   │   │   │   ├── linkedin.py
-│   │   │   │   ├── glassdoor.py
-│   │   │   │   ├── ziprecruiter.py
-│   │   │   │   └── google_jobs.py
-│   │   │   ├── browser_use_applier.py  # AI-driven application via browser-use (primary)
-│   │   │   ├── form_filler.py     # Dynamic form analysis + filling (fallback)
-│   │   │   ├── account_creator.py # Workday/Greenhouse account creation (fallback)
-│   │   │   └── cover_letter.py    # Cover letter generation
-│   │   └── anti_detect/
-│   │       └── stealth.py         # Patchright config, random delays
+│   │   │   ├── job_boards/            # 7 boards: linkedin, indeed, glassdoor,
+│   │   │   │                          #   ziprecruiter, google_jobs, greenhouse_boards
+│   │   │   ├── appliers/             # 9 ATS: linkedin, indeed, glassdoor,
+│   │   │   │                          #   ziprecruiter, greenhouse, lever, workday, ashby, generic
+│   │   │   ├── apply_selectors.py, ats_detector.py, browser_use_applier.py
+│   │   │   ├── form_filler.py, cover_letter.py, linkedin_updater.py
+│   │   │   └── direct_discovery.py, browser_use_discovery.py, account_creator.py
+│   │   └── anti_detect/stealth.py
 │   ├── shared/
-│   │   ├── models/
-│   │   │   ├── schemas.py         # Pydantic models
-│   │   │   └── db.py              # SQLAlchemy models
-│   │   ├── neo4j_client.py        # Knowledge graph queries
-│   │   ├── redis_client.py        # Redis connections
-│   │   └── security.py            # Encryption helpers
-│   ├── docker-compose.yml         # Local dev: Postgres, Redis, Neo4j
-│   ├── Dockerfile.gateway
-│   ├── Dockerfile.orchestrator
-│   ├── Dockerfile.browser
-│   └── requirements.txt
+│   │   ├── models/schemas.py          # 23+ Pydantic models
+│   │   ├── application_store.py       # application_results table
+│   │   ├── selector_memory.py         # board_selectors table + health-check
+│   │   ├── selector_health.py         # Unified health-check runner
+│   │   ├── scheduler.py              # Async periodic scheduler (daily checks)
+│   │   ├── config.py, event_bus.py, llm.py
+│   │   ├── neo4j_client.py, redis_client.py
+│   │   └── patches.py
+│   ├── docker-compose.yml, requirements.txt
 ├── frontend/
-│   ├── app/
-│   │   ├── page.tsx               # Landing page + pricing
-│   │   ├── dashboard/page.tsx     # User dashboard (sessions, history)
-│   │   ├── session/
-│   │   │   ├── new/page.tsx       # Keyword input + resume upload + plan check
-│   │   │   └── [id]/page.tsx      # Live session: tiered viewing + chat + status
-│   │   ├── auth/
-│   │   │   ├── login/page.tsx
-│   │   │   └── signup/page.tsx
-│   │   └── layout.tsx
-│   ├── components/
-│   │   ├── StatusFeed.tsx         # SSE text updates
-│   │   ├── ChatPanel.tsx          # Steering chat interface
-│   │   ├── SessionProgress.tsx    # Pipeline step indicator
-│   │   ├── JobCard.tsx            # Job listing with score
-│   │   ├── ResumeScoreCard.tsx    # Resume fit score display
-│   │   ├── CoachPanel.tsx        # Career Coach output: rewritten resume, advice, confidence boost
-│   │   ├── LinkedInAdvice.tsx    # LinkedIn profile improvement checklist
-│   │   ├── ApplicationLog.tsx     # Real-time application feed
-│   │   ├── PricingTable.tsx       # Starter / Pro / Executive
-│   │   └── GeoGate.tsx            # US-only message for blocked users
-│   ├── lib/
-│   │   ├── api.ts                 # REST + SSE client
-│   │   └── stripe.ts              # Stripe client helpers
-│   └── package.json
-└── README.md
+│   ├── src/
+│   │   ├── app/                       # Next.js 14 App Router
+│   │   │   ├── page.tsx, layout.tsx, loading.tsx
+│   │   │   ├── auth/login/ + signup/
+│   │   │   ├── dashboard/page.tsx     # Session history
+│   │   │   ├── session/new/page.tsx   # 3-step creation wizard
+│   │   │   ├── session/[id]/page.tsx  # Live session viewer
+│   │   │   └── session/[id]/manual-apply/page.tsx
+│   │   ├── components/
+│   │   │   ├── StatusFeed, ChatPanel, CoachPanel, JobCard, ScreenshotViewer
+│   │   │   ├── forms/                # Formik form components
+│   │   │   ├── wizard/               # Session wizard steps
+│   │   │   └── ui/                   # shadcn/ui
+│   │   ├── lib/
+│   │   │   ├── api.ts, websocket.ts
+│   │   │   ├── hooks/usePersistedFormik.ts
+│   │   │   └── schemas/session.ts, auth.ts
+│   │   └── middleware.ts             # Auth middleware
+│   └── tests/e2e/                     # 8 Playwright test files (64 tests)
+├── docs/
+│   ├── PLAN.md                        # Implementation plan + phases
+│   ├── phase-4-5-monetization.md      # Pricing analysis
+│   └── diagrams/                      # Mermaid architecture diagrams
+├── scripts/start.js                   # Orchestrates Docker + backend + frontend
+├── package.json                       # npm start
+├── CLAUDE.md                          # AI coding instructions
+└── README.md                          # This file
 ```
 
 ---
 
-## Implementation Order
+## Implementation Status
 
-### Phase 1: Foundation (Week 1-2)
-1. Repo scaffolding (monorepo, 3 backend services, frontend)
-2. Docker Compose: Postgres, Redis, Neo4j local
-3. LangGraph state schema + graph definition
-4. ARQ worker setup with Redis
-5. Intake agent (keyword parsing + resume upload)
-6. Discovery agent (Indeed + Google Jobs via Playwright)
-7. Scoring agent (job-to-profile matching)
-8. Basic SSE status feed (reuse mayo-clinic pattern)
+See [docs/PLAN.md](docs/PLAN.md) for detailed phase tracking with checkboxes.
 
-### Phase 2: Application Engine (Week 2-3)
-9. Application agent with Playwright form filling
-10. Cover letter generator (Claude Opus)
-11. Resume tailor agent + fit scoring
-12. Account creation logic (Workday, Greenhouse detection)
-13. Verification agent (screenshot + confirmation check)
-14. Circuit breaker + per-application retry logic
-15. Neo4j seeding with initial ATS strategies
-
-### Phase 3: Live Steering (Week 3-4)
-16. Screenshot feed: CDP capture → Redis pub/sub → WebSocket → canvas
-17. Chat panel + message injection into LangGraph state
-18. noVNC on-demand setup (Xvfb + x11vnc + websockify)
-19. Mode toggle UI (Status → Screenshot+Chat → Takeover)
-20. HITL interrupt points (shortlist review, obstacle pause)
-
-### Phase 4: Payments + Auth + Security (Week 4-5)
-21. NextAuth.js (email + Google OAuth)
-22. Stripe integration (subscriptions, weekly plans, Customer Portal)
-23. US-only geofencing (Cloudflare WAF + MaxMind)
-24. Resume encryption (pgcrypto AES-256)
-25. "Delete my data" endpoint
-26. Reporting agent + session summary emails (Resend)
-
-### Phase 5: Deploy + Launch (Week 5-6)
-27. Vercel deploy (frontend) + Railway deploy (3 backend services)
-28. Neon Postgres + Upstash Redis + Neo4j Aura provisioning
-29. Anti-detection (Patchright, residential proxies, random delays)
-30. Landing page + pricing page
-31. Sentry error tracking
-32. Upwork / Fiverr listings
-33. Product Hunt launch
+| Phase | Status | Highlights |
+|-------|--------|------------|
+| 1. Foundation | COMPLETED | 8 agents, LangGraph pipeline, SSE, Docker, npm start |
+| 2. Browser Automation | COMPLETED | 7 board scrapers, 9 ATS appliers, anti-detect, selector memory |
+| 3. Auth + SSE + UX | COMPLETED | NextAuth, wizard, HITL gates, manual apply, loading skeletons |
+| 4. Persistence + Self-Healing | PARTIAL | Selector health checks, app results log, checkpoints. TODO: Stripe, session DB, encryption |
+| 5. Deploy + Launch | NOT STARTED | TODO: Vercel, Railway, Neon, proxies |
+| 6. Testing | IN PROGRESS | 64 E2E tests passing. TODO: pytest unit/integration tests |
 
 ---
 
-## Scaling Roadmap
+## TODO: Scaling Roadmap
 
 | Users | Infra | Monthly Cost | Changes Needed |
 |-------|-------|-------------|----------------|
@@ -647,14 +570,20 @@ job-hunter-agent/
 
 ---
 
-## Verification / Testing
+## Testing
 
+### Implemented
+- **E2E tests**: 64 Playwright tests across 8 files, all passing. Covers auth, landing page, session wizard, session viewer, dashboard persistence, pipeline flow, API health, and full end-to-end flow.
+
+```bash
+cd frontend && npx playwright test     # Run all E2E tests
+```
+
+### TODO
 - **Unit tests**: Each agent in isolation with mocked LLM responses (pytest)
 - **Integration tests**: Full pipeline with test job listings
-- **E2E tests**: Playwright tests against staging Workday/Greenhouse instances
-- **Load test**: Concurrent WebSocket connections + ARQ queue throughput
-- **Manual QA**: Run a live session, apply to real jobs, verify submissions
-- **Billing test**: Stripe test mode — verify subscription creation, plan limits, cancellation
+- **Load test**: Concurrent WebSocket connections + session throughput
+- **Billing test**: Stripe test mode — verify plan limits, cancellation
 - **Security audit**: Resume encryption, credential handling, session isolation
 
 ---
@@ -694,87 +623,28 @@ These principles are baked into the architecture — not afterthoughts.
 
 ---
 
-## Secrets & API Key Safety
+## Environment Variables
 
-**Zero secrets in source control. Ever.**
-
-### .gitignore (committed to repo)
-```
-# Environment
-.env
-.env.*
-!.env.example
-
-# Keys
-*.pem
-*.key
-credentials.json
-
-# IDE
-.vscode/
-.idea/
-
-# Python
-__pycache__/
-*.pyc
-venv/
-.venv/
-
-# Node
-node_modules/
-.next/
-
-# OS
-.DS_Store
-```
-
-### .env.example (committed — shows structure, no values)
 ```bash
-# Claude API
-ANTHROPIC_API_KEY=sk-ant-xxx
+# Required
+ANTHROPIC_API_KEY=sk-ant-xxx           # Claude API key
+DATABASE_URL=postgresql://...          # Postgres (default: localhost:5433)
+REDIS_URL=redis://localhost:6379       # Redis
+NEXTAUTH_SECRET=xxx                    # NextAuth session secret
+NEXTAUTH_URL=http://localhost:3000     # NextAuth base URL
 
-# Stripe
-STRIPE_SECRET_KEY=sk_test_xxx
-STRIPE_WEBHOOK_SECRET=whsec_xxx
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
-
-# Database
-DATABASE_URL=postgresql://user:pass@host:5432/db
-NEO4J_URI=neo4j+s://xxx.databases.neo4j.io
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=xxx
-
-# Redis
-REDIS_URL=redis://default:xxx@xxx.upstash.io:6379
-
-# Auth
-NEXTAUTH_SECRET=xxx
-NEXTAUTH_URL=http://localhost:3000
-GOOGLE_CLIENT_ID=xxx
-GOOGLE_CLIENT_SECRET=xxx
-
-# Inngest
-INNGEST_EVENT_KEY=xxx
-INNGEST_SIGNING_KEY=xxx
-
-# Email
-RESEND_API_KEY=re_xxx
-
-# Geo
-MAXMIND_LICENSE_KEY=xxx
-
-# Sentry
-SENTRY_DSN=https://xxx@sentry.io/xxx
-
-# Proxy (for anti-detection)
-PROXY_URL=http://user:pass@proxy.brightdata.com:22225
+# Optional
+NEO4J_URI=neo4j+s://xxx               # Knowledge graph (graceful degradation)
+STRIPE_SECRET_KEY=sk_test_xxx          # TODO: Not yet integrated
+BROWSER_HEADLESS=true                  # Run browser headless
+BROWSER_MODE=patchright                # "patchright" or "cdp"
+PROXY_URL=http://user:pass@proxy:22225 # Residential proxy for anti-detection
 ```
 
-### Runtime Secret Management
+### TODO: Runtime Secret Management (Production)
 - **Vercel**: Secrets stored in Vercel Environment Variables (encrypted at rest, per-environment)
 - **Railway**: Secrets stored in Railway Variables (encrypted, per-service)
 - **Pre-commit hook**: `detect-secrets` or `trufflehog` to scan for accidentally committed keys
-- **CI/CD**: GitHub Actions secrets for deployment pipelines
 - **Never log secrets**: Custom log formatter strips any string matching `sk-`, `whsec_`, `re_`, etc.
 
 ---

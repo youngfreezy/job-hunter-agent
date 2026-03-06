@@ -255,7 +255,6 @@ async def _run_pipeline(
             "created_at": datetime.now(timezone.utc).isoformat(),
             "keywords": request_body.keywords,
             "locations": request_body.locations,
-            "session_id": session_id,
             "remote_only": request_body.remote_only,
             "salary_min": request_body.salary_min,
             "resume_text": request_body.resume_text or "",
@@ -318,6 +317,10 @@ async def _run_pipeline(
             await _handle_shortlist_interrupt(session_id, graph, config)
             return
 
+        # Terminal run (completed/failed): release emitter registration.
+        if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
+            unregister_emitter(session_id)
+
     except Exception as exc:
         logger.exception("Pipeline error for session %s", session_id)
         if session_id in session_registry:
@@ -370,6 +373,9 @@ async def _resume_pipeline(
             logger.info("Pipeline paused at %s for session %s", interrupt_stage, session_id)
             return
 
+        if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
+            unregister_emitter(session_id)
+
     except Exception as exc:
         logger.exception("Pipeline resume error for session %s", session_id)
         if session_id in session_registry:
@@ -383,9 +389,8 @@ async def _resume_pipeline(
             "error": str(exc),
         })
     finally:
-        # Only unregister if pipeline is truly done (no more interrupts expected)
-        # The finally block runs after _stream_graph returns None (terminal)
-        pass
+        if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
+            unregister_emitter(session_id)
 
 
 async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) -> None:
@@ -420,6 +425,10 @@ async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) ->
             session_registry[session_id]["status"] = "failed"
         await _emit(session_id, "error", {"message": str(exc), "session_id": session_id})
         await _emit(session_id, "done", {"status": "failed", "error": str(exc)})
+        unregister_emitter(session_id)
+    finally:
+        if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
+            unregister_emitter(session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -806,6 +815,7 @@ async def _test_apply_single(
         "discovered_jobs": [dummy_job],
         "scored_jobs": [],
     }
+    terminal_status = "failed"
 
     try:
         await _emit(session_id, "status", {
@@ -821,6 +831,7 @@ async def _test_apply_single(
         )
 
         final_status = "completed" if result.status.value == "submitted" else "failed"
+        terminal_status = final_status
         await _emit(session_id, "status", {
             "status": final_status,
             "message": f"Result: {result.status.value} — {result.error_message or 'OK'}",
@@ -836,9 +847,10 @@ async def _test_apply_single(
         logger.exception("Test apply failed for %s", session_id)
         await _emit(session_id, "error", {"message": str(exc)})
         await _emit(session_id, "done", {"status": "failed", "error": str(exc)})
+        terminal_status = "failed"
     finally:
         if session_id in session_registry:
-            session_registry[session_id]["status"] = "completed"
+            session_registry[session_id]["status"] = terminal_status
         unregister_emitter(session_id)
 
 
@@ -1407,7 +1419,13 @@ async def parse_resume(file: UploadFile = File(...)):
         text = raw.decode("utf-8", errors="replace")
     elif suffix == "pdf":
         import io
-        from pypdf import PdfReader
+        try:
+            from pypdf import PdfReader
+        except ImportError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="PDF parsing dependency missing (install `pypdf`).",
+            ) from exc
         reader = PdfReader(io.BytesIO(raw))
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
         # OCR fallback for image-based PDFs
@@ -1425,11 +1443,22 @@ async def parse_resume(file: UploadFile = File(...)):
                 text = "\n".join(ocr_parts)
             except Exception as ocr_err:
                 logger.warning("OCR fallback failed: %s", ocr_err)
-    elif suffix in ("docx", "doc"):
+    elif suffix == "docx":
         import io
-        from docx import Document
+        try:
+            from docx import Document
+        except ImportError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="DOCX parsing dependency missing (install `python-docx`).",
+            ) from exc
         doc = Document(io.BytesIO(raw))
         text = "\n".join(p.text for p in doc.paragraphs)
+    elif suffix == "doc":
+        raise HTTPException(
+            status_code=400,
+            detail="Legacy .doc files are not supported. Please upload .docx, .pdf, or .txt.",
+        )
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: .{suffix}")
 
@@ -1440,10 +1469,11 @@ async def parse_resume(file: UploadFile = File(...)):
     # Save the resume file to a temp path so it can be uploaded to ATS forms later
     import tempfile
     import os
+    import uuid
     resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
     os.makedirs(resume_dir, exist_ok=True)
     safe_name = file.filename.replace("/", "_").replace("\\", "_")
-    resume_path = os.path.join(resume_dir, safe_name)
+    resume_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}-{safe_name}")
     with open(resume_path, "wb") as f:
         f.write(raw)
     logger.info("Resume saved to %s", resume_path)
@@ -1498,5 +1528,4 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
     asyncio.create_task(_run_linkedin_update())
 
     return {"status": "ok", "message": "LinkedIn update started — open the browser and log in"}
-
 

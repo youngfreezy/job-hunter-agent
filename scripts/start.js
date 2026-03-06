@@ -130,6 +130,22 @@ function findPython() {
   return "python3";
 }
 
+function findNpmCommand() {
+  const nodeBin = "/opt/homebrew/opt/node@20/bin";
+  const npmBin = path.join(nodeBin, "npm");
+  try {
+    run(`${npmBin} --version`);
+    return { npmBin, pathEnv: `${nodeBin}:${process.env.PATH}` };
+  } catch {}
+
+  try {
+    run("npm --version");
+    return { npmBin: "npm", pathEnv: process.env.PATH || "" };
+  } catch {}
+
+  throw new Error("npm not found. Install Node.js >= 18.17.0 and npm.");
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 (async () => {
   console.log(
@@ -246,11 +262,10 @@ function findPython() {
 
   // 6. Next.js frontend
   log(UI_TAG, "Starting Next.js frontend on :3000…");
-  const nodeBin = "/opt/homebrew/opt/node@20/bin";
-  const npmBin = path.join(nodeBin, "npm");
+  const { npmBin, pathEnv } = findNpmCommand();
   spawnChild("frontend", UI_TAG, npmBin, ["run", "dev"], {
     cwd: FRONTEND,
-    env: { PATH: `${nodeBin}:${process.env.PATH}` },
+    env: { PATH: pathEnv },
   });
 
   log(SYS_TAG, `\n  ${c.bold}All services started.${c.reset}`);
