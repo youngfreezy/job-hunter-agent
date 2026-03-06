@@ -116,7 +116,18 @@ class GreenhouseApplier(BaseApplier):
         except Exception:
             logger.debug("Screenshot capture failed", exc_info=True)
 
-        # Step 7: Detect confirmation
+        # Step 7: Check for verification code prompt
+        if await self._detect_verification_prompt():
+            verified = await self._handle_verification()
+            if not verified:
+                return self._make_result(
+                    job.id, ApplicationStatus.FAILED,
+                    error_message="Verification code required but not provided in time",
+                )
+            await self._random_delay(1.0, 2.0)
+            await self._wait_for_navigation()
+
+        # Step 8: Detect confirmation
         if await self._detect_confirmation():
             await self._emit_step("Application submitted!")
             return self._make_result(

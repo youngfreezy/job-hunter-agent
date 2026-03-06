@@ -408,6 +408,19 @@ export default function SessionPage() {
             evt.coach_output as unknown as SessionData["coach_output"];
         if (Array.isArray(evt.keywords) && evt.keywords.length > 0)
           updates.keywords = evt.keywords;
+        // Show browser notification for verification code requests
+        if (evt.event === "verification_required") {
+          if (typeof window !== "undefined" && "Notification" in window) {
+            Notification.requestPermission().then((perm) => {
+              if (perm === "granted") {
+                new Notification("Verification Code Required", {
+                  body: evt.message as string || "Check your email for a verification code and enter it in the browser window.",
+                  icon: "/favicon.ico",
+                });
+              }
+            });
+          }
+        }
         // Track application counts from progress events
         if (evt.event === "application_progress") {
           const sub = typeof evt.submitted === "number" ? evt.submitted : 0;
@@ -1183,10 +1196,14 @@ export default function SessionPage() {
                   { value: session.applications_failed?.length ?? 0, label: "Failed", color: "text-red-500" },
                   { value: Array.isArray(session.applications_skipped) ? session.applications_skipped.length : session.applications_skipped ?? 0, label: "Skipped", color: "text-amber-600 dark:text-amber-400" },
                 ].map(({ value, label, color }) => (
-                  <div key={label} className="text-center py-2.5 rounded-lg bg-white/60 dark:bg-white/5">
+                  <a
+                    key={label}
+                    href={`/session/${sessionId}/manual-apply`}
+                    className="text-center py-2.5 rounded-lg bg-white/60 dark:bg-white/5 hover:bg-white/90 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  >
                     <p className={`text-xl font-bold ${color}`}>{value}</p>
                     <p className="text-xs text-muted-foreground">{label}</p>
-                  </div>
+                  </a>
                 ))}
               </div>
             </CardContent>

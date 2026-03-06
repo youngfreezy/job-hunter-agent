@@ -46,6 +46,13 @@ _FAILURE_KEYWORDS = [
     "access denied", "blocked",
 ]
 
+_VERIFICATION_KEYWORDS = [
+    "verification code", "security code", "enter the code",
+    "we sent a code", "check your email", "confirm your email",
+    "one-time code", "otp", "2-factor", "two-factor",
+    "enter code", "verify your identity", "verification email",
+]
+
 
 class BaseApplier(ABC):
     """Abstract base for platform-specific job application handlers."""
@@ -250,6 +257,35 @@ class BaseApplier(ABC):
         except Exception:
             pass
         return None
+
+    async def _detect_verification_prompt(self) -> bool:
+        """Check if current page is asking for a verification/security code."""
+        try:
+            text = await self.page.evaluate("() => document.body.innerText.toLowerCase().substring(0, 2000)")
+            return any(kw in text for kw in _VERIFICATION_KEYWORDS)
+        except Exception:
+            return False
+
+    async def _handle_verification(self) -> bool:
+        """Emit an SSE event asking the user for a verification code, then wait for it.
+
+        Returns True if verification was completed, False if timed out.
+        """
+        await self._emit_step("Verification code required — check your email and enter the code in the browser window.")
+        await emit_agent_event(self.session_id, "verification_required", {
+            "message": "A verification code was requested. Please check your email and enter the code in the browser window.",
+            "platform": self.PLATFORM,
+        })
+
+        # Wait up to 120s for the user to enter the code and the page to change
+        for _ in range(24):  # 24 * 5s = 120s
+            await asyncio.sleep(5)
+            if not await self._detect_verification_prompt():
+                logger.info("Verification prompt resolved — continuing")
+                return True
+
+        logger.warning("Verification timed out after 120s")
+        return False
 
     async def _upload_resume(self, file_path: str) -> bool:
         """Find a file input and upload the resume."""

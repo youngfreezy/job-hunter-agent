@@ -553,6 +553,11 @@ async def _apply_to_job(
             })
 
         # Persist to DB immediately (survives restarts)
+        # Always store the cover letter and tailored resume regardless of success/failure
+        _tailored = state.get("tailored_resumes", {}).get(job_id)
+        _tailored_text = None
+        if _tailored:
+            _tailored_text = _tailored.tailored_text if hasattr(_tailored, "tailored_text") else _tailored.get("tailored_text")
         _db_record_result(
             session_id=session_id,
             job_id=job_id,
@@ -563,7 +568,8 @@ async def _apply_to_job(
             job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
             job_location=job.location or "",
             error_message=result.error_message,
-            cover_letter=result.cover_letter_used,
+            cover_letter=result.cover_letter_used or cover_letter_text,
+            tailored_resume_text=_tailored_text,
             duration_seconds=result.duration_seconds,
         )
 
@@ -647,9 +653,13 @@ async def run_application_agent(state: JobHunterState) -> dict:
             len(application_queue),
         )
 
-        # Start BrowserManager (Patchright, fully headless — no auth)
+        # Start BrowserManager — CDP (real Chrome) for reCAPTCHA bypass, or Patchright fallback
+        settings = get_settings()
         manager = BrowserManager()
-        await manager.start(headless=True)
+        if settings.BROWSER_MODE == "cdp":
+            await manager.start_cdp(headless=False)
+        else:
+            await manager.start(headless=True)
 
         # Create a shared context
         ctx_id, context = await manager.new_context()

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import psycopg
 
-from backend.shared.settings import get_settings
+from backend.shared.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS application_results (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_app_results_session ON application_results(session_id);
+CREATE INDEX IF NOT EXISTS idx_app_results_session_status ON application_results(session_id, status);
 """
 
 

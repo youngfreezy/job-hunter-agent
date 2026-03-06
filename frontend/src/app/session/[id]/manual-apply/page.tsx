@@ -56,6 +56,26 @@ export default function ManualApplyPage() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  const downloadPdf = (title: string, content: string, filename: string) => {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+      <style>
+        body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #1a1a1a; font-size: 12pt; }
+        h1 { font-size: 16pt; margin-bottom: 4px; }
+        .meta { color: #666; font-size: 10pt; margin-bottom: 24px; }
+        pre { white-space: pre-wrap; font-family: inherit; margin: 0; }
+        @media print { body { margin: 0; } }
+      </style>
+    </head><body>
+      <h1>${title}</h1>
+      <div class="meta">${filename}</div>
+      <pre>${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+      <script>window.print();</script>
+    </body></html>`);
+    win.document.close();
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50 px-6 py-3">
@@ -206,14 +226,30 @@ export default function ManualApplyPage() {
                           <div>
                             <div className="flex items-center justify-between mb-2">
                               <h4 className="text-sm font-medium">Cover Letter</h4>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => copyToClipboard(entry.cover_letter, `cover-${key}`)}
-                              >
-                                {copiedField === `cover-${key}` ? "Copied!" : "Copy"}
-                              </Button>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => copyToClipboard(entry.cover_letter, `cover-${key}`)}
+                                >
+                                  {copiedField === `cover-${key}` ? "Copied!" : "Copy"}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() =>
+                                    downloadPdf(
+                                      "Cover Letter",
+                                      entry.cover_letter,
+                                      `${entry.job?.company || "Company"} — ${entry.job?.title || "Position"}`
+                                    )
+                                  }
+                                >
+                                  PDF
+                                </Button>
+                              </div>
                             </div>
                             <pre className="text-xs bg-muted/50 rounded-lg p-4 whitespace-pre-wrap max-h-48 overflow-y-auto">
                               {entry.cover_letter}
@@ -231,16 +267,32 @@ export default function ManualApplyPage() {
                                   </Badge>
                                 )}
                               </h4>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() =>
-                                  copyToClipboard(entry.tailored_resume!.tailored_text, `resume-${key}`)
-                                }
-                              >
-                                {copiedField === `resume-${key}` ? "Copied!" : "Copy"}
-                              </Button>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() =>
+                                    copyToClipboard(entry.tailored_resume!.tailored_text, `resume-${key}`)
+                                  }
+                                >
+                                  {copiedField === `resume-${key}` ? "Copied!" : "Copy"}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() =>
+                                    downloadPdf(
+                                      "Tailored Resume",
+                                      entry.tailored_resume!.tailored_text,
+                                      `${entry.job?.company || "Company"} — ${entry.job?.title || "Position"}`
+                                    )
+                                  }
+                                >
+                                  PDF
+                                </Button>
+                              </div>
                             </div>
                             <pre className="text-xs bg-muted/50 rounded-lg p-4 whitespace-pre-wrap max-h-48 overflow-y-auto">
                               {entry.tailored_resume.tailored_text}

@@ -255,6 +255,7 @@ async def _run_pipeline(
             "created_at": datetime.now(timezone.utc).isoformat(),
             "keywords": request_body.keywords,
             "locations": request_body.locations,
+            "session_id": session_id,
             "remote_only": request_body.remote_only,
             "salary_min": request_body.salary_min,
             "resume_text": request_body.resume_text or "",
@@ -841,6 +842,29 @@ async def _test_apply_single(
         unregister_emitter(session_id)
 
 
+def _overlay_db_app_counts(session_id: str, result: dict) -> dict:
+    """Overlay live application counts from the application_results DB table.
+
+    The checkpointer only persists state when the full LangGraph node completes,
+    so mid-run the applications_submitted/failed arrays are empty.  The DB table
+    is written immediately per-application, so it's always up to date.
+    """
+    try:
+        from backend.shared.application_store import get_results_for_session
+        entries = get_results_for_session(session_id)
+        if entries:
+            submitted = [e for e in entries if e["status"] == "submitted"]
+            failed = [e for e in entries if e["status"] == "failed"]
+            skipped = [e for e in entries if e["status"] == "skipped"]
+            result["applications_submitted"] = submitted
+            result["applications_failed"] = failed
+            result["applications_skipped"] = len(skipped)
+            result["applications_used"] = len(entries)
+    except Exception:
+        logger.debug("Failed to overlay DB app counts for %s", session_id, exc_info=True)
+    return result
+
+
 @router.get("/{session_id}")
 async def get_session(session_id: str, request: Request):
     """Return session state from checkpointer, falling back to registry."""
@@ -884,12 +908,19 @@ async def get_session(session_id: str, request: Request):
             registry_status = meta.get("status")
             if registry_status:
                 result["status"] = registry_status
+
+        # Overlay live application counts from the DB (checkpointer only
+        # updates when the full application node completes, so mid-run the
+        # counts would be stale/empty).
+        if isinstance(result, dict):
+            result = _overlay_db_app_counts(session_id, result)
+
         return result
 
     # Fall back to the session registry (keywords, status, etc.)
     meta = session_registry.get(session_id)
     if meta is not None:
-        return meta
+        return _overlay_db_app_counts(session_id, dict(meta))
 
     raise HTTPException(status_code=404, detail="Session not found")
 

@@ -40,23 +40,41 @@ class FormAnalysisResult(BaseModel):
 
 
 FORM_ANALYSIS_PROMPT = """\
-You are an expert at filling out job application forms.  You are given:
+You are an expert at filling out job application forms. You are given:
 1. A list of form fields extracted from a web page (label, type, name, required, options)
 2. Resume text and cover letter for the applicant
 3. Any known ATS-specific strategies
 
 For each field, determine the best value to fill in.
 
+CRITICAL: Fill as many fields as possible. Only use action "skip" as an absolute last resort — \
+every skipped required field may cause the application to fail. Try to infer reasonable values \
+from the resume, cover letter, and common defaults.
+
 Rules:
 - For text inputs, use appropriate values from the resume/cover letter
-- For dropdowns (select), pick the best matching option value
+- For dropdowns (select), pick the best matching option VALUE (not text). Use the "value" field from options, not the display text
 - For react-select fields (type "react-select"), use action "react_select". The options array lists the actual available choices. Set value to the EXACT text of the option you want to select (must match one of the provided options). If no options are listed, use short unambiguous text to search. Examples: "United States", "Yes", "No", "Decline To Self Identify"
 - For checkboxes, set value to "true" if it should be checked
 - For file uploads (type "file"), set action to "upload" with an empty value — the system provides the actual file path separately
 - For "are you authorized to work" questions, always "Yes"
-- For "do you need sponsorship" questions, answer based on resume context
-- For salary fields, provide a reasonable number based on the job
-- Skip fields you cannot determine (use action "skip")
+- For "do you need sponsorship" questions, default to "No" unless the resume explicitly indicates non-US origin
+- For salary / compensation fields, provide a reasonable number (e.g. 100000 for mid-level, 150000 for senior)
+- For "how did you hear about us" questions, answer "LinkedIn" or "Job Board"
+- For gender/race/veteran/disability questions (EEO / voluntary self-ID), select "Decline to Self Identify" or similar opt-out
+- For start date fields, provide a date 2 weeks from now
+- For years of experience, extract from resume or estimate from work history
+- For LinkedIn URL fields, check the resume for a LinkedIn profile link
+- For website/portfolio fields, check resume or use ""
+- For phone number, use the number from the resume
+- For country/location, default to "United States" if unclear
+- For "are you 18+" questions, always "Yes"
+- For cover letter textareas, paste the provided cover letter
+- For "additional information" or "anything else" textareas, leave empty (use action "fill" with value "")
+
+Skip only when:
+- The field asks for information that truly cannot be determined or inferred
+- The field is not required AND you have no relevant information
 """
 
 
@@ -154,6 +172,22 @@ async def extract_form_fields(page: Any) -> List[Dict[str, Any]]:
             if (!label) label = el.getAttribute('aria-label') || '';
             // Check placeholder
             if (!label) label = el.getAttribute('placeholder') || '';
+            // Check preceding sibling text (common in custom forms)
+            if (!label) {
+                const prev = el.previousElementSibling;
+                if (prev && (prev.tagName === 'LABEL' || prev.tagName === 'SPAN' || prev.tagName === 'P' || prev.tagName === 'DIV')) {
+                    const t = prev.textContent.trim();
+                    if (t.length < 100) label = t;
+                }
+            }
+            // Check parent container for label text (Greenhouse pattern)
+            if (!label) {
+                const wrapper = el.closest('.field, .form-group, [class*="field"], [data-field]');
+                if (wrapper) {
+                    const lbl = wrapper.querySelector('label, [class*="label"], legend');
+                    if (lbl) label = lbl.textContent.trim();
+                }
+            }
 
             let options = [];
             if (el.tagName === 'SELECT') {
@@ -327,7 +361,14 @@ async def fill_form(
                 filled += 1
 
             elif action == "select":
-                await el.select_option(value=str(value))
+                try:
+                    await el.select_option(value=str(value))
+                except Exception:
+                    # Fallback: try matching by label text instead of value
+                    try:
+                        await el.select_option(label=str(value))
+                    except Exception:
+                        raise
                 filled += 1
 
             elif action == "check":
