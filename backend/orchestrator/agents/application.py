@@ -1,13 +1,14 @@
-"""Application Agent -- submits job applications via browser-use AI agent.
+"""Application Agent -- submits job applications via direct Playwright + LLM form analysis.
 
-Uses browser-use (LLM-driven browser automation) to dynamically navigate
-job application pages, fill forms, and submit — no hardcoded CSS selectors.
+Uses platform-specific Playwright appliers for known boards/ATS platforms,
+with browser-use as a fallback for truly unknown forms.
 
 For each job in the queue:
 1. Generate a tailored cover letter
 2. Extract user profile from resume
-3. Launch browser-use agent to apply (handles any ATS, LinkedIn Easy Apply, etc.)
-4. Record the result to Neo4j
+3. Detect ATS type → dispatch to appropriate applier
+4. Fill forms via LLM analysis (1-3 calls instead of 30)
+5. Record the result to Neo4j
 """
 
 from __future__ import annotations
@@ -17,6 +18,9 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
+from backend.browser.manager import BrowserManager, apply_stealth
+from backend.browser.tools.ats_detector import detect_ats_type
+from backend.browser.tools.appliers import get_applier
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
@@ -97,18 +101,17 @@ _BOARD_LOGIN_URLS = {
 async def _pre_login_flow(
     application_queue: List[str],
     state: JobHunterState,
-    browser: Any,
+    context: Any,
     session_id: str,
 ) -> None:
     """Navigate to each required board's login page and wait for the user.
 
-    The browser stays open while the user logs in manually. An SSE event
-    tells the frontend to show a "Please log in" modal, and a REST
-    endpoint signals completion.
+    Uses real Playwright page.goto(wait_until="domcontentloaded") for fast,
+    reliable page loads. The authenticated context persists cookies for all
+    subsequent applications.
     """
     from backend.orchestrator.agents._login_sync import wait_for_login, cleanup
 
-    # Determine which boards are in the queue
     boards_needed: set[str] = set()
     for job_id in application_queue:
         job = _find_job_in_state(job_id, state)
@@ -121,14 +124,15 @@ async def _pre_login_flow(
 
     logger.info("Pre-login flow starting for boards: %s", boards_with_login)
 
-    # Start the browser so we can navigate before the Agent takes over
-    await browser.start()
-
     try:
         for board in boards_with_login:
             login_url = _BOARD_LOGIN_URLS[board]
-            page = await browser.must_get_current_page()
-            await page.goto(login_url)
+            page = await context.new_page()
+            await apply_stealth(page)
+
+            await page.goto(login_url, wait_until="domcontentloaded", timeout=30000)
+            # Extra settle time for JS-heavy login pages
+            await asyncio.sleep(2)
 
             await emit_agent_event(session_id, "login_required", {
                 "board": board,
@@ -145,6 +149,8 @@ async def _pre_login_flow(
             except asyncio.TimeoutError:
                 logger.warning("Login timeout for %s — proceeding anyway", board)
 
+            await page.close()
+
         await emit_agent_event(session_id, "login_complete", {
             "message": "All logins complete. Starting applications...",
         })
@@ -153,7 +159,7 @@ async def _pre_login_flow(
 
 
 # ---------------------------------------------------------------------------
-# browser-use application
+# Direct Playwright application (with browser-use fallback)
 # ---------------------------------------------------------------------------
 
 async def _extract_user_profile(state: JobHunterState) -> Dict[str, str]:
@@ -189,25 +195,25 @@ async def _extract_user_profile(state: JobHunterState) -> Dict[str, str]:
     return profile
 
 
-async def _apply_with_playwright(
+async def _apply_to_job(
     job_id: str,
     job: JobListing,
     state: JobHunterState,
     session_id: str,
-    browser=None,
+    context: Any = None,
 ) -> ApplicationResult:
-    """Submit a job application using browser-use AI agent.
+    """Apply to a single job using direct Playwright + LLM form analysis.
 
-    browser-use dynamically analyses each page and determines what to
-    click, fill, and submit — no hardcoded CSS selectors needed.
-
-    Steps:
-    1. Generate tailored cover letter
-    2. Extract user profile from resume
-    3. Run browser-use agent to navigate, fill, and submit the application
-    4. Record result to Neo4j
+    Dispatch chain:
+    1. Open new tab in shared context (preserves auth cookies)
+    2. Navigate to job URL
+    3. Detect ATS type from URL/page
+    4. Select board/ATS-specific applier
+    5. Run direct Playwright application
+    6. If applier returns SKIPPED → fallback to browser-use
     """
     start_time = time.monotonic()
+    detected_ats = "unknown"
 
     try:
         # --- Step 1: Generate tailored cover letter ---
@@ -239,22 +245,67 @@ async def _apply_with_playwright(
         user_profile = await _extract_user_profile(state)
         resume_file = state.get("resume_file_path")
 
-        # --- Step 3: Run browser-use agent ---
-        from backend.browser.tools.browser_use_applier import apply_with_browser_use
+        # --- Step 3: Open tab and navigate ---
+        page = await context.new_page()
+        await apply_stealth(page)
 
-        result = await apply_with_browser_use(
-            job=job,
-            resume_text=resume_text,
-            cover_letter=cover_letter_text,
-            user_profile=user_profile,
-            session_id=session_id,
-            resume_file_path=resume_file,
-            browser=browser,
-        )
+        try:
+            await page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(1)  # settle
 
-        # --- Step 4: Record to Neo4j ---
+            # --- Step 4: Detect ATS type ---
+            ats_type = await detect_ats_type(page)
+            detected_ats = ats_type.value
+            logger.info("ATS detected: %s for %s", detected_ats, job.url)
+
+            # --- Step 5: Get appropriate applier ---
+            applier = get_applier(job.board.value, ats_type, page, session_id)
+            logger.info("Using %s applier for %s", applier.PLATFORM, job.title)
+
+            await emit_agent_event(session_id, "application_progress", {
+                "job_id": job_id,
+                "step": f"Applying via {applier.PLATFORM} applier...",
+            })
+
+            # --- Step 6: Run application ---
+            result = await applier.apply(
+                job=job,
+                user_profile=user_profile,
+                resume_text=resume_text,
+                cover_letter=cover_letter_text,
+                resume_file_path=resume_file,
+            )
+
+            # --- Step 7: Fallback to browser-use if SKIPPED ---
+            if result.status == ApplicationStatus.SKIPPED:
+                logger.warning(
+                    "Applier returned SKIPPED for %s — falling back to browser-use",
+                    job.title,
+                )
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": "Using AI agent (fallback) for complex form...",
+                })
+                await page.close()
+                page = None
+
+                from backend.browser.tools.browser_use_applier import apply_with_browser_use
+                result = await apply_with_browser_use(
+                    job=job,
+                    resume_text=resume_text,
+                    cover_letter=cover_letter_text,
+                    user_profile=user_profile,
+                    session_id=session_id,
+                    resume_file_path=resume_file,
+                )
+
+        finally:
+            if page and not page.is_closed():
+                await page.close()
+
+        # --- Step 8: Record to Neo4j ---
         success = result.status == ApplicationStatus.SUBMITTED
-        await _record_result_to_neo4j(job_id, "unknown", success=success)
+        await _record_result_to_neo4j(job_id, detected_ats, success=success)
 
         # Emit final SSE event
         if success:
@@ -277,7 +328,7 @@ async def _apply_with_playwright(
         duration = int(time.monotonic() - start_time)
         logger.exception("Application failed for job %s", job_id)
 
-        await _record_result_to_neo4j(job_id, "unknown", success=False)
+        await _record_result_to_neo4j(job_id, detected_ats, success=False)
 
         await emit_agent_event(session_id, "application_failed", {
             "job_id": job_id,
@@ -301,9 +352,8 @@ async def _apply_with_playwright(
 async def run_application_agent(state: JobHunterState) -> dict:
     """Iterate through the application queue and submit applications.
 
-    Uses browser-use (LLM-driven browser automation) for each application.
-    The circuit breaker pauses the agent after MAX_CONSECUTIVE_FAILURES
-    consecutive failures.
+    Uses BrowserManager (Patchright) with platform-specific Playwright
+    appliers. Falls back to browser-use for unknown forms.
 
     Returns
     -------
@@ -316,6 +366,8 @@ async def run_application_agent(state: JobHunterState) -> dict:
     failed: List[ApplicationResult] = []
     consecutive_failures: int = state.get("consecutive_failures", 0)
     session_id: str = state.get("session_id", "unknown")
+
+    manager: Optional[BrowserManager] = None
 
     try:
         application_queue: List[str] = state.get("application_queue", [])
@@ -336,14 +388,16 @@ async def run_application_agent(state: JobHunterState) -> dict:
             len(application_queue),
         )
 
-        # Pre-warm a shared browser instance to avoid cold-start timeouts
-        # on each application. browser-use's first launch can take 10-30s.
-        from browser_use import Browser
-        shared_browser = Browser(headless=False, disable_security=True)
+        # Start BrowserManager (Patchright, visible window)
+        manager = BrowserManager()
+        await manager.start(headless=False)
 
-        # Let the user log in to each required job board before applying
+        # Create a shared context -- cookies persist across all tabs
+        ctx_id, context = await manager.new_context()
+
+        # Pre-login: open login pages, user logs in, cookies saved in context
         await _pre_login_flow(
-            application_queue, state, shared_browser, session_id,
+            application_queue, state, context, session_id,
         )
 
         total_in_queue = len(application_queue)
@@ -351,9 +405,9 @@ async def run_application_agent(state: JobHunterState) -> dict:
         for app_idx, job_id in enumerate(application_queue):
             # Rate-limit cooldown between jobs (skip for first job)
             if app_idx > 0:
-                cooldown = 60  # seconds — must exceed the 1-min rate-limit window
+                cooldown = 30  # seconds -- reduced from 60s (direct Playwright is less suspicious)
                 await emit_agent_event(session_id, "application_progress", {
-                    "step": f"Waiting {cooldown}s before the next application to avoid rate limits...",
+                    "step": f"Waiting {cooldown}s before next application...",
                     "progress": int((app_idx / total_in_queue) * 100),
                     "current": app_idx + 1,
                     "total": total_in_queue,
@@ -376,10 +430,6 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     "Circuit breaker tripped after %d consecutive failures -- pausing",
                     consecutive_failures,
                 )
-                try:
-                    await shared_browser.stop()
-                except Exception:
-                    pass
                 return {
                     "applications_submitted": submitted,
                     "applications_failed": failed,
@@ -399,12 +449,12 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 if job is None:
                     raise ValueError(f"Job {job_id} not found in state -- cannot apply")
 
-                result = await _apply_with_playwright(
+                result = await _apply_to_job(
                     job_id=job_id,
                     job=job,
                     state=state,
                     session_id=session_id,
-                    browser=shared_browser,
+                    context=context,
                 )
 
                 if result.status == ApplicationStatus.SUBMITTED:
@@ -420,7 +470,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 else:
                     # SKIPPED or other status
                     logger.info("Application %s status: %s", job_id, result.status)
-                    consecutive_failures = 0  # don't count skips toward circuit breaker
+                    consecutive_failures = 0
 
                 done_pct = int(((app_idx + 1) / total_in_queue) * 100)
                 await emit_agent_event(session_id, "application_progress", {
@@ -448,21 +498,17 @@ async def run_application_agent(state: JobHunterState) -> dict:
             f"{len(submitted)} submitted, {len(failed)} failed"
         )
 
-        # Clean up shared browser
-        try:
-            await shared_browser.stop()
-        except Exception:
-            pass
-
     except Exception as exc:
         logger.exception("Application agent failed")
         errors.append(f"Application agent error: {exc}")
         agent_status = f"failed -- {exc}"
-        # Clean up shared browser if it was created
-        try:
-            await shared_browser.stop()  # type: ignore[possibly-undefined]
-        except Exception:
-            pass
+
+    finally:
+        if manager:
+            try:
+                await manager.stop()
+            except Exception:
+                pass
 
     return {
         "applications_submitted": submitted,
