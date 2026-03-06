@@ -52,6 +52,10 @@ event_logs: Dict[str, list] = {}
 # Per-session list of subscriber queues (one per connected SSE client).
 sse_subscribers: Dict[str, List[asyncio.Queue]] = {}
 
+# Keep strong references to fire-and-forget background tasks so they don't get
+# garbage-collected while still running.
+_background_tasks: set[asyncio.Task[Any]] = set()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -81,6 +85,14 @@ async def _emit(session_id: str, event_type: str, data: dict) -> None:
     # Push to all connected SSE clients
     for queue in sse_subscribers.get(session_id, []):
         await queue.put(event)
+
+
+def _spawn_background(coro: Any) -> asyncio.Task[Any]:
+    """Create and retain a background task until completion."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
 
 
 STATUS_MESSAGES = {
@@ -721,7 +733,7 @@ async def start_session(body: StartSessionRequest, request: Request):
     }
 
     # Launch the pipeline as a background coroutine
-    asyncio.create_task(_run_pipeline(session_id, body, graph))
+    _spawn_background(_run_pipeline(session_id, body, graph))
 
     return {"session_id": session_id}
 
@@ -772,7 +784,7 @@ async def test_apply_endpoint(body: TestApplyRequest, request: Request):
         "message": f"Testing application to {body.job_url}",
     })
 
-    asyncio.create_task(_test_apply_single(
+    _spawn_background(_test_apply_single(
         session_id=session_id,
         job_url=body.job_url,
         job_title=body.job_title,
@@ -794,8 +806,8 @@ async def _test_apply_single(
     resume_text: str,
 ) -> None:
     """Background task: run a single application with live SSE + screenshot streaming."""
-    from backend.orchestrator.agents.application import _apply_with_playwright
-    from backend.shared.models.schemas import JobListing, JobBoard
+    from backend.orchestrator.agents.application import run_application_agent
+    from backend.shared.models.schemas import JobListing, JobBoard, TailoredResume
 
     dummy_job = JobListing(
         id=f"test-{uuid.uuid4().hex[:6]}",
@@ -814,6 +826,22 @@ async def _test_apply_single(
         "resume_file_path": None,
         "discovered_jobs": [dummy_job],
         "scored_jobs": [],
+        "tailored_resumes": {
+            dummy_job.id: TailoredResume(
+                job_id=dummy_job.id,
+                original_text=resume_text or "",
+                tailored_text=resume_text or "",
+                fit_score=75,
+                changes_made=["Generated from test-apply input resume"],
+            )
+        },
+        "application_queue": [dummy_job.id],
+        "applications_submitted": [],
+        "applications_failed": [],
+        "applications_skipped": [],
+        "consecutive_failures": 0,
+        "errors": [],
+        "agent_statuses": {},
     }
     terminal_status = "failed"
 
@@ -823,24 +851,39 @@ async def _test_apply_single(
             "message": f"Applying to {job_title} at {company}...",
         })
 
-        result = await _apply_with_playwright(
-            job_id=dummy_job.id,
-            job=dummy_job,
-            state=state,
-            session_id=session_id,
-        )
+        result_state = await run_application_agent(state)
+        submitted = result_state.get("applications_submitted") or []
+        failed = result_state.get("applications_failed") or []
+        skipped = set(result_state.get("applications_skipped") or [])
 
-        final_status = "completed" if result.status.value == "submitted" else "failed"
+        result_status = "failed"
+        result_error = None
+        result_duration = None
+        if submitted:
+            first = submitted[0]
+            result_status = "submitted"
+            result_error = getattr(first, "error_message", None)
+            result_duration = getattr(first, "duration_seconds", None)
+        elif failed:
+            first = failed[0]
+            result_status = "failed"
+            result_error = getattr(first, "error_message", None)
+            result_duration = getattr(first, "duration_seconds", None)
+        elif dummy_job.id in skipped:
+            result_status = "skipped"
+            result_error = "skipped"
+
+        final_status = "completed" if result_status == "submitted" else "failed"
         terminal_status = final_status
         await _emit(session_id, "status", {
             "status": final_status,
-            "message": f"Result: {result.status.value} — {result.error_message or 'OK'}",
+            "message": f"Result: {result_status} — {result_error or 'OK'}",
         })
         await _emit(session_id, "done", {
             "status": final_status,
-            "message": f"Application {result.status.value}",
-            "error": result.error_message,
-            "duration_seconds": result.duration_seconds,
+            "message": f"Application {result_status}",
+            "error": result_error,
+            "duration_seconds": result_duration,
         })
 
     except Exception as exc:
@@ -1116,7 +1159,7 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
     })
 
     # Resume the pipeline with Command(resume=human_input)
-    asyncio.create_task(_resume_pipeline(session_id, graph, resume_value=human_input))
+    _spawn_background(_resume_pipeline(session_id, graph, resume_value=human_input))
 
     return {"status": "ok", "message": "Coach review submitted, pipeline resuming"}
 
@@ -1178,7 +1221,7 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
     })
 
     # Resume the pipeline with Command(resume=human_input)
-    asyncio.create_task(_resume_pipeline(session_id, graph, resume_value=human_input))
+    _spawn_background(_resume_pipeline(session_id, graph, resume_value=human_input))
 
     return {
         "status": "ok",
@@ -1324,7 +1367,7 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
     })
 
     # Resume the pipeline from the rewound checkpoint
-    asyncio.create_task(_resume_pipeline(
+    _spawn_background(_resume_pipeline(
         session_id, graph, resume_value=resume_value, checkpoint_id=body.checkpoint_id
     ))
 
@@ -1410,7 +1453,7 @@ async def resume_session(session_id: str, request: Request):
     })
 
     # Continue execution (None input = resume from last checkpoint)
-    asyncio.create_task(_resume_stalled_pipeline(session_id, graph, config))
+    _spawn_background(_resume_stalled_pipeline(session_id, graph, config))
 
     return {"status": "ok", "next": list(next_nodes), "action": f"resuming_{next_label}"}
 
@@ -1538,6 +1581,6 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
         finally:
             unregister_emitter(session_id)
 
-    asyncio.create_task(_run_linkedin_update())
+    _spawn_background(_run_linkedin_update())
 
     return {"status": "ok", "message": "LinkedIn update started — open the browser and log in"}

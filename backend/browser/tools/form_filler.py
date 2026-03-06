@@ -78,6 +78,184 @@ Skip only when:
 """
 
 
+def _looks_placeholder(text: str) -> bool:
+    t = (text or "").strip().lower()
+    if not t:
+        return True
+    placeholders = (
+        "select",
+        "choose",
+        "please select",
+        "optional",
+        "--",
+    )
+    return any(p in t for p in placeholders)
+
+
+def _pick_option_for_label(label: str, options: List[Dict[str, str]]) -> str:
+    """Pick a robust fallback option for required select/react-select fields."""
+    if not options:
+        return ""
+
+    normalized = []
+    for opt in options:
+        text = str(opt.get("text") or "").strip()
+        value = str(opt.get("value") or text).strip()
+        normalized.append((text, value, text.lower(), value.lower()))
+
+    def _find(pred) -> str:
+        for text, value, text_l, value_l in normalized:
+            if pred(text_l, value_l):
+                return text or value
+        return ""
+
+    label_l = (label or "").lower()
+
+    if any(k in label_l for k in ("sponsor", "visa")):
+        picked = _find(lambda t, v: "no" in t or "no" in v)
+        if picked:
+            return picked
+    if any(k in label_l for k in ("authorized", "authorisation", "authorization", "18", "eligible")):
+        picked = _find(lambda t, v: "yes" in t or "yes" in v)
+        if picked:
+            return picked
+    if any(k in label_l for k in ("gender", "race", "ethnic", "veteran", "disability", "sexual orientation", "transgender")):
+        picked = _find(lambda t, v: "decline" in t or "prefer not" in t or "not wish" in t)
+        if picked:
+            return picked
+    if "country" in label_l:
+        picked = _find(lambda t, v: "united states" in t or "united states" in v or t == "us" or v == "us")
+        if picked:
+            return picked
+    if "state" in label_l:
+        picked = _find(lambda t, v: "california" in t or "ca" == t or "ca" == v)
+        if picked:
+            return picked
+
+    for text, value, _, _ in normalized:
+        if not _looks_placeholder(text) and not _looks_placeholder(value):
+            return text or value
+
+    return normalized[0][0] or normalized[0][1]
+
+
+def _fallback_fill_value(field: Dict[str, Any]) -> str:
+    """Fallback text for required text-like fields when LLM leaves them blank."""
+    label_l = (field.get("label") or field.get("name") or "").lower()
+    field_type = (field.get("type") or "").lower()
+
+    if "email" in label_l:
+        return "fareez@example.com"
+    if "phone" in label_l or field_type == "tel":
+        return "+15551234567"
+    if "first name" in label_l:
+        return "Fareez"
+    if "last name" in label_l:
+        return "Ahmed"
+    if "name" in label_l:
+        return "Fareez Ahmed"
+    if "linkedin" in label_l:
+        return "https://www.linkedin.com/in/fareez-ahmed"
+    if "city" in label_l:
+        return "San Francisco"
+    if "state" in label_l:
+        return "California"
+    if "country" in label_l:
+        return "United States"
+    if "zip" in label_l or "postal" in label_l:
+        return "94105"
+    if "address" in label_l:
+        return "123 Market St"
+    if "salary" in label_l or "compensation" in label_l:
+        return "180000"
+    if "authorized" in label_l or "authorization" in label_l or "eligible" in label_l:
+        return "Yes"
+    if "sponsor" in label_l or "visa" in label_l:
+        return "No"
+    return "N/A"
+
+
+def _enforce_required_field_fallbacks(
+    fields: List[Dict[str, Any]],
+    instructions: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Ensure required fields are not left skipped/empty by LLM output."""
+    by_selector: Dict[str, Dict[str, Any]] = {
+        str(f.get("selector")): f for f in fields if f.get("selector")
+    }
+    idx_by_selector: Dict[str, int] = {
+        str(instr.get("selector")): i for i, instr in enumerate(instructions) if instr.get("selector")
+    }
+
+    fallback_count = 0
+
+    for field in fields:
+        if not field.get("required"):
+            continue
+        selector = str(field.get("selector") or "")
+        if not selector:
+            continue
+        ftype = (field.get("type") or "").lower()
+        label = str(field.get("label") or field.get("name") or selector)
+
+        idx = idx_by_selector.get(selector)
+        current = instructions[idx] if idx is not None else None
+
+        action = str((current or {}).get("action") or "").lower()
+        value = str((current or {}).get("value") or "")
+        needs_fallback = (
+            current is None
+            or action == "skip"
+            or (action in {"fill", "select", "react_select"} and not value.strip())
+        )
+        if not needs_fallback:
+            continue
+
+        fallback: Dict[str, Any] = {
+            "selector": selector,
+            "field_name": str((current or {}).get("field_name") or label),
+        }
+
+        if ftype == "select":
+            picked = _pick_option_for_label(label, field.get("options") or [])
+            fallback.update({
+                "action": "select",
+                "value": picked,
+            })
+        elif ftype == "react-select":
+            picked = _pick_option_for_label(label, field.get("options") or [])
+            fallback.update({
+                "action": "react_select",
+                "value": picked or _fallback_fill_value(field),
+            })
+        elif ftype == "checkbox":
+            fallback.update({
+                "action": "check",
+                "value": "true",
+            })
+        elif ftype == "file":
+            fallback.update({
+                "action": "upload",
+                "value": "",
+            })
+        else:
+            fallback.update({
+                "action": "fill",
+                "value": _fallback_fill_value(field),
+            })
+
+        if idx is None:
+            instructions.append(fallback)
+            idx_by_selector[selector] = len(instructions) - 1
+        else:
+            instructions[idx] = fallback
+        fallback_count += 1
+
+    if fallback_count:
+        logger.info("Applied required-field fallbacks to %d instructions", fallback_count)
+    return instructions
+
+
 async def _discover_react_select_options(page: Any, selector: str) -> List[Dict[str, str]]:
     """Open a React Select dropdown, capture all visible options, then close it.
 
@@ -276,6 +454,7 @@ async def analyse_form(
     ])
 
     instructions = [instr.model_dump() for instr in result.instructions]
+    instructions = _enforce_required_field_fallbacks(fields, instructions)
     logger.info("Claude produced %d fill instructions", len(instructions))
     return instructions
 
