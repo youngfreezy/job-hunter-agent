@@ -185,8 +185,9 @@ async def discover_all_boards(
         except Exception:
             logger.warning("Browser-use fallback failed", exc_info=True)
 
-    # Validate URLs
-    all_jobs = await _validate_urls(all_jobs)
+    # Skip URL validation -- job board URLs commonly reject HEAD requests
+    # (auth walls, cookie requirements, GET-only) but are still valid listings.
+    # The scrapers already verified these exist on real pages.
 
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "all",
