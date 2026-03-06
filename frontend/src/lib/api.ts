@@ -107,6 +107,9 @@ export type SSEEventType =
   | "linkedin_browser_action"
   | "linkedin_update_complete"
   | "linkedin_update_failed"
+  | "login_required"
+  | "login_complete"
+  | "captcha_detected"
   | "done"
   | "error"
   | "ping";
@@ -230,6 +233,16 @@ export async function resumeIntervention(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to resume intervention: ${res.status}`);
 }
 
+// ---------- Pre-login confirmation ----------
+
+export async function confirmLogin(sessionId: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/login-complete`,
+    { method: "POST" }
+  );
+  if (!res.ok) throw new Error(`Failed to confirm login: ${res.status}`);
+}
+
 // ---------- Resume stalled pipeline ----------
 
 export async function resumeSession(
@@ -320,6 +333,9 @@ export function connectSSE(
     "linkedin_browser_action",
     "linkedin_update_complete",
     "linkedin_update_failed",
+    "login_required",
+    "login_complete",
+    "captcha_detected",
     "done",
     "error",
   ];

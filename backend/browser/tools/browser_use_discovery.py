@@ -1,12 +1,13 @@
-"""Browser-Use Discovery -- LLM-driven job board scraping via browser-use.
+"""Browser-Use Discovery -- single-agent, single-browser job discovery.
 
-Replaces hardcoded CSS selectors with an AI agent that dynamically
-navigates job boards, searches keywords, and extracts listings.
+One browser-use agent navigates all job boards sequentially in a single
+Chrome session. No per-board restarts, no competing resources.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
+from backend.shared.selector_memory import get_top_selectors, record_success
 from backend.shared.models.schemas import (
     ATSType,
     JobBoard,
@@ -28,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Structured output models for browser-use
+# Structured output models
 # ---------------------------------------------------------------------------
 
 class DiscoveredJobRaw(BaseModel):
@@ -36,6 +38,7 @@ class DiscoveredJobRaw(BaseModel):
     title: str
     company: str
     url: str
+    board: str = "unknown"
     location: str = "Unknown"
     salary_range: Optional[str] = None
     description_snippet: Optional[str] = None
@@ -50,155 +53,104 @@ class DiscoveredJobsOutput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Board-specific prompt templates
+# Board URL map
 # ---------------------------------------------------------------------------
 
-_BOARD_PROMPTS: Dict[str, str] = {
-    "indeed": """\
-You are a job discovery agent. Search Indeed for job listings.
-
-SEARCH PARAMETERS:
-- Keywords (search one at a time): {keywords}
-- Location: {location}
-- Remote only: {remote_only}
-- Minimum salary: {salary_min}
-
-INSTRUCTIONS:
-1. Go to https://www.indeed.com
-2. For EACH keyword above:
-   a. Enter the keyword in the "What" / job title search field
-   b. Enter the location in the "Where" field (or leave blank if remote only)
-   c. Click Search or press Enter
-   d. If remote only, look for and click a "Remote" filter
-   e. Extract up to {per_keyword} job listings from the search results
-   f. For each listing card, extract: title, company name, location, the job URL (href from the listing link), salary range (if shown), a brief description snippet, posted date, whether it says "Remote", whether it has "Easily apply" badge
-   g. If you need more results, click "Next" (max 2 pages per keyword)
-3. After all keywords, report your findings.
-
-RULES:
-- Extract the ACTUAL job URL from each listing's link (href attribute), not the search page URL
-- Do NOT click into individual job listings -- extract from the search result cards only
-- If you see a CAPTCHA or block page, stop and report what you found so far
-- Maximum {max_results} total listings across all keywords
-""",
-
-    "linkedin": """\
-You are a job discovery agent. Search LinkedIn Jobs for listings.
-
-SEARCH PARAMETERS:
-- Keywords (search one at a time): {keywords}
-- Location: {location}
-- Remote only: {remote_only}
-
-INSTRUCTIONS:
-1. Go to https://www.linkedin.com/jobs/search
-2. For EACH keyword above:
-   a. Enter the keyword in the search/keywords field
-   b. Enter the location (or skip if remote only)
-   c. Submit the search
-   d. If remote only, apply the "Remote" work type filter
-   e. Extract up to {per_keyword} job listings from the results
-   f. For each listing, extract: title, company name, location, job URL (should contain /jobs/view/), posted date, whether remote, whether "Easy Apply" badge is present
-   g. Scroll down to load more results if needed (max 2 pages per keyword)
-3. After all keywords, report findings.
-
-RULES:
-- Extract the actual job posting URL from each listing link
-- If you hit a login wall or "Sign in" page, stop and report what you found
-- LinkedIn rarely shows salary on cards -- leave salary_range empty if not visible
-- Do NOT click into individual listings -- extract from search result cards only
-- Maximum {max_results} total listings
-""",
-
-    "glassdoor": """\
-You are a job discovery agent. Search Glassdoor for job listings.
-
-SEARCH PARAMETERS:
-- Keywords (search one at a time): {keywords}
-- Location: {location}
-- Remote only: {remote_only}
-- Minimum salary: {salary_min}
-
-INSTRUCTIONS:
-1. Go to https://www.glassdoor.com/Job/jobs.htm
-2. For EACH keyword above:
-   a. Enter the keyword in the search field
-   b. Enter the location
-   c. Search
-   d. If remote only, apply the remote filter
-   e. Extract up to {per_keyword} listings
-   f. For each listing, extract: title, company name, location, job URL, salary range (Glassdoor often shows salary estimates), description snippet, posted date, whether remote
-   g. Click next page if needed (max 2 pages per keyword)
-3. After all keywords, report findings.
-
-RULES:
-- Extract the actual job URL from each listing link
-- If you see a login modal, try to close/dismiss it and continue
-- If blocked by CAPTCHA, stop and report partial results
-- Maximum {max_results} total listings
-""",
-
-    "ziprecruiter": """\
-You are a job discovery agent. Search ZipRecruiter for job listings.
-
-SEARCH PARAMETERS:
-- Keywords (search one at a time): {keywords}
-- Location: {location}
-- Remote only: {remote_only}
-- Minimum salary: {salary_min}
-
-INSTRUCTIONS:
-1. Go to https://www.ziprecruiter.com/jobs-search
-2. For EACH keyword above:
-   a. Enter the keyword in the search field
-   b. Enter the location
-   c. Search
-   d. If remote only, apply remote/work-from-home filter
-   e. Extract up to {per_keyword} listings
-   f. For each listing, extract: title, company name, location, job URL, salary range (if shown), description snippet, posted date, whether remote, whether "1-Click Apply" or "Quick Apply" badge
-   g. Click next page if needed (max 2 pages per keyword)
-3. After all keywords, report findings.
-
-RULES:
-- Extract the actual job URL from each listing
-- If you see a signup popup, dismiss it and continue
-- If blocked, stop and report partial results
-- Maximum {max_results} total listings
-""",
+_BOARD_URLS = {
+    "linkedin": "https://www.linkedin.com/jobs/search",
+    "ziprecruiter": "https://www.ziprecruiter.com/jobs-search",
+    "indeed": "https://www.indeed.com",
+    "glassdoor": "https://www.glassdoor.com/Job/jobs.htm",
 }
 
-PER_KEYWORD_DEFAULT = 8
-
 
 # ---------------------------------------------------------------------------
-# Prompt builder
+# Prompt builder -- single unified task for all boards
 # ---------------------------------------------------------------------------
 
-def _build_discovery_prompt(
-    board: str,
+# Fallback selectors if DB has no history yet
+_DEFAULT_SELECTORS: Dict[str, str] = {
+    "glassdoor": (
+        "li[class*='JobsList'] > div, "
+        "li[data-test], "
+        "li.JobsList_jobListItem__JBBUV, "
+        "li.react-job-listing"
+    ),
+}
+
+def _get_board_selectors(board: str) -> Optional[str]:
+    """Get known-working selectors for a board from DB, with fallback defaults."""
+    db_selectors = get_top_selectors(board, limit=5)
+    if db_selectors:
+        return ", ".join(db_selectors)
+    return _DEFAULT_SELECTORS.get(board)
+
+def _build_unified_prompt(
+    boards: List[str],
     search_config: SearchConfig,
-    max_results: int,
+    max_per_board: int,
 ) -> str:
-    """Fill the board-specific prompt template with search parameters."""
-    template = _BOARD_PROMPTS.get(board)
-    if not template:
-        raise ValueError(f"No discovery prompt for board: {board}")
-
-    keywords = ", ".join(f'"{kw}"' for kw in search_config.keywords) if search_config.keywords else '"software engineer"'
+    # Limit to top 4 keywords to keep steps manageable
+    top_keywords = (search_config.keywords or ["software engineer"])[:4]
+    keywords = ", ".join(f'"{kw}"' for kw in top_keywords)
     location = ", ".join(search_config.locations) if search_config.locations else "United States"
     if search_config.remote_only:
         location = "Remote"
 
-    per_keyword = min(PER_KEYWORD_DEFAULT, max_results)
+    board_sections = []
+    for i, board in enumerate(boards, 1):
+        url = _BOARD_URLS.get(board, "")
+        extra = ""
+        known_selectors = _get_board_selectors(board)
+        if known_selectors:
+            extra += f"\n  - KNOWN WORKING selectors for {board}: {known_selectors}"
+        if board == "glassdoor":
+            extra += "\n  - Glassdoor is slow to load. If you wait more than twice, skip it."
+        board_sections.append(
+            f"BOARD {i}: {board.upper()} ({url})\n"
+            f"  - Go to {url}\n"
+            f"  - Search each keyword with location \"{location}\"\n"
+            f"  - Extract up to {max_per_board} job listings from search result cards\n"
+            f"  - For each job: title, company, job URL (from listing link href), location, salary (if shown), description snippet, posted date, remote status, easy-apply badge\n"
+            f"  - If blocked/CAPTCHA/login-wall: stop this board and move to the next\n"
+            f"  - Include board=\"{board}\" for each job from this site"
+            f"{extra}"
+        )
 
-    return template.format(
-        keywords=keywords,
-        location=location,
-        remote_only="Yes" if search_config.remote_only else "No",
-        salary_min=f"${search_config.salary_min:,}" if search_config.salary_min else "any",
-        per_keyword=per_keyword,
-        max_results=max_results,
-    )
+    return f"""\
+You are a job discovery agent. Search multiple job boards for listings.
+
+SEARCH PARAMETERS:
+- Keywords: {keywords}
+- Location: {location}
+
+Search these boards IN ORDER, one at a time in the SAME browser tab:
+
+{chr(10).join(board_sections)}
+
+EXTRACTION STRATEGY (use this for every board):
+1. Navigate to the board URL
+2. Dismiss any popups/login walls (click X or press Escape)
+3. Type a keyword in the search box and search
+4. Use evaluate() with JavaScript to extract job data from the page DOM in ONE step. Example:
+   evaluate(code="(() => {{ const cards = document.querySelectorAll('.job-card, .jobCard, [data-job-id], .job_seen_beacon, .jobs-search__results-list li'); return JSON.stringify(Array.from(cards).slice(0, 5).map(c => ({{ title: (c.querySelector('h2, h3, [class*=title], .job-title') || {{}}).textContent?.trim(), company: (c.querySelector('[class*=company], [class*=subtitle], .company') || {{}}).textContent?.trim(), url: (c.querySelector('a[href]') || {{}}).href, location: (c.querySelector('[class*=location]') || {{}}).textContent?.trim() }})).filter(j => j.title && j.url)); }})()")
+5. Move to the next keyword or next board. Do NOT call find_elements repeatedly.
+
+RULES:
+- Do NOT click into individual listings -- extract from search result cards only
+- Do NOT use the extract action or find_elements in a loop -- use evaluate() with JS to grab all data at once
+- Do NOT click filters (salary, date, etc.) -- just extract whatever is on the search results page
+- If a login wall or popup appears, close it (click X, dismiss, or press Escape) and continue extracting. Only skip the board if you literally cannot see any job listings after dismissing.
+- If a board shows a CAPTCHA or hard block, skip it IMMEDIATELY and go to the next board. Do NOT retry failed navigations.
+- STRICT STEP BUDGET: You have at most 8 steps per board. If you haven't extracted jobs in 8 steps, SKIP and move to the next board immediately. Do NOT waste steps waiting or retrying.
+- If you find yourself waiting (wait action) more than twice in a row on a board, SKIP it and move to the next board.
+- For each keyword, search and extract, then move to the next keyword. Do NOT search every keyword -- pick the top 2 most relevant.
+- Maximum {max_per_board} listings per board
+- Include the "board" field (indeed/linkedin/glassdoor/ziprecruiter) for each job
+- Be FAST: navigate, search, evaluate() once to extract, move on.
+- When done with ALL boards, call done with this EXACT JSON format:
+  {{"jobs": [{{"title": "...", "company": "...", "url": "...", "board": "indeed", "location": "...", "salary_range": "..." or null, "description_snippet": "..." or null, "posted_date": "..." or null, "is_remote": true/false, "is_easy_apply": true/false}}]}}
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +178,7 @@ async def _validate_urls(jobs: List[JobListing]) -> List[JobListing]:
                     logger.debug("URL validation failed (%d): %s", resp.status, job.url)
                     return None
             except Exception:
-                # Network error or timeout -- keep the job (benefit of the doubt)
-                return job
+                return job  # benefit of the doubt
 
         results = await asyncio.gather(*[_check(j) for j in jobs])
         valid = [j for j in results if j is not None]
@@ -240,28 +191,130 @@ async def _validate_urls(jobs: List[JobListing]) -> List[JobListing]:
 
 
 # ---------------------------------------------------------------------------
-# Core discovery function
+# Board name -> JobBoard enum
 # ---------------------------------------------------------------------------
 
-async def discover_board(
-    board: JobBoard,
+_BOARD_MAP = {
+    "indeed": JobBoard.INDEED,
+    "linkedin": JobBoard.LINKEDIN,
+    "glassdoor": JobBoard.GLASSDOOR,
+    "ziprecruiter": JobBoard.ZIPRECRUITER,
+}
+
+
+# ---------------------------------------------------------------------------
+# Human-readable step descriptions for SSE
+# ---------------------------------------------------------------------------
+
+def _friendly_step(action: Any, action_results: Any, *, board: str = "unknown", keyword: str = "") -> str:
+    """Convert raw browser-use action into a short human-readable string."""
+    if action is None:
+        return "Searching..."
+    act = action if isinstance(action, dict) else (action.__dict__ if hasattr(action, "__dict__") else {})
+    # Navigate
+    if "navigate" in act:
+        url = act["navigate"].get("url", "") if isinstance(act["navigate"], dict) else str(act["navigate"])
+        domain = url.split("//")[-1].split("/")[0] if "//" in url else url
+        return f"Navigating to {domain}"
+    # Click
+    if "click" in act:
+        if action_results:
+            last = action_results[-1] if action_results else None
+            items = last if isinstance(last, list) else [last]
+            for r in items:
+                text = str(r) if r else ""
+                if "aria-label=" in text:
+                    label = text.split("aria-label=")[1].split("'")[0].split('"')[0][:50]
+                    return f"Clicked: {label}"
+                if "extracted_content=" in text and "Clicked" in text:
+                    snippet = text.split("extracted_content='")[1].split("'")[0][:60] if "extracted_content='" in text else ""
+                    if snippet:
+                        return snippet
+        return "Clicking element on page"
+    # Evaluate (JS extraction)
+    if "evaluate" in act:
+        if action_results:
+            last = action_results[-1] if action_results else None
+            items = last if isinstance(last, list) else [last]
+            for r in items:
+                mem = getattr(r, "long_term_memory", None) or (str(r) if r else "")
+                mem_str = str(mem)
+                if mem_str.startswith("[") and '"title"' in mem_str:
+                    try:
+                        count = len(json.loads(mem_str))
+                        if count > 0:
+                            parts = [f"Extracted {count} job listings"]
+                            if keyword:
+                                parts.append(f"with '{keyword}'")
+                            if board and board != "unknown":
+                                parts.append(f"on {board.title()}")
+                            return " ".join(parts)
+                    except Exception:
+                        pass
+        return "Extracting job listings from page"
+    # Find elements
+    if "find_elements" in act:
+        return "Scanning page for job cards"
+    # Input text
+    if "input_text" in act:
+        text = act["input_text"].get("text", "") if isinstance(act["input_text"], dict) else ""
+        return f'Searching for "{text}"' if text else "Typing search query"
+    # Done
+    if "done" in act:
+        return "Finished searching all boards"
+    return "Processing..."
+
+
+# ---------------------------------------------------------------------------
+# Convert raw jobs to JobListing objects
+# ---------------------------------------------------------------------------
+
+def _raw_to_listings(raw_jobs: List[DiscoveredJobRaw]) -> List[JobListing]:
+    """Convert DiscoveredJobRaw list to JobListing list."""
+    now = datetime.now(timezone.utc)
+    listings: List[JobListing] = []
+    for raw in raw_jobs:
+        if not raw.url or not raw.title or not raw.company:
+            continue
+        board_enum = _BOARD_MAP.get(raw.board.lower(), JobBoard.INDEED)
+        listings.append(JobListing(
+            id=str(uuid.uuid4()),
+            title=raw.title.strip(),
+            company=raw.company.strip(),
+            location=raw.location.strip(),
+            url=raw.url.strip(),
+            board=board_enum,
+            ats_type=ATSType.UNKNOWN,
+            salary_range=raw.salary_range,
+            description_snippet=raw.description_snippet,
+            posted_date=raw.posted_date,
+            is_remote=raw.is_remote or "remote" in raw.location.lower(),
+            is_easy_apply=raw.is_easy_apply,
+            discovered_at=now,
+        ))
+    return listings
+
+
+# ---------------------------------------------------------------------------
+# Core: single-agent discovery across all boards
+# ---------------------------------------------------------------------------
+
+async def discover_all_boards(
+    boards: List[str],
     search_config: SearchConfig,
     session_id: str,
-    max_results: int = 20,
-    browser: Any = None,
+    max_per_board: int = 20,
 ) -> List[JobListing]:
-    """Discover job listings on a single board using browser-use.
-
-    Pass an existing ``browser`` (pre-started) to skip cold-start.
-    If *None*, a fresh instance is created and cleaned up after use.
-    """
+    """Run one browser-use agent that searches all boards sequentially."""
     from browser_use import Agent, Browser, ChatAnthropic
 
     settings = get_settings()
-    board_name = board.value
-    board_label = board_name.replace("_", " ").title()
 
-    task = _build_discovery_prompt(board_name, search_config, max_results)
+    # Reorder boards: reliable first, glassdoor last (heavy CDP timeouts)
+    priority = ["linkedin", "ziprecruiter", "indeed", "glassdoor"]
+    boards = sorted(boards, key=lambda b: priority.index(b) if b in priority else 99)
+
+    task = _build_unified_prompt(boards, search_config, max_per_board)
 
     llm = ChatAnthropic(
         model="claude-sonnet-4-5",
@@ -270,118 +323,213 @@ async def discover_board(
         temperature=0.0,
     )
 
-    owns_browser = browser is None
-    if owns_browser:
-        browser = Browser(headless=False, disable_security=True)
+    browser = Browser(
+        headless=False,
+        disable_security=True,
+        wait_for_network_idle_page_load_time=2.0,
+    )
 
-    # SSE progress callback
     step_count = 0
+    current_board = "unknown"
+    current_keyword = ""
+    # Accumulate extracted jobs from evaluate() steps so data survives timeouts
+    recovered_jobs: List[DiscoveredJobRaw] = []
+    seen_urls: set = set()
+
+    def _extract_selector_from_code(code: str) -> Optional[str]:
+        """Extract the querySelectorAll argument from evaluate() JS code."""
+        import re
+        m = re.search(r"querySelectorAll\(['\"](.+?)['\"]\)", code)
+        return m.group(1) if m else None
+
+    def _try_recover_jobs(action_results: Any, last_action: Any = None) -> None:
+        """Parse job JSON arrays from evaluate() results and accumulate them."""
+        if not action_results:
+            return
+        last = action_results[-1] if action_results else None
+        items = last if isinstance(last, list) else [last]
+        new_count = 0
+        for r in items:
+            mem = getattr(r, "long_term_memory", None) or ""
+            mem_str = str(mem)
+            if not (mem_str.startswith("[") and '"title"' in mem_str):
+                continue
+            try:
+                parsed_list = json.loads(mem_str)
+                for j in parsed_list:
+                    if not isinstance(j, dict):
+                        continue
+                    url = j.get("url", "")
+                    if not url or url in seen_urls:
+                        continue
+                    if not j.get("title") or not j.get("company"):
+                        continue
+                    if not j.get("board") or j["board"] == "unknown":
+                        j["board"] = current_board
+                    seen_urls.add(url)
+                    try:
+                        recovered_jobs.append(DiscoveredJobRaw(**j))
+                        new_count += 1
+                    except Exception:
+                        pass
+            except (json.JSONDecodeError, Exception):
+                pass
+
+        # Record successful selector to DB for future runs
+        if new_count > 0 and last_action and current_board != "unknown":
+            act = last_action if isinstance(last_action, dict) else (last_action.__dict__ if hasattr(last_action, "__dict__") else {})
+            if "evaluate" in act:
+                code = act["evaluate"].get("code", "") if isinstance(act["evaluate"], dict) else str(act["evaluate"])
+                selector = _extract_selector_from_code(code)
+                if selector:
+                    record_success(current_board, selector)
+                    logger.info("Recorded working selector for %s: %s", current_board, selector[:80])
 
     async def on_step_end(agent_instance):
-        nonlocal step_count
+        nonlocal step_count, current_board, current_keyword
         step_count += 1
         try:
             actions = agent_instance.history.model_actions()
-            latest = str(actions[-1])[:200] if actions else "searching..."
+            latest_raw = str(actions[-1])[:200] if actions else "searching..."
+            # Log full detail to backend.log
+            action_results = agent_instance.history.action_results()
+            if action_results:
+                last_results = action_results[-1] if action_results else []
+                for r in (last_results if isinstance(last_results, list) else [last_results]):
+                    text = str(r)[:500] if r else ""
+                    if text and len(text) > 10:
+                        logger.info("  [result] %s", text[:500])
+            logger.info("Step %d: %s", step_count, latest_raw)
+
+            # Track current board from navigate actions
+            last_action = actions[-1] if actions else None
+            act = last_action if isinstance(last_action, dict) else (last_action.__dict__ if hasattr(last_action, "__dict__") else {})
+            if "navigate" in act:
+                url = act["navigate"].get("url", "") if isinstance(act["navigate"], dict) else str(act["navigate"])
+                for board_name, board_url in _BOARD_URLS.items():
+                    if board_name in url or board_url.split("//")[-1].split("/")[0] in url:
+                        current_board = board_name
+                        break
+            # Track current keyword from input_text actions
+            if "input_text" in act:
+                text = act["input_text"].get("text", "") if isinstance(act["input_text"], dict) else ""
+                if text:
+                    current_keyword = text
+
+            # Recover jobs from evaluate() results in real-time
+            _try_recover_jobs(action_results, last_action)
+
+            # Build human-readable message for SSE/UI
+            friendly = _friendly_step(
+                last_action, action_results,
+                board=current_board, keyword=current_keyword,
+            )
             await emit_agent_event(session_id, "discovery_progress", {
-                "board": board_name,
-                "step": f"[{board_label}] Step {step_count}: {latest}",
+                "board": current_board,
+                "step": f"Step {step_count}: {friendly}",
             })
         except Exception:
             pass
+
+    max_steps = 10 * len(boards)  # ~10 steps per board
 
     agent = Agent(
         task=task,
         llm=llm,
         browser=browser,
         max_actions_per_step=5,
-        use_vision=True,
-        max_failures=3,
-        output_model_schema=DiscoveredJobsOutput,
+        use_vision=False,
+        max_failures=10,
     )
+
+    async def _stop_browser():
+        try:
+            await browser.stop()
+        except Exception:
+            pass
 
     try:
         await emit_agent_event(session_id, "discovery_progress", {
-            "board": board_name,
-            "step": f"Searching {board_label} for jobs...",
+            "board": "all",
+            "step": f"Starting discovery across {len(boards)} boards...",
         })
 
-        result = await agent.run(max_steps=25, on_step_end=on_step_end)
+        result = await asyncio.wait_for(
+            agent.run(max_steps=max_steps, on_step_end=on_step_end),
+            timeout=300 * len(boards),  # 5 min per board max
+        )
 
-        # Extract structured output
+        # Parse structured output from done() action
         raw_jobs: List[DiscoveredJobRaw] = []
         try:
             structured = result.final_result()
             if structured and isinstance(structured, str):
-                # Try parsing as JSON
-                import json
                 parsed = json.loads(structured)
                 if isinstance(parsed, dict) and "jobs" in parsed:
                     raw_jobs = [DiscoveredJobRaw(**j) for j in parsed["jobs"]]
                 elif isinstance(parsed, list):
                     raw_jobs = [DiscoveredJobRaw(**j) for j in parsed]
         except Exception:
-            logger.debug("Structured output parsing failed for %s, trying raw extraction", board_name, exc_info=True)
+            logger.debug("Structured output parsing failed", exc_info=True)
 
-        if not raw_jobs:
-            # Fallback: try to extract from the final result text
+        # Fall back to recovered jobs if structured output is empty
+        if not raw_jobs and recovered_jobs:
+            logger.info(
+                "No structured done() output, using %d jobs recovered from step history",
+                len(recovered_jobs),
+            )
+            raw_jobs = recovered_jobs
+        elif not raw_jobs:
             final_text = str(result.final_result() or "")
             logger.warning(
-                "No structured jobs from %s agent (steps=%d). Final: %s",
-                board_name, step_count, final_text[:300],
+                "No structured jobs from agent (steps=%d). Final: %s",
+                step_count, final_text[:500],
             )
 
-        # Convert to JobListing objects
-        now = datetime.now(timezone.utc)
-        listings: List[JobListing] = []
-        for raw in raw_jobs[:max_results]:
-            if not raw.url or not raw.title or not raw.company:
-                continue
-            listings.append(JobListing(
-                id=str(uuid.uuid4()),
-                title=raw.title.strip(),
-                company=raw.company.strip(),
-                location=raw.location.strip(),
-                url=raw.url.strip(),
-                board=board,
-                ats_type=ATSType.UNKNOWN,
-                salary_range=raw.salary_range,
-                description_snippet=raw.description_snippet,
-                posted_date=raw.posted_date,
-                is_remote=raw.is_remote or "remote" in raw.location.lower(),
-                is_easy_apply=raw.is_easy_apply,
-                discovered_at=now,
-            ))
+        listings = _raw_to_listings(raw_jobs)
 
-        logger.info(
-            "browser-use discovered %d jobs on %s (steps=%d)",
-            len(listings), board_name, step_count,
-        )
+        logger.info("browser-use discovered %d total jobs (steps=%d)", len(listings), step_count)
+        for j in listings:
+            logger.info("  [%s] %s @ %s -- %s", j.board.value, j.title, j.company, j.url)
 
         # Validate URLs
         listings = await _validate_urls(listings)
 
         await emit_agent_event(session_id, "discovery_progress", {
-            "board": board_name,
-            "step": f"Found {len(listings)} verified {'job' if len(listings) == 1 else 'jobs'} on {board_label}",
+            "board": "all",
+            "step": f"Found {len(listings)} verified jobs across all boards",
             "count": len(listings),
             "progress": 100,
         })
 
         return listings
 
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Discovery agent timed out after %d steps, recovering %d jobs from history",
+            step_count, len(recovered_jobs),
+        )
+        await _stop_browser()
+        if recovered_jobs:
+            listings = _raw_to_listings(recovered_jobs)
+            listings = await _validate_urls(listings)
+            logger.info("Recovered %d jobs despite timeout", len(listings))
+            await emit_agent_event(session_id, "discovery_progress", {
+                "board": "all",
+                "step": f"Found {len(listings)} verified jobs (search timed out)",
+                "count": len(listings),
+                "progress": 100,
+            })
+            return listings
+        return []
+
     except Exception as exc:
-        logger.exception("browser-use discovery failed for %s", board_name)
-        await emit_agent_event(session_id, "discovery_progress", {
-            "board": board_name,
-            "step": f"{board_label} discovery failed: {exc}",
-            "progress": 100,
-        })
+        logger.exception("Discovery agent failed: %s", exc)
+        if recovered_jobs:
+            listings = _raw_to_listings(recovered_jobs)
+            logger.info("Recovered %d jobs despite error", len(listings))
+            return listings
         return []
 
     finally:
-        if owns_browser:
-            try:
-                await browser.stop()
-            except Exception:
-                pass
+        await _stop_browser()

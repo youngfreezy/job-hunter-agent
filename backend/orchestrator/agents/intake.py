@@ -29,8 +29,11 @@ downstream agents will use to discover job listings.
 **Instructions**
 1. Normalise and deduplicate keywords.  Expand obvious abbreviations
    (e.g. "ML" -> "Machine Learning", "SWE" -> "Software Engineer").
-2. If resume text is provided, extract:
-   - Additional relevant keywords the user may not have listed.
+2. Keep the final keyword list to **at most 6 keywords**. Focus on the
+   user's original keywords plus 1-2 high-value expansions from the resume.
+   Do NOT exhaustively list every skill from the resume.
+3. If resume text is provided, extract:
+   - 1-2 additional relevant job-title keywords the user may not have listed.
    - An experience level estimate: "entry", "mid", "senior", or "executive".
    - Inferred job type if not specified (e.g. "full-time").
 3. Respect explicit user preferences -- they always take priority over

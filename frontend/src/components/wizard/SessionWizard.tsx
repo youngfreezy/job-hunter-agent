@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { FormikProvider } from "formik";
 import { usePersistedFormik } from "@/lib/hooks/usePersistedFormik";
 import {
@@ -22,10 +23,12 @@ const WIZARD_STEPS = [
 ];
 
 export function SessionWizard() {
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [submitError, setSubmitError] = useState("");
+  const [isNavigating, setIsNavigating] = useState(false);
 
-  const { formik } = usePersistedFormik<SessionFormValues>({
+  const { formik, hydrated } = usePersistedFormik<SessionFormValues>({
     persistKey: "session_wizard",
     initialValues: sessionInitialValues,
     validationSchema: stepSchemas[step],
@@ -51,9 +54,8 @@ export function SessionWizard() {
           preferences: {},
         });
 
-        // Use window.location.href instead of router.push() to avoid
-        // Next.js dev-mode on-demand page compilation delay.
-        window.location.href = `/session/${session.session_id}`;
+        setIsNavigating(true);
+        router.push(`/session/${session.session_id}`);
       } catch (err) {
         const msg =
           err instanceof Error ? err.message : "Failed to start session";
@@ -105,6 +107,24 @@ export function SessionWizard() {
     <ReviewStep key="review" onEditStep={setStep} />,
   ];
 
+  if (!hydrated) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="flex gap-4 mb-8">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex-1 h-10 bg-muted rounded-lg" />
+          ))}
+        </div>
+        <div className="space-y-4">
+          <div className="h-5 w-32 bg-muted rounded" />
+          <div className="h-10 w-full bg-muted rounded-lg" />
+          <div className="h-5 w-24 bg-muted rounded" />
+          <div className="h-10 w-full bg-muted rounded-lg" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <FormikProvider value={formik}>
       <WizardStepper steps={WIZARD_STEPS} currentStep={step} />
@@ -124,7 +144,7 @@ export function SessionWizard() {
           onBack={handleBack}
           onNext={handleNext}
           onSubmit={handleSubmit}
-          isSubmitting={formik.isSubmitting}
+          isSubmitting={formik.isSubmitting || isNavigating}
         />
       </form>
     </FormikProvider>
