@@ -19,6 +19,10 @@ import time
 from typing import Any, Dict, List, Optional
 
 from backend.browser.manager import BrowserManager, apply_stealth
+from backend.browser.streaming.takeover_registry import (
+    register_active_page,
+    unregister_active_page,
+)
 from backend.browser.tools.ats_detector import detect_ats_type
 from backend.browser.tools.appliers import get_applier
 from backend.orchestrator.pipeline.state import JobHunterState
@@ -453,6 +457,7 @@ async def _apply_to_job(
 
         # --- Step 1: Open tab and navigate (before cover letter to save LLM calls) ---
         page = await context.new_page()
+        register_active_page(session_id, page)
         await apply_stealth(page)
         try:
             from backend.browser.streaming.screenshot_streamer import ScreenshotStreamer
@@ -655,6 +660,7 @@ async def _apply_to_job(
                 )
 
         finally:
+            unregister_active_page(session_id, page)
             if streamer:
                 try:
                     await streamer.stop()

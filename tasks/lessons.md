@@ -12,3 +12,4 @@
 - If a mock-based test exists, treat it as supplemental only and explicitly run non-mock checks before sign-off.
 - Track plan/progress/review in `tasks/todo.md` for non-trivial tasks.
 - Before `npm run start` or Playwright runs, assert Node version with `nvm use 20` (or project-required version).
+- For live browser streaming, verify the actual image decode path and click-coordinate mapping against a real rendered frame; a visible `<img>` tag is not proof that takeover input will land correctly.

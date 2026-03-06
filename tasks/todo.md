@@ -17,6 +17,11 @@
     - `wizard creates session and coaching events stream`
     - `coach review modal appears and can be approved`
     - `GET session caps scored_jobs to 20`
+- Additional live verification passed:
+  - `frontend/tests/e2e/steering-live.spec.ts`
+    - verified steering chat returns live LLM-judge status output rather than a canned echo
+  - `frontend/tests/e2e/takeover-live.spec.ts`
+    - verified Browser Takeover can request control, render live frames, type into the controlled page, and click a real button end-to-end through the UI
 - Live backend/apply verification passed:
   - `/api/sessions/test-apply` end-to-end with manual intervention streaming (`needs_intervention` -> resume -> submitted)
   - `application-log` persisted submitted entry with non-empty `cover_letter` and `tailored_resume`

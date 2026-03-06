@@ -197,7 +197,10 @@ class BrowserManager:
         # Connect Playwright to Chrome via CDP
         self._playwright = await async_playwright().start()
         try:
-            self._browser = await self._playwright.chromium.connect_over_cdp(cdp_url)
+            self._browser = await self._playwright.chromium.connect_over_cdp(
+                cdp_url,
+                timeout=15_000,
+            )
             self._running = True
             self._mode = "cdp"
             logger.info("Connected to Chrome via CDP (contexts=%d)", len(self._browser.contexts))
