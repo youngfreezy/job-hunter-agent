@@ -128,7 +128,7 @@ async def _pre_login_flow(
         for board in boards_with_login:
             login_url = _BOARD_LOGIN_URLS[board]
             page = await browser.must_get_current_page()
-            await page.goto(login_url, wait_until="domcontentloaded")
+            await page.goto(login_url)
 
             await emit_agent_event(session_id, "login_required", {
                 "board": board,
