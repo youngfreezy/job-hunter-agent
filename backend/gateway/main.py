@@ -85,6 +85,9 @@ async def lifespan(app: FastAPI):
         await ensure_apply_table()
         await seed_apply_defaults()
 
+        from backend.shared.application_store import ensure_table as ensure_app_table
+        await ensure_app_table()
+
         # Schedule daily selector health-check
         from backend.shared.scheduler import schedule
         from backend.shared.selector_health import run_selector_health_check
