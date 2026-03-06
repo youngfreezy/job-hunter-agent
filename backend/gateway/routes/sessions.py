@@ -1136,6 +1136,19 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
         logger.exception("Failed to steer session %s", session_id)
         raise HTTPException(status_code=500, detail=str(exc))
 
+    # Also push steering to Redis so long-running application loops can
+    # consume commands (skip/pause) without waiting for the graph node to end.
+    try:
+        import redis.asyncio as aioredis
+        settings = get_settings()
+        redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        queue_key = f"steer:queue:{session_id}"
+        await redis_client.rpush(queue_key, body.message)
+        await redis_client.expire(queue_key, 1800)
+        await redis_client.close()
+    except Exception:
+        logger.debug("Failed to enqueue steering command for %s", session_id, exc_info=True)
+
     await _emit(session_id, "status", {
         "status": "steering",
         "message": f"Got it — adjusting based on your feedback: {body.message}",
@@ -1528,4 +1541,3 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
     asyncio.create_task(_run_linkedin_update())
 
     return {"status": "ok", "message": "LinkedIn update started — open the browser and log in"}
-

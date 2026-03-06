@@ -116,8 +116,8 @@ test.describe("Full Pipeline E2E", () => {
       timeout: 10_000,
     });
 
-    // Verify SSE events start streaming
-    await expect(page.getByText("Pipeline started")).toBeVisible({
+    // Verify SSE events start streaming (message from backend status event)
+    await expect(page.getByText("Starting your job hunt session...")).toBeVisible({
       timeout: 10_000,
     });
 

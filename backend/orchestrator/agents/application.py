@@ -74,6 +74,81 @@ MAX_CONSECUTIVE_FAILURES = 3
 # deps are not installed
 # ---------------------------------------------------------------------------
 
+async def _drain_steering_commands(session_id: str) -> List[str]:
+    """Return and clear queued steering messages for a session."""
+    try:
+        import redis.asyncio as aioredis
+
+        settings = get_settings()
+        redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        key = f"steer:queue:{session_id}"
+        messages = await redis_client.lrange(key, 0, -1)
+        if messages:
+            await redis_client.delete(key)
+        await redis_client.close()
+        return [m.strip() for m in messages if isinstance(m, str) and m.strip()]
+    except Exception:
+        logger.debug("Failed to drain steering queue for %s", session_id, exc_info=True)
+        return []
+
+
+def _is_pause_command(message: str) -> bool:
+    lower = message.lower()
+    return any(token in lower for token in ("pause", "stop applying", "halt"))
+
+
+def _is_skip_command(message: str) -> bool:
+    lower = message.lower()
+    has_skip = any(token in lower for token in ("skip", "don't apply", "do not apply"))
+    has_target = any(token in lower for token in ("job", "this", "next", "current"))
+    return has_skip and has_target
+
+
+async def _wait_for_intervention_resume(session_id: str, timeout_seconds: int = 600) -> bool:
+    """Wait for the UI resume signal set by /resume-intervention."""
+    deadline = time.monotonic() + timeout_seconds
+    key = f"intervention:resume:{session_id}"
+
+    try:
+        import redis.asyncio as aioredis
+
+        settings = get_settings()
+        redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            while time.monotonic() < deadline:
+                value = await redis_client.get(key)
+                if value:
+                    await redis_client.delete(key)
+                    return True
+                await asyncio.sleep(2)
+            return False
+        finally:
+            await redis_client.close()
+    except Exception:
+        logger.debug("Intervention wait failed for %s", session_id, exc_info=True)
+        return False
+
+
+async def _has_captcha(page: Any) -> bool:
+    """Detect common captcha providers on the current page."""
+    try:
+        return await page.evaluate(
+            """() => {
+                const hasRecaptcha = !!document.querySelector(
+                  '[name="g-recaptcha-response"], iframe[src*="recaptcha"], script[src*="recaptcha"]'
+                );
+                const hasHCaptcha = !!document.querySelector(
+                  '[name="h-captcha-response"], iframe[src*="hcaptcha"], script[src*="hcaptcha"]'
+                );
+                const hasTurnstile = !!document.querySelector(
+                  '[name="cf-turnstile-response"], iframe[src*="turnstile"], script[src*="turnstile"]'
+                );
+                return hasRecaptcha || hasHCaptcha || hasTurnstile;
+            }"""
+        )
+    except Exception:
+        return False
+
 async def _record_result_to_neo4j(
     job_id: str,
     ats_type: str,
@@ -347,6 +422,7 @@ async def _apply_to_job(
     """
     start_time = time.monotonic()
     detected_ats = "unknown"
+    streamer: Any = None
 
     # Pre-flight: skip "Easy Apply" jobs (need board login)
     if getattr(job, "is_easy_apply", False):
@@ -378,10 +454,38 @@ async def _apply_to_job(
         # --- Step 1: Open tab and navigate (before cover letter to save LLM calls) ---
         page = await context.new_page()
         await apply_stealth(page)
+        try:
+            from backend.browser.streaming.screenshot_streamer import ScreenshotStreamer
+
+            streamer = ScreenshotStreamer(session_id=session_id, interval_ms=1500, quality=45)
+            await streamer.start(page)
+        except Exception:
+            logger.debug("Failed to start screenshot streamer for %s", session_id, exc_info=True)
 
         try:
             await page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(1)  # settle
+
+            # If CAPTCHA appears early, pause for manual intervention.
+            if await _has_captcha(page):
+                await emit_agent_event(session_id, "needs_intervention", {
+                    "job_id": job_id,
+                    "job_title": job.title,
+                    "company": job.company,
+                    "reason": "CAPTCHA detected. Solve it in the browser window, then click Resume Agent.",
+                })
+                resumed = await _wait_for_intervention_resume(session_id, timeout_seconds=600)
+                if not resumed:
+                    return ApplicationResult(
+                        job_id=job_id,
+                        status=ApplicationStatus.SKIPPED,
+                        error_message="intervention_timeout",
+                        duration_seconds=int(time.monotonic() - start_time),
+                    )
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": "Manual intervention received — resuming application...",
+                })
 
             # --- Step 1b: Check if page is dead (404/expired) ---
             if await _is_dead_page(page):
@@ -400,17 +504,38 @@ async def _apply_to_job(
             # --- Step 1c: Check if redirected to login page ---
             final_url = page.url
             if _is_login_page(final_url):
-                logger.info("Login page detected (%s) — skipping %s", final_url, job.title)
-                await emit_agent_event(session_id, "application_progress", {
+                logger.info("Login required (%s) for %s", final_url, job.title)
+                await emit_agent_event(session_id, "login_required", {
                     "job_id": job_id,
-                    "step": f"Skipped — requires authentication ({job.board.value})",
+                    "job_title": job.title,
+                    "company": job.company,
+                    "board": job.board.value,
+                    "message": f"Please log in to {job.board.value} in the browser window, then click Resume.",
                 })
-                return ApplicationResult(
-                    job_id=job_id,
-                    status=ApplicationStatus.SKIPPED,
-                    error_message="auth_required",
-                    duration_seconds=int(time.monotonic() - start_time),
-                )
+                try:
+                    from backend.orchestrator.agents._login_sync import wait_for_login
+
+                    await wait_for_login(session_id, timeout=300)
+                    await emit_agent_event(session_id, "login_complete", {
+                        "job_id": job_id,
+                        "board": job.board.value,
+                    })
+                    await page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
+                    await asyncio.sleep(1)
+                    if _is_login_page(page.url):
+                        return ApplicationResult(
+                            job_id=job_id,
+                            status=ApplicationStatus.SKIPPED,
+                            error_message="auth_required",
+                            duration_seconds=int(time.monotonic() - start_time),
+                        )
+                except Exception:
+                    return ApplicationResult(
+                        job_id=job_id,
+                        status=ApplicationStatus.SKIPPED,
+                        error_message="auth_timeout",
+                        duration_seconds=int(time.monotonic() - start_time),
+                    )
 
             # --- Step 1c: Check for external apply link ---
             # Many board pages (LinkedIn, ZipRecruiter, etc.) have an
@@ -530,6 +655,11 @@ async def _apply_to_job(
                 )
 
         finally:
+            if streamer:
+                try:
+                    await streamer.stop()
+                except Exception:
+                    pass
             if page and not page.is_closed():
                 await page.close()
 
@@ -681,6 +811,58 @@ async def run_application_agent(state: JobHunterState) -> dict:
             pct = int((app_idx / total_in_queue) * 100)
             job_obj = _find_job_in_state(job_id, state)
             job_label = f"{job_obj.title} at {job_obj.company}" if job_obj else job_id[:8]
+
+            # Consume operator steering commands before each job.
+            steer_messages = await _drain_steering_commands(session_id)
+            skip_this_job = False
+            for msg in steer_messages:
+                await emit_agent_event(session_id, "application_progress", {
+                    "step": f"Steering received: {msg}",
+                    "progress": pct,
+                    "current": app_idx + 1,
+                    "total": total_in_queue,
+                })
+                if _is_pause_command(msg):
+                    return {
+                        "applications_submitted": submitted,
+                        "applications_failed": failed,
+                        "applications_skipped": [r.job_id for r in skipped],
+                        "consecutive_failures": consecutive_failures,
+                        "status": "paused",
+                        "agent_statuses": {"application": "paused -- user requested pause"},
+                        "errors": errors,
+                    }
+                if _is_skip_command(msg):
+                    skip_this_job = True
+
+            if skip_this_job:
+                skipped_result = ApplicationResult(
+                    job_id=job_id,
+                    status=ApplicationStatus.SKIPPED,
+                    error_message="skipped_by_user_steering",
+                    duration_seconds=0,
+                )
+                skipped.append(skipped_result)
+                if job_obj is not None:
+                    _db_record_result(
+                        session_id=session_id,
+                        job_id=job_id,
+                        status="skipped",
+                        job_title=job_obj.title,
+                        job_company=job_obj.company,
+                        job_url=job_obj.url,
+                        job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
+                        job_location=job_obj.location or "",
+                        error_message="skipped_by_user_steering",
+                    )
+                await emit_agent_event(session_id, "application_progress", {
+                    "step": f"Skipped {job_label} (user steering)",
+                    "progress": pct,
+                    "current": app_idx + 1,
+                    "total": total_in_queue,
+                })
+                continue
+
             await emit_agent_event(session_id, "application_progress", {
                 "step": f"Applying to {job_label} ({app_idx + 1} of {total_in_queue})...",
                 "progress": pct,
@@ -788,6 +970,12 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 await manager.stop()
             except Exception:
                 pass
+        try:
+            from backend.orchestrator.agents._login_sync import cleanup as _cleanup_login
+
+            _cleanup_login(session_id)
+        except Exception:
+            pass
 
     return {
         "applications_submitted": submitted,
