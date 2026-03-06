@@ -82,62 +82,64 @@ async def scrape_glassdoor(
     listings: List[JobListing] = []
 
     try:
-        query = " ".join(search_config.keywords[:5])
         location = search_config.locations[0] if search_config.locations else ""
+        queries = search_config.keywords[:5] if search_config.keywords else ["software engineer"]
 
-        # Glassdoor search URL pattern
-        params: Dict[str, str] = {"sc.keyword": query}
+        base_params: Dict[str, str] = {}
         if search_config.remote_only:
-            # Remote filter — skip location so Glassdoor doesn't limit radius
-            params["remoteWorkType"] = "1"
+            base_params["remoteWorkType"] = "1"
         elif location and location.lower() != "remote":
-            params["locT"] = "C"
-            params["locKeyword"] = location
-            params["radius"] = "100"
+            base_params["locT"] = "C"
+            base_params["locKeyword"] = location
+            base_params["radius"] = "100"
 
-        param_str = "&".join(f"{k}={v}" for k, v in params.items())
-        search_url = f"{GLASSDOOR_JOBS}/jobs.htm?{param_str}"
-
-        logger.info("Glassdoor scraper navigating to: %s", search_url)
-
-        for page_num in range(MAX_PAGES):
+        for query in queries:
             if len(listings) >= max_results:
                 break
 
-            url = search_url if page_num == 0 else f"{search_url}&p={page_num + 1}"
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(random.randint(2000, 4000))
+            params = {**base_params, "sc.keyword": query}
+            param_str = "&".join(f"{k}={v}" for k, v in params.items())
+            search_url = f"{GLASSDOOR_JOBS}/jobs.htm?{param_str}"
 
-            # Check for captcha / block
-            if await _is_blocked(page):
-                logger.warning("Glassdoor: blocked on page %d -- returning %d partial results", page_num + 1, len(listings))
-                break
+            logger.info("Glassdoor scraper navigating to: %s", search_url)
 
-            try:
-                await page.wait_for_selector(
-                    'li.react-job-listing, li[data-test="jobListing"], div.JobCard_jobCardContainer',
-                    timeout=10000,
-                )
-            except Exception:
-                logger.warning("Glassdoor: no job cards on page %d", page_num + 1)
-                break
-
-            cards = await page.query_selector_all(
-                'li.react-job-listing, li[data-test="jobListing"], div.JobCard_jobCardContainer'
-            )
-
-            for card in cards:
+            for page_num in range(MAX_PAGES):
                 if len(listings) >= max_results:
                     break
-                try:
-                    listing = await _parse_glassdoor_card(card)
-                    if listing:
-                        listings.append(listing)
-                except Exception:
-                    logger.debug("Failed to parse a Glassdoor card", exc_info=True)
 
-            if page_num < MAX_PAGES - 1:
-                await page.wait_for_timeout(random.randint(3000, 5000))
+                url = search_url if page_num == 0 else f"{search_url}&p={page_num + 1}"
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(random.randint(2000, 4000))
+
+                if await _is_blocked(page):
+                    logger.warning("Glassdoor: blocked on page %d -- returning %d partial results", page_num + 1, len(listings))
+                    break
+
+                try:
+                    await page.wait_for_selector(
+                        'li.react-job-listing, li[data-test="jobListing"], div.JobCard_jobCardContainer',
+                        timeout=10000,
+                    )
+                except Exception:
+                    logger.warning("Glassdoor: no job cards on page %d (query: %s)", page_num + 1, query)
+                    break
+
+                cards = await page.query_selector_all(
+                    'li.react-job-listing, li[data-test="jobListing"], div.JobCard_jobCardContainer'
+                )
+
+                for card in cards:
+                    if len(listings) >= max_results:
+                        break
+                    try:
+                        listing = await _parse_glassdoor_card(card)
+                        if listing:
+                            listings.append(listing)
+                    except Exception:
+                        logger.debug("Failed to parse a Glassdoor card", exc_info=True)
+
+                if page_num < MAX_PAGES - 1:
+                    await page.wait_for_timeout(random.randint(3000, 5000))
 
         logger.info("Glassdoor scraper found %d listings", len(listings))
 

@@ -82,66 +82,64 @@ async def scrape_indeed(
     listings: List[JobListing] = []
 
     try:
-        query = " ".join(search_config.keywords[:5])
         location = search_config.locations[0] if search_config.locations else ""
+        queries = search_config.keywords[:5] if search_config.keywords else ["software engineer"]
 
-        # Build the search URL with query params
-        params: Dict[str, str] = {"q": query}
+        base_params: Dict[str, str] = {}
         if search_config.remote_only:
-            # Remote filter — skip location so Indeed doesn't limit to 25mi radius
-            params["remotejob"] = "032b3046-06a3-4876-8dfd-474eb5e7ed11"
+            base_params["remotejob"] = "032b3046-06a3-4876-8dfd-474eb5e7ed11"
         elif location and location.lower() != "remote":
-            params["l"] = location
-            params["radius"] = "100"
+            base_params["l"] = location
+            base_params["radius"] = "100"
         if search_config.salary_min:
-            params["salary"] = str(search_config.salary_min)
+            base_params["salary"] = str(search_config.salary_min)
 
-        param_str = "&".join(f"{k}={v}" for k, v in params.items())
-        search_url = f"{INDEED_SEARCH}?{param_str}"
-
-        logger.info("Indeed scraper navigating to: %s", search_url)
-
-        for page_num in range(MAX_PAGES):
+        for query in queries:
             if len(listings) >= max_results:
                 break
 
-            url = search_url if page_num == 0 else f"{search_url}&start={page_num * 10}"
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            params = {**base_params, "q": query}
+            param_str = "&".join(f"{k}={v}" for k, v in params.items())
+            search_url = f"{INDEED_SEARCH}?{param_str}"
 
-            # Check for captcha / block before proceeding
-            if await _is_blocked(page):
-                logger.warning("Indeed: blocked on page %d -- returning %d partial results", page_num + 1, len(listings))
-                break
+            logger.info("Indeed scraper navigating to: %s", search_url)
 
-            # Wait for job cards to render
-            try:
-                await page.wait_for_selector(
-                    'div.job_seen_beacon, div[class*="jobsearch-ResultsList"] li',
-                    timeout=10000,
-                )
-            except Exception:
-                logger.warning("Indeed: no job cards found on page %d", page_num + 1)
-                break
-
-            # Extract job cards
-            cards = await page.query_selector_all(
-                'div.job_seen_beacon, div[class*="cardOutline"], td.resultContent'
-            )
-
-            for card in cards:
+            for page_num in range(MAX_PAGES):
                 if len(listings) >= max_results:
                     break
 
-                try:
-                    listing = await _parse_indeed_card(card, page)
-                    if listing:
-                        listings.append(listing)
-                except Exception:
-                    logger.debug("Failed to parse an Indeed card", exc_info=True)
+                url = search_url if page_num == 0 else f"{search_url}&start={page_num * 10}"
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-            # Randomised delay between pages (2-5 seconds)
-            if page_num < MAX_PAGES - 1:
-                await page.wait_for_timeout(random.randint(2000, 5000))
+                if await _is_blocked(page):
+                    logger.warning("Indeed: blocked on page %d -- returning %d partial results", page_num + 1, len(listings))
+                    break
+
+                try:
+                    await page.wait_for_selector(
+                        'div.job_seen_beacon, div[class*="jobsearch-ResultsList"] li',
+                        timeout=10000,
+                    )
+                except Exception:
+                    logger.warning("Indeed: no job cards found on page %d (query: %s)", page_num + 1, query)
+                    break
+
+                cards = await page.query_selector_all(
+                    'div.job_seen_beacon, div[class*="cardOutline"], td.resultContent'
+                )
+
+                for card in cards:
+                    if len(listings) >= max_results:
+                        break
+                    try:
+                        listing = await _parse_indeed_card(card, page)
+                        if listing:
+                            listings.append(listing)
+                    except Exception:
+                        logger.debug("Failed to parse an Indeed card", exc_info=True)
+
+                if page_num < MAX_PAGES - 1:
+                    await page.wait_for_timeout(random.randint(2000, 5000))
 
         logger.info("Indeed scraper found %d listings", len(listings))
 

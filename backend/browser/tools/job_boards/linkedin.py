@@ -35,6 +35,37 @@ _BLOCK_SELECTORS = [
 ]
 
 
+def _build_query_variants(keywords: list[str]) -> list[str]:
+    """Build per-keyword search queries.
+
+    LinkedIn treats space-separated terms as AND, so a 6-keyword query
+    often returns 0.  Instead, search each keyword individually and
+    combine results.  This maximizes coverage for niche terms.
+    """
+    if not keywords:
+        return ["software engineer"]
+    # Each keyword gets its own search (deduplication happens in discovery.py)
+    return keywords[:5]
+
+
+# Hardcoded card selectors (verified 2026-03) + DB fallback
+_HARDCODED_CARD_SELECTORS = [
+    'div.base-card, div.job-search-card',
+    'ul.jobs-search__results-list > li',
+    'div[data-entity-urn]',
+]
+
+
+def _get_card_selectors(board: str) -> list[str]:
+    """Return card selectors: DB-learned first, then hardcoded fallbacks."""
+    try:
+        from backend.shared.selector_memory import get_top_selectors
+        db_sels = get_top_selectors(board, limit=3)
+    except Exception:
+        db_sels = []
+    return db_sels + _HARDCODED_CARD_SELECTORS
+
+
 async def _is_blocked(page: Any) -> bool:
     """Return True if LinkedIn is showing a captcha, block, or auth wall."""
     # Standard captcha checks
@@ -106,64 +137,77 @@ async def scrape_linkedin(
     listings: List[JobListing] = []
 
     try:
-        query = " ".join(search_config.keywords[:5])
         location = search_config.locations[0] if search_config.locations else ""
 
-        params: Dict[str, str] = {"keywords": query, "trk": "public_jobs_jobs-search-bar_search-submit"}
+        # LinkedIn treats multi-keyword queries as AND -- build OR-style queries
+        # Try full query first, then progressively broaden if 0 results
+        queries = _build_query_variants(search_config.keywords)
+
+        base_params: Dict[str, str] = {"trk": "public_jobs_jobs-search-bar_search-submit"}
         if search_config.remote_only:
-            # Remote filter — skip location so LinkedIn doesn't limit radius
-            params["f_WT"] = "2"
+            base_params["f_WT"] = "2"
         elif location:
-            params["location"] = location
-            params["distance"] = "100"  # 100-mile radius
+            base_params["location"] = location
+            base_params["distance"] = "100"
 
-        param_str = "&".join(f"{k}={v}" for k, v in params.items())
-        search_url = f"{LINKEDIN_JOBS}?{param_str}"
+        for query in queries:
+            params = {**base_params, "keywords": query}
+            param_str = "&".join(f"{k}={v}" for k, v in params.items())
+            search_url = f"{LINKEDIN_JOBS}?{param_str}"
 
-        logger.info("LinkedIn scraper navigating to: %s", search_url)
+            logger.info("LinkedIn scraper navigating to: %s", search_url)
 
-        for page_num in range(MAX_PAGES):
-            if len(listings) >= max_results:
-                break
-
-            url = search_url if page_num == 0 else f"{search_url}&start={page_num * 25}"
-
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-
-            # Extra delay for LinkedIn anti-bot
-            await page.wait_for_timeout(random.randint(2000, 4000))
-
-            # Check for captcha / block / auth wall
-            if await _is_blocked(page):
-                logger.warning("LinkedIn: blocked on page %d -- returning %d partial results", page_num + 1, len(listings))
-                break
-
-            # Wait for job cards
-            try:
-                await page.wait_for_selector(
-                    'div.base-card, div.job-search-card, ul.jobs-search__results-list li',
-                    timeout=12000,
-                )
-            except Exception:
-                logger.warning("LinkedIn: no job cards on page %d", page_num + 1)
-                break
-
-            cards = await page.query_selector_all(
-                'div.base-card, div.job-search-card, li.jobs-search-results__list-item'
-            )
-
-            for card in cards:
+            for page_num in range(MAX_PAGES):
                 if len(listings) >= max_results:
                     break
-                try:
-                    listing = await _parse_linkedin_card(card)
-                    if listing:
-                        listings.append(listing)
-                except Exception:
-                    logger.debug("Failed to parse a LinkedIn card", exc_info=True)
 
-            if page_num < MAX_PAGES - 1:
-                await page.wait_for_timeout(random.randint(3000, 6000))
+                url = search_url if page_num == 0 else f"{search_url}&start={page_num * 25}"
+
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(random.randint(2000, 4000))
+
+                if await _is_blocked(page):
+                    logger.warning("LinkedIn: blocked on page %d -- returning %d partial results", page_num + 1, len(listings))
+                    break
+
+                # Wait for job cards (try DB selectors too)
+                card_selectors = _get_card_selectors("linkedin")
+                found_cards = False
+                for sel in card_selectors:
+                    try:
+                        await page.wait_for_selector(sel, timeout=6000)
+                        found_cards = True
+                        break
+                    except Exception:
+                        continue
+
+                if not found_cards:
+                    logger.warning("LinkedIn: no job cards on page %d (query: %s)", page_num + 1, query)
+                    break
+
+                # Try all card selectors to find elements
+                cards: list = []
+                for sel in card_selectors:
+                    cards = await page.query_selector_all(sel)
+                    if cards:
+                        break
+
+                for card in cards:
+                    if len(listings) >= max_results:
+                        break
+                    try:
+                        listing = await _parse_linkedin_card(card)
+                        if listing:
+                            listings.append(listing)
+                    except Exception:
+                        logger.debug("Failed to parse a LinkedIn card", exc_info=True)
+
+                if page_num < MAX_PAGES - 1:
+                    await page.wait_for_timeout(random.randint(3000, 6000))
+
+            # If this query found results, stop trying broader queries
+            if listings:
+                break
 
         logger.info("LinkedIn scraper found %d listings", len(listings))
 
