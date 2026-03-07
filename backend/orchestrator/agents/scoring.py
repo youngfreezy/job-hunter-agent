@@ -36,6 +36,7 @@ class JobScore(BaseModel):
     score: int = Field(ge=0, le=100)
     score_breakdown: ScoreBreakdown
     reasons: List[str] = Field(default_factory=list)
+    fit_summary: str = Field(default="", description="2-3 sentences explaining why the candidate is a good fit for this role based on their resume")
 
 
 class ScoringBatchResult(BaseModel):
@@ -48,7 +49,7 @@ class ScoringBatchResult(BaseModel):
 DEFAULT_MODEL = default_model()
 SCORING_BATCH_SIZE = 5
 CONCURRENCY = 4
-MAX_SCORING_TOKENS = 1800
+MAX_SCORING_TOKENS = 2500
 MAX_DESCRIPTION_CHARS = 320
 
 # ---------------------------------------------------------------------------
@@ -68,6 +69,7 @@ Scoring guidelines:
 - experience_match: 100 if years of experience align; lower for over/under-qualified.
 - overall score should be a weighted average: keyword 40%, experience 30%, location 15%, salary 15%.
 - reasons: exactly 2 short bullet points, each under 12 words.
+- fit_summary: 2-3 sentences explaining why this candidate is a strong fit for the role, referencing specific skills, experiences, or qualifications from their resume that match the job requirements. Write in second person ("You have...", "Your experience in...").
 """
 
 
@@ -274,6 +276,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                         for k, v in score_data.get("score_breakdown", {}).items()
                     },
                     reasons=score_data.get("reasons", []),
+                    fit_summary=score_data.get("fit_summary", ""),
                 )
             )
 
