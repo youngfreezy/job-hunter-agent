@@ -26,7 +26,7 @@ This repository contains both implemented code and forward-looking design notes.
 **Not yet implemented:** Stripe payments, full standalone OSS packaging, production deployment, US-only geofencing, resume encryption.
 
 See [docs/PLAN.md](docs/PLAN.md) for detailed implementation phases.
-See [docs/startup-packaging-plan.md](docs/startup-packaging-plan.md) for the plan to replace terminal-first startup with a launcher-grade UX.
+Startup can be launched from `./scripts/start-app.sh` or the macOS app bundle `JobHunter Agent.app`. See [docs/startup-packaging-plan.md](docs/startup-packaging-plan.md) for the remaining launcher packaging work.
 
 ---
 

@@ -10,7 +10,6 @@ real-time progress events to the frontend via SSE.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Dict
 
@@ -18,8 +17,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.event_bus import emit_agent_event
-from backend.shared.llm import build_llm, premium_model
-from backend.shared.models.schemas import CoachOutput, ResumeScore
+from backend.shared.llm import build_llm, premium_model, invoke_with_retry
+from backend.shared.models.schemas import CoachOutput
 
 logger = logging.getLogger(__name__)
 
@@ -100,26 +99,14 @@ breakdown:
 }
 """
 
-# Progress milestones based on JSON key detection in the stream
-_PROGRESS_KEYS = [
-    ("rewritten_resume", "Strengthening your resume language..."),
-    ("resume_score", "Evaluating your resume against industry standards..."),
-    ("cover_letter_template", "Creating a tailored cover letter template..."),
-    ("linkedin_advice", "Reviewing your LinkedIn presence..."),
-    ("confidence_message", "Writing your personalized coaching notes..."),
-    ("key_strengths", "Highlighting your standout strengths..."),
-    ("improvement_areas", "Identifying growth opportunities..."),
-]
-
-
 # ---------------------------------------------------------------------------
 # Agent entry-point
 # ---------------------------------------------------------------------------
 async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
     """Analyse resume, rewrite it, coach the user, and score the original.
 
-    Uses chat-model streaming to emit real-time progress events so
-    the user sees what the coach is working on instead of a blank wait.
+    Uses structured output for reliability so coach review doesn't fail on
+    malformed streamed JSON.
     """
     session_id = state.get("session_id", "")
 
@@ -129,7 +116,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
             max_tokens=6000,
             temperature=0.0,
             timeout=180,
-        )
+        ).with_structured_output(CoachOutput)
 
         # -- Build user message from state ----------------------------------
         parts: list[str] = []
@@ -160,88 +147,41 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
                 else search_config.dict()
             )
             parts.append(
-                f"Structured SearchConfig:\n{json.dumps(config_dict, indent=2)}"
+                f"Structured SearchConfig:\n{config_dict}"
             )
 
         user_message = "\n\n".join(parts)
 
-        # -- Stream the LLM response ----------------------------------------
+        # -- Invoke the LLM -------------------------------------------------
         await emit_agent_event(session_id, "coaching_progress", {
             "step": "Your Career Coach is getting started...",
             "progress": 0,
         })
-
-        raw_json = ""
-        seen_keys: set[str] = set()
-        char_count = 0
-
         messages = [
             SystemMessage(content=COACH_SYSTEM_PROMPT),
             HumanMessage(content=user_message),
         ]
-
-        async for chunk in llm.astream(messages):
-            text = chunk.content
-            if isinstance(text, list):
-                text = "".join(
-                    block if isinstance(block, str) else block.get("text", "")
-                    for block in text
-                )
-            if not text:
-                continue
-            raw_json += text
-            char_count += len(text)
-
-            # Detect progress milestones as JSON keys appear in the stream
-            for key, message in _PROGRESS_KEYS:
-                if key not in seen_keys and f'"{key}"' in raw_json:
-                    seen_keys.add(key)
-                    progress = int((len(seen_keys) / len(_PROGRESS_KEYS)) * 100)
-                    await emit_agent_event(session_id, "coaching_progress", {
-                        "step": message,
-                        "progress": progress,
-                    })
-
         await emit_agent_event(session_id, "coaching_progress", {
-            "step": "Putting the finishing touches on your coaching report...",
-            "progress": 95,
+            "step": "Reviewing your resume, keywords, and positioning...",
+            "progress": 25,
         })
-
-        # -- Clean up common LLM JSON issues --------------------------------
-        if "```json" in raw_json:
-            raw_json = raw_json.split("```json", 1)[1]
-            raw_json = raw_json.rsplit("```", 1)[0]
-        elif "```" in raw_json:
-            raw_json = raw_json.split("```", 1)[1]
-            raw_json = raw_json.rsplit("```", 1)[0]
-        raw_json = raw_json.strip()
-
-        # -- Parse and validate through Pydantic ----------------------------
-        parsed = json.loads(raw_json)
-
-        resume_score = ResumeScore(**parsed["resume_score"])
-
-        coach_output = CoachOutput(
-            rewritten_resume=parsed["rewritten_resume"],
-            resume_score=resume_score,
-            cover_letter_template=parsed["cover_letter_template"],
-            linkedin_advice=parsed.get("linkedin_advice", []),
-            confidence_message=parsed["confidence_message"],
-            key_strengths=parsed.get("key_strengths", []),
-            improvement_areas=parsed.get("improvement_areas", []),
-        )
+        await emit_agent_event(session_id, "coaching_progress", {
+            "step": "Rewriting your resume and preparing your coaching report...",
+            "progress": 70,
+        })
+        coach_output: CoachOutput = await invoke_with_retry(llm, messages)
 
         logger.info(
             "Career Coach scored resume at %d/100 (keyword_density=%d, "
             "impact_metrics=%d, ats_compatibility=%d)",
-            resume_score.overall,
-            resume_score.keyword_density,
-            resume_score.impact_metrics,
-            resume_score.ats_compatibility,
+            coach_output.resume_score.overall,
+            coach_output.resume_score.keyword_density,
+            coach_output.resume_score.impact_metrics,
+            coach_output.resume_score.ats_compatibility,
         )
 
         await emit_agent_event(session_id, "coaching_progress", {
-            "step": f"Resume score: {resume_score.overall}/100 — your coaching report is ready!",
+            "step": f"Resume score: {coach_output.resume_score.overall}/100 — your coaching report is ready!",
             "progress": 100,
         })
 

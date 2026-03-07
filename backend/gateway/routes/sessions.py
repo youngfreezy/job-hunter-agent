@@ -28,9 +28,9 @@ from langgraph.types import Command
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.orchestrator.agents.coach_chat import revise_coach_output
-from backend.orchestrator.agents.steering_judge import judge as judge_steering
+from backend.orchestrator.agents.workflow_supervisor import preview_steering_message
 from backend.browser.streaming.takeover_registry import get_active_page
-from backend.shared.config import MAX_APPLICATION_JOBS, get_settings
+from backend.shared.config import MAX_APPLICATION_JOBS
 from backend.shared.event_bus import register_emitter, unregister_emitter
 from backend.shared.models.schemas import (
     CoachReviewRequest,
@@ -114,6 +114,17 @@ STATUS_MESSAGES = {
     "reporting": "Wrapping up and preparing your session summary...",
     "completed": "All done! Your session is complete",
     "failed": "Something went wrong — check the details below",
+}
+
+RESUME_STATUS_BY_NODE = {
+    "career_coach": "coaching",
+    "discovery": "discovering",
+    "scoring": "scoring",
+    "resume_tailor": "tailoring",
+    "shortlist_review": "awaiting_review",
+    "application": "applying",
+    "verification": "verifying",
+    "reporting": "reporting",
 }
 
 
@@ -296,6 +307,12 @@ async def _run_pipeline(
             "steering_messages_processed": 0,
             "pending_supervisor_response": None,
             "pending_supervisor_directives": [],
+            "pause_requested": False,
+            "pause_resume_node": None,
+            "status_before_pause": None,
+            "skip_next_job_requested": False,
+            "pending_coach_review_input": None,
+            "pending_shortlist_review_input": None,
             "coach_chat_history": [],
             "messages": [],
             "errors": [],
@@ -1406,6 +1423,7 @@ async def coach_chat(session_id: str, body: CoachChatRequest, request: Request):
 async def submit_coach_review(session_id: str, body: CoachReviewRequest, request: Request):
     """Resume the pipeline after the user reviews the coached resume."""
     graph = request.app.state.graph
+    config = {"configurable": {"thread_id": session_id}}
 
     # Build the human input that coach_review_gate's interrupt() will receive
     human_input: Dict[str, Any] = {"approved": body.approved}
@@ -1413,6 +1431,24 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
         human_input["edited_resume"] = body.edited_resume
     if body.feedback:
         human_input["feedback"] = body.feedback
+
+    graph_state = await graph.aget_state(config)
+    values = graph_state.values if hasattr(graph_state, "values") else {}
+    if values.get("pause_requested"):
+        await graph.aupdate_state(
+            config,
+            {
+                "pending_coach_review_input": human_input,
+                "status": "paused",
+            },
+        )
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = "paused"
+        await _emit(session_id, "status", {
+            "status": "paused",
+            "message": "Coach review saved. Workflow is paused until you resume it.",
+        })
+        return {"status": "ok", "message": "Coach review saved while paused"}
 
     if session_id in session_registry:
         session_registry[session_id]["status"] = "discovering"
@@ -1433,18 +1469,9 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
     """Inject a steering message into the running session."""
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
-
-    try:
-        session_snapshot = await get_session(session_id, request)
-    except HTTPException:
-        session_snapshot = session_registry.get(session_id, {"session_id": session_id})
-
-    recent_events = event_logs.get(session_id, [])[-12:]
-    judge_result = await judge_steering(
-        user_message=body.message,
-        session_snapshot=session_snapshot if isinstance(session_snapshot, dict) else {"session_id": session_id},
-        recent_events=recent_events,
-    )
+    graph_state = await graph.aget_state(config)
+    values = graph_state.values if hasattr(graph_state, "values") else {}
+    judge_result = await preview_steering_message(values, body.message)
 
     steering_mode = body.mode.value if body.mode else None
     directives = [d.model_dump() for d in judge_result.directives]
@@ -1453,6 +1480,13 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
             steering_mode = directive.mode
             break
 
+    next_nodes = getattr(graph_state, "next", ()) or ()
+    resume_target = values.get("pause_resume_node")
+    if "coach_review" in next_nodes:
+        resume_target = "discovery"
+    elif "shortlist_review" in next_nodes:
+        resume_target = "application"
+
     try:
         state_update: Dict[str, Any] = {
             "human_messages": [body.message],
@@ -1460,35 +1494,69 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
         }
         if steering_mode:
             state_update["steering_mode"] = steering_mode
+        for directive in judge_result.directives:
+            if directive.action == "pause":
+                state_update["pause_requested"] = True
+                if values.get("status") and values.get("status") != "paused":
+                    state_update["status_before_pause"] = values.get("status")
+                if resume_target:
+                    state_update["pause_resume_node"] = resume_target
+            elif directive.action == "resume_workflow":
+                state_update["pause_requested"] = False
+                state_update["status_before_pause"] = None
+                if resume_target:
+                    state_update["status"] = RESUME_STATUS_BY_NODE.get(resume_target, values.get("status"))
+            elif directive.action == "skip_next_job":
+                state_update["skip_next_job_requested"] = True
         await graph.aupdate_state(config, state_update)
     except Exception as exc:
         logger.exception("Failed to steer session %s", session_id)
         raise HTTPException(status_code=500, detail=str(exc))
 
-    try:
-        import redis.asyncio as aioredis
-
-        settings = get_settings()
-        redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        queue_key = f"steer:queue:{session_id}"
-
-        for directive in judge_result.directives:
-            if directive.action == "pause":
-                await redis_client.rpush(queue_key, "pause workflow")
-            elif directive.action == "skip_next_job":
-                await redis_client.rpush(queue_key, "skip next job")
-            elif directive.action == "resume_intervention":
-                await redis_client.set(f"intervention:resume:{session_id}", "1", ex=600)
-            elif directive.action == "confirm_login":
-                from backend.orchestrator.agents._login_sync import signal_login_complete
-
-                signal_login_complete(session_id)
-
-        if judge_result.directives:
-            await redis_client.expire(queue_key, 1800)
-        await redis_client.close()
-    except Exception:
-        logger.debug("Failed to enqueue steering command for %s", session_id, exc_info=True)
+    should_resume = any(
+        directive.action == "resume_workflow"
+        for directive in judge_result.directives
+    )
+    if "pause_gate" in next_nodes:
+        _spawn_background(
+            _resume_pipeline(
+                session_id,
+                graph,
+                resume_value={"resume": should_resume},
+            )
+        )
+    elif should_resume and "coach_review" in next_nodes and values.get("pending_coach_review_input"):
+        await graph.aupdate_state(config, {"pending_coach_review_input": None})
+        resumed_status = RESUME_STATUS_BY_NODE.get("discovery", "discovering")
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = resumed_status
+        await _emit(session_id, "status", {
+            "status": resumed_status,
+            "message": "Resuming after the saved coach review...",
+        })
+        _spawn_background(
+            _resume_pipeline(
+                session_id,
+                graph,
+                resume_value=values["pending_coach_review_input"],
+            )
+        )
+    elif should_resume and "shortlist_review" in next_nodes and values.get("pending_shortlist_review_input"):
+        await graph.aupdate_state(config, {"pending_shortlist_review_input": None})
+        resumed_status = RESUME_STATUS_BY_NODE.get("application", "applying")
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = resumed_status
+        await _emit(session_id, "status", {
+            "status": resumed_status,
+            "message": "Resuming after the saved shortlist decision...",
+        })
+        _spawn_background(
+            _resume_pipeline(
+                session_id,
+                graph,
+                resume_value=values["pending_shortlist_review_input"],
+            )
+        )
 
     await _emit(session_id, "status", {
         "status": "steering",
@@ -1507,12 +1575,31 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
 async def review_shortlist(session_id: str, body: ReviewRequest, request: Request):
     """Resume the pipeline after HITL shortlist review."""
     graph = request.app.state.graph
+    config = {"configurable": {"thread_id": session_id}}
 
     # Build the human input that shortlist_review_gate's interrupt() will receive
     human_input: Dict[str, Any] = {
         "approved_job_ids": body.approved_job_ids,
         "feedback": body.feedback or "",
     }
+
+    graph_state = await graph.aget_state(config)
+    values = graph_state.values if hasattr(graph_state, "values") else {}
+    if values.get("pause_requested"):
+        await graph.aupdate_state(
+            config,
+            {
+                "pending_shortlist_review_input": human_input,
+                "status": "paused",
+            },
+        )
+        if session_id in session_registry:
+            session_registry[session_id]["status"] = "paused"
+        await _emit(session_id, "status", {
+            "status": "paused",
+            "message": "Shortlist decision saved. Workflow is paused until you resume it.",
+        })
+        return {"status": "ok", "approved_count": len(body.approved_job_ids)}
 
     if session_id in session_registry:
         session_registry[session_id]["status"] = "applying"

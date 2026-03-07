@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+LOG_DIR="$ROOT/.runtime"
+LOG_FILE="$LOG_DIR/app-wrapper.log"
+mkdir -p "$LOG_DIR"
+
+COMMAND="cd $(printf '%q' "$ROOT") && ./scripts/start-app.sh >> $(printf '%q' "$LOG_FILE") 2>&1"
+/usr/bin/osascript <<EOF >/dev/null
+tell application "Terminal"
+  activate
+  do script "$COMMAND"
+end tell
+EOF
+exit 0

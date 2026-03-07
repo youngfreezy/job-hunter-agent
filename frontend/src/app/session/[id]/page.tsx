@@ -1856,12 +1856,29 @@ export default function SessionPage() {
             </DialogDescription>
           </DialogHeader>
           {coachReviewData && (
-            <CoachPanel
-              coach={coachReviewData}
-              sessionId={sessionId}
-              linkedinUrl={session?.linkedin_url}
-              linkedinProgress={linkedinProgress}
-            />
+            <div className="space-y-4">
+              <CoachPanel
+                coach={coachReviewData}
+                sessionId={sessionId}
+                linkedinUrl={session?.linkedin_url}
+                linkedinProgress={linkedinProgress}
+              />
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">
+                    Coach Chat
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 h-56">
+                  <ChatPanel
+                    messages={chatMessages}
+                    onSend={handleSendChat}
+                    disabled={false}
+                    placeholder="Ask the coach to revise your resume or strategy..."
+                  />
+                </CardContent>
+              </Card>
+            </div>
           )}
           <DialogFooter>
             <Button
