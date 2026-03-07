@@ -61,7 +61,7 @@ export interface CopyReview {
 export interface MarketingAgentOptions {
   /** Anthropic model to use. Defaults to "claude-sonnet-4-20250514". */
   model?: string;
-  /** Maximum tokens for generation. Defaults to 2048. */
+  /** Maximum tokens for generation. Defaults to 4096. */
   maxTokens?: number;
 }
 
@@ -75,7 +75,7 @@ export class MarketingAgent {
 
   constructor(options: MarketingAgentOptions = {}) {
     this.model = options.model ?? 'claude-sonnet-4-20250514';
-    this.maxTokens = options.maxTokens ?? 2048;
+    this.maxTokens = options.maxTokens ?? 4096;
   }
 
   // -------------------------------------------------------------------------
@@ -177,6 +177,7 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences):
       system: COPY_REVIEW_PROMPT,
       prompt,
       maxTokens: this.maxTokens,
+      temperature: 0,
     });
 
     return this.parseJSON<CopyReview>(text, 'reviewCopy');
