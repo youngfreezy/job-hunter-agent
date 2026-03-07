@@ -3,7 +3,7 @@
  * Handles REST calls, SSE streaming, and WebSocket connections.
  */
 
-const API_BASE =
+export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== "undefined" && window.location.port === "3000"
     ? "http://localhost:8000"
@@ -213,6 +213,7 @@ export type ApplicationLogEntry = {
   } | null;
   duration: number | null;
   submitted_at: string | null;
+  screenshot_path: string | null;
 };
 
 export async function getApplicationLog(

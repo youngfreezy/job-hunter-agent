@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS application_results (
     cover_letter TEXT,
     tailored_resume_text TEXT,
     duration_seconds INT,
+    screenshot_path TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_app_results_session ON application_results(session_id);
@@ -51,6 +52,11 @@ async def ensure_table() -> None:
         conn = _connect()
         try:
             conn.execute(_CREATE_TABLE)
+            # Migration: add screenshot_path column if missing
+            conn.execute("""
+                ALTER TABLE application_results
+                ADD COLUMN IF NOT EXISTS screenshot_path TEXT
+            """)
             conn.commit()
             logger.info("application_results table ensured")
         finally:
@@ -72,6 +78,7 @@ def record_result(
     cover_letter: Optional[str] = None,
     tailored_resume_text: Optional[str] = None,
     duration_seconds: Optional[int] = None,
+    screenshot_path: Optional[str] = None,
 ) -> None:
     """Insert a single application result row."""
     try:
@@ -82,12 +89,12 @@ def record_result(
                 INSERT INTO application_results
                     (session_id, job_id, status, job_title, job_company, job_url,
                      job_board, job_location, error_message, cover_letter,
-                     tailored_resume_text, duration_seconds)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     tailored_resume_text, duration_seconds, screenshot_path)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (session_id, job_id, status, job_title, job_company, job_url,
                  job_board, job_location, error_message, cover_letter,
-                 tailored_resume_text, duration_seconds),
+                 tailored_resume_text, duration_seconds, screenshot_path),
             )
             conn.commit()
         finally:
@@ -105,7 +112,8 @@ def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
                 """
                 SELECT job_id, status, job_title, job_company, job_url,
                        job_board, job_location, error_message, cover_letter,
-                       tailored_resume_text, duration_seconds, created_at
+                       tailored_resume_text, duration_seconds, created_at,
+                       screenshot_path
                 FROM application_results
                 WHERE session_id = %s
                 ORDER BY created_at ASC
@@ -129,6 +137,7 @@ def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
                     "tailored_resume": {"tailored_text": r[9], "fit_score": 0, "changes_made": []} if r[9] else None,
                     "duration": r[10],
                     "submitted_at": r[11].isoformat() if r[11] else None,
+                    "screenshot_path": r[12] or None,
                 }
                 for r in rows
             ]

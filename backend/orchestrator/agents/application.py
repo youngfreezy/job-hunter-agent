@@ -749,6 +749,7 @@ async def _apply_to_job(
             cover_letter=result.cover_letter_used or cover_letter_text,
             tailored_resume_text=_tailored_text,
             duration_seconds=result.duration_seconds,
+            screenshot_path=result.screenshot_url,
         )
 
         return result
