@@ -750,10 +750,12 @@ async def _apply_to_job(
 # ---------------------------------------------------------------------------
 
 async def run_application_agent(state: JobHunterState) -> dict:
-    """Iterate through the application queue and submit applications.
+    """Process the next pending application in the queue.
 
     Uses BrowserManager (Patchright) with platform-specific Playwright
-    appliers. Falls back to browser-use for unknown forms.
+    appliers. Falls back to browser-use for unknown forms. The graph loops
+    this node between jobs so the workflow supervisor can authoritatively
+    steer the run after every application attempt.
 
     Returns
     -------
@@ -776,20 +778,114 @@ async def run_application_agent(state: JobHunterState) -> dict:
             return {
                 "applications_submitted": [],
                 "applications_failed": [],
+                "applications_skipped": [],
                 "consecutive_failures": consecutive_failures,
                 "status": "applying",
                 "agent_statuses": {
                     "application": "completed -- nothing in queue"
                 },
                 "errors": [],
+                "skip_next_job_requested": False,
+            }
+
+        submitted_ids = {r.job_id for r in (state.get("applications_submitted") or [])}
+        failed_ids = {r.job_id for r in (state.get("applications_failed") or [])}
+        skipped_ids = set(state.get("applications_skipped") or [])
+        done_ids = submitted_ids | failed_ids | skipped_ids
+        remaining = [job_id for job_id in application_queue if job_id not in done_ids]
+        if not remaining:
+            return {
+                "applications_submitted": [],
+                "applications_failed": [],
+                "applications_skipped": [],
+                "consecutive_failures": consecutive_failures,
+                "status": "applying",
+                "agent_statuses": {
+                    "application": "completed -- queue exhausted"
+                },
+                "errors": [],
+                "skip_next_job_requested": False,
             }
 
         logger.info(
-            "Application agent starting -- %d jobs in queue",
+            "Application agent starting -- %d jobs pending of %d total",
+            len(remaining),
             len(application_queue),
         )
+        total_in_queue = len(application_queue)
+        processed_count = len(done_ids)
+        app_idx = processed_count
+        job_id = remaining[0]
+        pct = int((app_idx / total_in_queue) * 100) if total_in_queue else 0
+        job_obj = _find_job_in_state(job_id, state)
+        job_label = f"{job_obj.title} at {job_obj.company}" if job_obj else job_id[:8]
 
-        # Start BrowserManager — CDP (real Chrome) for reCAPTCHA bypass, or Patchright fallback
+        if state.get("skip_next_job_requested"):
+            skipped_result = ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.SKIPPED,
+                error_message="skipped_by_workflow_supervisor",
+                duration_seconds=0,
+            )
+            skipped.append(skipped_result)
+            if job_obj is not None:
+                _db_record_result(
+                    session_id=session_id,
+                    job_id=job_id,
+                    status="skipped",
+                    job_title=job_obj.title,
+                    job_company=job_obj.company,
+                    job_url=job_obj.url,
+                    job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
+                    job_location=job_obj.location or "",
+                    error_message="skipped_by_workflow_supervisor",
+                )
+            await emit_agent_event(session_id, "application_progress", {
+                "step": f"Skipped {job_label} (workflow steering)",
+                "progress": pct,
+                "current": app_idx + 1,
+                "total": total_in_queue,
+            })
+            return {
+                "applications_submitted": [],
+                "applications_failed": [],
+                "applications_skipped": [job_id],
+                "consecutive_failures": 0,
+                "status": "applying",
+                "agent_statuses": {"application": f"skipped -- {job_label}"},
+                "errors": [],
+                "skip_next_job_requested": False,
+            }
+
+        # --- Circuit breaker ---
+        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            logger.warning(
+                "Circuit breaker tripped after %d consecutive failures -- pausing",
+                consecutive_failures,
+            )
+            return {
+                "applications_submitted": [],
+                "applications_failed": [],
+                "applications_skipped": [],
+                "consecutive_failures": consecutive_failures,
+                "status": "paused",
+                "agent_statuses": {
+                    "application": (
+                        f"paused -- circuit breaker after "
+                        f"{consecutive_failures} consecutive failures"
+                    )
+                },
+                "errors": errors,
+                "skip_next_job_requested": False,
+            }
+
+        await emit_agent_event(session_id, "application_progress", {
+            "step": f"Applying to {job_label} ({app_idx + 1} of {total_in_queue})...",
+            "progress": pct,
+            "current": app_idx + 1,
+            "total": total_in_queue,
+        })
+
         settings = get_settings()
         manager = BrowserManager()
         if settings.BROWSER_MODE == "cdp":
@@ -797,173 +893,72 @@ async def run_application_agent(state: JobHunterState) -> dict:
         else:
             await manager.start(headless=True)
 
-        # Create a shared context
-        ctx_id, context = await manager.new_context()
+        _, context = await manager.new_context()
 
-        total_in_queue = len(application_queue)
+        try:
+            job = _find_job_in_state(job_id, state)
+            if job is None:
+                raise ValueError(f"Job {job_id} not found in state -- cannot apply")
 
-        for app_idx, job_id in enumerate(application_queue):
-            # Rate-limit cooldown between jobs (skip for first job)
-            if app_idx > 0:
-                cooldown = 5  # seconds -- direct Playwright is fast, minimal delay needed
-                await emit_agent_event(session_id, "application_progress", {
-                    "step": f"Waiting {cooldown}s before next application...",
-                    "progress": int((app_idx / total_in_queue) * 100),
-                    "current": app_idx + 1,
-                    "total": total_in_queue,
-                })
-                await asyncio.sleep(cooldown)
+            result = await _apply_to_job(
+                job_id=job_id,
+                job=job,
+                state=state,
+                session_id=session_id,
+                context=context,
+            )
 
-            pct = int((app_idx / total_in_queue) * 100)
-            job_obj = _find_job_in_state(job_id, state)
-            job_label = f"{job_obj.title} at {job_obj.company}" if job_obj else job_id[:8]
+            if result.status == ApplicationStatus.SUBMITTED:
+                submitted.append(result)
+                consecutive_failures = 0
+            elif result.status == ApplicationStatus.FAILED:
+                failed.append(result)
+                consecutive_failures += 1
+                if result.error_message:
+                    errors.append(f"Application failed for {job_id}: {result.error_message}")
+            else:
+                skipped.append(result)
+                consecutive_failures = 0
 
-            # Consume operator steering commands before each job.
-            steer_messages = await _drain_steering_commands(session_id)
-            skip_this_job = False
-            for msg in steer_messages:
-                await emit_agent_event(session_id, "application_progress", {
-                    "step": f"Steering received: {msg}",
-                    "progress": pct,
-                    "current": app_idx + 1,
-                    "total": total_in_queue,
-                })
-                if _is_pause_command(msg):
-                    return {
-                        "applications_submitted": submitted,
-                        "applications_failed": failed,
-                        "applications_skipped": [r.job_id for r in skipped],
-                        "consecutive_failures": consecutive_failures,
-                        "status": "paused",
-                        "agent_statuses": {"application": "paused -- user requested pause"},
-                        "errors": errors,
-                    }
-                if _is_skip_command(msg):
-                    skip_this_job = True
-
-            if skip_this_job:
-                skipped_result = ApplicationResult(
-                    job_id=job_id,
-                    status=ApplicationStatus.SKIPPED,
-                    error_message="skipped_by_user_steering",
-                    duration_seconds=0,
-                )
-                skipped.append(skipped_result)
-                if job_obj is not None:
-                    _db_record_result(
-                        session_id=session_id,
-                        job_id=job_id,
-                        status="skipped",
-                        job_title=job_obj.title,
-                        job_company=job_obj.company,
-                        job_url=job_obj.url,
-                        job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
-                        job_location=job_obj.location or "",
-                        error_message="skipped_by_user_steering",
-                    )
-                await emit_agent_event(session_id, "application_progress", {
-                    "step": f"Skipped {job_label} (user steering)",
-                    "progress": pct,
-                    "current": app_idx + 1,
-                    "total": total_in_queue,
-                })
-                continue
-
+            done_pct = int(((app_idx + 1) / total_in_queue) * 100)
+            status_label = (
+                f"{len(submitted)} submitted, {len(failed)} failed"
+                f"{', 1 skipped' if skipped else ''} — {app_idx + 1} of {total_in_queue} processed"
+            )
             await emit_agent_event(session_id, "application_progress", {
-                "step": f"Applying to {job_label} ({app_idx + 1} of {total_in_queue})...",
-                "progress": pct,
-                "current": app_idx + 1,
-                "total": total_in_queue,
+                "step": status_label,
+                "progress": done_pct,
+                "submitted": len(submitted),
+                "failed": len(failed),
+                "skipped": len(skipped),
             })
+        except Exception as exc:
+            error_msg = f"Application failed for job {job_id}: {exc}"
+            logger.error(error_msg)
+            errors.append(error_msg)
 
-            # --- Circuit breaker ---
-            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                logger.warning(
-                    "Circuit breaker tripped after %d consecutive failures -- pausing",
-                    consecutive_failures,
-                )
-                return {
-                    "applications_submitted": submitted,
-                    "applications_failed": failed,
-                    "applications_skipped": [r.job_id for r in skipped],
-                    "consecutive_failures": consecutive_failures,
-                    "status": "paused",
-                    "agent_statuses": {
-                        "application": (
-                            f"paused -- circuit breaker after "
-                            f"{consecutive_failures} consecutive failures"
-                        )
-                    },
-                    "errors": errors,
-                }
+            fail_result = ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.FAILED,
+                error_message=str(exc),
+            )
+            failed.append(fail_result)
+            consecutive_failures += 1
 
-            try:
-                job = _find_job_in_state(job_id, state)
-                if job is None:
-                    raise ValueError(f"Job {job_id} not found in state -- cannot apply")
-
-                result = await _apply_to_job(
-                    job_id=job_id,
-                    job=job,
-                    state=state,
+            if job_obj is not None:
+                _db_record_result(
                     session_id=session_id,
-                    context=context,
-                )
-
-                if result.status == ApplicationStatus.SUBMITTED:
-                    submitted.append(result)
-                    consecutive_failures = 0
-                elif result.status == ApplicationStatus.FAILED:
-                    failed.append(result)
-                    consecutive_failures += 1
-                    if result.error_message:
-                        errors.append(
-                            f"Application failed for {job_id}: {result.error_message}"
-                        )
-                else:
-                    # SKIPPED or other status
-                    skipped.append(result)
-                    logger.info("Application %s status: %s", job_id, result.status)
-                    consecutive_failures = 0
-
-                done_pct = int(((app_idx + 1) / total_in_queue) * 100)
-                skipped_msg = f", {len(skipped)} skipped" if skipped else ""
-                await emit_agent_event(session_id, "application_progress", {
-                    "step": f"{len(submitted)} submitted, {len(failed)} failed{skipped_msg} — {app_idx + 1} of {total_in_queue} processed",
-                    "progress": done_pct,
-                    "submitted": len(submitted),
-                    "failed": len(failed),
-                    "skipped": len(skipped),
-                })
-
-            except Exception as exc:
-                error_msg = f"Application failed for job {job_id}: {exc}"
-                logger.error(error_msg)
-                errors.append(error_msg)
-
-                fail_result = ApplicationResult(
                     job_id=job_id,
-                    status=ApplicationStatus.FAILED,
+                    status="failed",
+                    job_title=job_obj.title,
+                    job_company=job_obj.company,
+                    job_url=job_obj.url,
+                    job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
+                    job_location=job_obj.location or "",
                     error_message=str(exc),
                 )
-                failed.append(fail_result)
-                consecutive_failures += 1
 
-                # Persist to DB (job may not be found if error was in lookup)
-                if job is not None:
-                    _db_record_result(
-                        session_id=session_id, job_id=job_id, status="failed",
-                        job_title=job.title, job_company=job.company,
-                        job_url=job.url,
-                        job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
-                        job_location=job.location or "",
-                        error_message=str(exc),
-                    )
-
-        agent_status = (
-            f"completed -- "
-            f"{len(submitted)} submitted, {len(failed)} failed"
-        )
+        agent_status = f"processed -- {job_label}"
 
     except Exception as exc:
         logger.exception("Application agent failed")
@@ -991,6 +986,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
         "status": "applying",
         "agent_statuses": {"application": agent_status},
         "errors": errors,
+        "skip_next_job_requested": False,
     }
 
 

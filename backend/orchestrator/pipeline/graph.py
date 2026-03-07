@@ -14,7 +14,7 @@ browser process.  Application uses Playwright for form filling.
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import Callable, Literal
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
@@ -115,9 +115,71 @@ async def discovery_node(state: JobHunterState) -> dict:
     return await discovery.run(state)
 
 
-async def workflow_supervisor_node(state: JobHunterState) -> dict:
-    """Apply any pending steering judgment inside the graph."""
-    return await workflow_supervisor.run_workflow_supervisor(state)
+def _continue_to_discovery(state: JobHunterState) -> str:
+    return "discovery"
+
+
+def _continue_to_career_coach(state: JobHunterState) -> str:
+    return "career_coach"
+
+
+def _continue_after_discovery(state: JobHunterState) -> str:
+    return route_after_discovery(state)
+
+
+def _continue_after_scoring(state: JobHunterState) -> str:
+    return route_after_scoring(state)
+
+
+def _continue_to_shortlist_review(state: JobHunterState) -> str:
+    return "shortlist_review"
+
+
+def _continue_to_application(state: JobHunterState) -> str:
+    return "application"
+
+
+def _continue_after_application(state: JobHunterState) -> str:
+    return route_after_application(state)
+
+
+def _continue_to_reporting(state: JobHunterState) -> str:
+    return "reporting"
+
+
+def _continue_after_pause(state: JobHunterState) -> str:
+    return str(state.get("pause_resume_node") or "reporting")
+
+
+def make_workflow_supervisor_node(
+    continue_to: Callable[[JobHunterState], str],
+) -> Callable[[JobHunterState], dict]:
+    async def _node(state: JobHunterState) -> dict:
+        return await workflow_supervisor.run_workflow_supervisor(
+            state,
+            continue_to=continue_to(state),
+        )
+
+    return _node
+
+
+async def pause_gate_node(state: JobHunterState) -> dict:
+    """Pause the workflow until the user resumes or sends another steering message."""
+    human_input = interrupt(
+        {
+            "session_id": state["session_id"],
+            "stage": "workflow_pause",
+            "message": state.get("pending_supervisor_response") or "Workflow paused.",
+            "resume_target": state.get("pause_resume_node"),
+        }
+    )
+    if human_input.get("resume"):
+        return {
+            "pause_requested": False,
+            "status": state.get("status_before_pause") or state.get("status") or "applying",
+            "status_before_pause": None,
+        }
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +209,12 @@ def route_after_discovery(state: JobHunterState) -> str:
     return "scoring"
 
 
+def route_after_supervise_after_discovery(state: JobHunterState) -> str:
+    if state.get("pause_requested"):
+        return "pause_gate"
+    return route_after_discovery(state)
+
+
 # ---------------------------------------------------------------------------
 # Resume tailoring
 # ---------------------------------------------------------------------------
@@ -163,6 +231,12 @@ def route_after_scoring(state: JobHunterState) -> str:
         logger.warning("No scored jobs -- routing to reporting.")
         return "reporting"
     return "resume_tailor"
+
+
+def route_after_supervise_after_scoring(state: JobHunterState) -> str:
+    if state.get("pause_requested"):
+        return "pause_gate"
+    return route_after_scoring(state)
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +326,57 @@ def route_after_application(
     return "verification"
 
 
+def route_after_supervise_after_application(
+    state: JobHunterState,
+) -> Literal["pause_gate", "application", "verification", "shortlist_review"]:
+    if state.get("pause_requested"):
+        return "pause_gate"
+    return route_after_application(state)
+
+
+def route_after_supervise_after_simple_stage(
+    state: JobHunterState,
+    *,
+    default_next: str,
+) -> str:
+    if state.get("pause_requested"):
+        return "pause_gate"
+    return default_next
+
+
+def route_after_pause_gate(
+    state: JobHunterState,
+) -> Literal[
+    "pause_gate",
+    "career_coach",
+    "discovery",
+    "scoring",
+    "resume_tailor",
+    "shortlist_review",
+    "application",
+    "verification",
+    "reporting",
+]:
+    if state.get("pause_requested"):
+        return "pause_gate"
+
+    target = state.get("pause_resume_node") or "reporting"
+    allowed = {
+        "career_coach",
+        "discovery",
+        "scoring",
+        "resume_tailor",
+        "shortlist_review",
+        "application",
+        "verification",
+        "reporting",
+    }
+    if target not in allowed:
+        logger.warning("Unknown pause resume target %s -- routing to reporting", target)
+        return "reporting"
+    return target  # type: ignore[return-value]
+
+
 # ---------------------------------------------------------------------------
 # Verification & reporting
 # ---------------------------------------------------------------------------
@@ -291,21 +416,23 @@ def build_graph(checkpointer=None):
     # ---- Register nodes ----
     g.add_node("intake", intake_node)
     g.add_node("career_coach", career_coach_node)
-    g.add_node("supervise_after_intake", workflow_supervisor_node)
+    g.add_node("supervise_after_intake", make_workflow_supervisor_node(_continue_to_career_coach))
     g.add_node("coach_review", coach_review_gate)
-    g.add_node("supervise_after_coach_review", workflow_supervisor_node)
+    g.add_node("supervise_after_coach_review", make_workflow_supervisor_node(_continue_to_discovery))
     g.add_node("discovery", discovery_node)
-    g.add_node("supervise_after_discovery", workflow_supervisor_node)
+    g.add_node("supervise_after_discovery", make_workflow_supervisor_node(_continue_after_discovery))
     g.add_node("scoring", scoring_node)
-    g.add_node("supervise_after_scoring", workflow_supervisor_node)
+    g.add_node("supervise_after_scoring", make_workflow_supervisor_node(_continue_after_scoring))
     g.add_node("resume_tailor", resume_tailor_node)
-    g.add_node("supervise_after_tailor", workflow_supervisor_node)
+    g.add_node("supervise_after_tailor", make_workflow_supervisor_node(_continue_to_shortlist_review))
     g.add_node("shortlist_review", shortlist_review_gate)
-    g.add_node("supervise_after_shortlist", workflow_supervisor_node)
+    g.add_node("supervise_after_shortlist", make_workflow_supervisor_node(_continue_to_application))
     g.add_node("application", application_node)
-    g.add_node("supervise_after_application", workflow_supervisor_node)
+    g.add_node("supervise_after_application", make_workflow_supervisor_node(_continue_after_application))
     g.add_node("verification", verification_node)
-    g.add_node("supervise_after_verification", workflow_supervisor_node)
+    g.add_node("supervise_after_verification", make_workflow_supervisor_node(_continue_to_reporting))
+    g.add_node("pause_gate", pause_gate_node)
+    g.add_node("supervise_after_pause", make_workflow_supervisor_node(_continue_after_pause))
     g.add_node("reporting", reporting_node)
 
     # ---- Edges ----
@@ -315,44 +442,61 @@ def build_graph(checkpointer=None):
 
     # 2. intake -> career_coach
     g.add_edge("intake", "supervise_after_intake")
-    g.add_edge("supervise_after_intake", "career_coach")
+    g.add_conditional_edges(
+        "supervise_after_intake",
+        lambda state: route_after_supervise_after_simple_stage(state, default_next="career_coach"),
+        {"career_coach": "career_coach", "pause_gate": "pause_gate"},
+    )
 
     # 3. career_coach -> HITL gate (coach review)
     g.add_edge("career_coach", "coach_review")
 
     # 4. coach_review -> discovery (single node, sequential scraping)
     g.add_edge("coach_review", "supervise_after_coach_review")
-    g.add_edge("supervise_after_coach_review", "discovery")
+    g.add_conditional_edges(
+        "supervise_after_coach_review",
+        lambda state: route_after_supervise_after_simple_stage(state, default_next="discovery"),
+        {"discovery": "discovery", "pause_gate": "pause_gate"},
+    )
 
     # 5. discovery -> scoring (conditional in case 0 results)
     g.add_conditional_edges(
         "supervise_after_discovery",
-        route_after_discovery,
-        {"scoring": "scoring", "reporting": "reporting"},
+        route_after_supervise_after_discovery,
+        {"scoring": "scoring", "reporting": "reporting", "pause_gate": "pause_gate"},
     )
     g.add_edge("discovery", "supervise_after_discovery")
 
     # 6. scoring -> resume_tailor (conditional in case 0 scored)
     g.add_conditional_edges(
         "supervise_after_scoring",
-        route_after_scoring,
-        {"resume_tailor": "resume_tailor", "reporting": "reporting"},
+        route_after_supervise_after_scoring,
+        {"resume_tailor": "resume_tailor", "reporting": "reporting", "pause_gate": "pause_gate"},
     )
     g.add_edge("scoring", "supervise_after_scoring")
 
     # 7. resume_tailor -> HITL gate (shortlist review)
     g.add_edge("resume_tailor", "supervise_after_tailor")
-    g.add_edge("supervise_after_tailor", "shortlist_review")
+    g.add_conditional_edges(
+        "supervise_after_tailor",
+        lambda state: route_after_supervise_after_simple_stage(state, default_next="shortlist_review"),
+        {"shortlist_review": "shortlist_review", "pause_gate": "pause_gate"},
+    )
 
     # 8. shortlist_review -> first application
     g.add_edge("shortlist_review", "supervise_after_shortlist")
-    g.add_edge("supervise_after_shortlist", "application")
+    g.add_conditional_edges(
+        "supervise_after_shortlist",
+        lambda state: route_after_supervise_after_simple_stage(state, default_next="application"),
+        {"application": "application", "pause_gate": "pause_gate"},
+    )
 
     # 9. application loop with circuit breaker (retries go back to HITL gate)
     g.add_conditional_edges(
         "supervise_after_application",
-        route_after_application,
+        route_after_supervise_after_application,
         {
+            "pause_gate": "pause_gate",
             "application": "application",
             "verification": "verification",
             "shortlist_review": "shortlist_review",
@@ -362,7 +506,28 @@ def build_graph(checkpointer=None):
 
     # 10. verification -> reporting
     g.add_edge("verification", "supervise_after_verification")
-    g.add_edge("supervise_after_verification", "reporting")
+    g.add_conditional_edges(
+        "supervise_after_verification",
+        lambda state: route_after_supervise_after_simple_stage(state, default_next="reporting"),
+        {"reporting": "reporting", "pause_gate": "pause_gate"},
+    )
+
+    g.add_edge("pause_gate", "supervise_after_pause")
+    g.add_conditional_edges(
+        "supervise_after_pause",
+        route_after_pause_gate,
+        {
+            "pause_gate": "pause_gate",
+            "career_coach": "career_coach",
+            "discovery": "discovery",
+            "scoring": "scoring",
+            "resume_tailor": "resume_tailor",
+            "shortlist_review": "shortlist_review",
+            "application": "application",
+            "verification": "verification",
+            "reporting": "reporting",
+        },
+    )
 
     # 11. reporting -> END
     g.add_edge("reporting", END)

@@ -26,6 +26,7 @@ class SteeringDirective(BaseModel):
     action: Literal[
         "none",
         "pause",
+        "resume_workflow",
         "skip_next_job",
         "resume_intervention",
         "confirm_login",
@@ -62,6 +63,8 @@ Rules:
 - Only emit directives when the user intent is clear.
 - If the workflow is blocked on login or captcha and the user asks to continue,
   prefer `resume_intervention` or `confirm_login` when appropriate.
+- If the workflow is paused and the user asks to continue, prefer
+  `resume_workflow`.
 - Use `set_mode` when the user explicitly asks to switch to screenshot or
   takeover mode.
 - Keep `response_message` concise, high-signal, and grounded in the session.
@@ -70,6 +73,7 @@ Response style:
 - Status/explanation responses should begin with `Right now I'm ...`
 - Control responses should begin with one of:
   - `I'll pause the workflow.`
+  - `I'll resume the workflow.`
   - `I'll skip the next job.`
   - `I'll resume from the current intervention point.`
   - `I'll mark login as complete and continue.`
@@ -86,7 +90,7 @@ async def judge(
     recent_events: List[Dict[str, Any]],
 ) -> SteeringJudgeResult:
     """Return a conversational steering judgment for a live session."""
-    llm = build_llm(model=default_model(), max_tokens=1400, temperature=0.0)
+    llm = build_llm(model=default_model(), max_tokens=3000, temperature=0.0)
     structured_llm = llm.with_structured_output(SteeringJudgeResult)
 
     payload = {

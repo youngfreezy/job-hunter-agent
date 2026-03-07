@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import List
 
+from pydantic import BaseModel, Field
+
 from backend.browser.tools.job_boards.glassdoor import scrape_glassdoor
 from backend.browser.tools.job_boards.google_jobs import scrape_google_jobs
 from backend.browser.tools.job_boards.indeed import scrape_indeed
@@ -32,6 +34,12 @@ __all__ = [
     "scrape_linkedin",
     "scrape_ziprecruiter",
 ]
+
+
+class RankedListingIndices(BaseModel):
+    """Structured ranking response from the LLM."""
+
+    indices: List[int] = Field(default_factory=list)
 
 
 async def rank_by_relevance(
@@ -74,17 +82,17 @@ Keywords: {', '.join(keywords)}
 Jobs:
 {json.dumps(job_summaries, indent=1)}
 
-Return ONLY a JSON array of the top {limit} indices, ranked best first, e.g. [3, 0, 7, 1, 5]. No explanation."""
+Return the top {limit} indices ranked best first."""
 
     try:
-        llm = build_llm(model=HAIKU_MODEL, max_tokens=256, temperature=0.0)
-        response = await invoke_with_retry(llm, [("human", prompt)], max_retries=2)
-        text = response.content.strip()
-
-        # Parse the JSON array from response
-        if "[" in text:
-            text = text[text.index("["):text.rindex("]") + 1]
-        indices = json.loads(text)
+        llm = build_llm(model=HAIKU_MODEL, max_tokens=2000, temperature=0.0)
+        structured_llm = llm.with_structured_output(RankedListingIndices)
+        response = await invoke_with_retry(
+            structured_llm,
+            [("human", prompt)],
+            max_retries=2,
+        )
+        indices = response.indices
         ranked = []
         seen = set()
         for idx in indices:

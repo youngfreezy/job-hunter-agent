@@ -10,4 +10,4 @@ if [ -f "$HOME/.nvm/nvm.sh" ]; then
   nvm use 20 >/dev/null
 fi
 
-npm run start "$@"
+node scripts/start.js "$@"

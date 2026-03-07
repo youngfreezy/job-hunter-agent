@@ -96,6 +96,12 @@ class JobHunterState(TypedDict):
     steering_messages_processed: int
     pending_supervisor_response: Optional[str]
     pending_supervisor_directives: List[Dict[str, Any]]
+    pause_requested: bool
+    pause_resume_node: Optional[str]
+    status_before_pause: Optional[str]
+    skip_next_job_requested: bool
+    pending_coach_review_input: Optional[Dict[str, Any]]
+    pending_shortlist_review_input: Optional[Dict[str, Any]]
 
     # --- LangGraph messages ---
     messages: Annotated[List[BaseMessage], add_messages]
