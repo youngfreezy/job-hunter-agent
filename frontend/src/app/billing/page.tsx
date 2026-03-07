@@ -41,6 +41,11 @@ export default function BillingPage() {
   const canceled = searchParams.get("canceled");
 
   useEffect(() => {
+    if (success) window.umami?.track("payment-success");
+    if (canceled) window.umami?.track("payment-canceled");
+  }, [success, canceled]);
+
+  useEffect(() => {
     async function load() {
       try {
         const [walletRes, packsRes, txnRes] = await Promise.all([
@@ -68,6 +73,7 @@ export default function BillingPage() {
 
   async function handleCheckout(packId: string) {
     setCheckoutLoading(packId);
+    window.umami?.track("checkout-initiate", { pack: packId });
     try {
       const res = await fetch(`${API_BASE}/api/billing/checkout`, {
         method: "POST",
