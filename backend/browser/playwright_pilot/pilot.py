@@ -56,7 +56,9 @@ class Pilot:
 
     async def start(self) -> None:
         """Start the browser engine."""
-        if self._mode == "cdp":
+        if self._mode == "brightdata":
+            await self._manager.start_brightdata()
+        elif self._mode == "cdp":
             await self._manager.start_cdp(headless=self._headless)
         else:
             await self._manager.start(headless=self._headless)

@@ -37,6 +37,55 @@ _CHROME_PROFILE_DIR = Path.home() / ".jobhunter" / "chrome-profile"
 _CDP_PORT = 9222
 
 
+def _csv_to_set(raw: str) -> set[str]:
+    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
+def build_brightdata_cdp_url() -> Optional[str]:
+    """Return the Bright Data browser endpoint if configured."""
+    explicit = (settings.BRIGHT_DATA_BROWSER_CDP_URL or "").strip()
+    if explicit:
+        return explicit
+
+    username = (settings.BRIGHT_DATA_BROWSER_USERNAME or "").strip()
+    password = (settings.BRIGHT_DATA_BROWSER_PASSWORD or "").strip()
+    if not username or not password:
+        return None
+
+    host = (settings.BRIGHT_DATA_BROWSER_HOST or "brd.superproxy.io").strip()
+    port = settings.BRIGHT_DATA_BROWSER_PORT or 9222
+    return f"wss://{username}:{password}@{host}:{port}"
+
+
+def should_use_brightdata(
+    *,
+    board: Optional[str] = None,
+    purpose: str = "apply",
+) -> bool:
+    """Return True when Bright Data should be used for the given board/purpose."""
+    if not settings.BRIGHT_DATA_BROWSER_ENABLED:
+        return False
+
+    provider = (settings.BROWSER_PROVIDER or "local").strip().lower()
+    if provider != "brightdata":
+        return False
+
+    if purpose == "discovery" and not settings.BRIGHT_DATA_BROWSER_USE_FOR_DISCOVERY:
+        return False
+
+    if settings.BRIGHT_DATA_BROWSER_FORCE:
+        return True
+
+    if purpose != "apply":
+        return False
+
+    targets = _csv_to_set(settings.BRIGHT_DATA_BROWSER_BOARDS)
+    if not targets:
+        return False
+
+    return (board or "").strip().lower() in targets
+
+
 def _find_chrome_binary() -> Optional[str]:
     """Auto-detect the real Google Chrome binary on the system."""
     system = platform.system()
@@ -92,7 +141,7 @@ class BrowserManager:
         self._running: bool = False
         self._chrome_process: Optional[subprocess.Popen] = None
         self._launched_chrome: bool = False
-        self._mode: str = "patchright"  # "patchright" or "cdp"
+        self._mode: str = "patchright"  # "patchright" or "cdp" or "brightdata"
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -172,6 +221,59 @@ class BrowserManager:
             self._playwright = None
         await self.start(headless=headless)
 
+    async def start_brightdata(self) -> None:
+        """Connect to Bright Data's remote browser via CDP/WebSocket."""
+        if self._running:
+            logger.warning("BrowserManager.start_brightdata() called but already running")
+            return
+
+        endpoint = build_brightdata_cdp_url()
+        if not endpoint:
+            raise RuntimeError(
+                "Bright Data browser is enabled but no CDP endpoint or credentials are configured"
+            )
+
+        if self._playwright:
+            try:
+                await self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = None
+
+        self._playwright = await async_playwright().start()
+        try:
+            self._browser = await self._playwright.chromium.connect_over_cdp(
+                endpoint,
+                timeout=settings.BRIGHT_DATA_BROWSER_TIMEOUT_MS,
+            )
+        except Exception:
+            if self._playwright:
+                await self._playwright.stop()
+                self._playwright = None
+            raise
+
+        self._running = True
+        self._mode = "brightdata"
+        logger.info("Connected to Bright Data browser (contexts=%d)", len(self._browser.contexts))
+
+    async def start_for_task(
+        self,
+        *,
+        board: Optional[str] = None,
+        purpose: str = "apply",
+        headless: Optional[bool] = None,
+    ) -> None:
+        """Start the best browser backend for the requested task."""
+        if should_use_brightdata(board=board, purpose=purpose):
+            await self.start_brightdata()
+            return
+
+        resolved_headless = settings.BROWSER_HEADLESS if headless is None else headless
+        if settings.BROWSER_MODE == "cdp":
+            await self.start_cdp(headless=resolved_headless)
+        else:
+            await self.start(headless=resolved_headless)
+
     def _kill_chrome(self) -> None:
         """Terminate the Chrome process we launched."""
         if self._chrome_process:
@@ -237,7 +339,7 @@ class BrowserManager:
         ctx_id = uuid4().hex[:12]
 
         # In CDP mode, reuse the default context if available
-        if self._mode == "cdp" and self._browser.contexts:
+        if self._mode in {"cdp", "brightdata"} and self._browser.contexts:
             context = self._browser.contexts[0]
             self._contexts[ctx_id] = context
             logger.info("Reusing Chrome CDP default context as %s", ctx_id)
@@ -307,7 +409,7 @@ class BrowserManager:
             return
 
         # In CDP mode, don't close the default context — just remove tracking
-        if self._mode == "cdp" and self._browser and context in self._browser.contexts:
+        if self._mode in {"cdp", "brightdata"} and self._browser and context in self._browser.contexts:
             logger.info("Released CDP context %s (not closing — it's Chrome's default)", context_id)
             return
 
@@ -485,5 +587,5 @@ class BrowserManager:
 
     @property
     def mode(self) -> str:
-        """Return the current browser mode: 'patchright' or 'cdp'."""
+        """Return the current browser mode: 'patchright', 'cdp', or 'brightdata'."""
         return self._mode

@@ -27,6 +27,7 @@ This repository contains both implemented code and forward-looking design notes.
 
 See [docs/PLAN.md](docs/PLAN.md) for detailed implementation phases.
 Startup can be launched from `./scripts/start-app.sh` or the macOS app bundle `JobHunter Agent.app`. See [docs/startup-packaging-plan.md](docs/startup-packaging-plan.md) for the remaining launcher packaging work.
+Bright Data Browser can be enabled as an optional remote-browser backend for hostile ATS boards; see [docs/brightdata-routing.md](docs/brightdata-routing.md).
 
 ---
 

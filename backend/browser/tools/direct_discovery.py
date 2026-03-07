@@ -143,7 +143,7 @@ async def discover_all_boards(
 
     # Phase 1: Direct Playwright scraping
     manager = BrowserManager()
-    await manager.start(headless=settings.BROWSER_HEADLESS)
+    await manager.start_for_task(purpose="discovery", headless=settings.BROWSER_HEADLESS)
 
     try:
         for board in boards:

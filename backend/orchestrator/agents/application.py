@@ -888,10 +888,11 @@ async def run_application_agent(state: JobHunterState) -> dict:
 
         settings = get_settings()
         manager = BrowserManager()
-        if settings.BROWSER_MODE == "cdp":
-            await manager.start_cdp(headless=False)
-        else:
-            await manager.start(headless=True)
+        await manager.start_for_task(
+            board=job.board,
+            purpose="apply",
+            headless=False if settings.BROWSER_MODE == "cdp" else True,
+        )
 
         _, context = await manager.new_context()
 
