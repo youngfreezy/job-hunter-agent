@@ -1,0 +1,230 @@
+"""Persistent storage for billing: users, wallets, and transactions.
+
+Uses sync psycopg for table creation (matches application_store.py pattern)
+and provides both sync and async helpers for wallet operations.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+import psycopg
+
+from backend.shared.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+_CREATE_TABLES = """
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE NOT NULL,
+    wallet_balance DECIMAL(10,2) DEFAULT 0.00,
+    free_applications_remaining INT DEFAULT 3,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id),
+    amount DECIMAL(10,2) NOT NULL,
+    balance_after DECIMAL(10,2) NOT NULL,
+    type TEXT NOT NULL,
+    reference_id TEXT,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_tx_user ON wallet_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_wallet_tx_created ON wallet_transactions(user_id, created_at DESC);
+"""
+
+
+def _connect() -> psycopg.Connection:
+    settings = get_settings()
+    return psycopg.connect(settings.DATABASE_URL)
+
+
+async def ensure_billing_tables() -> None:
+    """Create users + wallet_transactions tables if they don't exist."""
+    try:
+        conn = _connect()
+        try:
+            conn.execute(_CREATE_TABLES)
+            conn.commit()
+            logger.info("Billing tables ensured")
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to create billing tables")
+
+
+def get_or_create_user(email: str) -> Dict[str, Any]:
+    """Get or create a user by email. Returns dict with id, email, balance, free_remaining."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT id, email, wallet_balance, free_applications_remaining FROM users WHERE email = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+        if row:
+            return {
+                "id": str(row[0]),
+                "email": row[1],
+                "wallet_balance": float(row[2]),
+                "free_applications_remaining": row[3],
+            }
+
+        # Create new user
+        user_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO users (id, email) VALUES (%s, %s)",
+            (user_id, email),
+        )
+        conn.commit()
+        return {
+            "id": user_id,
+            "email": email,
+            "wallet_balance": 0.00,
+            "free_applications_remaining": 3,
+        }
+    finally:
+        conn.close()
+
+
+def get_wallet(user_id: str) -> Dict[str, Any]:
+    """Get wallet balance and free applications remaining."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT wallet_balance, free_applications_remaining FROM users WHERE id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"balance": 0.0, "free_remaining": 0}
+        return {"balance": float(row[0]), "free_remaining": row[1]}
+    finally:
+        conn.close()
+
+
+def credit_wallet(
+    user_id: str,
+    amount: float,
+    tx_type: str,
+    reference_id: str = "",
+    description: str = "",
+) -> Dict[str, Any]:
+    """Add funds to a user's wallet. Returns new balance."""
+    conn = _connect()
+    try:
+        # Update balance
+        conn.execute(
+            "UPDATE users SET wallet_balance = wallet_balance + %s WHERE id = %s",
+            (amount, user_id),
+        )
+        # Get new balance
+        cur = conn.execute(
+            "SELECT wallet_balance FROM users WHERE id = %s", (user_id,)
+        )
+        new_balance = float(cur.fetchone()[0])
+
+        # Record transaction
+        conn.execute(
+            """INSERT INTO wallet_transactions
+               (user_id, amount, balance_after, type, reference_id, description)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (user_id, amount, new_balance, tx_type, reference_id, description),
+        )
+        conn.commit()
+        return {"balance": new_balance}
+    finally:
+        conn.close()
+
+
+def debit_wallet(
+    user_id: str,
+    amount: float,
+    tx_type: str,
+    reference_id: str = "",
+    description: str = "",
+) -> Dict[str, Any]:
+    """Deduct funds from wallet. Returns new balance. Raises if insufficient."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT wallet_balance, free_applications_remaining FROM users WHERE id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise ValueError(f"User {user_id} not found")
+
+        balance = float(row[0])
+        free_remaining = row[1]
+
+        # Use free applications first
+        if tx_type == "application_charge" and free_remaining > 0:
+            conn.execute(
+                "UPDATE users SET free_applications_remaining = free_applications_remaining - 1 WHERE id = %s",
+                (user_id,),
+            )
+            conn.execute(
+                """INSERT INTO wallet_transactions
+                   (user_id, amount, balance_after, type, reference_id, description)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (user_id, 0.0, balance, "free_application", reference_id, "Free application used"),
+            )
+            conn.commit()
+            return {"balance": balance, "free_used": True}
+
+        if balance < amount:
+            raise ValueError(f"Insufficient balance: {balance} < {amount}")
+
+        conn.execute(
+            "UPDATE users SET wallet_balance = wallet_balance - %s WHERE id = %s",
+            (amount, user_id),
+        )
+        new_balance = balance - amount
+
+        conn.execute(
+            """INSERT INTO wallet_transactions
+               (user_id, amount, balance_after, type, reference_id, description)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (user_id, -amount, new_balance, tx_type, reference_id, description),
+        )
+        conn.commit()
+        return {"balance": new_balance, "free_used": False}
+    finally:
+        conn.close()
+
+
+def get_transactions(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Get recent wallet transactions."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            """SELECT id, amount, balance_after, type, reference_id, description, created_at
+               FROM wallet_transactions
+               WHERE user_id = %s
+               ORDER BY created_at DESC
+               LIMIT %s""",
+            (user_id, limit),
+        )
+        return [
+            {
+                "id": str(row[0]),
+                "amount": float(row[1]),
+                "balance_after": float(row[2]),
+                "type": row[3],
+                "reference_id": row[4],
+                "description": row[5],
+                "created_at": row[6].isoformat() if row[6] else None,
+            }
+            for row in cur.fetchall()
+        ]
+    finally:
+        conn.close()

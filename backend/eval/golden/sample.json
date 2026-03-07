@@ -1,0 +1,17 @@
+{
+  "description": "Sample golden dataset - replace session_id with a real completed session",
+  "examples": [
+    {
+      "session_id": "REPLACE_WITH_REAL_SESSION_ID",
+      "description": "AI Engineer job search - full pipeline run",
+      "expected_scores": {
+        "coach_faithfulness": 0.9,
+        "discovery_relevance": 0.8,
+        "scoring_calibration": 0.7,
+        "tailor_customization": 0.7,
+        "tailor_faithfulness": 0.9,
+        "submission_success_rate": 0.5
+      }
+    }
+  ]
+}

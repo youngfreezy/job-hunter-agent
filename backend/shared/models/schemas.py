@@ -55,6 +55,21 @@ class ATSType(str, Enum):
     UNKNOWN = "unknown"
 
 
+class TailoringQuality(str, Enum):
+    STANDARD = "standard"
+    PREMIUM = "premium"
+
+
+class ApplicationMode(str, Enum):
+    AUTO_APPLY = "auto_apply"
+    MATERIALS_ONLY = "materials_only"
+
+
+class DiscoveryMode(str, Enum):
+    AI_SEARCH = "ai_search"
+    MANUAL_URLS = "manual_urls"
+
+
 class FormFieldType(str, Enum):
     TEXT = "text"
     TEXTAREA = "textarea"
@@ -201,6 +216,18 @@ class SSEEvent(BaseModel):
 
 # --- API Request Models ---
 
+class SessionConfig(BaseModel):
+    """User-configurable session parameters controlling cost and behavior."""
+    max_jobs: int = Field(default=20, ge=5, le=50)
+    tailoring_quality: TailoringQuality = TailoringQuality.STANDARD
+    application_mode: ApplicationMode = ApplicationMode.AUTO_APPLY
+    discovery_mode: DiscoveryMode = DiscoveryMode.AI_SEARCH
+    generate_cover_letters: bool = True
+    job_boards: List[str] = Field(
+        default_factory=lambda: ["indeed", "linkedin", "glassdoor", "ziprecruiter"]
+    )
+
+
 class StartSessionRequest(BaseModel):
     keywords: List[str]
     locations: List[str] = Field(default_factory=lambda: ["Remote"])
@@ -210,6 +237,7 @@ class StartSessionRequest(BaseModel):
     resume_file_path: Optional[str] = None
     linkedin_url: Optional[str] = None
     preferences: Dict[str, Any] = Field(default_factory=dict)
+    config: Optional[SessionConfig] = None
 
 
 class SteerRequest(BaseModel):

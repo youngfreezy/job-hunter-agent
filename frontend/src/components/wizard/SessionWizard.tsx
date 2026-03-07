@@ -14,11 +14,13 @@ import { WizardStepper } from "./WizardStepper";
 import { WizardNavigation } from "./WizardNavigation";
 import { JobSearchStep } from "./steps/JobSearchStep";
 import { ResumeProfileStep } from "./steps/ResumeProfileStep";
+import { ConfigStep } from "./steps/ConfigStep";
 import { ReviewStep } from "./steps/ReviewStep";
 
 const WIZARD_STEPS = [
   { label: "Job Search", description: "Keywords, locations, preferences" },
   { label: "Resume & Profile", description: "Resume and LinkedIn" },
+  { label: "Configure", description: "Job count, quality, mode" },
   { label: "Review & Launch", description: "Confirm and start" },
 ];
 
@@ -53,6 +55,13 @@ export function SessionWizard() {
           resume_file_path: values.resumeFilePath || null,
           linkedin_url: values.linkedinUrl || null,
           preferences: {},
+          config: {
+            max_jobs: values.maxJobs ?? 20,
+            tailoring_quality: values.tailoringQuality ?? "standard",
+            application_mode: values.applicationMode ?? "auto_apply",
+            generate_cover_letters: values.generateCoverLetters ?? true,
+            job_boards: values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"],
+          },
         });
 
         setIsNavigating(true);
@@ -105,6 +114,7 @@ export function SessionWizard() {
   const stepComponents = [
     <JobSearchStep key="job-search" />,
     <ResumeProfileStep key="resume-profile" />,
+    <ConfigStep key="config" />,
     <ReviewStep key="review" onEditStep={setStep} />,
   ];
 
@@ -112,7 +122,7 @@ export function SessionWizard() {
     return (
       <div className="space-y-6 animate-pulse">
         <div className="flex gap-4 mb-8">
-          {[1, 2, 3].map((i) => (
+          {[1, 2, 3, 4].map((i) => (
             <div key={i} className="flex-1 h-10 bg-muted rounded-lg" />
           ))}
         </div>

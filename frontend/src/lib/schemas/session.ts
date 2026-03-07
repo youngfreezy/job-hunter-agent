@@ -48,11 +48,28 @@ export const resumeProfileSchema = Yup.object({
     ),
 });
 
-// ---------- Step 3: Review (no additional validation) ----------
+// ---------- Step 3: Configuration ----------
+export const configSchema = Yup.object({
+  maxJobs: Yup.number().min(5).max(50).default(20),
+  tailoringQuality: Yup.string()
+    .oneOf(["standard", "premium"])
+    .default("standard"),
+  applicationMode: Yup.string()
+    .oneOf(["auto_apply", "materials_only"])
+    .default("auto_apply"),
+  generateCoverLetters: Yup.boolean().default(true),
+  jobBoards: Yup.array()
+    .of(Yup.string().required())
+    .default(["linkedin", "indeed", "glassdoor", "ziprecruiter"]),
+});
+
+// ---------- Step 4: Review (no additional validation) ----------
 export const reviewSchema = Yup.object({});
 
 // ---------- Combined schema (for type inference) ----------
-export const sessionFormSchema = jobSearchSchema.concat(resumeProfileSchema);
+export const sessionFormSchema = jobSearchSchema
+  .concat(resumeProfileSchema)
+  .concat(configSchema);
 
 // ---------- Type inference ----------
 export type SessionFormValues = Yup.InferType<typeof sessionFormSchema>;
@@ -67,7 +84,17 @@ export const sessionInitialValues: SessionFormValues = {
   resumeFileName: "",
   resumeFilePath: "",
   linkedinUrl: "",
+  maxJobs: 20,
+  tailoringQuality: "standard",
+  applicationMode: "auto_apply",
+  generateCoverLetters: true,
+  jobBoards: ["linkedin", "indeed", "glassdoor", "ziprecruiter"],
 };
 
 // ---------- Step schema map (indexed by step number) ----------
-export const stepSchemas = [jobSearchSchema, resumeProfileSchema, reviewSchema];
+export const stepSchemas = [
+  jobSearchSchema,
+  resumeProfileSchema,
+  configSchema,
+  reviewSchema,
+];

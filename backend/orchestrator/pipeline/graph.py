@@ -116,6 +116,11 @@ async def discovery_node(state: JobHunterState) -> dict:
 
 
 def _continue_to_discovery(state: JobHunterState) -> str:
+    config = state.get("session_config")
+    if config and isinstance(config, dict) and config.get("discovery_mode") == "manual_urls":
+        return "scoring"
+    if config and hasattr(config, "discovery_mode") and config.discovery_mode == "manual_urls":
+        return "scoring"
     return "discovery"
 
 
@@ -136,6 +141,11 @@ def _continue_to_shortlist_review(state: JobHunterState) -> str:
 
 
 def _continue_to_application(state: JobHunterState) -> str:
+    config = state.get("session_config")
+    if config and isinstance(config, dict) and config.get("application_mode") == "materials_only":
+        return "reporting"
+    if config and hasattr(config, "application_mode") and config.application_mode == "materials_only":
+        return "reporting"
     return "application"
 
 
@@ -453,10 +463,15 @@ def build_graph(checkpointer=None):
 
     # 4. coach_review -> discovery (single node, sequential scraping)
     g.add_edge("coach_review", "supervise_after_coach_review")
+    def _route_after_coach_review_supervise(state: JobHunterState) -> str:
+        if state.get("pause_requested"):
+            return "pause_gate"
+        return _continue_to_discovery(state)
+
     g.add_conditional_edges(
         "supervise_after_coach_review",
-        lambda state: route_after_supervise_after_simple_stage(state, default_next="discovery"),
-        {"discovery": "discovery", "pause_gate": "pause_gate"},
+        _route_after_coach_review_supervise,
+        {"discovery": "discovery", "scoring": "scoring", "pause_gate": "pause_gate"},
     )
 
     # 5. discovery -> scoring (conditional in case 0 results)
@@ -485,10 +500,15 @@ def build_graph(checkpointer=None):
 
     # 8. shortlist_review -> first application
     g.add_edge("shortlist_review", "supervise_after_shortlist")
+    def _route_after_shortlist_supervise(state: JobHunterState) -> str:
+        if state.get("pause_requested"):
+            return "pause_gate"
+        return _continue_to_application(state)
+
     g.add_conditional_edges(
         "supervise_after_shortlist",
-        lambda state: route_after_supervise_after_simple_stage(state, default_next="application"),
-        {"application": "application", "pause_gate": "pause_gate"},
+        _route_after_shortlist_supervise,
+        {"application": "application", "reporting": "reporting", "pause_gate": "pause_gate"},
     )
 
     # 9. application loop with circuit breaker (retries go back to HITL gate)

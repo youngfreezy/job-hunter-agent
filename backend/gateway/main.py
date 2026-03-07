@@ -88,6 +88,9 @@ async def lifespan(app: FastAPI):
         from backend.shared.application_store import ensure_table as ensure_app_table
         await ensure_app_table()
 
+        from backend.shared.billing_store import ensure_billing_tables
+        await ensure_billing_tables()
+
         # Schedule daily selector health-check
         from backend.shared.scheduler import schedule
         from backend.shared.selector_health import run_selector_health_check

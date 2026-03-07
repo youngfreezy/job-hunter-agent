@@ -130,6 +130,13 @@ export async function startSession(params: {
   resume_file_path: string | null;
   linkedin_url: string | null;
   preferences: Record<string, unknown>;
+  config?: {
+    max_jobs: number;
+    tailoring_quality: string;
+    application_mode: string;
+    generate_cover_letters: boolean;
+    job_boards: string[];
+  };
 }): Promise<{ session_id: string }> {
   const res = await fetch(`${API_BASE}/api/sessions`, {
     method: "POST",
@@ -518,5 +525,42 @@ export async function startLinkedInUpdate(
     }
   );
   if (!res.ok) throw new Error(`LinkedIn update failed: ${res.statusText}`);
+  return res.json();
+}
+
+// ---------- Billing API ----------
+
+export async function getWallet(): Promise<{
+  balance: number;
+  free_remaining: number;
+  application_cost: number;
+}> {
+  const res = await fetch(`${API_BASE}/api/billing/wallet`);
+  if (!res.ok) throw new Error("Failed to fetch wallet");
+  return res.json();
+}
+
+export async function getTransactions(): Promise<{
+  transactions: Array<{
+    id: string;
+    amount: number;
+    balance_after: number;
+    type: string;
+    description: string;
+    created_at: string | null;
+  }>;
+}> {
+  const res = await fetch(`${API_BASE}/api/billing/transactions`);
+  if (!res.ok) throw new Error("Failed to fetch transactions");
+  return res.json();
+}
+
+export async function createCheckout(packId: string): Promise<{ url: string }> {
+  const res = await fetch(`${API_BASE}/api/billing/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pack_id: packId }),
+  });
+  if (!res.ok) throw new Error("Failed to create checkout");
   return res.json();
 }

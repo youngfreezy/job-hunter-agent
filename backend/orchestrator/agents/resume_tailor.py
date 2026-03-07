@@ -191,9 +191,15 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
                 sj for sj in scored_jobs if sj.job.id in application_queue
             ]
         else:
+            # Use session config max_jobs if available, else default
+            config = state.get("session_config")
+            max_jobs = MAX_APPLICATION_JOBS
+            if config:
+                cfg = config if isinstance(config, dict) else config.model_dump()
+                max_jobs = cfg.get("max_jobs", MAX_APPLICATION_JOBS)
             jobs_to_tailor = sorted(
                 scored_jobs, key=lambda sj: sj.score, reverse=True
-            )[:MAX_APPLICATION_JOBS]
+            )[:max_jobs]
 
         if not jobs_to_tailor:
             return {

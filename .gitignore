@@ -40,3 +40,5 @@ frontend/playwright-report/
 test_screenshots/
 test_apply_screenshots/
 screenshots/
+eval_results/
+FINAL_STATUS.md

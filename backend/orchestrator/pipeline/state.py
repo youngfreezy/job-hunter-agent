@@ -15,6 +15,7 @@ from backend.shared.models.schemas import (
     JobListing,
     ScoredJob,
     SearchConfig,
+    SessionConfig,
     SessionSummary,
     TailoredResume,
 )
@@ -112,6 +113,9 @@ class JobHunterState(TypedDict):
 
     # --- Reporting ---
     session_summary: Optional[SessionSummary]
+
+    # --- Session config ---
+    session_config: Optional[SessionConfig]
 
     # --- Billing ---
     session_start_time: Optional[str]
