@@ -6,8 +6,8 @@
     "node": ">=18.17.0"
   },
   "scripts": {
-    "kill": "lsof -ti:3000,8000 | xargs kill -9 2>/dev/null; pkill -9 -f uvicorn 2>/dev/null; pkill -9 -f 'next dev' 2>/dev/null; echo 'Ports 3000/8000 cleared'",
-    "start": "npm run kill && node scripts/start.js",
-    "start:no-docker": "npm run kill && node scripts/start.js --no-docker"
+    "kill": "bash ./scripts/stop-app.sh",
+    "start": "bash ./scripts/start-app.sh",
+    "start:no-docker": "bash ./scripts/start-app.sh --no-docker"
   }
 }

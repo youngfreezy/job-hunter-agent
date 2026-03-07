@@ -24,6 +24,8 @@ const BACKEND = path.join(ROOT, "backend");
 const FRONTEND = path.join(ROOT, "frontend");
 const RUNTIME = path.join(ROOT, ".runtime");
 const PID_FILE = path.join(RUNTIME, "launcher.pid");
+const BACKEND_PID_FILE = path.join(RUNTIME, "backend.pid");
+const FRONTEND_PID_FILE = path.join(RUNTIME, "frontend.pid");
 const SKIP_DOCKER = process.argv.includes("--no-docker");
 
 // ── colour helpers ────────────────────────────────────────────────────────────
@@ -61,6 +63,16 @@ function cleanupPidFile() {
       fs.unlinkSync(PID_FILE);
     }
   } catch {}
+}
+
+function cleanupServicePidFiles() {
+  for (const file of [BACKEND_PID_FILE, FRONTEND_PID_FILE]) {
+    try {
+      if (fs.existsSync(file)) {
+        fs.unlinkSync(file);
+      }
+    } catch {}
+  }
 }
 
 function ensureSingleInstance() {
@@ -132,10 +144,19 @@ function spawnChild(label, prefix, cmd, args, opts = {}) {
   });
 
   child.on("exit", (code) => {
+    if (opts.pidFile && fs.existsSync(opts.pidFile)) {
+      try {
+        fs.unlinkSync(opts.pidFile);
+      } catch {}
+    }
     if (code !== 0 && code !== null) {
       log(prefix, `${c.red}exited with code ${code}${c.reset}`);
     }
   });
+
+  if (opts.pidFile) {
+    fs.writeFileSync(opts.pidFile, String(child.pid));
+  }
 
   return child;
 }
@@ -148,6 +169,7 @@ function shutdown() {
       ch.kill("SIGTERM");
     } catch {}
   });
+  cleanupServicePidFiles();
   cleanupPidFile();
   setTimeout(() => process.exit(0), 1500);
 }
@@ -319,7 +341,7 @@ function findNpmCommand() {
       "--reload-exclude",
       "*.log",
     ],
-    { cwd: ROOT }
+    { cwd: ROOT, pidFile: BACKEND_PID_FILE }
   );
 
   // Wait briefly for backend to bind
@@ -331,6 +353,7 @@ function findNpmCommand() {
   spawnChild("frontend", UI_TAG, npmBin, ["run", "dev"], {
     cwd: FRONTEND,
     env: { PATH: pathEnv },
+    pidFile: FRONTEND_PID_FILE,
   });
 
   await waitForHttp200("http://localhost:3000", 90_000, "frontend");
@@ -342,6 +365,7 @@ function findNpmCommand() {
   log(SYS_TAG, `  Runtime  → ${RUNTIME}`);
   log(SYS_TAG, `  Press Ctrl-C to stop everything.\n`);
 })().catch((error) => {
+  cleanupServicePidFiles();
   cleanupPidFile();
   log(SYS_TAG, `${c.red}${error.message}${c.reset}`);
   process.exit(1);
