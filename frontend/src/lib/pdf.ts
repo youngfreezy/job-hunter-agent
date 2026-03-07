@@ -1,17 +1,330 @@
-const LETTER_WIDTH = 612;
-const LETTER_HEIGHT = 792;
-const LEFT_MARGIN = 54;
-const TOP_MARGIN = 72;
-const BOTTOM_MARGIN = 60;
-const BODY_FONT_SIZE = 11;
-const TITLE_FONT_SIZE = 18;
-const META_FONT_SIZE = 9;
-const LEADING = 15;
-const MAX_CHARS_PER_LINE = 88;
+import jsPDF from "jspdf";
 
-function escapePdfText(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+/* ──────────────────────────────────────────────────────────────
+   Resume text parser – turns the plain-text tailored resume
+   into structured sections so we can lay them out properly.
+   ────────────────────────────────────────────────────────────── */
+
+interface ResumeSection {
+  title: string;
+  lines: string[];
 }
+
+interface ParsedResume {
+  name: string;
+  subtitle: string;
+  contact: string;
+  sections: ResumeSection[];
+}
+
+const DIVIDER_RE = /^[─━─\-=]{5,}/;
+
+function parseResumeText(raw: string): ParsedResume {
+  const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  const name = lines[0]?.trim() || "";
+  const subtitle = lines[1]?.trim() || "";
+  const contact = lines[2]?.trim() || "";
+
+  // Find where sections start (after contact line)
+  let cursor = 3;
+  // Skip any blank / divider lines between header and first section
+  while (cursor < lines.length && (lines[cursor].trim() === "" || DIVIDER_RE.test(lines[cursor]))) {
+    cursor++;
+  }
+
+  const sections: ResumeSection[] = [];
+  let currentSection: ResumeSection | null = null;
+
+  for (let i = cursor; i < lines.length; i++) {
+    const line = lines[i];
+    if (DIVIDER_RE.test(line)) continue; // skip divider lines
+
+    const trimmed = line.trim();
+    // Section header: ALL CAPS line that isn't a bullet and is followed by content
+    if (trimmed.length > 0 && trimmed === trimmed.toUpperCase() && !trimmed.startsWith("•") && trimmed.length < 80) {
+      if (currentSection) sections.push(currentSection);
+      currentSection = { title: trimmed, lines: [] };
+      continue;
+    }
+
+    if (currentSection) {
+      currentSection.lines.push(line);
+    }
+  }
+  if (currentSection) sections.push(currentSection);
+
+  return { name, subtitle, contact, sections };
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Sidebar sections – extracted from parsed resume for the
+   left column (contact, education, skills, competencies)
+   ────────────────────────────────────────────────────────────── */
+
+const SIDEBAR_KEYWORDS = ["CORE COMPETENCIES", "SKILLS", "EDUCATION", "CERTIFICATIONS", "CERTIFICATES"];
+
+function isSidebarSection(title: string): boolean {
+  return SIDEBAR_KEYWORDS.some((kw) => title.toUpperCase().includes(kw));
+}
+
+/* ──────────────────────────────────────────────────────────────
+   PDF constants
+   ────────────────────────────────────────────────────────────── */
+
+const ACCENT = [37, 99, 163] as const; // Blue accent matching user's resume
+const WHITE = [255, 255, 255] as const;
+const DARK = [33, 37, 41] as const;
+const GRAY = [108, 117, 125] as const;
+const LIGHT_GRAY = [220, 220, 220] as const;
+
+const PAGE_W = 215.9; // letter mm
+const PAGE_H = 279.4;
+const SIDEBAR_W = 62;
+const MARGIN = 8;
+const BODY_LEFT = SIDEBAR_W + 10;
+const BODY_RIGHT = PAGE_W - MARGIN;
+const BODY_WIDTH = BODY_RIGHT - BODY_LEFT;
+
+/* ──────────────────────────────────────────────────────────────
+   Resume PDF
+   ────────────────────────────────────────────────────────────── */
+
+export function buildResumePdf(rawText: string): jsPDF {
+  const parsed = parseResumeText(rawText);
+  const doc = new jsPDF({ unit: "mm", format: "letter" });
+
+  const sidebarSections = parsed.sections.filter((s) => isSidebarSection(s.title));
+  const mainSections = parsed.sections.filter((s) => !isSidebarSection(s.title));
+
+  // ─── Draw sidebar background ───
+  doc.setFillColor(...ACCENT);
+  doc.rect(0, 0, SIDEBAR_W, PAGE_H, "F");
+
+  // ─── Sidebar: Name ───
+  let sy = 18;
+  doc.setTextColor(...WHITE);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  const nameLines = doc.splitTextToSize(parsed.name, SIDEBAR_W - MARGIN * 2);
+  doc.text(nameLines, MARGIN, sy);
+  sy += nameLines.length * 7 + 2;
+
+  // ─── Sidebar: Subtitle ───
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const subLines = doc.splitTextToSize(parsed.subtitle, SIDEBAR_W - MARGIN * 2);
+  doc.text(subLines, MARGIN, sy);
+  sy += subLines.length * 4 + 6;
+
+  // ─── Sidebar: Contact ───
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "bold");
+  doc.text("Contact", MARGIN, sy);
+  sy += 5;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  const contactParts = parsed.contact.split("|").map((s) => s.trim());
+  for (const part of contactParts) {
+    const cLines = doc.splitTextToSize(part, SIDEBAR_W - MARGIN * 2);
+    doc.text(cLines, MARGIN, sy);
+    sy += cLines.length * 3.5 + 1.5;
+  }
+  sy += 4;
+
+  // ─── Sidebar: sections (skills, education, etc.) ───
+  for (const section of sidebarSections) {
+    if (sy > PAGE_H - 20) break;
+
+    // Section header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.text(section.title, MARGIN, sy);
+    sy += 5;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    for (const line of section.lines) {
+      if (sy > PAGE_H - 10) break;
+      const trimmed = line.trim();
+      if (!trimmed) {
+        sy += 2;
+        continue;
+      }
+      const wrapped = doc.splitTextToSize(trimmed, SIDEBAR_W - MARGIN * 2);
+      doc.text(wrapped, MARGIN, sy);
+      sy += wrapped.length * 3 + 1;
+    }
+    sy += 4;
+  }
+
+  // ─── Main body: Professional Summary / Experience / Projects ───
+  let my = 18;
+
+  for (const section of mainSections) {
+    if (my > PAGE_H - 20) {
+      doc.addPage();
+      // Re-draw sidebar on new page
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, 0, SIDEBAR_W, PAGE_H, "F");
+      my = 18;
+    }
+
+    // Section header
+    doc.setTextColor(...ACCENT);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(section.title, BODY_LEFT, my);
+    my += 1.5;
+
+    // Divider line under header
+    doc.setDrawColor(...LIGHT_GRAY);
+    doc.setLineWidth(0.3);
+    doc.line(BODY_LEFT, my, BODY_RIGHT, my);
+    my += 5;
+
+    // Section content
+    doc.setTextColor(...DARK);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+
+    for (const line of section.lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        my += 2.5;
+        continue;
+      }
+
+      // Check for page overflow
+      if (my > PAGE_H - 15) {
+        doc.addPage();
+        doc.setFillColor(...ACCENT);
+        doc.rect(0, 0, SIDEBAR_W, PAGE_H, "F");
+        my = 18;
+        doc.setTextColor(...DARK);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+      }
+
+      const isBullet = trimmed.startsWith("•") || trimmed.startsWith("-");
+      const isSubheading = !isBullet && trimmed.length < 100 && (
+        trimmed.includes(" | ") || trimmed.includes(" — ") || trimmed.includes(" -- ")
+      );
+
+      if (isSubheading) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+        const wrapped = doc.splitTextToSize(trimmed, BODY_WIDTH);
+        doc.text(wrapped, BODY_LEFT, my);
+        my += wrapped.length * 4 + 1.5;
+        doc.setFont("helvetica", "normal");
+      } else if (isBullet) {
+        const bulletText = trimmed.replace(/^[•\-]\s*/, "");
+        const wrapped = doc.splitTextToSize(bulletText, BODY_WIDTH - 6);
+        doc.text("•", BODY_LEFT + 1, my);
+        doc.text(wrapped, BODY_LEFT + 5, my);
+        my += wrapped.length * 3.8 + 1;
+      } else {
+        const wrapped = doc.splitTextToSize(trimmed, BODY_WIDTH);
+        doc.text(wrapped, BODY_LEFT, my);
+        my += wrapped.length * 3.8 + 1;
+      }
+    }
+    my += 4;
+  }
+
+  return doc;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Cover Letter PDF – clean business letter format
+   ────────────────────────────────────────────────────────────── */
+
+export function buildCoverLetterPdf(text: string, company: string, position: string): jsPDF {
+  const doc = new jsPDF({ unit: "mm", format: "letter" });
+
+  const marginX = 25;
+  const contentWidth = PAGE_W - marginX * 2;
+
+  // ─── Header accent bar ───
+  doc.setFillColor(...ACCENT);
+  doc.rect(0, 0, PAGE_W, 3, "F");
+
+  // ─── Name block ───
+  let y = 20;
+  doc.setTextColor(...DARK);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text("Jane Doe", marginX, y);
+  y += 6;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...GRAY);
+  doc.text("San Francisco, CA | (555) 123-4567 | jane.doe@example.com", marginX, y);
+  y += 10;
+
+  // ─── Divider ───
+  doc.setDrawColor(...ACCENT);
+  doc.setLineWidth(0.5);
+  doc.line(marginX, y, PAGE_W - marginX, y);
+  y += 10;
+
+  // ─── Date ───
+  doc.setTextColor(...DARK);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const today = new Date().toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  doc.text(today, marginX, y);
+  y += 8;
+
+  // ─── Recipient ───
+  doc.setFont("helvetica", "bold");
+  doc.text(`Re: ${position}`, marginX, y);
+  y += 5;
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...GRAY);
+  doc.setFontSize(9);
+  doc.text(company, marginX, y);
+  y += 10;
+
+  // ─── Body text ───
+  doc.setTextColor(...DARK);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+
+  const paragraphs = text.replace(/\r\n/g, "\n").split("\n");
+  for (const para of paragraphs) {
+    const trimmed = para.trim();
+    if (!trimmed) {
+      y += 4;
+      continue;
+    }
+
+    if (y > PAGE_H - 25) {
+      doc.addPage();
+      doc.setFillColor(...ACCENT);
+      doc.rect(0, 0, PAGE_W, 3, "F");
+      y = 18;
+      doc.setTextColor(...DARK);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+    }
+
+    const wrapped = doc.splitTextToSize(trimmed, contentWidth);
+    doc.text(wrapped, marginX, y);
+    y += wrapped.length * 4.5 + 2;
+  }
+
+  return doc;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Download helpers
+   ────────────────────────────────────────────────────────────── */
 
 function sanitizeFilename(value: string): string {
   return value
@@ -20,146 +333,17 @@ function sanitizeFilename(value: string): string {
     .trim();
 }
 
-function wrapParagraph(paragraph: string, maxChars = MAX_CHARS_PER_LINE): string[] {
-  const words = paragraph.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return [""];
-
-  const lines: string[] = [];
-  let current = "";
-
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (candidate.length <= maxChars) {
-      current = candidate;
-      continue;
-    }
-
-    if (current) {
-      lines.push(current);
-    }
-
-    if (word.length <= maxChars) {
-      current = word;
-      continue;
-    }
-
-    const chunks = word.match(new RegExp(`.{1,${maxChars}}`, "g")) || [word];
-    lines.push(...chunks.slice(0, -1));
-    current = chunks[chunks.length - 1] || "";
-  }
-
-  if (current) {
-    lines.push(current);
-  }
-
-  return lines;
+export function downloadResumePdf(resumeText: string, filename: string): void {
+  const doc = buildResumePdf(resumeText);
+  doc.save(`${sanitizeFilename(filename) || "Resume"}.pdf`);
 }
 
-function buildPageStream(title: string, meta: string, lines: string[]): string {
-  const commands: string[] = ["BT"];
-  let y = LETTER_HEIGHT - TOP_MARGIN;
-
-  commands.push(`/F1 ${TITLE_FONT_SIZE} Tf`);
-  commands.push(`1 0 0 1 ${LEFT_MARGIN} ${y} Tm`);
-  commands.push(`(${escapePdfText(title)}) Tj`);
-
-  y -= 24;
-  commands.push(`/F1 ${META_FONT_SIZE} Tf`);
-  commands.push(`1 0 0 1 ${LEFT_MARGIN} ${y} Tm`);
-  commands.push(`(${escapePdfText(meta)}) Tj`);
-
-  y -= 28;
-  commands.push(`/F1 ${BODY_FONT_SIZE} Tf`);
-
-  for (const line of lines) {
-    if (y <= BOTTOM_MARGIN) break;
-    commands.push(`1 0 0 1 ${LEFT_MARGIN} ${y} Tm`);
-    commands.push(`(${escapePdfText(line)}) Tj`);
-    y -= LEADING;
-  }
-
-  commands.push("ET");
-  return commands.join("\n");
-}
-
-function splitIntoPages(body: string): string[][] {
-  const paragraphs = body.replace(/\r\n/g, "\n").split("\n");
-  const pageHeight = LETTER_HEIGHT - TOP_MARGIN - BOTTOM_MARGIN - 60;
-  const maxLinesPerPage = Math.max(1, Math.floor(pageHeight / LEADING));
-
-  const lines: string[] = [];
-  for (const paragraph of paragraphs) {
-    lines.push(...wrapParagraph(paragraph));
-  }
-
-  if (lines.length === 0) {
-    lines.push("");
-  }
-
-  const pages: string[][] = [];
-  for (let i = 0; i < lines.length; i += maxLinesPerPage) {
-    pages.push(lines.slice(i, i + maxLinesPerPage));
-  }
-  return pages;
-}
-
-export function buildSimplePdfBlob(title: string, body: string, meta: string): Blob {
-  const pageBodies = splitIntoPages(body);
-
-  const objects: string[] = [];
-  const fontObjectId = 3;
-  const pageObjectIds = pageBodies.map((_, index) => 4 + index * 2);
-  const contentObjectIds = pageBodies.map((_, index) => 5 + index * 2);
-  const pagesObjectId = 2;
-
-  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
-  objects[2] = `<< /Type /Pages /Count ${pageBodies.length} /Kids [${pageObjectIds
-    .map((id) => `${id} 0 R`)
-    .join(" ")}] >>`;
-  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
-
-  pageBodies.forEach((pageLines, index) => {
-    const pageObjectId = pageObjectIds[index];
-    const contentObjectId = contentObjectIds[index];
-    const stream = buildPageStream(title, meta, pageLines);
-    objects[pageObjectId] =
-      `<< /Type /Page /Parent ${pagesObjectId} 0 R /MediaBox [0 0 ${LETTER_WIDTH} ${LETTER_HEIGHT}] ` +
-      `/Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`;
-    objects[contentObjectId] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
-  });
-
-  let pdf = "%PDF-1.4\n";
-  const offsets: number[] = [0];
-
-  for (let i = 1; i < objects.length; i += 1) {
-    offsets[i] = pdf.length;
-    pdf += `${i} 0 obj\n${objects[i]}\nendobj\n`;
-  }
-
-  const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${objects.length}\n`;
-  pdf += "0000000000 65535 f \n";
-  for (let i = 1; i < objects.length; i += 1) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-
-  return new Blob([pdf], { type: "application/pdf" });
-}
-
-export function downloadPdfDocument(params: {
-  title: string;
-  body: string;
-  filename: string;
-  meta: string;
-}): void {
-  const blob = buildSimplePdfBlob(params.title, params.body, params.meta);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${sanitizeFilename(params.filename) || "document"}.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+export function downloadCoverLetterPdf(
+  text: string,
+  company: string,
+  position: string,
+  filename: string,
+): void {
+  const doc = buildCoverLetterPdf(text, company, position);
+  doc.save(`${sanitizeFilename(filename) || "Cover Letter"}.pdf`);
 }

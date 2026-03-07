@@ -64,6 +64,7 @@ class BaseApplier(ABC):
         self.session_id = session_id
         self._step_count = 0
         self._start_time = time.monotonic()
+        self._screenshot_path: Optional[str] = None
 
     @abstractmethod
     async def apply(
@@ -349,6 +350,22 @@ class BaseApplier(ABC):
     def _elapsed(self) -> int:
         return int(time.monotonic() - self._start_time)
 
+    async def _capture_screenshot(self, job: "JobListing") -> Optional[str]:
+        """Take a post-action screenshot and store the path."""
+        try:
+            import os, tempfile as _tmpmod
+            screenshot_dir = os.path.join(_tmpmod.gettempdir(), "jobhunter_screenshots")
+            os.makedirs(screenshot_dir, exist_ok=True)
+            safe_name = f"{job.company}_{job.title}".replace(" ", "_").replace("/", "_")[:60]
+            path = os.path.join(screenshot_dir, f"{safe_name}_{int(time.monotonic())}.png")
+            await self.page.screenshot(path=path, full_page=True)
+            self._screenshot_path = path
+            logger.info("Post-submit screenshot saved: %s", path)
+            return path
+        except Exception:
+            logger.debug("Screenshot capture failed", exc_info=True)
+            return None
+
     def _make_result(
         self,
         job_id: str,
@@ -359,6 +376,7 @@ class BaseApplier(ABC):
         return ApplicationResult(
             job_id=job_id,
             status=status,
+            screenshot_url=self._screenshot_path,
             error_message=error_message,
             cover_letter_used=cover_letter_used,
             duration_seconds=self._elapsed(),

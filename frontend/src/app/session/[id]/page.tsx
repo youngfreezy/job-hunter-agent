@@ -66,13 +66,16 @@ type SessionData = {
     breakdown: Record<string, number>;
   }>;
   applications_submitted: Array<{
-    job_id: string;
+    job_id?: string;
+    job?: { id: string; title: string; company: string; url: string; board: string };
     status: string;
     submitted_at?: string;
   }>;
   applications_failed: Array<{
-    job_id: string;
+    job_id?: string;
+    job?: { id: string; title: string; company: string; url: string; board: string };
     error_message?: string;
+    error?: string;
   }>;
   coach_output?: CoachOutput;
   coach_chat_history?: Array<{ role: string; text: string }>;
@@ -534,8 +537,16 @@ export default function SessionPage() {
             });
           }
         }
-        // Track application counts from progress events
-        if (evt.event === "application_progress") {
+        // Track application counts from progress events (only when
+        // the event actually carries count fields — step-level events
+        // like "Generating cover letter..." don't have them and would
+        // reset counts to 0).
+        if (
+          evt.event === "application_progress" &&
+          (typeof evt.submitted === "number" ||
+            typeof evt.failed === "number" ||
+            typeof evt.skipped === "number")
+        ) {
           const sub = typeof evt.submitted === "number" ? evt.submitted : 0;
           const fail = typeof evt.failed === "number" ? evt.failed : 0;
           const skip = typeof evt.skipped === "number" ? evt.skipped : 0;
@@ -1141,7 +1152,7 @@ export default function SessionPage() {
               href={`/session/${sessionId}/manual-apply`}
               className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
             >
-              Manual Apply
+              Review & Apply
             </Link>
             <Link
               href={`/session/${sessionId}/settings`}
@@ -2028,7 +2039,9 @@ export default function SessionPage() {
                         </svg>
                       </span>
                       <span className="flex-1 truncate text-foreground/70">
-                        {app.job_id.slice(0, 12)}...
+                        {app.job?.title && app.job?.company
+                          ? `${app.job.title} @ ${app.job.company}`
+                          : (app.job_id?.slice(0, 12) ?? "unknown")}
                       </span>
                       <Badge variant="secondary" className="text-[10px]">
                         {app.status}

@@ -170,16 +170,7 @@ class GreenhouseApplier(BaseApplier):
             pass
 
         # Step 6: Take post-submit screenshot for verification
-        try:
-            import os, tempfile
-            screenshot_dir = os.path.join(tempfile.gettempdir(), "jobhunter_screenshots")
-            os.makedirs(screenshot_dir, exist_ok=True)
-            safe_name = f"{job.company}_{job.title}".replace(" ", "_").replace("/", "_")[:60]
-            screenshot_path = os.path.join(screenshot_dir, f"{safe_name}_submitted.png")
-            await self.page.screenshot(path=screenshot_path, full_page=True)
-            logger.info("Post-submit screenshot saved: %s", screenshot_path)
-        except Exception:
-            logger.debug("Screenshot capture failed", exc_info=True)
+        await self._capture_screenshot(job)
 
         # Step 7: Check for verification code prompt
         if await self._detect_verification_prompt():
