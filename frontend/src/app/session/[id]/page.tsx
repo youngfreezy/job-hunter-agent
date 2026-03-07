@@ -112,6 +112,7 @@ type ScoredJobData = {
   score: number;
   score_breakdown?: Record<string, number>;
   reasons?: string[];
+  fit_summary?: string;
 };
 
 type SSEEvent = {
@@ -340,8 +341,27 @@ export default function SessionPage() {
       .catch(() => {});
   }, [sessionId]);
 
-  const [session, setSession] = useState<SessionData | null>(null);
-  const [events, setEvents] = useState<SSEEvent[]>([]);
+  const eventsStorageKey = `jh_sse_events_${sessionId}`;
+  const sessionStorageKey = `jh_session_${sessionId}`;
+
+  const [session, setSession] = useState<SessionData | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = sessionStorage.getItem(sessionStorageKey);
+      return stored ? (JSON.parse(stored) as SessionData) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [events, setEvents] = useState<SSEEvent[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = sessionStorage.getItem(eventsStorageKey);
+      return stored ? (JSON.parse(stored) as SSEEvent[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [coachReviewOpen, setCoachReviewOpen] = useState(false);
   const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(
     null,
@@ -391,12 +411,46 @@ export default function SessionPage() {
 
   const eventsEndRef = useRef<HTMLDivElement>(null);
   const wsManagerRef = useRef<WebSocketManager | null>(null);
-  const latestStatusRef = useRef("intake");
+  const latestStatusRef = useRef(
+    (() => {
+      if (typeof window === "undefined") return "intake";
+      try {
+        const stored = sessionStorage.getItem(sessionStorageKey);
+        if (stored) {
+          const s = JSON.parse(stored) as SessionData;
+          return s.status || "intake";
+        }
+      } catch { /* ignore */ }
+      return "intake";
+    })(),
+  );
   const coachApprovedRef = useRef(false);
   const shortlistApprovedRef = useRef(false);
 
-  // Elapsed timer
-  const [sessionStartTime] = useState(() => Date.now());
+  // Persist events & session to sessionStorage so navigation doesn't lose progress
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(eventsStorageKey, JSON.stringify(events));
+    } catch { /* quota exceeded – non-critical */ }
+  }, [events, eventsStorageKey]);
+
+  useEffect(() => {
+    if (!session) return;
+    try {
+      sessionStorage.setItem(sessionStorageKey, JSON.stringify(session));
+    } catch { /* quota exceeded – non-critical */ }
+  }, [session, sessionStorageKey]);
+
+  // Elapsed timer — persist start time so navigation doesn't reset it
+  const startTimeKey = `jh_start_${sessionId}`;
+  const [sessionStartTime] = useState(() => {
+    if (typeof window === "undefined") return Date.now();
+    const stored = sessionStorage.getItem(startTimeKey);
+    if (stored) return Number(stored);
+    const now = Date.now();
+    sessionStorage.setItem(startTimeKey, String(now));
+    return now;
+  });
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   useEffect(() => {
     if (session?.status === "completed" || session?.status === "failed") return;
@@ -2198,6 +2252,11 @@ export default function SessionPage() {
                             </li>
                           ))}
                         </ul>
+                      )}
+                      {sj.fit_summary && (
+                        <p className="mt-2 text-xs text-muted-foreground/80 italic leading-relaxed">
+                          {sj.fit_summary}
+                        </p>
                       )}
                     </div>
                     <div className="flex items-center gap-3 ml-4">
