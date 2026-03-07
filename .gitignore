@@ -42,3 +42,5 @@ test_apply_screenshots/
 screenshots/
 eval_results/
 FINAL_STATUS.md
+
+package-lock.json
