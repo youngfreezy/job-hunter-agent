@@ -62,7 +62,7 @@ class BaseScraper(ABC):
             self._owns_manager = True
 
         if not self._manager.is_running:
-            await self._manager.start()
+            await self._manager.start_for_task(board=self.BOARD_NAME, purpose="discovery")
 
         return self._manager
 

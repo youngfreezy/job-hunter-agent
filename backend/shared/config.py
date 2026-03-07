@@ -69,6 +69,17 @@ class Settings(BaseSettings):
     BROWSER_HEADLESS: bool = False
     BROWSER_SLOW_MO: int = 0  # ms delay between Playwright actions (smoother in headed mode)
     BROWSER_MODE: str = "cdp"  # "cdp" (real Chrome) or "patchright" (built-in Chromium)
+    BROWSER_PROVIDER: str = "local"  # "local" or "brightdata"
+    BRIGHT_DATA_BROWSER_ENABLED: bool = False
+    BRIGHT_DATA_BROWSER_CDP_URL: Optional[str] = None
+    BRIGHT_DATA_BROWSER_USERNAME: Optional[str] = None
+    BRIGHT_DATA_BROWSER_PASSWORD: Optional[str] = None
+    BRIGHT_DATA_BROWSER_HOST: str = "brd.superproxy.io"
+    BRIGHT_DATA_BROWSER_PORT: int = 9222
+    BRIGHT_DATA_BROWSER_TIMEOUT_MS: int = 45000
+    BRIGHT_DATA_BROWSER_FORCE: bool = False
+    BRIGHT_DATA_BROWSER_USE_FOR_DISCOVERY: bool = False
+    BRIGHT_DATA_BROWSER_BOARDS: str = "greenhouse,workday,lever,ashby"
 
     model_config = {
         "env_file": (

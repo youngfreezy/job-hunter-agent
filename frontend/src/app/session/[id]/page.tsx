@@ -239,7 +239,7 @@ const AGENT_COLORS: Record<string, string> = {
 
 function getStepIndexForStatus(
   status: string,
-  session?: Pick<SessionData, "pause_resume_node" | "status_before_pause">
+  session?: Pick<SessionData, "pause_resume_node" | "status_before_pause">,
 ): number {
   const directIndex = PIPELINE_STEPS.indexOf(status);
   if (directIndex >= 0) return directIndex;
@@ -248,7 +248,8 @@ function getStepIndexForStatus(
     return PIPELINE_STEPS.indexOf("applying");
   }
   if (status === "paused") {
-    const resumeTarget = session?.pause_resume_node || session?.status_before_pause;
+    const resumeTarget =
+      session?.pause_resume_node || session?.status_before_pause;
     if (resumeTarget) {
       const resumeIndex = PIPELINE_STEPS.indexOf(resumeTarget);
       if (resumeIndex >= 0) return resumeIndex;
@@ -262,11 +263,21 @@ function compressEvents(events: SSEEvent[]): SSEEvent[] {
   const compressed: SSEEvent[] = [];
 
   for (const event of events) {
-    const summary = String(event.step || event.message || event.status || event.event || "");
-    const signature = [event.event, event.agent || "", summary.trim()].join("|");
+    const summary = String(
+      event.step || event.message || event.status || event.event || "",
+    );
+    const signature = [event.event, event.agent || "", summary.trim()].join(
+      "|",
+    );
     const previous = compressed[compressed.length - 1];
     const previousSummary = previous
-      ? String(previous.step || previous.message || previous.status || previous.event || "")
+      ? String(
+          previous.step ||
+            previous.message ||
+            previous.status ||
+            previous.event ||
+            "",
+        )
       : "";
     const previousSignature = previous
       ? [previous.event, previous.agent || "", previousSummary.trim()].join("|")
@@ -314,7 +325,7 @@ export default function SessionPage() {
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [coachReviewOpen, setCoachReviewOpen] = useState(false);
   const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(
-    null
+    null,
   );
   const [coachReviewSubmitting, setCoachReviewSubmitting] = useState(false);
   const [shortlistReviewOpen, setShortlistReviewOpen] = useState(false);
@@ -420,7 +431,7 @@ export default function SessionPage() {
                     ? "agent"
                     : (entry.role as ChatMessage["role"]),
                 text: entry.text,
-              }))
+              })),
             );
           }
         }
@@ -593,7 +604,7 @@ export default function SessionPage() {
                   ? "agent"
                   : (entry.role as ChatMessage["role"]),
               text: entry.text,
-            }))
+            })),
           );
         }
         if (
@@ -771,7 +782,7 @@ export default function SessionPage() {
       },
       (status) => {
         setTakeoverWsStatus(status);
-      }
+      },
     );
 
     wsManagerRef.current = manager;
@@ -803,7 +814,7 @@ export default function SessionPage() {
                   coach_output: response.coach_output,
                   coach_chat_history: response.coach_chat_history,
                 }
-              : prev
+              : prev,
           );
           setCoachReviewOpen(true);
         }
@@ -954,24 +965,6 @@ export default function SessionPage() {
   };
 
   const surfacedEvents = useMemo(() => compressEvents(events), [events]);
-  const recentMilestones = useMemo(
-    () =>
-      [...surfacedEvents]
-        .reverse()
-        .filter((event) =>
-          [
-            "coach_review",
-            "shortlist_review",
-            "needs_intervention",
-            "ready_to_submit",
-            "login_required",
-            "done",
-            "error",
-          ].includes(event.event)
-        )
-        .slice(0, 3),
-    [surfacedEvents]
-  );
 
   const activePane = useMemo(() => {
     if (!session) return "overview";
@@ -1006,101 +999,6 @@ export default function SessionPage() {
     takeoverActive,
   ]);
 
-  const focusSummary = useMemo(() => {
-    if (!session) {
-      return {
-        eyebrow: "Current phase",
-        title: "Loading session",
-        body: "Fetching session state and replaying live events.",
-        tone: "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/60",
-        accent: "text-zinc-700 dark:text-zinc-300",
-      };
-    }
-    if (interventionData) {
-      return {
-        eyebrow: "Blocked on you",
-        title: "Manual help is required in the live browser",
-        body: `${interventionData.job_title} at ${interventionData.company} needs manual intervention before the apply agent can continue.`,
-        tone:
-          "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
-        accent: "text-amber-700 dark:text-amber-300",
-      };
-    }
-    if (submitConfirmData) {
-      return {
-        eyebrow: "Pending approval",
-        title: "Application is ready to submit",
-        body: `${submitConfirmData.job_title} at ${submitConfirmData.company} is filled and waiting for your submit or skip decision.`,
-        tone:
-          "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30",
-        accent: "text-blue-700 dark:text-blue-300",
-      };
-    }
-    if (loginPrompt) {
-      return {
-        eyebrow: "Authentication required",
-        title: `Log in to ${loginPrompt.board}`,
-        body: loginPrompt.message,
-        tone:
-          "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
-        accent: "text-amber-700 dark:text-amber-300",
-      };
-    }
-    if (coachReviewOpen || session.status === "awaiting_coach_review") {
-      return {
-        eyebrow: "Awaiting review",
-        title: "Approve the coached resume before discovery continues",
-        body: "You can revise the coach output in chat, inspect the rewritten resume, and approve when it is strong enough to launch.",
-        tone:
-          "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30",
-        accent: "text-blue-700 dark:text-blue-300",
-      };
-    }
-    if (shortlistReviewOpen || session.status === "awaiting_review") {
-      return {
-        eyebrow: "Awaiting shortlist decision",
-        title: "Choose which ranked jobs are allowed into the apply queue",
-        body: "This is the final quality gate before live applications begin.",
-        tone:
-          "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
-        accent: "text-amber-700 dark:text-amber-300",
-      };
-    }
-    if (session.status === "completed") {
-      return {
-        eyebrow: "Session complete",
-        title: "The workflow finished and the audit trail is ready",
-        body: "Review outcomes, manual apply entries, and checkpoints for this run.",
-        tone:
-          "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30",
-        accent: "text-emerald-700 dark:text-emerald-300",
-      };
-    }
-    if (session.status === "failed") {
-      return {
-        eyebrow: "Run failed",
-        title: "Something stopped the workflow before completion",
-        body: "Use the event timeline and rewind controls to inspect what failed and resume from a safe point.",
-        tone: "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30",
-        accent: "text-red-700 dark:text-red-300",
-      };
-    }
-    return {
-      eyebrow: "Current phase",
-      title: STATUS_LABELS[session.status] || session.status,
-      body: "The pipeline header, focus card, and event timeline are synced to the current state so you can see exactly what is happening now.",
-      tone: "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/60",
-      accent: "text-zinc-700 dark:text-zinc-300",
-    };
-  }, [
-    coachReviewOpen,
-    interventionData,
-    loginPrompt,
-    session,
-    shortlistReviewOpen,
-    submitConfirmData,
-  ]);
-
   const quickActions = useMemo(() => {
     if (!session) {
       return ["Explain the current step"];
@@ -1119,7 +1017,12 @@ export default function SessionPage() {
         "Skip lower-signal frontend matches",
       ];
     }
-    if (interventionData || submitConfirmData || loginPrompt || session.status === "applying") {
+    if (
+      interventionData ||
+      submitConfirmData ||
+      loginPrompt ||
+      session.status === "applying"
+    ) {
       return [
         "Explain what the apply agent is doing now",
         "Pause after this job",
@@ -1150,8 +1053,8 @@ export default function SessionPage() {
     coachReviewOpen || latestStatusRef.current === "awaiting_coach_review"
       ? "Coach"
       : activePane === "apply"
-      ? "Apply"
-      : "Workflow";
+        ? "Apply"
+        : "Workflow";
 
   const rawStepIndex = session
     ? getStepIndexForStatus(session.status, session)
@@ -1254,8 +1157,8 @@ export default function SessionPage() {
                 isActive
                   ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 animate-pulse"
                   : session.status === "completed"
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
-                  : ""
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+                    : ""
               }
             >
               {isActive && (
@@ -1263,26 +1166,6 @@ export default function SessionPage() {
               )}
               {STATUS_LABELS[session.status] || session.status}
             </Badge>
-            {session.status !== "completed" && session.status !== "failed" && (
-              <Button
-                variant="default"
-                size="sm"
-                disabled={resumeLoading}
-                onClick={async () => {
-                  setResumeLoading(true);
-                  try {
-                    await resumeSession(sessionId);
-                    setSseKey((k) => k + 1);
-                  } catch (err) {
-                    console.error("Resume failed:", err);
-                  } finally {
-                    setResumeLoading(false);
-                  }
-                }}
-              >
-                {resumeLoading ? "Resuming..." : "Restart Agents"}
-              </Button>
-            )}
             <Link href="/dashboard">
               <Button variant="outline" size="sm">
                 Dashboard
@@ -1301,8 +1184,10 @@ export default function SessionPage() {
               const isCurrent = i === currentStepIndex;
               const isFailed = session.status === "failed" && isCurrent;
               const isBlocked =
-                (session.status === "awaiting_coach_review" && step === "awaiting_coach_review") ||
-                (session.status === "awaiting_review" && step === "awaiting_review") ||
+                (session.status === "awaiting_coach_review" &&
+                  step === "awaiting_coach_review") ||
+                (session.status === "awaiting_review" &&
+                  step === "awaiting_review") ||
                 ((session.status === "needs_intervention" ||
                   session.status === "paused" ||
                   interventionData ||
@@ -1322,12 +1207,12 @@ export default function SessionPage() {
                         isCompleted
                           ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
                           : isFailed
-                          ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
-                          : isBlocked
-                          ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-                          : isCurrent
-                          ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
-                          : "text-muted-foreground/60"
+                            ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                            : isBlocked
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                              : isCurrent
+                                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
+                                : "text-muted-foreground/60"
                       }
                     `}
                   >
@@ -1372,17 +1257,17 @@ export default function SessionPage() {
                             isFailed
                               ? "bg-red-400 dark:bg-red-500"
                               : isBlocked
-                              ? "bg-amber-400 dark:bg-amber-500"
-                              : isCurrent && isActive
-                              ? "bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
-                              : "bg-blue-400 dark:bg-blue-500"
+                                ? "bg-amber-400 dark:bg-amber-500"
+                                : isCurrent && isActive
+                                  ? "bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
+                                  : "bg-blue-400 dark:bg-blue-500"
                           }`}
                           style={{
                             width: isCompleted
                               ? "100%"
                               : isCurrent
-                              ? `${Math.max(stepProgress, 5)}%`
-                              : "0%",
+                                ? `${Math.max(stepProgress, 5)}%`
+                                : "0%",
                           }}
                         />
                       </div>
@@ -1502,75 +1387,6 @@ export default function SessionPage() {
       {/* Main content */}
       <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
-          <Card className={focusSummary.tone}>
-            <CardContent className="grid gap-4 p-6 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
-              <div>
-                <p className={`text-xs font-medium uppercase tracking-[0.22em] ${focusSummary.accent}`}>
-                  {focusSummary.eyebrow}
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold">{focusSummary.title}</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  {focusSummary.body}
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
-                <div className="rounded-2xl bg-background/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    Current status
-                  </p>
-                  <p className="mt-2 font-semibold">
-                    {STATUS_LABELS[session.status] || session.status}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-background/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    Steering target
-                  </p>
-                  <p className="mt-2 font-semibold">{chatModeLabel}</p>
-                </div>
-                <div className="rounded-2xl bg-background/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    Next best action
-                  </p>
-                  <p className="mt-2 text-sm font-medium">
-                    {activePane === "coach"
-                      ? "Approve or revise the coached resume"
-                      : activePane === "shortlist"
-                      ? "Approve the shortlist"
-                      : activePane === "apply"
-                      ? "Use steering or takeover if the run blocks"
-                      : activePane === "summary"
-                      ? "Review outcomes and rewind points"
-                      : "Let the agents continue and monitor the timeline"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {recentMilestones.length > 0 && (
-            <div className="grid gap-3 md:grid-cols-3">
-              {recentMilestones.map((event, index) => (
-                <Card key={`${event.event}-${index}`} className="border-zinc-200 dark:border-zinc-800">
-                  <CardContent className="p-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      {AGENT_DISPLAY_NAMES[event.agent || event.event || "system"] ||
-                        event.event}
-                    </p>
-                    <p className="mt-2 text-sm font-medium">
-                      {event.message || event.step || event.status || event.event}
-                    </p>
-                    {event.timestamp && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {new Date(event.timestamp).toLocaleTimeString()}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
           <Card className="overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-3">
               <div className="flex items-start justify-between gap-3">
@@ -1616,7 +1432,8 @@ export default function SessionPage() {
                     Live Status
                   </CardTitle>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Surfacing the latest meaningful events instead of every duplicate status tick.
+                    Surfacing the latest meaningful events instead of every
+                    duplicate status tick.
                   </p>
                 </div>
                 <span className="text-xs text-muted-foreground">
@@ -1670,7 +1487,8 @@ export default function SessionPage() {
                       </span>
                       <span
                         className={`min-w-0 flex-1 break-words text-sm ${
-                          typeof evt.step === "string" && evt.step.startsWith("Skipped")
+                          typeof evt.step === "string" &&
+                          evt.step.startsWith("Skipped")
                             ? "text-amber-600 dark:text-amber-400"
                             : "text-foreground/80"
                         }`}
@@ -1735,7 +1553,7 @@ export default function SessionPage() {
           </Card>
         </div>
 
-        <div className="space-y-4 overflow-y-auto border-l border-border/50 bg-card/30 p-5">
+        <div className="space-y-4 overflow-y-auto border-l border-border/50 bg-card/30 px-5 pb-5 pt-0">
           <Card className="border-blue-100 bg-gradient-to-br from-blue-50 to-sky-50 dark:border-blue-900 dark:from-blue-950/50 dark:to-sky-950/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -1802,7 +1620,7 @@ export default function SessionPage() {
                   {
                     value: Array.isArray(session.applications_skipped)
                       ? session.applications_skipped.length
-                      : session.applications_skipped ?? 0,
+                      : (session.applications_skipped ?? 0),
                     label: "Skipped",
                     color: "text-amber-600 dark:text-amber-400",
                   },
@@ -1817,47 +1635,6 @@ export default function SessionPage() {
                   </a>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Current Focus</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
-                {activePane === "coach"
-                  ? "Coach chat and coached artifacts are the primary controls right now."
-                  : activePane === "shortlist"
-                  ? "Shortlist review is the active gate before apply can continue."
-                  : activePane === "apply"
-                  ? "The apply stage is active. Use steering or takeover when the browser needs help."
-                  : activePane === "summary"
-                  ? "The run is complete. Review outcomes, logs, and rewind points."
-                  : "The workflow is running. Monitor the timeline and adjust strategy if needed."}
-              </p>
-              {activePane === "coach" && (
-                <Button className="w-full" onClick={() => setCoachReviewOpen(true)}>
-                  Open Coach Review
-                </Button>
-              )}
-              {activePane === "shortlist" && (
-                <Button className="w-full" onClick={() => setShortlistReviewOpen(true)}>
-                  Open Shortlist Review
-                </Button>
-              )}
-              {activePane === "apply" && interventionData && (
-                <Button className="w-full" onClick={handleResumeIntervention}>
-                  Resume After Intervention
-                </Button>
-              )}
-              {activePane === "summary" && (
-                <Link href={`/session/${sessionId}/manual-apply`} className="block">
-                  <Button className="w-full" variant="outline">
-                    Review Manual Apply Log
-                  </Button>
-                </Link>
-              )}
             </CardContent>
           </Card>
 
@@ -1943,7 +1720,10 @@ export default function SessionPage() {
                         {session.coach_output.confidence_message}
                       </p>
                     </TooltipTrigger>
-                    <TooltipContent side="left" className="max-w-sm text-xs leading-relaxed">
+                    <TooltipContent
+                      side="left"
+                      className="max-w-sm text-xs leading-relaxed"
+                    >
                       {session.coach_output.confidence_message}
                     </TooltipContent>
                   </Tooltip>
@@ -1986,11 +1766,15 @@ export default function SessionPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Jobs scored</span>
+                  <span className="text-xs text-muted-foreground">
+                    Jobs scored
+                  </span>
                   <span className="font-semibold">{shortlistJobs.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Top score</span>
+                  <span className="text-xs text-muted-foreground">
+                    Top score
+                  </span>
                   <CircularProgress
                     value={shortlistJobs[0]?.score || 0}
                     size={28}
@@ -2034,46 +1818,81 @@ export default function SessionPage() {
               <CardContent className="space-y-3 text-sm">
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: "Discovered", value: sessionSummary.total_discovered, color: "" },
-                    { label: "Scored", value: sessionSummary.total_scored, color: "" },
+                    {
+                      label: "Discovered",
+                      value: sessionSummary.total_discovered,
+                      color: "",
+                    },
+                    {
+                      label: "Scored",
+                      value: sessionSummary.total_scored,
+                      color: "",
+                    },
                     {
                       label: "Applied",
                       value: sessionSummary.total_applied,
                       color: "text-emerald-600 dark:text-emerald-400",
                     },
-                    { label: "Failed", value: sessionSummary.total_failed, color: "text-red-500" },
-                    { label: "Skipped", value: sessionSummary.total_skipped, color: "" },
-                    { label: "Avg Fit", value: `${sessionSummary.avg_fit_score}/100`, color: "" },
+                    {
+                      label: "Failed",
+                      value: sessionSummary.total_failed,
+                      color: "text-red-500",
+                    },
+                    {
+                      label: "Skipped",
+                      value: sessionSummary.total_skipped,
+                      color: "",
+                    },
+                    {
+                      label: "Avg Fit",
+                      value: `${sessionSummary.avg_fit_score}/100`,
+                      color: "",
+                    },
                   ].map(({ label, value, color }) => (
-                    <div key={label} className="flex items-center justify-between py-1">
-                      <span className="text-xs text-muted-foreground">{label}</span>
+                    <div
+                      key={label}
+                      className="flex items-center justify-between py-1"
+                    >
+                      <span className="text-xs text-muted-foreground">
+                        {label}
+                      </span>
                       <span className={`font-semibold ${color}`}>{value}</span>
                     </div>
                   ))}
                 </div>
                 <div className="flex items-center justify-between border-t border-emerald-200/50 py-1 dark:border-emerald-800/50">
-                  <span className="text-xs text-muted-foreground">Duration</span>
-                  <span className="font-semibold">{sessionSummary.duration_minutes}m</span>
+                  <span className="text-xs text-muted-foreground">
+                    Duration
+                  </span>
+                  <span className="font-semibold">
+                    {sessionSummary.duration_minutes}m
+                  </span>
                 </div>
                 {sessionSummary.top_companies.length > 0 && (
                   <div>
-                    <p className="mb-1.5 text-xs text-muted-foreground">Top Companies</p>
+                    <p className="mb-1.5 text-xs text-muted-foreground">
+                      Top Companies
+                    </p>
                     <div className="flex flex-wrap gap-1">
-                      {sessionSummary.top_companies.slice(0, 5).map((company, i) => (
-                        <Badge
-                          key={i}
-                          variant="secondary"
-                          className="bg-white/80 text-xs dark:bg-white/10"
-                        >
-                          {company}
-                        </Badge>
-                      ))}
+                      {sessionSummary.top_companies
+                        .slice(0, 5)
+                        .map((company, i) => (
+                          <Badge
+                            key={i}
+                            variant="secondary"
+                            className="bg-white/80 text-xs dark:bg-white/10"
+                          >
+                            {company}
+                          </Badge>
+                        ))}
                     </div>
                   </div>
                 )}
                 {sessionSummary.next_steps.length > 0 && (
                   <div>
-                    <p className="mb-1.5 text-xs text-muted-foreground">Next Steps</p>
+                    <p className="mb-1.5 text-xs text-muted-foreground">
+                      Next Steps
+                    </p>
                     <ul className="space-y-1.5">
                       {sessionSummary.next_steps.map((step, i) => (
                         <li
@@ -2126,11 +1945,16 @@ export default function SessionPage() {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      Resume from a meaningful checkpoint instead of restarting the whole run.
+                      Resume from a meaningful checkpoint instead of restarting
+                      the whole run.
                     </p>
                     {checkpoints
                       .filter((cp) =>
-                        ["paused", "awaiting_review", "awaiting_coach_review"].includes(cp.status)
+                        [
+                          "paused",
+                          "awaiting_review",
+                          "awaiting_coach_review",
+                        ].includes(cp.status),
                       )
                       .map((cp) => (
                         <button
@@ -2152,7 +1976,11 @@ export default function SessionPage() {
                         </button>
                       ))}
                     {checkpoints.filter((cp) =>
-                      ["paused", "awaiting_review", "awaiting_coach_review"].includes(cp.status)
+                      [
+                        "paused",
+                        "awaiting_review",
+                        "awaiting_coach_review",
+                      ].includes(cp.status),
                     ).length === 0 && (
                       <p className="text-xs text-muted-foreground">
                         No rewindable checkpoints found.
@@ -2164,58 +1992,59 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {session.applications_submitted && session.applications_submitted.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4 text-emerald-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Applications
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="max-h-64 space-y-1 overflow-y-auto">
-                {session.applications_submitted.map((app, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-muted/50"
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950">
-                      <svg
-                        className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={3}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </span>
-                    <span className="flex-1 truncate text-foreground/70">
-                      {app.job_id.slice(0, 12)}...
-                    </span>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {app.status}
-                    </Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+          {session.applications_submitted &&
+            session.applications_submitted.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <svg
+                      className="w-4 h-4 text-emerald-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    Applications
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="max-h-64 space-y-1 overflow-y-auto">
+                  {session.applications_submitted.map((app, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-muted/50"
+                    >
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950">
+                        <svg
+                          className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={3}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </span>
+                      <span className="flex-1 truncate text-foreground/70">
+                        {app.job_id.slice(0, 12)}...
+                      </span>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {app.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
         </div>
       </div>
 
