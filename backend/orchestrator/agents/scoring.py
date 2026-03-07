@@ -1,8 +1,8 @@
 """Scoring Agent -- ranks discovered jobs by fit against the coached resume/profile.
 
-Uses Claude Sonnet to evaluate each job listing against the user's resume,
-producing a 0-100 score with a breakdown across multiple dimensions.
-Jobs are batched in groups of 10 and scored concurrently (up to 5 parallel LLM calls).
+Uses the configured chat model to evaluate each job listing against the user's
+resume, producing a 0-100 score with a breakdown across multiple dimensions.
+Jobs are batched conservatively to avoid structured-output truncation.
 """
 
 from __future__ import annotations
@@ -46,8 +46,10 @@ class ScoringBatchResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 DEFAULT_MODEL = default_model()
-SCORING_BATCH_SIZE = 20
-CONCURRENCY = 10  # Max parallel LLM calls for scoring batches
+SCORING_BATCH_SIZE = 5
+CONCURRENCY = 4
+MAX_SCORING_TOKENS = 1800
+MAX_DESCRIPTION_CHARS = 320
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -65,7 +67,7 @@ Scoring guidelines:
 - salary_match: 100 if within resume's implied range; 50 if salary not listed; lower if clearly mismatched.
 - experience_match: 100 if years of experience align; lower for over/under-qualified.
 - overall score should be a weighted average: keyword 40%, experience 30%, location 15%, salary 15%.
-- reasons: 2-3 short bullet points explaining the score.
+- reasons: exactly 2 short bullet points, each under 12 words.
 """
 
 
@@ -111,6 +113,9 @@ def _jobs_to_prompt_text(jobs: List[JobListing]) -> str:
     """Serialise a batch of JobListings into a compact text block for the LLM."""
     entries = []
     for job in jobs:
+        description = (job.description_snippet or "N/A").strip()
+        if len(description) > MAX_DESCRIPTION_CHARS:
+            description = description[:MAX_DESCRIPTION_CHARS].rstrip() + "..."
         entries.append(
             f"- ID: {job.id}\n"
             f"  Title: {job.title}\n"
@@ -118,7 +123,7 @@ def _jobs_to_prompt_text(jobs: List[JobListing]) -> str:
             f"  Location: {job.location}\n"
             f"  Remote: {job.is_remote}\n"
             f"  Salary: {job.salary_range or 'Not listed'}\n"
-            f"  Description: {job.description_snippet or 'N/A'}\n"
+            f"  Description: {description}\n"
         )
     return "\n".join(entries)
 
@@ -132,8 +137,8 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
 
     Steps:
     1. Deduplicate jobs across boards.
-    2. Batch jobs in groups of 10.
-    3. Call Claude Sonnet for each batch (JSON mode).
+    2. Batch jobs conservatively.
+    3. Score each batch via structured output, splitting on length-limit errors.
     4. Merge results, sort by score descending.
     """
     try:
@@ -170,7 +175,12 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         total_batches = len(batches)
 
         # Pre-create LLM + structured wrapper once (shared across all batches)
-        llm = build_llm(model=DEFAULT_MODEL, max_tokens=4096, temperature=0.0, timeout=120)
+        llm = build_llm(
+            model=DEFAULT_MODEL,
+            max_tokens=MAX_SCORING_TOKENS,
+            temperature=0.0,
+            timeout=120,
+        )
         structured_llm = llm.with_structured_output(ScoringBatchResult)
 
         async def _score_batch(batch_idx: int, batch_jobs: List[JobListing]) -> List[dict]:
@@ -197,6 +207,18 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                     logger.warning("Scoring batch %d returned empty result, retrying...", batch_idx + 1)
                 except Exception as e:
                     last_exc = e
+                    if "length limit" in str(e).lower() and len(batch_jobs) > 1:
+                        midpoint = max(1, len(batch_jobs) // 2)
+                        logger.warning(
+                            "Scoring batch %d exceeded token budget, splitting %d jobs into %d + %d",
+                            batch_idx + 1,
+                            len(batch_jobs),
+                            midpoint,
+                            len(batch_jobs) - midpoint,
+                        )
+                        left = await _score_batch(batch_idx, batch_jobs[:midpoint])
+                        right = await _score_batch(batch_idx, batch_jobs[midpoint:])
+                        return left + right
                     logger.warning("Scoring batch %d attempt %d failed: %s", batch_idx + 1, _attempt + 1, e)
             raise last_exc or ValueError("Scoring returned empty results after 3 attempts")
 

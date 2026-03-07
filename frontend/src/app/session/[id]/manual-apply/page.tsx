@@ -126,6 +126,41 @@ export default function ManualApplyPage() {
           </p>
         </div>
 
+        <div className="mb-6 grid gap-3 md:grid-cols-3">
+          <Card className="border-emerald-200 dark:border-emerald-900">
+            <CardContent className="p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                Submitted
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Jobs the agent confirmed as submitted. Open details to inspect
+                the tailored resume and cover letter used.
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-amber-200 dark:border-amber-900">
+            <CardContent className="p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                Skipped
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Jobs intentionally skipped by the workflow or by manual review.
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="border-red-200 dark:border-red-900">
+            <CardContent className="p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                Failed
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Jobs that hit an error. Use the saved artifacts and original job
+                URL to finish them manually if they still matter.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
           {(["all", "failed", "skipped", "submitted"] as Tab[]).map((t) => (
@@ -153,11 +188,12 @@ export default function ManualApplyPage() {
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-16 text-center">
               <p className="text-lg font-medium text-muted-foreground">
-                No applications yet
+                No application entries yet
               </p>
               <p className="text-sm text-muted-foreground/70 mt-1">
-                Application attempts will appear here as the agent processes
-                jobs
+                Submitted, skipped, and failed attempts appear here as the agent
+                reaches the apply stage. This page becomes your audit log when
+                manual follow-up is needed.
               </p>
             </CardContent>
           </Card>

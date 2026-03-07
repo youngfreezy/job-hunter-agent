@@ -14,7 +14,7 @@ test.describe("Landing Page", () => {
     await expect(page.getByText("JobHunter Agent").first()).toBeVisible();
   });
 
-  test("shows all three pricing cards with correct prices", async ({
+  test("shows all three pricing cards with monthly pricing by default", async ({
     page,
   }) => {
     // Scroll to pricing section
@@ -23,28 +23,25 @@ test.describe("Landing Page", () => {
     // Pricing cards are rendered inside the #pricing section
     const pricing = page.locator("#pricing");
 
-    // Starter - $49/week
-    await expect(pricing.getByText("Starter")).toBeVisible();
-    await expect(pricing.getByText("$49")).toBeVisible();
+    await expect(pricing.getByText("Free", { exact: true })).toBeVisible();
+    await expect(pricing.getByText("$0").first()).toBeVisible();
 
-    // Professional - $99/week
-    await expect(pricing.getByText("Professional")).toBeVisible();
-    await expect(pricing.getByText("$99")).toBeVisible();
+    await expect(pricing.getByText("Pro", { exact: true })).toBeVisible();
+    await expect(pricing.getByText("$49").first()).toBeVisible();
 
-    // Executive - $199/week
-    await expect(pricing.getByText("Executive")).toBeVisible();
-    await expect(pricing.getByText("$199")).toBeVisible();
+    await expect(pricing.getByText("Power", { exact: true })).toBeVisible();
+    await expect(pricing.getByText("$99").first()).toBeVisible();
+    await expect(pricing.getByRole("button", { name: "Monthly" })).toBeVisible();
   });
 
-  test("shows the Professional plan as Most Popular", async ({ page }) => {
+  test("shows the Pro plan as Most Popular", async ({ page }) => {
     await page.locator("#pricing").scrollIntoViewIfNeeded();
     await expect(page.getByText("Most Popular")).toBeVisible();
   });
 
-  test('"Start Free Trial" buttons link to /session/new', async ({ page }) => {
+  test("pricing CTAs link to /session/new", async ({ page }) => {
     await page.locator("#pricing").scrollIntoViewIfNeeded();
 
-    // All "Start Free Trial" buttons within pricing cards should link to /session/new
     const trialButtons = page.locator("#pricing a[href='/session/new']");
     const count = await trialButtons.count();
     expect(count).toBe(3);
@@ -55,12 +52,12 @@ test.describe("Landing Page", () => {
 
     // Verify all 6 step titles are present
     const stepTitles = [
-      "Upload & Configure",
-      "AI Career Coach",
-      "Discover & Score",
-      "Review & Approve",
-      "Watch & Steer",
-      "Get Results",
+      "Configure The Search",
+      "Coach The Resume",
+      "Rank The Market",
+      "Apply With Oversight",
+      "Audit Every Attempt",
+      "Recover Fast",
     ];
 
     for (const title of stepTitles) {
@@ -80,16 +77,16 @@ test.describe("Landing Page", () => {
   });
 
   test("hero section has correct headline text", async ({ page }) => {
-    await expect(page.getByText("Stop applying to jobs.")).toBeVisible();
-    await expect(page.getByText("Let AI do it for you.")).toBeVisible();
+    await expect(page.getByText("Start the search once.")).toBeVisible();
+    await expect(
+      page.getByText("Keep control through every application.")
+    ).toBeVisible();
   });
 
   test('hero has "Start Your First Session" button linking to /session/new', async ({
     page,
   }) => {
-    const sessionLink = page.getByRole("link", {
-      name: "Start Your First Session",
-    });
+    const sessionLink = page.getByRole("link", { name: "Start Free" }).first();
     await expect(sessionLink).toBeVisible();
     await expect(sessionLink).toHaveAttribute("href", "/session/new");
   });

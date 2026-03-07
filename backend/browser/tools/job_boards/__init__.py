@@ -42,6 +42,78 @@ class RankedListingIndices(BaseModel):
     indices: List[int] = Field(default_factory=list)
 
 
+RANKING_CHUNK_SIZE = 15
+RANKING_MAX_TOKENS = 400
+
+
+def _keyword_score(job: JobListing, keywords: List[str]) -> int:
+    text = " ".join(
+        filter(
+            None,
+            [job.title, job.company, job.location, job.description_snippet],
+        )
+    ).lower()
+    return sum(1 for kw in keywords if kw in text)
+
+
+async def _rank_chunk(
+    listings: List[JobListing],
+    keywords: List[str],
+    limit: int,
+) -> List[JobListing]:
+    import json
+    import logging
+    from backend.shared.llm import build_llm, invoke_with_retry, HAIKU_MODEL
+
+    logger = logging.getLogger(__name__)
+
+    job_summaries = []
+    for i, job in enumerate(listings):
+        job_summaries.append({
+            "idx": i,
+            "title": job.title,
+            "company": job.company,
+            "location": job.location or "",
+        })
+
+    prompt = f"""You are a job relevance ranker for a Senior AI Engineer. Rank these jobs by relevance to ALL of the search keywords, not just one.
+
+IMPORTANT:
+- Prefer jobs that match multiple keywords over generic title overlaps.
+- Return exactly the strongest {limit} indices when possible.
+- Keep the ordering best-first.
+
+Keywords: {', '.join(keywords)}
+
+Jobs:
+{json.dumps(job_summaries, indent=1)}
+"""
+
+    llm = build_llm(model=HAIKU_MODEL, max_tokens=RANKING_MAX_TOKENS, temperature=0.0)
+    structured_llm = llm.with_structured_output(RankedListingIndices)
+    response = await invoke_with_retry(
+        structured_llm,
+        [("human", prompt)],
+        max_retries=2,
+    )
+
+    ranked = []
+    seen = set()
+    for idx in response.indices:
+        if isinstance(idx, int) and 0 <= idx < len(listings) and idx not in seen:
+            ranked.append(listings[idx])
+            seen.add(idx)
+
+    if ranked:
+        logger.info(
+            "LLM ranked %d/%d listings for top %d",
+            len(ranked),
+            len(listings),
+            limit,
+        )
+    return ranked[:limit]
+
+
 async def rank_by_relevance(
     listings: List[JobListing],
     keywords: List[str],
@@ -57,62 +129,44 @@ async def rank_by_relevance(
     if len(listings) <= limit:
         return listings
 
-    import json
     import logging
-    from backend.shared.llm import build_llm, invoke_with_retry, HAIKU_MODEL
 
     logger = logging.getLogger(__name__)
 
-    # Build a compact list for the LLM
-    job_summaries = []
-    for i, job in enumerate(listings):
-        job_summaries.append({
-            "idx": i,
-            "title": job.title,
-            "company": job.company,
-            "location": job.location or "",
-        })
-
-    prompt = f"""You are a job relevance ranker for a Senior AI Engineer. Rank these jobs by relevance to ALL of the search keywords, not just one.
-
-IMPORTANT: Prioritize jobs that match MULTIPLE keywords (especially AI/ML/LLM keywords over generic frontend ones). A job matching "Agentic AI" + "LangGraph" is far more relevant than a generic "React Developer" role. Avoid picking multiple similar roles -- diversify across different job types and companies.
-
-Keywords: {', '.join(keywords)}
-
-Jobs:
-{json.dumps(job_summaries, indent=1)}
-
-Return the top {limit} indices ranked best first."""
-
     try:
-        llm = build_llm(model=HAIKU_MODEL, max_tokens=2000, temperature=0.0)
-        structured_llm = llm.with_structured_output(RankedListingIndices)
-        response = await invoke_with_retry(
-            structured_llm,
-            [("human", prompt)],
-            max_retries=2,
-        )
-        indices = response.indices
-        ranked = []
-        seen = set()
-        for idx in indices:
-            if isinstance(idx, int) and 0 <= idx < len(listings) and idx not in seen:
-                ranked.append(listings[idx])
-                seen.add(idx)
-        if ranked:
-            logger.info("LLM ranked %d/%d listings for top %d", len(ranked), len(listings), limit)
-            return ranked[:limit]
+        if len(listings) <= RANKING_CHUNK_SIZE:
+            ranked = await _rank_chunk(listings, keywords, limit)
+            if ranked:
+                return ranked
+        else:
+            candidate_limit = min(
+                RANKING_CHUNK_SIZE,
+                max(limit * 2, 6),
+            )
+            candidates: List[JobListing] = []
+            seen_ids: set[str] = set()
+            for start in range(0, len(listings), RANKING_CHUNK_SIZE):
+                chunk = listings[start : start + RANKING_CHUNK_SIZE]
+                ranked_chunk = await _rank_chunk(
+                    chunk,
+                    keywords,
+                    min(candidate_limit, len(chunk)),
+                )
+                for job in ranked_chunk:
+                    if job.id not in seen_ids:
+                        candidates.append(job)
+                        seen_ids.add(job.id)
+
+            if candidates:
+                final_pool = candidates[: max(limit * 3, RANKING_CHUNK_SIZE)]
+                ranked = await _rank_chunk(final_pool, keywords, min(limit, len(final_pool)))
+                if ranked:
+                    return ranked
     except Exception:
         logger.warning("LLM ranking failed, falling back to keyword match", exc_info=True)
 
     # Fallback: simple keyword-match scoring
     lower_keywords = [kw.lower() for kw in keywords]
 
-    def _score(job: JobListing) -> int:
-        text = " ".join(filter(None, [
-            job.title, job.company, job.location, job.description_snippet,
-        ])).lower()
-        return sum(1 for kw in lower_keywords if kw in text)
-
-    ranked = sorted(listings, key=_score, reverse=True)
+    ranked = sorted(listings, key=lambda job: _keyword_score(job, lower_keywords), reverse=True)
     return ranked[:limit]

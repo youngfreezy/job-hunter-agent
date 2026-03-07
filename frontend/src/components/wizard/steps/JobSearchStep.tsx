@@ -12,12 +12,21 @@ export function JobSearchStep() {
         <CardHeader>
           <CardTitle className="text-lg">Search Keywords</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <FormikKeywordInput
             name="keywords"
             placeholder="e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
             helpText="Comma-separated. These are matched against job titles and descriptions."
           />
+          <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
+            <p className="font-medium text-zinc-900 dark:text-white">
+              What this changes
+            </p>
+            <p className="mt-1">
+              Keywords drive discovery, ranking, and the direction of resume
+              tailoring. Be specific enough to exclude weak matches.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -46,6 +55,16 @@ export function JobSearchStep() {
                 className="w-32"
               />
             </div>
+          </div>
+          <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
+            <p className="font-medium text-zinc-900 dark:text-white">
+              What this changes
+            </p>
+            <p className="mt-1">
+              Location, salary, and remote preference filter the boards before
+              scoring so the shortlist reflects constraints you actually care
+              about.
+            </p>
           </div>
         </CardContent>
       </Card>

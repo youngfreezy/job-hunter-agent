@@ -12,37 +12,21 @@
  */
 import { test, expect } from "@playwright/test";
 import { login } from "./helpers/auth";
-import path from "path";
-import fs from "fs";
-
 const API_BASE = "http://localhost:8000";
 const RESUME_TEXT =
   "Senior Software Engineer with 10 years of experience in React, Python, " +
   "and distributed systems. Built multiple AI-native applications using " +
   "LangGraph, LangChain, and RAG pipelines. Expert in TypeScript, Node.js, " +
   "and AWS cloud services.";
+const RESUME_FILE = {
+  name: "test-resume-full.txt",
+  mimeType: "text/plain",
+  buffer: Buffer.from(RESUME_TEXT),
+};
 
 test.describe("Full Wizard → Session Flow (Integration)", () => {
-  let resumeFilePath: string;
 
-  test.beforeAll(() => {
-    resumeFilePath = path.join(__dirname, "fixtures", "test-resume-full.txt");
-    fs.mkdirSync(path.dirname(resumeFilePath), { recursive: true });
-    fs.writeFileSync(resumeFilePath, RESUME_TEXT);
-  });
-
-  test.afterAll(() => {
-    try {
-      fs.unlinkSync(resumeFilePath);
-    } catch {
-      /* ignore */
-    }
-  });
-
-  test.beforeEach(async ({ page, request }) => {
-    // Verify backend is running before tests
-    const health = await request.get(`${API_BASE}/api/health`);
-    expect(health.status()).toBe(200);
+  test.beforeEach(async ({ page }) => {
     await login(page);
   });
 
@@ -85,8 +69,8 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     ).toBeVisible();
 
     // Upload resume file
-    await page.locator("#resume-upload").setInputFiles(resumeFilePath);
-    await expect(page.getByText("test-resume-full.txt")).toBeVisible();
+    await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
+    await expect(page.getByText("test-resume-full.txt").first()).toBeVisible();
     await page.waitForTimeout(500);
 
     // Click Next
