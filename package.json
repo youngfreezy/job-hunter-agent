@@ -8,6 +8,7 @@
   "scripts": {
     "kill": "bash ./scripts/stop-app.sh",
     "start": "bash ./scripts/start-app.sh",
+    "dev": "npm run kill && npm run start",
     "start:no-docker": "bash ./scripts/start-app.sh --no-docker"
   }
 }
