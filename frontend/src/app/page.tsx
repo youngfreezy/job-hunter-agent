@@ -14,14 +14,14 @@ const planCatalog = [
     monthlyPrice: 0,
     weeklyPrice: 0,
     capacity: "5 total applications",
-    summary: "See how it works before you commit.",
+    summary: "Perfect for testing our approach before committing.",
     features: [
-      "AI-powered job search across top boards",
-      "One resume coaching pass",
-      "Review your shortlist before anything is sent",
-      "Application log with saved resumes and cover letters",
+      "AI-powered job matching across top boards",
+      "Professional resume optimization (1 revision)",
+      "Shortlist approval before any applications",
+      "Complete application tracking and materials",
     ],
-    cta: "Start Free",
+    cta: "Start Your 5 Free Applications",
     popular: false,
   },
   {
@@ -29,14 +29,14 @@ const planCatalog = [
     monthlyPrice: 49,
     weeklyPrice: 19,
     capacity: "40 applications per week",
-    summary: "For active job seekers who want steady momentum.",
+    summary: "Ideal for active job seekers who want consistent momentum.",
     features: [
-      "Resume coaching, tailored resumes, and cover letters",
-      "Live progress updates and shortlist review",
-      "Chat to adjust your search while it runs",
-      "Application log with every version saved",
+      "Unlimited resume tailoring and cover letters",
+      "Live progress updates and shortlist reviews",
+      "Direct communication with your AI agent",
+      "Complete application history and downloads",
     ],
-    cta: "Choose Pro",
+    cta: "Start Pro Plan Today",
     popular: true,
   },
   {
@@ -44,14 +44,14 @@ const planCatalog = [
     monthlyPrice: 99,
     weeklyPrice: 39,
     capacity: "100 applications per week",
-    summary: "Maximum coverage with hands-on control when you need it.",
+    summary: "Maximum coverage with hands-on control for complex applications.",
     features: [
       "Everything in Pro",
-      "Watch applications happen in real time",
-      "Step in for logins, CAPTCHAs, and tricky forms",
-      "Priority support for stuck applications",
+      "Real-time application monitoring",
+      "Direct browser control for challenging sites",
+      "Priority support for complex applications",
     ],
-    cta: "Choose Power",
+    cta: "Choose Power Plan Now",
     popular: false,
   },
 ];
@@ -59,63 +59,63 @@ const planCatalog = [
 const steps = [
   {
     num: "1",
-    title: "Set your preferences",
-    desc: "Tell us the roles, locations, salary range, and remote preferences that matter to you.",
+    title: "Define your search criteria",
+    desc: "Set target roles, locations, salary requirements, and remote work preferences.",
   },
   {
     num: "2",
-    title: "Get a resume upgrade",
-    desc: "Our AI coach rewrites your resume for maximum impact, then pauses so you can review and approve it.",
+    title: "Approve your optimized resume",
+    desc: "Our AI enhances your resume for maximum recruiter appeal and impact, then pauses for your review.",
   },
   {
     num: "3",
-    title: "Review your shortlist",
-    desc: "We find and rank matching jobs across top boards. You decide which ones to pursue.",
+    title: "Select from your job shortlist",
+    desc: "We identify and rank the best matches across major job boards. You choose which opportunities to pursue.",
   },
   {
     num: "4",
-    title: "We apply, you stay in control",
-    desc: "Applications go out automatically. You can chat, pause, or step in anytime a site needs a human.",
+    title: "Watch applications submit automatically",
+    desc: "Standard applications process while you focus on strategic activities. Chat, pause, or take control whenever needed.",
   },
   {
     num: "5",
-    title: "Track every application",
-    desc: "Every submission is logged with the job link, tailored resume, and cover letter used. Nothing gets lost.",
+    title: "Monitor every submission",
+    desc: "Track all applications with direct links, tailored resumes, and cover letters. Nothing falls through the cracks.",
   },
   {
     num: "6",
-    title: "Pick up where you left off",
-    desc: "Resume from any checkpoint. No need to start over if something gets interrupted.",
+    title: "Resume from any point",
+    desc: "Continue exactly where you left off with no lost progress. No starting over.",
   },
 ];
 
 const differentiators = [
   {
-    title: "You stay in the driver's seat",
-    body: "Chat with the agent, pause anytime, or take over the browser when a site needs a real person.",
+    title: "Maintain strategic control",
+    body: "Direct your AI agent, pause anytime, or intervene when sites need verification. Eliminate unwanted applications entirely.",
   },
   {
-    title: "Quality before quantity",
-    body: "Your resume and shortlist are reviewed and approved before a single application goes out.",
+    title: "Prioritize quality over quantity",
+    body: "Every resume and job match requires your approval, ensuring only relevant, high-impact applications reach employers.",
   },
   {
-    title: "Your complete job search command center",
-    body: "Track every application, download tailored resumes, and follow up on skipped or failed attempts from one dashboard.",
+    title: "Centralize your entire job search",
+    body: "Track all applications, download tailored materials, and manage follow-ups from one comprehensive dashboard.",
   },
 ];
 
 const heroStats = [
   {
-    value: "2 checkpoints",
-    label: "You approve your resume and shortlist before any applications go out.",
+    value: "2 approval checkpoints",
+    label: "Review your optimized resume and curated job matches before applications go live.",
   },
   {
     value: "Real-time control",
-    label: "Pause, chat, or take over the browser the moment you need to.",
+    label: "Pause searches, communicate with your AI agent, or take over applications instantly.",
   },
   {
-    value: "Everything saved",
-    label: "Every resume version, cover letter, and application result in one place.",
+    value: "Complete visibility",
+    label: "Access every tailored resume, cover letter, and application result in your dashboard.",
   },
 ];
 
@@ -179,41 +179,41 @@ export default function Home() {
                 <div>
                   <div className="mb-5 flex flex-wrap gap-2">
                     <Badge variant="secondary" className="bg-blue-50 text-blue-700">
-                      You review everything before it&apos;s sent
+                      You approve everything before it&apos;s sent
                     </Badge>
                   </div>
                   <h1 className="max-w-4xl text-5xl font-bold tracking-tight text-zinc-950 dark:text-white md:text-6xl">
-                    Your job search,
+                    Land more interviews
                     <br />
-                    organized and on autopilot.
+                    while you sleep.
                   </h1>
                   <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-                    JobHunter Agent finds the right roles, tailors your resume,
-                    and applies on your behalf. When it can, it handles
-                    everything automatically. When a site requires human
-                    interaction, your materials are ready so you can apply in
-                    seconds.
+                    Your AI job search assistant finds perfect roles and submits
+                    tailored applications automatically. You stay in control with
+                    two simple approval steps.
                   </p>
-                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
-                    <p className="text-sm text-amber-800 dark:text-amber-300">
-                      <span className="font-semibold">Good to know:</span> Not
-                      every job site plays nicely with automation. Some require
-                      logins, CAPTCHAs, or custom forms that only a human can
-                      handle. When that happens, we save your tailored resume and
-                      cover letter so you can finish the application yourself in
-                      one click. Either way, you get a complete dashboard to
-                      track every opportunity.
-                    </p>
-                  </div>
-                  <div className="mt-8 flex flex-wrap gap-3">
+                  <div className="mt-6 flex flex-wrap items-center gap-3">
                     <Link href="/session/new">
-                      <Button size="lg">Start Free</Button>
+                      <Button size="lg">Get Your First 5 Applications Free</Button>
                     </Link>
                     <a href="#pricing">
                       <Button size="lg" variant="outline">
-                        See Pricing
+                        See Plans & Pricing
                       </Button>
                     </a>
+                  </div>
+                  <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+                    No credit card required
+                  </p>
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      <span className="font-semibold">How we handle every site:</span>{" "}
+                      We find opportunities and submit applications while you
+                      maintain complete control. You approve your optimized
+                      resume and job shortlist before any submissions. When sites
+                      need human verification, your tailored materials are ready
+                      for one-click completion.
+                    </p>
                   </div>
                 </div>
 
@@ -243,7 +243,7 @@ export default function Home() {
                       How a session works
                     </Badge>
                     <CardTitle className="text-2xl">
-                      Smart automation with human checkpoints
+                      Strategic automation with human oversight
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4 text-sm text-zinc-300">
@@ -252,10 +252,10 @@ export default function Home() {
                         First
                       </p>
                       <p className="mt-2 font-medium text-white">
-                        Your resume gets an expert-level rewrite
+                        Get an expert-level resume optimization
                       </p>
                       <p className="mt-1 leading-6">
-                        The AI coach scores and improves your resume, then pauses so you can approve or tweak it.
+                        Our AI enhances your resume for maximum recruiter appeal, then waits for your approval.
                       </p>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -263,10 +263,10 @@ export default function Home() {
                         Then
                       </p>
                       <p className="mt-2 font-medium text-white">
-                        You pick which jobs to go after
+                        Select from your curated job shortlist
                       </p>
                       <p className="mt-1 leading-6">
-                        We rank and shortlist matches. You choose which ones get your application.
+                        We identify and rank top matches across major job boards. You select exactly which roles receive your application.
                       </p>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -274,10 +274,10 @@ export default function Home() {
                         Finally
                       </p>
                       <p className="mt-2 font-medium text-white">
-                        Applications go out, and you can step in anytime
+                        Applications submit automatically — you stay in control
                       </p>
                       <p className="mt-1 leading-6">
-                        Automation handles what it can. For sites that need a human, your materials are saved and ready.
+                        Standard applications process seamlessly. For complex sites needing human input, your customized materials are ready for one-click completion.
                       </p>
                     </div>
                   </CardContent>
@@ -312,18 +312,18 @@ export default function Home() {
             <CardContent className="flex flex-col gap-4 py-8 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h3 className="text-xl font-semibold">
-                  Review & Apply: Your Application Command Center
+                  Track every opportunity in one place
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
-                  See every application across all your sessions in one place.
-                  Download tailored resumes and cover letters, finish
-                  applications that need a human touch, and track your
-                  progress.
+                  Monitor all applications across sessions in one organized
+                  dashboard. Download your customized resumes and cover letters,
+                  complete applications requiring human input, and measure your
+                  progress toward more interviews.
                 </p>
               </div>
               <Link href="/apply">
                 <Button size="lg" className="whitespace-nowrap">
-                  Open Review & Apply
+                  Get Your First 5 Applications Free
                 </Button>
               </Link>
             </CardContent>
@@ -335,13 +335,13 @@ export default function Home() {
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 flex items-end justify-between gap-6">
             <div>
-              <h2 className="text-3xl font-bold">How It Works</h2>
+              <h2 className="text-3xl font-bold">6 Steps to More Interviews</h2>
               <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
-                Six simple steps from setup to applications sent. You stay in control at every stage.
+                From setup to submitted applications — you control every stage with complete visibility.
               </p>
             </div>
             <div className="hidden rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 md:block">
-              Two approval stops. Full visibility. Zero guesswork.
+              Two approval stops. Full transparency. Strategic results.
             </div>
           </div>
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -372,10 +372,10 @@ export default function Home() {
           <div className="mb-10 flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-end">
             <div>
               <h2 className="text-3xl font-bold">
-                Start Free. Scale When You&apos;re Ready.
+                Start Free, Scale When Ready
               </h2>
               <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
-                Try everything with the free plan. Upgrade when you want more applications and more control.
+                Experience the full platform with 5 free applications. Upgrade when you&apos;re ready to accelerate results.
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-1 dark:border-zinc-800 dark:bg-zinc-900">
@@ -482,13 +482,13 @@ export default function Home() {
                   Concierge
                 </p>
                 <h3 className="mt-1 text-xl font-semibold">
-                  Want a hands-on service on top of the product?
+                  Professional job search support
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
-                  For dedicated help, custom outreach strategies, or a fully managed application service, our concierge team has you covered.
+                  For personalized strategy, custom outreach, or fully managed services, our expert team provides dedicated support beyond the platform.
                 </p>
               </div>
-              <Button variant="outline">Contact Sales</Button>
+              <Button variant="outline">Schedule Your Consultation</Button>
             </CardContent>
           </Card>
         </div>
