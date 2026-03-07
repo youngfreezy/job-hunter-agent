@@ -14,12 +14,12 @@ const planCatalog = [
     monthlyPrice: 0,
     weeklyPrice: 0,
     capacity: "5 total applications",
-    summary: "Validate the workflow before you commit.",
+    summary: "Try the workflow first and make sure it fits your search.",
     features: [
-      "Session wizard and live job tracking",
+      "Guided setup and live job tracking",
       "One coached resume pass",
-      "Shortlist review before apply",
-      "Manual apply log and proofs",
+      "Review the shortlist before anything is sent",
+      "Manual apply log with job links and saved materials",
     ],
     cta: "Start Free",
     popular: false,
@@ -29,12 +29,12 @@ const planCatalog = [
     monthlyPrice: 49,
     weeklyPrice: 19,
     capacity: "40 applications per week",
-    summary: "The self-serve plan for most active job seekers.",
+    summary: "For most people who want steady progress without losing control.",
     features: [
-      "Resume coaching, tailoring, and cover letters",
-      "Live status feed and shortlist review",
-      "Session steering chat to adjust strategy",
-      "Manual apply log with tailored artifacts",
+      "Resume coaching, tailored resumes, and cover letters",
+      "Live updates and shortlist review",
+      "Chat to adjust the search while it is running",
+      "Manual apply log with saved resume and letter versions",
     ],
     cta: "Choose Pro",
     popular: true,
@@ -44,12 +44,12 @@ const planCatalog = [
     monthlyPrice: 99,
     weeklyPrice: 39,
     capacity: "100 applications per week",
-    summary: "For users who want live control when ATS sites fight back.",
+    summary: "For people who want hands-on control when job sites get messy.",
     features: [
       "Everything in Pro",
-      "Screenshot stream during live applications",
-      "Browser takeover for CAPTCHA, login, and edge cases",
-      "Priority support for blocked runs",
+      "Live browser view during applications",
+      "Take over the browser for sign-ins, verification prompts, and strange forms",
+      "Priority help for blocked runs",
     ],
     cta: "Choose Power",
     popular: false,
@@ -59,48 +59,63 @@ const planCatalog = [
 const steps = [
   {
     num: "1",
-    title: "Configure The Search",
-    desc: "Set keywords, locations, salary floor, and remote preference so the pipeline starts with constraints that actually matter.",
+    title: "Tell it what you want",
+    desc: "Add the roles, locations, salary floor, and remote preferences that actually matter to you.",
   },
   {
     num: "2",
-    title: "Coach The Resume",
-    desc: "The coach rewrites your resume, scores it, drafts a reusable cover letter angle, and pauses for review before mass action.",
+    title: "Review the resume rewrite",
+    desc: "The coach improves your resume, suggests a cover-letter angle, and pauses so you can approve or revise it.",
   },
   {
     num: "3",
-    title: "Rank The Market",
-    desc: "Discovery agents scan major boards, score relevance, and build a shortlist you can approve before the apply stage.",
+    title: "Pick from a ranked shortlist",
+    desc: "The app gathers matching roles, ranks them, and waits for your approval before it starts applying.",
   },
   {
     num: "4",
-    title: "Apply With Oversight",
-    desc: "Applications stream live. You can steer strategy in chat, intervene when a site blocks, and take direct control when needed.",
+    title: "Stay in control while it applies",
+    desc: "You can steer the session in chat, pause it, or take over the browser when a site needs a human touch.",
   },
   {
     num: "5",
-    title: "Audit Every Attempt",
-    desc: "Every submitted, skipped, or failed application is logged with the tailored resume and cover letter used for that job.",
+    title: "See what happened for every job",
+    desc: "Each submitted, skipped, or failed application is saved with the job link, tailored resume, and cover letter used.",
   },
   {
     num: "6",
-    title: "Recover Fast",
-    desc: "Review checkpoints, resume after interruptions, and keep the session moving instead of restarting from scratch.",
+    title: "Pick back up without starting over",
+    desc: "If something blocks the run, you can resume from checkpoints instead of rebuilding the session from scratch.",
   },
 ];
 
 const differentiators = [
   {
-    title: "Live Control When Sites Break",
-    body: "Steer in chat, pause the workflow, or take over the browser when login, CAPTCHA, or ambiguous forms show up.",
+    title: "A human is still in charge",
+    body: "You can steer the run in chat, pause it, or take over the browser when a site needs a real person.",
   },
   {
-    title: "Approval Gates Before Scale",
-    body: "The system pauses for coached-resume review and shortlist approval so you do not spray low-quality applications.",
+    title: "Quality checks before volume",
+    body: "The app stops for resume review and shortlist approval before it sends applications at scale.",
   },
   {
-    title: "Proof, Not Guesswork",
-    body: "The manual apply log stores what happened for each job, including tailored resumes, cover letters, and failure reasons.",
+    title: "A clear record of every attempt",
+    body: "You can see what was sent, what was skipped, and what needs follow-up without piecing it together later.",
+  },
+];
+
+const heroStats = [
+  {
+    value: "2 review points",
+    label: "You approve the resume work and the job list before applications go out.",
+  },
+  {
+    value: "Live control",
+    label: "You can pause, chat, or take over the browser the moment a site needs you.",
+  },
+  {
+    value: "Saved materials",
+    label: "Every job keeps the version of the resume and letter that were used.",
   },
 ];
 
@@ -111,19 +126,19 @@ export default function Home() {
     () => ({
       monthly: {
         suffix: "/month",
-        helper: "Best value for active searches. Monthly is preselected.",
+        helper: "Best value for an active search. Monthly is selected by default.",
       },
       weekly: {
         suffix: "/week",
-        helper: "Use weekly billing if you need a short burst of applications.",
+        helper: "Choose weekly billing if you only need a short sprint.",
       },
     }),
     []
   );
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950">
-      <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4">
+    <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-white">
+      <nav className="border-b border-zinc-200/80 bg-white/80 px-6 py-4 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <span className="text-xl font-bold tracking-tight">
             JobHunter Agent
@@ -143,123 +158,154 @@ export default function Home() {
       </nav>
 
       <section className="px-6 py-20">
-        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
-          <div>
-            <div className="mb-5 flex flex-wrap gap-2">
+        <div className="mx-auto max-w-7xl">
+          <div className="relative overflow-hidden rounded-[36px] border border-zinc-200/80 bg-white px-8 py-10 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.35)] dark:border-zinc-800 dark:bg-zinc-950 lg:px-12 lg:py-12">
+            <div className="absolute -left-24 top-10 h-64 w-64 rounded-full bg-blue-200/40 blur-3xl dark:bg-blue-500/10" />
+            <div className="absolute right-0 top-0 h-80 w-80 rounded-full bg-emerald-200/35 blur-3xl dark:bg-emerald-500/10" />
+            <div className="relative grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch">
+              <div className="flex flex-col justify-between">
+                <div>
+                  <div className="mb-5 flex flex-wrap gap-2">
               <Badge variant="secondary" className="bg-blue-50 text-blue-700">
-                Review gates before mass apply
+                Review before applications are sent
               </Badge>
               <Badge
                 variant="secondary"
                 className="bg-emerald-50 text-emerald-700"
               >
-                Live takeover when needed
+                Take over when a site needs you
               </Badge>
-            </div>
-            <h1 className="max-w-4xl text-5xl font-bold tracking-tight text-zinc-950 dark:text-white md:text-6xl">
-              Start the search once.
-              <br />
-              Keep control through every application.
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-              JobHunter Agent coaches the resume, discovers roles, scores the
-              market, and applies with live oversight. When ATS sites force a
-              decision, you can steer in chat or take over the browser instead
-              of losing the run.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/session/new">
-                <Button size="lg">Start Free</Button>
-              </Link>
-              <a href="#pricing">
-                <Button size="lg" variant="outline">
-                  See Pricing
-                </Button>
-              </a>
-            </div>
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              {differentiators.map((item) => (
-                <Card key={item.title} className="border-zinc-200/80">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">{item.title}</CardTitle>
+                  </div>
+                  <h1 className="max-w-4xl text-5xl font-bold tracking-tight text-zinc-950 dark:text-white md:text-6xl">
+                    Job searching should feel less chaotic.
+                    <br />
+                    Keep your standards while the work gets done.
+                  </h1>
+                  <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+                    JobHunter Agent helps you search, improve your resume, review the
+                    best matches, and send applications without giving up control.
+                    When a job site needs a decision, you can step in right away
+                    instead of losing momentum.
+                  </p>
+                  <div className="mt-8 flex flex-wrap gap-3">
+                    <Link href="/session/new">
+                      <Button size="lg">Start Free</Button>
+                    </Link>
+                    <a href="#pricing">
+                      <Button size="lg" variant="outline">
+                        See Pricing
+                      </Button>
+                    </a>
+                  </div>
+                </div>
+
+                <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                  {heroStats.map((item) => (
+                    <Card
+                      key={item.value}
+                      className="rounded-3xl border-zinc-200/80 bg-white/80 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/80"
+                    >
+                      <CardContent className="p-5">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                          {item.value}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
+                          {item.label}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-4">
+                <Card className="rounded-[32px] border-zinc-900 bg-zinc-950 text-white shadow-2xl shadow-zinc-900/20 dark:border-zinc-800">
+                  <CardHeader className="pb-4">
+                    <Badge className="w-fit bg-white/10 text-white hover:bg-white/10">
+                      What your session feels like
+                    </Badge>
+                    <CardTitle className="text-2xl">
+                      Calm automation with clear checkpoints
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                      {item.body}
-                    </p>
+                  <CardContent className="space-y-4 text-sm text-zinc-300">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                        First
+                      </p>
+                      <p className="mt-2 font-medium text-white">
+                        You approve the resume work before anything scales
+                      </p>
+                      <p className="mt-1 leading-6">
+                        The run pauses after the resume rewrite so you can adjust the direction early.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                        Then
+                      </p>
+                      <p className="mt-2 font-medium text-white">
+                        You approve the jobs before applications go out
+                      </p>
+                      <p className="mt-1 leading-6">
+                        The shortlist is ranked for you, but the final call stays with you.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
+                        Finally
+                      </p>
+                      <p className="mt-2 font-medium text-white">
+                        You step in only when a site really needs you
+                      </p>
+                      <p className="mt-1 leading-6">
+                        Chat, pause, and browser control are there for the moments automation should not guess.
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
-              ))}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {differentiators.map((item) => (
+                    <Card
+                      key={item.title}
+                      className="rounded-3xl border-zinc-200/80 bg-white/90 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/80"
+                    >
+                      <CardContent className="p-5">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                          {item.title}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
+                          {item.body}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
-
-          <Card className="border-zinc-900 bg-zinc-950 text-white shadow-2xl shadow-zinc-900/20 dark:border-zinc-800">
-            <CardHeader className="pb-4">
-              <Badge className="w-fit bg-white/10 text-white hover:bg-white/10">
-                What a session gives you
-              </Badge>
-              <CardTitle className="text-2xl">
-                Launch once, intervene only when it matters
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm text-zinc-300">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                  Phase 1
-                </p>
-                <p className="mt-2 font-medium text-white">
-                  Coach review blocks low-quality starts
-                </p>
-                <p className="mt-1 leading-6">
-                  You approve the rewritten resume before discovery continues.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                  Phase 2
-                </p>
-                <p className="mt-2 font-medium text-white">
-                  Shortlist review controls which jobs get applied to
-                </p>
-                <p className="mt-1 leading-6">
-                  The ranked shortlist pauses for approval instead of silently
-                  applying everywhere.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">
-                  Phase 3
-                </p>
-                <p className="mt-2 font-medium text-white">
-                  Steering and takeover handle hostile ATS flows
-                </p>
-                <p className="mt-1 leading-6">
-                  Use chat for strategy changes and takeover for login,
-                  verification, and form edge cases.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </section>
 
-      <section className="bg-zinc-50 px-6 py-20 dark:bg-zinc-900">
+      <section className="px-6 py-20">
         <div className="mx-auto max-w-6xl">
           <div className="mb-12 flex items-end justify-between gap-6">
             <div>
               <h2 className="text-3xl font-bold">How It Works</h2>
               <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
-                The product is designed around supervised automation, not blind
-                one-click spam.
+                The workflow is built to save time without taking the important decisions away from you.
               </p>
             </div>
-            <div className="hidden rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 md:block">
-              Six phases. Two approval gates. Live control when sites resist.
+            <div className="hidden rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 md:block">
+              Six phases, two review stops, and live control when a site needs a person.
             </div>
           </div>
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {steps.map((step) => (
-              <Card key={step.num} className="border-zinc-200/80 bg-white/80">
+              <Card
+                key={step.num}
+                className="rounded-3xl border-zinc-200/80 bg-white/90 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+              >
                 <CardHeader>
                   <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-zinc-900 text-sm font-bold text-white dark:bg-white dark:text-zinc-900">
                     {step.num}
@@ -285,8 +331,7 @@ export default function Home() {
                 Start Free, Upgrade When You Apply at Scale
               </h2>
               <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">
-                Monthly billing is the default. Power is where screenshot
-                streaming, steering, and takeover become part of the workflow.
+                Start with the free plan, then move up when you want more applications and more hands-on control.
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-1 dark:border-zinc-800 dark:bg-zinc-900">
@@ -326,9 +371,9 @@ export default function Home() {
               return (
                 <Card
                   key={plan.name}
-                  className={`relative flex h-full flex-col ${
+                  className={`relative flex h-full flex-col rounded-[32px] bg-white/95 shadow-[0_18px_48px_-32px_rgba(15,23,42,0.28)] ${
                     plan.popular
-                      ? "border-2 border-zinc-900 shadow-lg shadow-zinc-900/10 dark:border-white"
+                      ? "border-2 border-zinc-900 dark:border-white"
                       : "border-zinc-200 dark:border-zinc-800"
                   }`}
                 >
@@ -376,7 +421,7 @@ export default function Home() {
                       {plan.name === "Power" && (
                         <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
                           Best fit if you expect login gates, CAPTCHA, or want
-                          browser takeover as part of normal usage.
+                          browser takeover as part of regular usage.
                         </p>
                       )}
                     </div>
@@ -386,7 +431,7 @@ export default function Home() {
             })}
           </div>
 
-          <Card className="mt-8 border-dashed border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/60">
+          <Card className="mt-8 rounded-[28px] border-dashed border-zinc-300 bg-white/90 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/60">
             <CardContent className="flex flex-col gap-4 py-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-500">
@@ -396,9 +441,7 @@ export default function Home() {
                   Need human service on top of the product?
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
-                  Dedicated hands-on application service, custom outreach, and
-                  manual support should be priced separately from the self-serve
-                  product.
+                  If you want dedicated hands-on help, custom outreach, or a managed application service, that should be priced separately from the product itself.
                 </p>
               </div>
               <Button variant="outline">Contact Sales</Button>

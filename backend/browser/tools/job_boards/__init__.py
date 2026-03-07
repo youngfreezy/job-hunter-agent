@@ -24,6 +24,7 @@ from backend.browser.tools.job_boards.google_jobs import scrape_google_jobs
 from backend.browser.tools.job_boards.indeed import scrape_indeed
 from backend.browser.tools.job_boards.linkedin import scrape_linkedin
 from backend.browser.tools.job_boards.ziprecruiter import scrape_ziprecruiter
+from backend.shared.llm import get_llm_provider
 from backend.shared.models.schemas import JobListing
 
 __all__ = [
@@ -42,8 +43,8 @@ class RankedListingIndices(BaseModel):
     indices: List[int] = Field(default_factory=list)
 
 
-RANKING_CHUNK_SIZE = 15
-RANKING_MAX_TOKENS = 400
+RANKING_CHUNK_SIZE = 10
+RANKING_MAX_TOKENS = 200
 
 
 def _keyword_score(job: JobListing, keywords: List[str]) -> int:
@@ -54,6 +55,38 @@ def _keyword_score(job: JobListing, keywords: List[str]) -> int:
         )
     ).lower()
     return sum(1 for kw in keywords if kw in text)
+
+
+def _title_score(job: JobListing, keywords: List[str]) -> int:
+    title = (job.title or "").lower()
+    return sum(2 for kw in keywords if kw in title)
+
+
+def _board_score(job: JobListing) -> int:
+    board = str(getattr(job, "board", "") or "").lower()
+    if "linkedin" in board:
+        return 2
+    if "greenhouse" in board or "lever" in board or "ashby" in board:
+        return 1
+    return 0
+
+
+def _deterministic_rank(
+    listings: List[JobListing],
+    keywords: List[str],
+    limit: int,
+) -> List[JobListing]:
+    lower_keywords = [kw.lower() for kw in keywords]
+    ranked = sorted(
+        listings,
+        key=lambda job: (
+            _title_score(job, lower_keywords),
+            _keyword_score(job, lower_keywords),
+            _board_score(job),
+        ),
+        reverse=True,
+    )
+    return ranked[:limit]
 
 
 async def _rank_chunk(
@@ -89,29 +122,69 @@ Jobs:
 {json.dumps(job_summaries, indent=1)}
 """
 
-    llm = build_llm(model=HAIKU_MODEL, max_tokens=RANKING_MAX_TOKENS, temperature=0.0)
-    structured_llm = llm.with_structured_output(RankedListingIndices)
-    response = await invoke_with_retry(
-        structured_llm,
-        [("human", prompt)],
-        max_retries=2,
-    )
-
-    ranked = []
-    seen = set()
-    for idx in response.indices:
-        if isinstance(idx, int) and 0 <= idx < len(listings) and idx not in seen:
-            ranked.append(listings[idx])
-            seen.add(idx)
-
-    if ranked:
-        logger.info(
-            "LLM ranked %d/%d listings for top %d",
-            len(ranked),
-            len(listings),
-            limit,
+    try:
+        llm = build_llm(model=HAIKU_MODEL, max_tokens=RANKING_MAX_TOKENS, temperature=0.0)
+        structured_llm = llm.with_structured_output(RankedListingIndices)
+        response = await invoke_with_retry(
+            structured_llm,
+            [("human", prompt)],
+            max_retries=2,
         )
-    return ranked[:limit]
+
+        ranked = []
+        seen = set()
+        for idx in response.indices:
+            if isinstance(idx, int) and 0 <= idx < len(listings) and idx not in seen:
+                ranked.append(listings[idx])
+                seen.add(idx)
+
+        if ranked:
+            logger.info(
+                "LLM ranked %d/%d listings for top %d",
+                len(ranked),
+                len(listings),
+                limit,
+            )
+        return ranked[:limit]
+    except Exception:
+        if len(listings) <= 3:
+            logger.warning(
+                "LLM chunk ranking failed for %d listings; using keyword sort inside chunk",
+                len(listings),
+                exc_info=True,
+            )
+            lower_keywords = [kw.lower() for kw in keywords]
+            return sorted(
+                listings,
+                key=lambda job: _keyword_score(job, lower_keywords),
+                reverse=True,
+            )[:limit]
+
+        logger.warning(
+            "LLM chunk ranking failed for %d listings; retrying smaller sub-chunks",
+            len(listings),
+            exc_info=True,
+        )
+        midpoint = len(listings) // 2
+        left_ranked = await _rank_chunk(listings[:midpoint], keywords, min(limit, midpoint))
+        right_ranked = await _rank_chunk(
+            listings[midpoint:],
+            keywords,
+            min(limit, len(listings) - midpoint),
+        )
+        lower_keywords = [kw.lower() for kw in keywords]
+        merged = left_ranked + right_ranked
+        deduped: List[JobListing] = []
+        seen_ids: set[str] = set()
+        for job in sorted(
+            merged,
+            key=lambda item: _keyword_score(item, lower_keywords),
+            reverse=True,
+        ):
+            if job.id not in seen_ids:
+                deduped.append(job)
+                seen_ids.add(job.id)
+        return deduped[:limit]
 
 
 async def rank_by_relevance(
@@ -128,6 +201,8 @@ async def rank_by_relevance(
         return []
     if len(listings) <= limit:
         return listings
+    if get_llm_provider() == "openai":
+        return _deterministic_rank(listings, keywords, limit)
 
     import logging
 
@@ -166,7 +241,4 @@ async def rank_by_relevance(
         logger.warning("LLM ranking failed, falling back to keyword match", exc_info=True)
 
     # Fallback: simple keyword-match scoring
-    lower_keywords = [kw.lower() for kw in keywords]
-
-    ranked = sorted(listings, key=lambda job: _keyword_score(job, lower_keywords), reverse=True)
-    return ranked[:limit]
+    return _deterministic_rank(listings, keywords, limit)

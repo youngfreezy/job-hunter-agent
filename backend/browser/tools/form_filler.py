@@ -139,27 +139,44 @@ def _pick_option_for_label(label: str, options: List[Dict[str, str]]) -> str:
     return normalized[0][0] or normalized[0][1]
 
 
-def _fallback_fill_value(field: Dict[str, Any]) -> str:
+def _split_location(value: str) -> Dict[str, str]:
+    location = (value or "").strip()
+    if not location:
+        return {}
+    if "," not in location:
+        return {"city": location}
+    city, state = [part.strip() for part in location.split(",", 1)]
+    return {"city": city, "state": state}
+
+
+def _fallback_fill_value(
+    field: Dict[str, Any],
+    user_profile: Optional[Dict[str, str]] = None,
+) -> str:
     """Fallback text for required text-like fields when LLM leaves them blank."""
+    profile = user_profile or {}
+    location_parts = _split_location(profile.get("location", ""))
     label_l = (field.get("label") or field.get("name") or "").lower()
     field_type = (field.get("type") or "").lower()
 
     if "email" in label_l:
-        return "jane.doe@example.com"
+        return profile.get("email", "")
     if "phone" in label_l or field_type == "tel":
-        return "+15551234567"
+        return profile.get("phone", "")
     if "first name" in label_l:
-        return "Jane"
+        full_name = profile.get("name", "").split()
+        return full_name[0] if full_name else ""
     if "last name" in label_l:
-        return "Ahmed"
+        full_name = profile.get("name", "").split()
+        return " ".join(full_name[1:]) if len(full_name) > 1 else ""
     if "name" in label_l:
-        return "Jane Doe"
+        return profile.get("name", "")
     if "linkedin" in label_l:
         return "https://www.linkedin.com/in/jane-doe"
     if "city" in label_l:
-        return "San Francisco"
+        return location_parts.get("city", "San Francisco")
     if "state" in label_l:
-        return "California"
+        return location_parts.get("state", "California")
     if "country" in label_l:
         return "United States"
     if "zip" in label_l or "postal" in label_l:
@@ -178,6 +195,7 @@ def _fallback_fill_value(field: Dict[str, Any]) -> str:
 def _enforce_required_field_fallbacks(
     fields: List[Dict[str, Any]],
     instructions: List[Dict[str, Any]],
+    user_profile: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """Ensure required fields are not left skipped/empty by LLM output."""
     by_selector: Dict[str, Dict[str, Any]] = {
@@ -226,7 +244,7 @@ def _enforce_required_field_fallbacks(
             picked = _pick_option_for_label(label, field.get("options") or [])
             fallback.update({
                 "action": "react_select",
-                "value": picked or _fallback_fill_value(field),
+                "value": picked or _fallback_fill_value(field, user_profile),
             })
         elif ftype == "checkbox":
             fallback.update({
@@ -241,7 +259,7 @@ def _enforce_required_field_fallbacks(
         else:
             fallback.update({
                 "action": "fill",
-                "value": _fallback_fill_value(field),
+                "value": _fallback_fill_value(field, user_profile),
             })
 
         if idx is None:
@@ -430,6 +448,7 @@ async def analyse_form(
     job_title: str = "",
     job_company: str = "",
     ats_strategy: Optional[str] = None,
+    user_profile: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """Send form fields to Claude for intelligent fill-value determination.
 
@@ -454,7 +473,7 @@ async def analyse_form(
     ])
 
     instructions = [instr.model_dump() for instr in result.instructions]
-    instructions = _enforce_required_field_fallbacks(fields, instructions)
+    instructions = _enforce_required_field_fallbacks(fields, instructions, user_profile)
     logger.info("LLM produced %d fill instructions", len(instructions))
     return instructions
 

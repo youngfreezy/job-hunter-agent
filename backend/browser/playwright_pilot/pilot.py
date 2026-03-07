@@ -94,6 +94,7 @@ class Pilot:
         cover_letter: str = "",
         job_title: str = "",
         job_company: str = "",
+        user_profile: Optional[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
         """Use an LLM to determine the best fill value for each field.
 
@@ -105,6 +106,7 @@ class Pilot:
             cover_letter=cover_letter,
             job_title=job_title,
             job_company=job_company,
+            user_profile=user_profile,
         )
 
     async def fill(

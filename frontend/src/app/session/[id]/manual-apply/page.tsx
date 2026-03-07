@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getApplicationLog, type ApplicationLogEntry } from "@/lib/api";
+import { downloadPdfDocument } from "@/lib/pdf";
 
 type Tab = "all" | "failed" | "skipped" | "submitted";
 
@@ -60,28 +61,19 @@ export default function ManualApplyPage() {
   };
 
   const downloadPdf = (title: string, content: string, filename: string) => {
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
-      <style>
-        body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #1a1a1a; font-size: 12pt; }
-        h1 { font-size: 16pt; margin-bottom: 4px; }
-        .meta { color: #666; font-size: 10pt; margin-bottom: 24px; }
-        pre { white-space: pre-wrap; font-family: inherit; margin: 0; }
-        @media print { body { margin: 0; } }
-      </style>
-    </head><body>
-      <h1>${title}</h1>
-      <div class="meta">${filename}</div>
-      <pre>${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
-      <script>window.print();</script>
-    </body></html>`);
-    win.document.close();
+    downloadPdfDocument({
+      title,
+      body: content,
+      filename,
+      meta: `${entryLabel(filename)} · Exported from JobHunter Agent`,
+    });
   };
+
+  const entryLabel = (filename: string) => filename.replace(/\s+/g, " ").trim();
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50 px-6 py-3">
+      <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-6 py-3 shadow-sm supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link
             href="/"
@@ -321,7 +313,7 @@ export default function ManualApplyPage() {
                                     )
                                   }
                                 >
-                                  PDF
+                                  Download PDF
                                 </Button>
                               </div>
                             </div>
@@ -374,7 +366,7 @@ export default function ManualApplyPage() {
                                     )
                                   }
                                 >
-                                  PDF
+                                  Download PDF
                                 </Button>
                               </div>
                             </div>

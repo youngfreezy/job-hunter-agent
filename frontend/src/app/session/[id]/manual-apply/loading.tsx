@@ -1,7 +1,7 @@
 export default function ManualApplyLoading() {
   return (
     <div className="min-h-screen bg-background">
-      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50 px-6 py-3">
+      <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-6 py-3 shadow-sm supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="h-6 w-40 bg-muted rounded-lg animate-pulse" />
           <div className="flex gap-3">
