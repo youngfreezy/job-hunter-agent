@@ -361,7 +361,7 @@ function SessionCard({ session }: { session: SessionListItem }) {
                 <p className="text-xl font-bold text-zinc-900 dark:text-white">
                   {submitted + failed}
                 </p>
-                <p className="text-xs text-zinc-500">Touched</p>
+                <p className="text-xs text-zinc-500">Reviewed</p>
               </div>
             </div>
           </div>
