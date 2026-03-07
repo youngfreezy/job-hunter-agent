@@ -38,7 +38,6 @@ import {
   submitDecision,
   listCheckpoints,
   rewindSession,
-  resumeSession,
   confirmLogin,
   sendGmailToken,
 } from "@/lib/api";
@@ -383,7 +382,6 @@ export default function SessionPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [rewindLoading, setRewindLoading] = useState(false);
-  const [resumeLoading, setResumeLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
   const [linkedinProgress, setLinkedinProgress] =
     useState<LinkedInProgress | null>(null);
