@@ -142,6 +142,7 @@ class BaseApplier(ABC):
             cover_letter=cover_letter,
             job_title=job_title,
             job_company=job_company,
+            user_profile=user_profile,
         )
 
         await self._emit_step(f"Filling {len(instructions)} fields...")

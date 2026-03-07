@@ -1163,7 +1163,7 @@ export default function SessionPage() {
   if (!session) {
     return (
       <div className="min-h-screen bg-background">
-        <nav className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50 px-6 py-3">
+        <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-6 py-3 shadow-sm supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="h-6 w-40 bg-muted rounded-lg animate-pulse" />
             <div className="flex gap-3">
@@ -1219,7 +1219,7 @@ export default function SessionPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navbar */}
-      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50 px-6 py-3">
+      <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-6 py-3 shadow-sm supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link
             href="/"
@@ -1293,7 +1293,7 @@ export default function SessionPage() {
       </nav>
 
       {/* Pipeline Stepper */}
-      <div className="border-b border-border/50 bg-card/50 backdrop-blur-sm">
+      <div className="border-b border-border/70 bg-card/95 shadow-sm supports-[backdrop-filter]:bg-card/90 supports-[backdrop-filter]:backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center gap-0.5">
             {PIPELINE_STEPS.map((step, i) => {

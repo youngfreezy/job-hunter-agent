@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Landing Page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
   });
 
   test("loads the homepage successfully", async ({ page }) => {
@@ -52,12 +52,12 @@ test.describe("Landing Page", () => {
 
     // Verify all 6 step titles are present
     const stepTitles = [
-      "Configure The Search",
-      "Coach The Resume",
-      "Rank The Market",
-      "Apply With Oversight",
-      "Audit Every Attempt",
-      "Recover Fast",
+      "Tell it what you want",
+      "Review the resume rewrite",
+      "Pick from a ranked shortlist",
+      "Stay in control while it applies",
+      "See what happened for every job",
+      "Pick back up without starting over",
     ];
 
     for (const title of stepTitles) {
@@ -77,13 +77,15 @@ test.describe("Landing Page", () => {
   });
 
   test("hero section has correct headline text", async ({ page }) => {
-    await expect(page.getByText("Start the search once.")).toBeVisible();
     await expect(
-      page.getByText("Keep control through every application.")
+      page.getByText("Job searching should feel less chaotic.")
+    ).toBeVisible();
+    await expect(
+      page.getByText("Keep your standards while the work gets done.")
     ).toBeVisible();
   });
 
-  test('hero has "Start Your First Session" button linking to /session/new', async ({
+  test('hero has "Start Free" button linking to /session/new', async ({
     page,
   }) => {
     const sessionLink = page.getByRole("link", { name: "Start Free" }).first();

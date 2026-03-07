@@ -56,5 +56,23 @@ test.describe("Manual Apply (Live Integration)", () => {
     await expect(
       page.getByRole("heading", { name: "Tailored Resume" })
     ).toBeVisible();
+
+    const coverDownload = page.getByRole("button", {
+      name: "Download PDF",
+    }).first();
+    const [coverLetterPdf] = await Promise.all([
+      page.waitForEvent("download"),
+      coverDownload.click(),
+    ]);
+    expect(coverLetterPdf.suggestedFilename()).toMatch(/\.pdf$/);
+
+    const resumeDownload = page.getByRole("button", {
+      name: "Download PDF",
+    }).nth(1);
+    const [resumePdf] = await Promise.all([
+      page.waitForEvent("download"),
+      resumeDownload.click(),
+    ]);
+    expect(resumePdf.suggestedFilename()).toMatch(/\.pdf$/);
   });
 });
