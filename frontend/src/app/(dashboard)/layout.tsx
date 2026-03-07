@@ -1,3 +1,6 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import { GlobalNav } from "@/components/nav/GlobalNav";
 
 export default function DashboardGroupLayout({
@@ -5,6 +8,13 @@ export default function DashboardGroupLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isLanding = pathname === "/";
+
+  if (isLanding) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <GlobalNav />
