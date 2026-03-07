@@ -1,17 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { Formik, Form } from "formik";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FormikInput } from "@/components/forms/FormikInput";
-import { loginSchema, loginInitialValues } from "@/lib/schemas/auth";
 
 export default function LoginPage() {
-  const [error, setError] = useState("");
-
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
@@ -22,13 +16,12 @@ export default function LoginPage() {
           >
             JobHunter Agent
           </Link>
-          <CardTitle className="text-lg">Sign in to your account</CardTitle>
+          <CardTitle className="text-lg">Sign in to get started</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Google OAuth */}
+        <CardContent className="space-y-5">
           <Button
             variant="outline"
-            className="w-full"
+            className="w-full h-11 text-base"
             onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
           >
             <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -52,61 +45,15 @@ export default function LoginPage() {
             Continue with Google
           </Button>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-white dark:bg-zinc-950 px-2 text-zinc-500">
-                or
-              </span>
-            </div>
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 px-4 py-3">
+            <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+              <span className="font-semibold">Email access for verification codes.</span>{" "}
+              When a job application requires an email verification code,
+              JobHunter reads your recent emails to find and enter the code
+              automatically. We only search for verification-related messages
+              and never store your email content.
+            </p>
           </div>
-
-          <Formik
-            initialValues={loginInitialValues}
-            validationSchema={loginSchema}
-            onSubmit={async (values, { setSubmitting }) => {
-              setError("");
-              const result = await signIn("credentials", {
-                email: values.email,
-                password: values.password,
-                redirect: false,
-              });
-              if (result?.error) {
-                setError("Invalid email or password");
-                setSubmitting(false);
-              } else {
-                window.location.href = "/dashboard";
-              }
-            }}
-          >
-            {({ isSubmitting }) => (
-              <Form className="space-y-3">
-                <FormikInput name="email" type="email" placeholder="Email" />
-                <FormikInput
-                  name="password"
-                  type="password"
-                  placeholder="Password"
-                />
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? "Signing in..." : "Sign In"}
-                </Button>
-              </Form>
-            )}
-          </Formik>
-
-          <p className="text-center text-sm text-zinc-500">
-            Don&apos;t have an account?{" "}
-            <Link href="/auth/signup" className="text-blue-600 hover:underline">
-              Sign up
-            </Link>
-          </p>
         </CardContent>
       </Card>
     </div>
