@@ -122,6 +122,12 @@ export default function Dashboard() {
             >
               Review & Apply
             </Link>
+            <Link
+              href="/history"
+              className="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+            >
+              History
+            </Link>
             <span className="text-sm text-zinc-500">test@example.com</span>
             <Link href="/session/new">
               <Button size="sm">New Session</Button>

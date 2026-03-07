@@ -156,6 +156,12 @@ export default function Home() {
             >
               Review & Apply
             </Link>
+            <Link
+              href="/history"
+              className="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+            >
+              History
+            </Link>
             <Link href="/session/new">
               <Button size="sm">Get Started</Button>
             </Link>
@@ -215,7 +221,7 @@ export default function Home() {
                   {heroStats.map((item) => (
                     <Card
                       key={item.value}
-                      className="rounded-3xl border-zinc-200/80 bg-white/80 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/80"
+                      className="h-full rounded-3xl border-zinc-200/80 bg-white/80 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/80"
                     >
                       <CardContent className="p-5">
                         <p className="text-sm font-semibold text-zinc-900 dark:text-white">
@@ -280,7 +286,7 @@ export default function Home() {
                   {differentiators.map((item) => (
                     <Card
                       key={item.title}
-                      className="rounded-3xl border-zinc-200/80 bg-white/90 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/80"
+                      className="h-full rounded-3xl border-zinc-200/80 bg-white/90 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/80"
                     >
                       <CardContent className="p-5">
                         <p className="text-sm font-semibold text-zinc-900 dark:text-white">
