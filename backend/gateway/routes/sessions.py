@@ -23,15 +23,19 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
 from backend.orchestrator.pipeline.state import JobHunterState
+from backend.orchestrator.agents.coach_chat import revise_coach_output
 from backend.orchestrator.agents.steering_judge import judge as judge_steering
 from backend.browser.streaming.takeover_registry import get_active_page
 from backend.shared.config import MAX_APPLICATION_JOBS, get_settings
 from backend.shared.event_bus import register_emitter, unregister_emitter
 from backend.shared.models.schemas import (
     CoachReviewRequest,
+    CoachOutput,
+    CoachChatRequest,
     ReviewRequest,
     SSEEvent,
     StartSessionRequest,
@@ -289,6 +293,10 @@ async def _run_pipeline(
             "agent_statuses": {},
             "human_messages": [],
             "steering_mode": "status",
+            "steering_messages_processed": 0,
+            "pending_supervisor_response": None,
+            "pending_supervisor_directives": [],
+            "coach_chat_history": [],
             "messages": [],
             "errors": [],
             "consecutive_failures": 0,
@@ -320,6 +328,7 @@ async def _run_pipeline(
                     "status": "awaiting_coach_review",
                     "coach_output": _serialize(coach_output) if coach_output else None,
                     "coached_resume": channel_values.get("coached_resume", ""),
+                    "coach_chat_history": _serialize(channel_values.get("coach_chat_history", [])),
                     "message": "Your coached resume is ready for review. Approve it to start searching for jobs.",
                 })
             except Exception:
@@ -426,6 +435,7 @@ async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) ->
                 "status": "awaiting_coach_review",
                 "coach_output": _serialize(vals.get("coach_output")),
                 "coached_resume": vals.get("coached_resume", ""),
+                "coach_chat_history": _serialize(vals.get("coach_chat_history", [])),
                 "message": "Your coached resume is ready for review.",
             })
             return
@@ -502,6 +512,7 @@ async def _synthesise_snapshot(session_id: str, checkpointer, graph=None):
                 "status": status,
                 "coach_output": _serialize(coach_output),
                 "coached_resume": cv.get("coached_resume", ""),
+                "coach_chat_history": _serialize(cv.get("coach_chat_history", [])),
                 "message": "Resume coaching complete.",
             }
             yield f"event: coach_review\ndata: {json.dumps(coach_data)}\n\n"
@@ -1318,6 +1329,79 @@ async def stream_session(session_id: str, request: Request):
     )
 
 
+@router.post("/{session_id}/coach-chat")
+async def coach_chat(session_id: str, body: CoachChatRequest, request: Request):
+    """Revise coached artifacts interactively while awaiting coach review."""
+    graph = request.app.state.graph
+    config = {"configurable": {"thread_id": session_id}}
+
+    try:
+        graph_state = await graph.aget_state(config)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Session not found: {exc}")
+
+    next_nodes = getattr(graph_state, "next", ()) or ()
+    if "coach_review" not in next_nodes:
+        raise HTTPException(
+            status_code=409,
+            detail="Coach chat is only available while awaiting coach review",
+        )
+
+    values = graph_state.values if hasattr(graph_state, "values") else {}
+    coach_output_raw = values.get("coach_output")
+    if not coach_output_raw:
+        raise HTTPException(status_code=409, detail="No coach output available yet")
+
+    coach_output = (
+        coach_output_raw
+        if hasattr(coach_output_raw, "model_dump")
+        else CoachOutput(**coach_output_raw)
+    )
+    chat_history = values.get("coach_chat_history") or []
+    latest_message = body.message.strip()
+    if not latest_message:
+        raise HTTPException(status_code=400, detail="Message is required")
+
+    result = await revise_coach_output(
+        original_resume=str(values.get("resume_text") or ""),
+        current_output=coach_output,
+        latest_user_message=latest_message,
+        chat_history=list(chat_history),
+    )
+
+    updated_output = result.coach_output
+    state_update: Dict[str, Any] = {
+        "coach_output": updated_output,
+        "coached_resume": updated_output.rewritten_resume,
+        "cover_letter_template": updated_output.cover_letter_template,
+        "coach_chat_history": [
+            {"role": "user", "text": latest_message},
+            {"role": "agent", "text": result.response_message},
+        ],
+        "messages": [
+            HumanMessage(content=latest_message),
+            AIMessage(content=result.response_message),
+        ],
+        "human_messages": [latest_message],
+    }
+    await graph.aupdate_state(config, state_update)
+
+    await _emit(session_id, "coach_review", {
+        "status": "awaiting_coach_review",
+        "coach_output": _serialize(updated_output),
+        "coached_resume": updated_output.rewritten_resume,
+        "coach_chat_history": _serialize((chat_history or []) + state_update["coach_chat_history"]),
+        "message": result.response_message,
+    })
+
+    return {
+        "status": "ok",
+        "message": result.response_message,
+        "coach_output": _serialize(updated_output),
+        "coach_chat_history": _serialize((chat_history or []) + state_update["coach_chat_history"]),
+    }
+
+
 @router.post("/{session_id}/coach-review")
 async def submit_coach_review(session_id: str, body: CoachReviewRequest, request: Request):
     """Resume the pipeline after the user reviews the coached resume."""
@@ -1370,7 +1454,10 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
             break
 
     try:
-        state_update: Dict[str, Any] = {"human_messages": [body.message]}
+        state_update: Dict[str, Any] = {
+            "human_messages": [body.message],
+            "messages": [HumanMessage(content=body.message)],
+        }
         if steering_mode:
             state_update["steering_mode"] = steering_mode
         await graph.aupdate_state(config, state_update)
@@ -1651,6 +1738,7 @@ async def resume_session(session_id: str, request: Request):
             "status": "awaiting_coach_review",
             "coach_output": _serialize(vals.get("coach_output")),
             "coached_resume": vals.get("coached_resume", ""),
+            "coach_chat_history": _serialize(vals.get("coach_chat_history", [])),
             "message": "Your coached resume is ready for review.",
         })
         return {"status": "ok", "next": list(next_nodes), "action": "awaiting_coach_review"}

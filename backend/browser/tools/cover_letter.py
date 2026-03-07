@@ -13,7 +13,7 @@ from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from backend.shared.llm import build_llm, invoke_with_retry
+from backend.shared.llm import build_llm, invoke_with_retry, light_model
 from backend.shared.models.schemas import CoverLetter, JobListing
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ async def generate_cover_letter(
     -------
     CoverLetter
     """
-    llm = build_llm(model="claude-haiku-4-5-20251001", max_tokens=2048, temperature=0.7)
+    llm = build_llm(model=light_model(), max_tokens=2048, temperature=0.7)
 
     user_content = (
         f"## Job Details\n"

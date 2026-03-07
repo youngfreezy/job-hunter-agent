@@ -14,8 +14,7 @@ from typing import Any, Dict, List
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from backend.shared.config import settings
-from backend.shared.llm import build_llm, invoke_with_retry
+from backend.shared.llm import build_llm, default_model, invoke_with_retry
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     JobListing,
@@ -46,7 +45,7 @@ class ScoringBatchResult(BaseModel):
 # Constants
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = default_model()
 SCORING_BATCH_SIZE = 20
 CONCURRENCY = 10  # Max parallel LLM calls for scoring batches
 

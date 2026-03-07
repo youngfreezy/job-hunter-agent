@@ -30,6 +30,7 @@ CLAUDE.md
 
 # Logs
 *.log
+.runtime/
 
 # OS
 .DS_Store

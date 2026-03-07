@@ -118,9 +118,15 @@ test.describe("Manual Apply / Application Log", () => {
     await expect(page.getByText("Application Log")).toBeVisible();
     await expect(page.getByText("Senior React Engineer")).toBeVisible();
 
-    await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("failed", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("skipped", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText("submitted", { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      page.getByText("failed", { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      page.getByText("skipped", { exact: true }).first()
+    ).toBeVisible();
   });
 
   test("expands details to show cover letter", async ({ page }) => {
@@ -133,10 +139,10 @@ test.describe("Manual Apply / Application Log", () => {
     await page.getByText("Details").first().click();
 
     // Cover letter should be visible
-    await expect(page.getByRole("heading", { name: "Cover Letter" })).toBeVisible();
     await expect(
-      page.getByText("Dear Hiring Manager,")
+      page.getByRole("heading", { name: "Cover Letter" })
     ).toBeVisible();
+    await expect(page.getByText("Dear Hiring Manager,")).toBeVisible();
   });
 
   test("has Apply buttons linking to job URLs", async ({ page }) => {

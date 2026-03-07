@@ -231,12 +231,12 @@ test.describe("Session Persistence and Dashboard", () => {
     await page.goto(`/session/${mockId}`);
 
     // Keywords are shown as individual badges in the sidebar
-    await expect(
-      page.getByText("Machine Learning").first()
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(
-      page.getByText("Data Scientist").first()
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Machine Learning").first()).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText("Data Scientist").first()).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   // -- SSE replay on refresh --

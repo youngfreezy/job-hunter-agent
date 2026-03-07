@@ -10,13 +10,18 @@ import asyncio
 import logging
 from typing import Any, Dict, List
 
-from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.config import MAX_APPLICATION_JOBS
-from backend.shared.llm import build_llm as _shared_build_llm, invoke_with_retry
+from backend.shared.llm import (
+    build_llm as _shared_build_llm,
+    default_model,
+    invoke_with_retry,
+    premium_model,
+)
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import ScoredJob, TailoredResume
 
@@ -32,8 +37,8 @@ class TailorResult(BaseModel):
 # Model helpers
 # ---------------------------------------------------------------------------
 
-SONNET_MODEL = "claude-sonnet-4-6"
-OPUS_MODEL = "claude-opus-4-6"
+SONNET_MODEL = default_model()
+OPUS_MODEL = premium_model()
 MAX_SELF_REFLECTION_RETRIES = 1
 FIT_SCORE_THRESHOLD = 70
 CONCURRENCY = 10  # Max parallel LLM calls for tailoring
@@ -71,7 +76,7 @@ feedback below. Keep all facts truthful.
 # ---------------------------------------------------------------------------
 
 async def _tailor_single(
-    llm: ChatAnthropic,
+    llm: BaseChatModel,
     base_resume: str,
     job: ScoredJob,
     allow_reflection: bool = True,
@@ -145,7 +150,8 @@ async def _tailor_single(
 async def run_resume_tailor_agent(state: JobHunterState) -> dict:
     """Tailor the coached resume for each job in the application queue.
 
-    Uses Claude Opus for the top-20 % of scored jobs and Sonnet for the rest.
+    Uses the configured premium model for the top-20 % of scored jobs and the
+    configured default model for the rest.
 
     Returns
     -------

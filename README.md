@@ -2,7 +2,9 @@
 
 ## Current Status
 
-**Phases 1-3 complete. Phase 4 partially complete.** The core pipeline is fully functional: 8 LangGraph agents, 7 job board scrapers, 9 ATS-specific appliers, self-healing CSS selector memory, daily health-check scheduler, and a Next.js frontend with live session viewer. 64 Playwright E2E tests passing.
+This repository contains both implemented code and forward-looking design notes. The authoritative live-verified status is tracked in [docs/live-verification.md](docs/live-verification.md).
+
+**Live-verified on March 6, 2026:** the core session flow is working end-to-end with real backend calls and real browser automation. Verified flows include session creation, coaching review, shortlist review, manual intervention resume, LLM-backed session steering, screenshot streaming, browser takeover through the UI, and manual-apply log persistence for submitted jobs with cover letter plus tailored resume.
 
 **What works today:**
 - 3-step session wizard (keywords, resume upload, review) with form persistence
@@ -13,12 +15,18 @@
 - Selector learning: both discovery and apply selectors stored in Postgres, ranked by success rate
 - Daily automated health-check validates all CSS selectors against live pages
 - Application results persisted to Postgres with full audit trail
-- SSE + WebSocket real-time updates, screenshot streaming
+- SSE + WebSocket real-time updates, screenshot streaming, and UI takeover relay
 - NextAuth authentication, manual apply page, session rewind via checkpoints
 
-**Not yet implemented:** Stripe payments, full session DB persistence, production deployment, US-only geofencing, resume encryption.
+**Important caveats:**
+- The runtime takeover path currently proven on macOS is the in-app screenshot/input relay. The older noVNC/X11 scaffold exists but is not the verified production path.
+- The session steering chat is backed by an LLM judge at the control layer. It is not yet a first-class LangGraph supervisor node.
+- Interactive coaching chat is not yet implemented as a live collaborative editing loop.
+
+**Not yet implemented:** Stripe payments, full standalone OSS packaging, production deployment, US-only geofencing, resume encryption.
 
 See [docs/PLAN.md](docs/PLAN.md) for detailed implementation phases.
+See [docs/startup-packaging-plan.md](docs/startup-packaging-plan.md) for the plan to replace terminal-first startup with a launcher-grade UX.
 
 ---
 
@@ -35,7 +43,7 @@ Architecture uses LangGraph for agent orchestration with parallel fan-out, SSE s
 
 **Open-source references**: ApplyPilot (Playwright + Claude), Browser-Use (78K+ stars, LLM-driven Playwright -- **integrated as our application engine**), Skyvern (computer vision + Playwright, 85.85% form-fill accuracy).
 
-**Our differentiator**: Live-steerable browser session with chat + noVNC takeover. Industry/keyword agnostic. Cross-session learning via knowledge graph. AI-driven browser automation (browser-use) that dynamically handles any ATS without hardcoded selectors. No existing product offers this combination.
+**Our differentiator**: live-steerable browser sessions with real automation, HITL recovery, and an in-app takeover path that has been verified end-to-end. Industry/keyword agnostic. AI-driven browser automation dynamically handles multiple ATS families without relying only on brittle hardcoded selectors.
 
 ---
 
@@ -94,7 +102,7 @@ Architecture uses LangGraph for agent orchestration with parallel fan-out, SSE s
 | 7 | **Verification** | Haiku 4.5 | Screenshots confirmation pages, verifies submission success. |
 | 8 | **Reporting** | Haiku 4.5 | Session summary with metrics, callback predictions, coach follow-up tips. |
 
-**All agents use Claude (Anthropic SDK) exclusively.** Smart model routing: Opus for high-reasoning tasks (coaching, form filling, top-tier resume tailoring). Sonnet for mid-tier. Haiku for lightweight.
+**The runtime now defaults to OpenAI models.** The shared LLM layer supports OpenAI-first routing with Anthropic as an explicit fallback provider.
 
 ### Career Coach Agent — Deep Dive
 
@@ -128,17 +136,12 @@ The Coach is the **emotional and strategic heart** of the product. It's what tur
    - Scored against: keyword density for target roles, quantified achievements, formatting, ATS compatibility, readability
    - Shown to user with breakdown: "Keywords: 72/100, Impact Metrics: 45/100, ATS Compatibility: 88/100"
 
-6. **Interactive Chat During Coaching**
-   - The Career Coach is **conversational** — user can steer it via the chat panel throughout
-   - "Actually, I led that project, not just assisted" → Coach updates the resume immediately
-   - "I'm not sure I'm qualified for Senior roles" → Coach responds with evidence from their experience
-   - "Can you make the cover letter more casual?" → Coach adjusts tone
-   - "I also have a side project that..." → Coach incorporates it
-   - This isn't a one-shot rewrite — it's a **collaborative editing session** between user and AI coach
-   - Uses the same chat panel / WebSocket infrastructure as the Application Agent steering
-   - Coach outputs stream in real-time (SSE) so the user sees the resume/letter being written live
+6. **Coaching Review Gate**
+   - The current product exposes coaching as a review/approval step, not as a live conversational editing session
+   - The coached resume and feedback stream to the UI, then the user approves before discovery starts
+   - Conversational coaching remains planned work rather than a live-verified feature
 
-### Cost Per Session (Claude API)
+### Cost Per Session (Historical Claude Estimate)
 
 | Agent | Calls/Session | Cost/Call | Total |
 |-------|--------------|-----------|-------|
@@ -168,9 +171,10 @@ The frontend receives granular SSE events from each agent phase (discovery_progr
 
 ### Chat Steering
 
-Users can steer the agent via the chat panel throughout the session:
-- During coaching: "Actually, I led that project" -> Coach updates resume
-- During application: "Skip this job" or "Use a more formal tone"
+Users can steer the live session through the chat panel during runtime:
+- The current implementation uses an LLM judge over recent session state and event context
+- Verified directives include workflow guidance such as pause/resume/skip-oriented control and takeover escalation
+- This is not yet the same thing as a fully conversational coach/editor that rewrites artifacts inline during the coach step
 
 ---
 
@@ -291,7 +295,7 @@ class JobHunterState(TypedDict):
 - **AsyncPostgresSaver** for pipeline checkpointing + session rewind
 - **Patchright** for anti-detection browser automation (patched Playwright fork)
 - **browser-use** for AI-driven form filling (fallback for unknown ATS platforms)
-- **Claude API** (Anthropic SDK) — Opus, Sonnet, Haiku with smart model routing
+- **LLM provider** — OpenAI by default, Anthropic supported as an explicit fallback
 - **PostgreSQL** (Docker, port 5433) — checkpoints, selector memory, application results
 - **Redis** (Docker, port 6379) — pub/sub for SSE events, screenshot streaming, caching
 - **Neo4j** client (optional, graceful degradation)
@@ -442,7 +446,7 @@ Estimated LLM cost per job: ~$0.25-0.30. At $1.99/job = ~85% gross margin.
 
 ### TODO
 - **Per-application retry**: Independent subtasks with browser context crash recovery
-- **LLM retry**: Exponential backoff with 3 retries on Claude API failures
+- **LLM retry**: Exponential backoff with provider-aware retry handling
 
 ---
 
@@ -599,7 +603,7 @@ These principles are baked into the architecture — not afterthoughts.
 - Each agent is independently testable, swappable, and upgradable
 
 ### 2. Integrating Models, Tools, Memory, and Control Loops
-- **Models**: Claude Opus/Sonnet/Haiku with smart routing (Opus only where reasoning quality matters)
+- **Models**: OpenAI-first routing for default and premium tasks; Anthropic available as fallback
 - **Tools**: Playwright browser actions, Neo4j queries, resume parsing, cover letter generation — all registered as callable tools
 - **Memory**: Neo4j knowledge graph persists cross-session learning (ATS strategies, successful answers). LangGraph state + Postgres checkpoints provide within-session memory.
 - **Control loops**: Each agent runs a think→act→observe loop. The Application Agent specifically runs: observe page → decide action → execute via Playwright → verify result → repeat
@@ -627,7 +631,9 @@ These principles are baked into the architecture — not afterthoughts.
 
 ```bash
 # Required
-ANTHROPIC_API_KEY=sk-ant-xxx           # Claude API key
+LLM_PROVIDER=openai                    # openai or anthropic
+OPENAI_API_KEY=sk-proj-xxx             # default provider
+ANTHROPIC_API_KEY=sk-ant-xxx           # only needed for anthropic fallback
 DATABASE_URL=postgresql://...          # Postgres (default: localhost:5433)
 REDIS_URL=redis://localhost:6379       # Redis
 NEXTAUTH_SECRET=xxx                    # NextAuth session secret

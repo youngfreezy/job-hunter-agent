@@ -11,9 +11,11 @@ import { getApplicationLog, type ApplicationLogEntry } from "@/lib/api";
 type Tab = "all" | "failed" | "skipped" | "submitted";
 
 const STATUS_COLORS: Record<string, string> = {
-  submitted: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  submitted:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
   failed: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  skipped: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  skipped:
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
 };
 
 export default function ManualApplyPage() {
@@ -41,7 +43,8 @@ export default function ManualApplyPage() {
     return () => clearInterval(interval);
   }, [sessionId]);
 
-  const filtered = tab === "all" ? entries : entries.filter((e) => e.status === tab);
+  const filtered =
+    tab === "all" ? entries : entries.filter((e) => e.status === tab);
 
   const counts = {
     all: entries.length,
@@ -118,8 +121,8 @@ export default function ManualApplyPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Application Log</h1>
           <p className="text-muted-foreground mt-1">
-            All application attempts with links, cover letters, and tailored resumes.
-            Failed and skipped jobs can be applied to manually.
+            All application attempts with links, cover letters, and tailored
+            resumes. Failed and skipped jobs can be applied to manually.
           </p>
         </div>
 
@@ -153,7 +156,8 @@ export default function ManualApplyPage() {
                 No applications yet
               </p>
               <p className="text-sm text-muted-foreground/70 mt-1">
-                Application attempts will appear here as the agent processes jobs
+                Application attempts will appear here as the agent processes
+                jobs
               </p>
             </CardContent>
           </Card>
@@ -169,7 +173,9 @@ export default function ManualApplyPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <Badge className={`text-xs ${STATUS_COLORS[entry.status]}`}>
+                          <Badge
+                            className={`text-xs ${STATUS_COLORS[entry.status]}`}
+                          >
                             {entry.status}
                           </Badge>
                           <span className="text-sm font-semibold truncate">
@@ -178,9 +184,14 @@ export default function ManualApplyPage() {
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {entry.job?.company || "Unknown Company"}
-                          {entry.job?.location ? ` · ${entry.job.location}` : ""}
+                          {entry.job?.location
+                            ? ` · ${entry.job.location}`
+                            : ""}
                           {entry.job?.board ? (
-                            <Badge variant="outline" className="ml-2 text-[10px] py-0">
+                            <Badge
+                              variant="outline"
+                              className="ml-2 text-[10px] py-0"
+                            >
                               {entry.job.board}
                             </Badge>
                           ) : null}
@@ -198,9 +209,23 @@ export default function ManualApplyPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                           >
-                            <Button size="sm" variant="outline" className="gap-1 text-xs">
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 text-xs"
+                            >
+                              <svg
+                                className="w-3 h-3"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                                />
                               </svg>
                               Apply
                             </Button>
@@ -211,7 +236,9 @@ export default function ManualApplyPage() {
                             variant="ghost"
                             size="sm"
                             className="text-xs"
-                            onClick={() => setExpandedId(isExpanded ? null : key)}
+                            onClick={() =>
+                              setExpandedId(isExpanded ? null : key)
+                            }
                           >
                             {isExpanded ? "Hide" : "Details"}
                           </Button>
@@ -225,15 +252,24 @@ export default function ManualApplyPage() {
                         {entry.cover_letter && (
                           <div>
                             <div className="flex items-center justify-between mb-2">
-                              <h4 className="text-sm font-medium">Cover Letter</h4>
+                              <h4 className="text-sm font-medium">
+                                Cover Letter
+                              </h4>
                               <div className="flex gap-1">
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-7 text-xs"
-                                  onClick={() => copyToClipboard(entry.cover_letter, `cover-${key}`)}
+                                  onClick={() =>
+                                    copyToClipboard(
+                                      entry.cover_letter,
+                                      `cover-${key}`
+                                    )
+                                  }
                                 >
-                                  {copiedField === `cover-${key}` ? "Copied!" : "Copy"}
+                                  {copiedField === `cover-${key}`
+                                    ? "Copied!"
+                                    : "Copy"}
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -243,7 +279,9 @@ export default function ManualApplyPage() {
                                     downloadPdf(
                                       "Cover Letter",
                                       entry.cover_letter,
-                                      `${entry.job?.company || "Company"} — ${entry.job?.title || "Position"}`
+                                      `${entry.job?.company || "Company"} — ${
+                                        entry.job?.title || "Position"
+                                      }`
                                     )
                                   }
                                 >
@@ -262,7 +300,10 @@ export default function ManualApplyPage() {
                               <h4 className="text-sm font-medium">
                                 Tailored Resume
                                 {entry.tailored_resume.fit_score > 0 && (
-                                  <Badge variant="secondary" className="ml-2 text-xs">
+                                  <Badge
+                                    variant="secondary"
+                                    className="ml-2 text-xs"
+                                  >
                                     {entry.tailored_resume.fit_score}% fit
                                   </Badge>
                                 )}
@@ -273,10 +314,15 @@ export default function ManualApplyPage() {
                                   size="sm"
                                   className="h-7 text-xs"
                                   onClick={() =>
-                                    copyToClipboard(entry.tailored_resume!.tailored_text, `resume-${key}`)
+                                    copyToClipboard(
+                                      entry.tailored_resume!.tailored_text,
+                                      `resume-${key}`
+                                    )
                                   }
                                 >
-                                  {copiedField === `resume-${key}` ? "Copied!" : "Copy"}
+                                  {copiedField === `resume-${key}`
+                                    ? "Copied!"
+                                    : "Copy"}
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -286,7 +332,9 @@ export default function ManualApplyPage() {
                                     downloadPdf(
                                       "Tailored Resume",
                                       entry.tailored_resume!.tailored_text,
-                                      `${entry.job?.company || "Company"} — ${entry.job?.title || "Position"}`
+                                      `${entry.job?.company || "Company"} — ${
+                                        entry.job?.title || "Position"
+                                      }`
                                     )
                                   }
                                 >

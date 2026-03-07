@@ -227,6 +227,11 @@ class CoachReviewRequest(BaseModel):
     feedback: Optional[str] = None
 
 
+class CoachChatRequest(BaseModel):
+    """Interactive coaching message while the session is awaiting coach review."""
+    message: str
+
+
 class ReviewRequest(BaseModel):
     """User approval/rejection of shortlist."""
     approved_job_ids: List[str]

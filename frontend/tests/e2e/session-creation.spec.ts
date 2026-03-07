@@ -4,7 +4,8 @@ import path from "path";
 import fs from "fs";
 
 // Create a temp resume file for upload tests
-const RESUME_TEXT = "Senior Software Engineer with 8 years of experience in React, Python, and cloud infrastructure.";
+const RESUME_TEXT =
+  "Senior Software Engineer with 8 years of experience in React, Python, and cloud infrastructure.";
 
 test.describe("Session Creation - Multi-Step Wizard", () => {
   let resumeFilePath: string;
@@ -351,7 +352,9 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Start Job Hunt Session" }).click();
 
     await expect(
-      page.getByText(/Failed to start session|Internal server error|Unable to connect/)
+      page.getByText(
+        /Failed to start session|Internal server error|Unable to connect/
+      )
     ).toBeVisible();
   });
 

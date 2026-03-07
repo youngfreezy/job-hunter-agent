@@ -218,21 +218,46 @@ export type ApplicationLogEntry = {
 export async function getApplicationLog(
   sessionId: string
 ): Promise<{ entries: ApplicationLogEntry[] }> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/application-log`);
-  if (!res.ok) throw new Error(`Failed to get application log: ${res.statusText}`);
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/application-log`
+  );
+  if (!res.ok)
+    throw new Error(`Failed to get application log: ${res.statusText}`);
   return res.json();
 }
 
 export async function sendSteer(
   sessionId: string,
   data: { message: string; mode?: string }
-): Promise<{ status: string; message: string; directives: Record<string, unknown>[] }> {
+): Promise<{
+  status: string;
+  message: string;
+  directives: Record<string, unknown>[];
+}> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/steer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to send steer: ${res.statusText}`);
+  return res.json();
+}
+
+export async function sendCoachChat(
+  sessionId: string,
+  data: { message: string }
+): Promise<{
+  status: string;
+  message: string;
+  coach_output: CoachOutput;
+  coach_chat_history: Array<{ role: string; text: string }>;
+}> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/coach-chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Failed to send coach chat: ${res.statusText}`);
   return res.json();
 }
 

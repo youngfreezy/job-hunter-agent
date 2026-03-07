@@ -32,7 +32,9 @@ async function waitForTakeoverState(
   }
 
   throw new Error(
-    `Timed out waiting for takeover state. Last state: ${JSON.stringify(lastState)}`
+    `Timed out waiting for takeover state. Last state: ${JSON.stringify(
+      lastState
+    )}`
   );
 }
 
@@ -49,11 +51,7 @@ async function clickRemotePoint(
   }));
 
   for (let attempt = 0; attempt < 10; attempt++) {
-    if (
-      box &&
-      dimensions.naturalWidth > 0 &&
-      dimensions.naturalHeight > 0
-    ) {
+    if (box && dimensions.naturalWidth > 0 && dimensions.naturalHeight > 0) {
       break;
     }
     await page.waitForTimeout(300);

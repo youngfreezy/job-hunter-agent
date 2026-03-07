@@ -47,7 +47,9 @@ test.describe("Live Steering Integration", () => {
 
     // The live steering judge should answer from session context rather than
     // echoing a canned acknowledgement.
-    await expect(steeringPanel.getByText(/^Right now I'm/i).first()).toBeVisible({
+    await expect(
+      steeringPanel.getByText(/^Right now I'm/i).first()
+    ).toBeVisible({
       timeout: 20_000,
     });
   });

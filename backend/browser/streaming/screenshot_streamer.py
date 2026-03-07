@@ -10,7 +10,6 @@ import asyncio
 import base64
 import json
 import logging
-from functools import partial
 from typing import Any, Optional
 
 from backend.shared.config import settings
@@ -41,6 +40,7 @@ class ScreenshotStreamer:
         self._task: Optional[asyncio.Task] = None
         self._running = False
         self._redis: Any = None
+        self._page: Any = None
 
     async def start(self, page: Any) -> None:
         """Start the screenshot capture loop.
@@ -63,7 +63,13 @@ class ScreenshotStreamer:
             self._redis = None
             return
 
+        self._page = page
         self._running = True
+        if hasattr(page, "on"):
+            try:
+                page.on("close", self._handle_page_close)
+            except Exception:
+                logger.debug("Failed to attach page close handler", exc_info=True)
         self._task = asyncio.create_task(self._capture_loop(page))
         logger.info("Screenshot streamer started for session %s", self.session_id)
 
@@ -78,6 +84,7 @@ class ScreenshotStreamer:
                 pass
             self._task = None
 
+        self._page = None
         if self._redis:
             await self._redis.close()
             self._redis = None
@@ -87,6 +94,9 @@ class ScreenshotStreamer:
     async def capture_once(self, page: Any) -> Optional[str]:
         """Capture a single screenshot and return as base64 string."""
         try:
+            if hasattr(page, "is_closed") and page.is_closed():
+                self._running = False
+                return None
             screenshot_bytes = await page.screenshot(
                 type="jpeg",
                 quality=self.quality,
@@ -96,6 +106,49 @@ class ScreenshotStreamer:
             return await asyncio.to_thread(
                 lambda b: base64.b64encode(b).decode("utf-8"), screenshot_bytes
             )
+        except Exception as exc:
+            if exc.__class__.__name__ == "TargetClosedError":
+                self._running = False
+            logger.debug("Screenshot capture failed", exc_info=True)
+            return None
+
+    def _handle_page_close(self, *_args: Any) -> None:
+        """Stop the loop when the underlying Playwright page closes."""
+        self._running = False
+
+    async def _safe_page_url(self, page: Any) -> str:
+        try:
+            return page.url
+        except Exception:
+            return ""
+
+    async def _publish_frame(self, channel: str, b64: str, page: Any) -> None:
+        if not self._redis:
+            return
+        payload = json.dumps({
+            "session_id": self.session_id,
+            "screenshot": b64,
+            "url": await self._safe_page_url(page),
+        })
+        receivers = await self._redis.publish(channel, payload)
+        logger.debug(
+            "Published screenshot to %s (%d receivers, %d bytes)",
+            channel,
+            receivers,
+            len(payload),
+        )
+
+    async def _sleep_interval(self) -> None:
+        try:
+            await asyncio.sleep(self.interval_ms / 1000)
+        except asyncio.CancelledError:
+            raise
+
+    async def _capture_or_stop(self, page: Any) -> Optional[str]:
+        try:
+            return await self.capture_once(page)
+        except asyncio.CancelledError:
+            raise
         except Exception:
             logger.debug("Screenshot capture failed", exc_info=True)
             return None
@@ -106,20 +159,19 @@ class ScreenshotStreamer:
 
         while self._running:
             try:
-                b64 = await self.capture_once(page)
-                if b64 and self._redis:
-                    payload = json.dumps({
-                        "session_id": self.session_id,
-                        "screenshot": b64,
-                        "url": page.url,
-                    })
-                    receivers = await self._redis.publish(channel, payload)
-                    logger.debug("Published screenshot to %s (%d receivers, %d bytes)", channel, receivers, len(payload))
+                b64 = await self._capture_or_stop(page)
+                if b64:
+                    await self._publish_frame(channel, b64, page)
 
-                await asyncio.sleep(self.interval_ms / 1000)
+                if not self._running:
+                    break
+                await self._sleep_interval()
 
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.debug("Screenshot loop error", exc_info=True)
+                if hasattr(page, "is_closed") and page.is_closed():
+                    self._running = False
+                    break
                 await asyncio.sleep(1)

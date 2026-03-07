@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from backend.shared.llm import build_llm, invoke_with_retry
+from backend.shared.llm import build_llm, default_model, invoke_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ async def judge(
     recent_events: List[Dict[str, Any]],
 ) -> SteeringJudgeResult:
     """Return a conversational steering judgment for a live session."""
-    llm = build_llm(model="claude-sonnet-4-6", max_tokens=1400, temperature=0.0)
+    llm = build_llm(model=default_model(), max_tokens=1400, temperature=0.0)
     structured_llm = llm.with_structured_output(SteeringJudgeResult)
 
     payload = {

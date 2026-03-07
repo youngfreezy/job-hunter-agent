@@ -168,10 +168,18 @@ class BaseApplier(ABC):
                 const text = document.body.innerText.toLowerCase();
                 const url = window.location.href.toLowerCase();
 
-                // NEGATIVE: submit button still visible means form didn't go through
-                const submitVisible = !!(
-                    document.querySelector('button[type="submit"]')?.offsetParent ||
-                    document.querySelector('input[type="submit"]')?.offsetParent
+                const visibleButtons = [...document.querySelectorAll('button, input[type="submit"], input[type="button"]')]
+                    .filter(el => el.offsetParent !== null)
+                    .map(el => ((el.innerText || el.value || '') + '').toLowerCase().trim());
+                // NEGATIVE: submit/apply controls still visible usually means form didn't go through.
+                // Ignore unrelated buttons like "sign in", "back to job post", etc.
+                const submitVisible = visibleButtons.some(label =>
+                    label === 'submit' ||
+                    label.includes('submit application') ||
+                    label.includes('submit your application') ||
+                    label === 'apply' ||
+                    label.includes('apply for this job') ||
+                    label.includes('apply now')
                 );
                 // NEGATIVE: validation errors present
                 const hasErrors = [...document.querySelectorAll(
@@ -212,12 +220,9 @@ class BaseApplier(ABC):
             text = result.get("text", "")
             url_confirm = result.get("urlConfirm", False)
 
-            # Hard negatives — form didn't submit
+            # Hard negative — visible validation errors mean the form did not submit.
             if has_errors:
                 logger.info("Confirmation: validation errors present — NOT confirmed")
-                return False
-            if submit_visible:
-                logger.info("Confirmation: submit button still visible — NOT confirmed")
                 return False
 
             # URL redirected to confirmation page
@@ -227,7 +232,8 @@ class BaseApplier(ABC):
 
             # Multi-word phrases that only appear in real confirmation messages
             _SAFE_PHRASES = [
-                "application has been submitted", "thanks for applying",
+                "thanks for applying", "application submitted successfully",
+                "application has been submitted",
                 "thank you for applying", "application received",
                 "successfully submitted", "we have received your application",
                 "your application has been received",
@@ -242,6 +248,10 @@ class BaseApplier(ABC):
                 if kw in confirm_el_text:
                     logger.info("Confirmation detected (confirm element): '%s'", kw)
                     return True
+
+            if submit_visible:
+                logger.info("Confirmation: submit/apply button still visible — NOT confirmed")
+                return False
 
         except Exception:
             pass

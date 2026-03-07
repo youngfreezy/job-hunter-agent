@@ -9,7 +9,7 @@ from typing import Any, Dict
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.orchestrator.pipeline.state import JobHunterState
-from backend.shared.llm import build_llm, invoke_with_retry
+from backend.shared.llm import build_llm, default_model, invoke_with_retry
 from backend.shared.models.schemas import SearchConfig
 
 # SearchConfig is already a Pydantic model -- use it directly with structured output
@@ -50,7 +50,7 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
     Returns a dict that LangGraph merges back into the pipeline state.
     """
     try:
-        llm = build_llm(model="claude-sonnet-4-6", max_tokens=2048, temperature=0.0)
+        llm = build_llm(model=default_model(), max_tokens=2048, temperature=0.0)
         structured_llm = llm.with_structured_output(SearchConfig)
 
         # -- Build the user message from available state fields -------------
