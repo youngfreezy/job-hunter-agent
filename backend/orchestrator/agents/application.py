@@ -509,11 +509,25 @@ async def _apply_to_job(
         resume_text = state.get("coached_resume") or state.get("resume_text", "")
         cover_letter_template = state.get("cover_letter_template", "")
 
+        # Compute queue progress for frontend
+        _queue = state.get("application_queue", [])
+        _done_ids = (
+            {r.job_id for r in (state.get("applications_submitted") or [])}
+            | {r.job_id for r in (state.get("applications_failed") or [])}
+            | set(state.get("applications_skipped") or [])
+        )
+        _app_idx = len(_done_ids)
+        _total_q = len(_queue)
+        _pct = int((_app_idx / _total_q) * 100) if _total_q else 0
+
         await emit_agent_event(session_id, "application_start", {
             "job_id": job_id,
             "job_title": job.title,
             "company": job.company,
             "url": job.url,
+            "current": _app_idx + 1,
+            "total": _total_q,
+            "progress": _pct,
         })
 
         # --- Step 1: Open tab and navigate (before cover letter to save LLM calls) ---
@@ -655,7 +669,10 @@ async def _apply_to_job(
             # --- Step 2: Generate cover letter (only if we'll actually apply) ---
             await emit_agent_event(session_id, "application_progress", {
                 "job_id": job_id,
-                "step": "Generating tailored cover letter...",
+                "step": f"Generating cover letter for {job.title} at {job.company}...",
+                "current": _app_idx + 1,
+                "total": _total_q,
+                "progress": _pct,
             })
             cover_letter = await generate_cover_letter(
                 job=job,
@@ -679,7 +696,10 @@ async def _apply_to_job(
 
             await emit_agent_event(session_id, "application_progress", {
                 "job_id": job_id,
-                "step": f"Applying via {applier.PLATFORM} applier...",
+                "step": f"Filling application form ({applier.PLATFORM}) for {job.title}...",
+                "current": _app_idx + 1,
+                "total": _total_q,
+                "progress": _pct,
             })
 
             # --- Step 6: Run application ---
@@ -935,11 +955,17 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 "skip_next_job_requested": False,
             }
 
+        prev_submitted = len(state.get("applications_submitted") or [])
+        prev_failed = len(state.get("applications_failed") or [])
+        prev_skipped = len(state.get("applications_skipped") or [])
         await emit_agent_event(session_id, "application_progress", {
             "step": f"Applying to {job_label} ({app_idx + 1} of {total_in_queue})...",
             "progress": pct,
             "current": app_idx + 1,
             "total": total_in_queue,
+            "submitted": prev_submitted,
+            "failed": prev_failed,
+            "skipped": prev_skipped,
         })
 
         settings = get_settings()

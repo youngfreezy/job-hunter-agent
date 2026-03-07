@@ -107,6 +107,13 @@ async def lifespan(app: FastAPI):
 
     graph = build_graph(checkpointer=checkpointer)
 
+    # --- Redis ---
+    from backend.shared.redis_client import redis_client
+    try:
+        await redis_client.connect()
+    except Exception as exc:
+        logger.warning("Redis connection failed (%s) — rate limiting and task queue disabled", exc)
+
     # Attach to app.state so route handlers can access them
     app.state.graph = graph
     app.state.checkpointer = checkpointer
@@ -118,6 +125,11 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down JobHunter gateway")
     from backend.shared.scheduler import cancel_all
     cancel_all()
+
+    try:
+        await redis_client.close()
+    except Exception:
+        pass
 
     if pool is not None:
         await pool.close()
@@ -145,6 +157,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # --- Rate Limiting (runs after CORS in middleware stack) ---
+    from backend.gateway.middleware.rate_limit import attach_rate_limiter
+    attach_rate_limiter(app)
 
     # --- Routes ---
     from backend.gateway.routes.auth import router as auth_router
