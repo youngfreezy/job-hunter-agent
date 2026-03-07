@@ -65,6 +65,7 @@ _NOT_FOUND_INDICATORS = [
     "job has been removed", "no longer available",
     "this job has expired", "position has been filled",
     "job posting has been removed", "this listing has expired",
+    "no longer accepting applications",
 ]
 
 logger = logging.getLogger(__name__)
@@ -134,20 +135,39 @@ async def _wait_for_intervention_resume(session_id: str, timeout_seconds: int = 
 
 
 async def _has_captcha(page: Any) -> bool:
-    """Detect common captcha providers on the current page."""
+    """Detect a VISIBLE captcha challenge blocking the page.
+
+    Only returns True when a captcha is actually blocking interaction (e.g.
+    a full-page challenge or a visible iframe). Invisible reCAPTCHA scripts
+    embedded in forms (like Greenhouse) do NOT count — they auto-solve.
+    """
     try:
         return await page.evaluate(
             """() => {
-                const hasRecaptcha = !!document.querySelector(
-                  '[name="g-recaptcha-response"], iframe[src*="recaptcha"], script[src*="recaptcha"]'
+                // Full-page captcha challenges (Cloudflare, PerimeterX, etc.)
+                const fullPageSels = [
+                    '#px-captcha', '.cf-challenge-running', '#challenge-running',
+                    'div[class*="captcha-container"]',
+                ];
+                for (const sel of fullPageSels) {
+                    const el = document.querySelector(sel);
+                    if (el && el.offsetParent !== null) return true;
+                }
+
+                // Visible reCAPTCHA / hCaptcha iframes (not just scripts)
+                const iframes = document.querySelectorAll(
+                    'iframe[src*="recaptcha"][title*="challenge"], iframe[src*="hcaptcha"]'
                 );
-                const hasHCaptcha = !!document.querySelector(
-                  '[name="h-captcha-response"], iframe[src*="hcaptcha"], script[src*="hcaptcha"]'
-                );
-                const hasTurnstile = !!document.querySelector(
-                  '[name="cf-turnstile-response"], iframe[src*="turnstile"], script[src*="turnstile"]'
-                );
-                return hasRecaptcha || hasHCaptcha || hasTurnstile;
+                for (const iframe of iframes) {
+                    if (iframe.offsetParent !== null && iframe.offsetHeight > 50) return true;
+                }
+
+                // Check for "I'm not a robot" checkbox that's visible
+                const recaptchaWidget = document.querySelector('.g-recaptcha');
+                if (recaptchaWidget && recaptchaWidget.offsetParent !== null
+                    && recaptchaWidget.offsetHeight > 50) return true;
+
+                return false;
             }"""
         )
     except Exception:
@@ -310,7 +330,9 @@ async def _find_external_apply_link(page: Any) -> str | None:
         # Click the Apply button if it exists (non-Easy-Apply)
         apply_btn = await page.query_selector(
             'button.sign-up-modal__outlet-btn, '
-            'button[data-tracking-control-name*="apply"]'
+            'button.sign-up-modal__outlet, '
+            'button[data-tracking-control-name*="apply"], '
+            'button.apply-button'
         )
         if apply_btn:
             btn_text = await apply_btn.inner_text()
@@ -331,6 +353,18 @@ async def _find_external_apply_link(page: Any) -> str | None:
                     result = _extract_ats_url(href)
                     if result:
                         return result
+                # No external link found — dismiss the modal to restore page state
+                try:
+                    dismiss = await page.query_selector(
+                        'button.modal__dismiss, '
+                        'button[aria-label="Dismiss"], '
+                        'button[aria-label="Close"]'
+                    )
+                    if dismiss:
+                        await dismiss.click()
+                        await asyncio.sleep(0.5)
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -468,8 +502,16 @@ async def _apply_to_job(
             logger.debug("Failed to start screenshot streamer for %s", session_id, exc_info=True)
 
         try:
-            await page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(1)  # settle
+            # Strip tracking params from LinkedIn URLs (they can cause redirects)
+            nav_url = job.url
+            if "linkedin.com/jobs/view/" in nav_url:
+                from urllib.parse import urlparse, urlunparse
+                parsed = urlparse(nav_url)
+                nav_url = urlunparse(parsed._replace(query=""))
+                logger.info("Cleaned LinkedIn URL: %s", nav_url)
+            await page.goto(nav_url, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(2)  # settle (Bright Data may need longer)
+            logger.info("Final page URL after navigation: %s", page.url)
 
             # If CAPTCHA appears early, pause for manual intervention.
             if await _has_captcha(page):
@@ -887,20 +929,20 @@ async def run_application_agent(state: JobHunterState) -> dict:
         })
 
         settings = get_settings()
+        job = _find_job_in_state(job_id, state)
+        if job is None:
+            raise ValueError(f"Job {job_id} not found in state -- cannot apply")
+
         manager = BrowserManager()
         await manager.start_for_task(
             board=job.board,
             purpose="apply",
-            headless=False if settings.BROWSER_MODE == "cdp" else True,
+            headless=settings.BROWSER_HEADLESS,
         )
 
         _, context = await manager.new_context()
 
         try:
-            job = _find_job_in_state(job_id, state)
-            if job is None:
-                raise ValueError(f"Job {job_id} not found in state -- cannot apply")
-
             result = await _apply_to_job(
                 job_id=job_id,
                 job=job,

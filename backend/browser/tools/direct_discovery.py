@@ -39,10 +39,12 @@ _BOARD_SCRAPERS = {
 
 # Per-board timeout (higher to allow per-keyword searches)
 _BOARD_TIMEOUT = 180
+# Bright Data remote browser is slower (CAPTCHA solving + network latency)
+_BOARD_TIMEOUT_BRIGHTDATA = 300
 
 # Collect broadly, then rank down to this many per board
 _COLLECT_CAP = 50
-_RETURN_PER_BOARD = 5
+_RETURN_PER_BOARD = 7
 
 
 async def _scrape_board(
@@ -66,11 +68,12 @@ async def _scrape_board(
     ctx_id, context = await manager.new_context(
         proxy=settings.PROXY_URL,
     )
+    timeout = _BOARD_TIMEOUT_BRIGHTDATA if manager._mode == "brightdata" else _BOARD_TIMEOUT
     try:
         # Collect broadly -- scrapers search per-keyword internally
         listings = await asyncio.wait_for(
             scraper_fn(context, search_config, max_results=_COLLECT_CAP),
-            timeout=_BOARD_TIMEOUT,
+            timeout=timeout,
         )
         logger.info("Direct scrape of %s: %d raw jobs", board, len(listings))
 
@@ -92,7 +95,7 @@ async def _scrape_board(
         return []
 
     except asyncio.TimeoutError:
-        logger.warning("Direct scrape of %s timed out after %ds", board, _BOARD_TIMEOUT)
+        logger.warning("Direct scrape of %s timed out after %ds", board, timeout)
         return []
     except Exception:
         logger.warning("Direct scrape of %s failed", board, exc_info=True)
@@ -141,48 +144,98 @@ async def discover_all_boards(
     all_jobs: List[JobListing] = []
     fallback_boards: List[str] = []
 
-    # Phase 1: Direct Playwright scraping
-    manager = BrowserManager()
-    await manager.start_for_task(purpose="discovery", headless=settings.BROWSER_HEADLESS)
+    # Boards that always get blocked locally (CAPTCHAs) -- route directly to
+    # Bright Data Scraping Browser to avoid wasting time on doomed attempts.
+    _BRIGHTDATA_ONLY_BOARDS = {"indeed", "glassdoor"}
 
-    try:
-        for board in boards:
-            if board not in _BOARD_SCRAPERS:
-                fallback_boards.append(board)
-                continue
+    # Split boards into local-capable and Bright-Data-only
+    local_boards = [b for b in boards if b not in _BRIGHTDATA_ONLY_BOARDS]
+    bd_direct_boards = [
+        b for b in boards
+        if b in _BRIGHTDATA_ONLY_BOARDS and b in _BOARD_SCRAPERS
+    ]
 
-            # Greenhouse/Lever jobs have public forms we can apply to directly,
-            # so collect more of them vs. board-hosted jobs that often need auth.
-            board_max = max_per_board * 3 if board == "greenhouse_lever" else max_per_board
+    # Phase 1: Local Playwright for boards that work locally (LinkedIn, etc.)
+    if local_boards:
+        manager = BrowserManager()
+        await manager.start_for_task(purpose="discovery", headless=settings.BROWSER_HEADLESS)
+        try:
+            for board in local_boards:
+                if board not in _BOARD_SCRAPERS:
+                    fallback_boards.append(board)
+                    continue
 
-            listings = await _scrape_board(
-                board, manager, search_config, session_id, board_max,
-            )
-
-            if listings:
-                all_jobs.extend(listings)
-            else:
-                logger.info(
-                    "Board %s returned 0 results, queued for browser-use fallback",
-                    board,
+                board_max = max_per_board * 3 if board == "greenhouse_lever" else max_per_board
+                listings = await _scrape_board(
+                    board, manager, search_config, session_id, board_max,
                 )
-                fallback_boards.append(board)
-    finally:
-        await manager.stop()
+                if listings:
+                    all_jobs.extend(listings)
+                else:
+                    logger.info(
+                        "Board %s returned 0 results, queued for fallback", board,
+                    )
+                    fallback_boards.append(board)
+        finally:
+            await manager.stop()
 
-    # Phase 2: browser-use fallback for failed boards
-    if fallback_boards:
-        logger.info("Falling back to browser-use for: %s", fallback_boards)
+    # Phase 2: Bright Data Scraping Browser for CAPTCHA-protected boards
+    # (Indeed, Glassdoor) + any local boards that returned 0 results.
+    bd_boards = bd_direct_boards + [b for b in fallback_boards if b in _BOARD_SCRAPERS]
+    bd_remaining: List[str] = [b for b in fallback_boards if b not in _BOARD_SCRAPERS]
+
+    if bd_boards and settings.BRIGHT_DATA_BROWSER_ENABLED:
+        logger.info(
+            "Scraping via Bright Data Scraping Browser (CAPTCHA-solving): %s",
+            bd_boards,
+        )
         await emit_agent_event(session_id, "discovery_progress", {
             "board": "all",
-            "step": f"Using AI agent for {', '.join(fallback_boards)}...",
+            "step": f"Searching {', '.join(b.title() for b in bd_boards)} via Bright Data...",
+        })
+        # Fresh Bright Data session per board — each connect_over_cdp gives a
+        # new remote browser, preventing session expiry between boards.
+        for board in bd_boards:
+            bd_manager = BrowserManager()
+            try:
+                await bd_manager.start_brightdata()
+                listings = await _scrape_board(
+                    board, bd_manager, search_config, session_id, max_per_board,
+                )
+                if listings:
+                    all_jobs.extend(listings)
+                else:
+                    logger.info(
+                        "Bright Data scrape of %s returned 0, queued for browser-use",
+                        board,
+                    )
+                    bd_remaining.append(board)
+            except Exception:
+                logger.warning(
+                    "Bright Data browser failed for %s, queuing for browser-use",
+                    board,
+                    exc_info=True,
+                )
+                bd_remaining.append(board)
+            finally:
+                await bd_manager.stop()
+    elif bd_boards:
+        # Bright Data not enabled -- send directly to browser-use
+        bd_remaining.extend(bd_boards)
+
+    # Phase 3: browser-use AI agent as last resort
+    if bd_remaining:
+        logger.info("Falling back to browser-use for: %s", bd_remaining)
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": "all",
+            "step": f"Using AI agent for {', '.join(bd_remaining)}...",
         })
         try:
             from backend.browser.tools.browser_use_discovery import (
                 discover_all_boards as bu_discover,
             )
             fallback_jobs = await bu_discover(
-                boards=fallback_boards,
+                boards=bd_remaining,
                 search_config=search_config,
                 session_id=session_id,
                 max_per_board=max_per_board,

@@ -68,6 +68,7 @@ Rules:
 - For website/portfolio fields, check resume or use ""
 - For phone number, use the number from the resume
 - For country/location, default to "United States" if unclear
+- For "Location (City)" react-select fields, ALWAYS use a real city name (e.g. "San Francisco") — NEVER use "Remote". These fields search a city database and "Remote" won't match any option
 - For "are you 18+" questions, always "Yes"
 - For cover letter textareas, paste the provided cover letter
 - For "additional information" or "anything else" textareas, leave empty (use action "fill" with value "")
@@ -173,7 +174,7 @@ def _fallback_fill_value(
         return profile.get("name", "")
     if "linkedin" in label_l:
         return "https://www.linkedin.com/in/fareez-ahmed"
-    if "city" in label_l:
+    if "city" in label_l or ("location" in label_l and "reloc" not in label_l):
         return location_parts.get("city", "San Francisco")
     if "state" in label_l:
         return location_parts.get("state", "California")
@@ -416,7 +417,7 @@ async def extract_form_fields(page: Any) -> List[Dict[str, Any]]:
                 type: fieldType,
                 name: el.name || '',
                 label: label.substring(0, 200),
-                required: el.required || el.getAttribute('aria-required') === 'true',
+                required: el.required || el.getAttribute('aria-required') === 'true' || label.includes('*'),
                 options: options.slice(0, 50),  // cap options
             });
         }
@@ -455,7 +456,7 @@ async def analyse_form(
     Uses structured output (tool calling) to guarantee valid JSON responses.
     Returns a list of fill instructions.
     """
-    llm = build_llm(model=default_model(), max_tokens=4096, temperature=0.0)
+    llm = build_llm(model=default_model(), max_tokens=8192, temperature=0.0)
     structured_llm = llm.with_structured_output(FormAnalysisResult)
 
     user_content = (
@@ -537,15 +538,25 @@ async def fill_form(
         field_name = instr.get("field_name", selector)
 
         if action == "skip":
+            logger.info("SKIP field: %s (%s)", field_name, selector)
             skipped += 1
             continue
+
+        logger.info("FILL field: %s | action=%s value='%s'", field_name, action, str(value)[:80])
 
         try:
             el = await page.query_selector(selector)
             if not el:
-                logger.debug("Selector not found: %s", selector)
+                logger.info("Selector NOT FOUND: %s (field: %s)", selector, field_name)
                 skipped += 1
                 continue
+
+            # Scroll element into view to avoid overlay interception
+            try:
+                await el.scroll_into_view_if_needed()
+                await page.wait_for_timeout(100)
+            except Exception:
+                pass
 
             if action == "fill":
                 # Use force=True to bypass overlay interception (e.g. LinkedIn
@@ -554,8 +565,53 @@ async def fill_form(
                     await el.click(force=True)
                 except Exception:
                     pass  # click failed, but fill below may still work
-                await el.fill("")
-                await el.fill(str(value))
+
+                # Detect autocomplete fields (e.g. Google Places on Greenhouse)
+                is_autocomplete = False
+                try:
+                    ac_attr = await el.get_attribute("autocomplete")
+                    role_attr = await el.get_attribute("role")
+                    field_label = (field_name or "").lower()
+                    is_autocomplete = (
+                        ac_attr in ("off", "nope", "new-password")
+                        and role_attr == "combobox"
+                    ) or any(kw in field_label for kw in ("location", "city"))
+                except Exception:
+                    pass
+
+                if is_autocomplete:
+                    # Type slowly to trigger autocomplete, then select first suggestion
+                    await el.fill("")
+                    await el.type(str(value), delay=80)
+                    await page.wait_for_timeout(1500)
+                    # Try to find and click autocomplete suggestion
+                    suggestion_clicked = False
+                    for suggestion_sel in [
+                        '[class*="autocomplete"] li:first-child',
+                        '[class*="pac-item"]:first-child',
+                        '[class*="suggestion"]:first-child',
+                        '.pac-container .pac-item:first-child',
+                        '[role="option"]:first-child',
+                        '[role="listbox"] [role="option"]:first-child',
+                    ]:
+                        try:
+                            sug = page.locator(suggestion_sel).first
+                            if await sug.is_visible(timeout=500):
+                                await sug.click()
+                                suggestion_clicked = True
+                                logger.info("Clicked autocomplete suggestion for %s", field_name)
+                                break
+                        except Exception:
+                            continue
+                    if not suggestion_clicked:
+                        # Fallback: press ArrowDown + Enter to select first option
+                        await el.press("ArrowDown")
+                        await page.wait_for_timeout(200)
+                        await el.press("Enter")
+                        logger.info("Used ArrowDown+Enter for autocomplete field %s", field_name)
+                else:
+                    await el.fill("")
+                    await el.fill(str(value))
                 filled += 1
 
             elif action == "select":
@@ -585,12 +641,13 @@ async def fill_form(
 
             elif action == "react_select":
                 # React Select: click → clear → type value → select option
-                await el.click()
+                await el.click(force=True)
                 await page.wait_for_timeout(300)
                 await el.fill("")
                 await page.wait_for_timeout(100)
-                await el.fill(str(value))
-                await page.wait_for_timeout(600)
+                # Type character-by-character for async React Selects (location search)
+                await el.type(str(value), delay=50)
+                await page.wait_for_timeout(1200)
 
                 # Try to click the exact matching option text first
                 option_clicked = False
@@ -598,14 +655,25 @@ async def fill_form(
                     option_el = page.locator(
                         f'[class*="select__option"]:has-text("{value}")'
                     ).first
-                    if await option_el.is_visible(timeout=1000):
+                    if await option_el.is_visible(timeout=1500):
                         await option_el.click()
                         option_clicked = True
                 except Exception:
                     pass
 
                 if not option_clicked:
-                    # Fallback: ArrowDown + Enter
+                    # Try any visible option (first one in dropdown)
+                    try:
+                        any_option = page.locator('[class*="select__option"]').first
+                        if await any_option.is_visible(timeout=1000):
+                            await any_option.click()
+                            option_clicked = True
+                            logger.info("Selected first available option for %s", field_name)
+                    except Exception:
+                        pass
+
+                if not option_clicked:
+                    # Final fallback: ArrowDown + Enter
                     await el.press("ArrowDown")
                     await page.wait_for_timeout(200)
                     await el.press("Enter")

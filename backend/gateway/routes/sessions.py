@@ -1017,13 +1017,24 @@ async def _test_apply_single(
     from backend.orchestrator.agents.application import run_application_agent
     from backend.shared.models.schemas import JobListing, JobBoard, TailoredResume
 
+    # Detect board from URL
+    _url_lower = job_url.lower()
+    if "linkedin.com" in _url_lower:
+        _board = JobBoard.LINKEDIN
+    elif "glassdoor.com" in _url_lower:
+        _board = JobBoard.GLASSDOOR
+    elif "ziprecruiter.com" in _url_lower:
+        _board = JobBoard.ZIPRECRUITER
+    else:
+        _board = JobBoard.INDEED
+
     dummy_job = JobListing(
         id=f"test-{uuid.uuid4().hex[:6]}",
         title=job_title,
         company=company,
         location="Remote",
         url=job_url,
-        board=JobBoard.INDEED,
+        board=_board,
     )
 
     state = {

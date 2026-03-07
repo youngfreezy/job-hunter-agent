@@ -20,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 APPLY_BUTTON = [
     "button.jobs-apply-button",
+    "button.apply-button",
+    "button.sign-up-modal__outlet",
     'button:has-text("Easy Apply")',
+    'button:has-text("Apply")',
 ]
 
 NEXT_BUTTON = [
@@ -68,8 +71,35 @@ class LinkedInApplier(BaseApplier):
         try:
             # 1. Click Easy Apply button
             await self._emit_step("Clicking Easy Apply button")
-            clicked = await self._click_selector(APPLY_BUTTON, "apply_button")
+            # Scroll to bottom to ensure apply button loads (LinkedIn lazy-loads)
+            try:
+                await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await self._random_delay(1.0, 2.0)
+                await self.page.evaluate("window.scrollTo(0, 0)")
+                await self._random_delay(0.5, 1.0)
+            except Exception:
+                pass
+            clicked = await self._click_selector(APPLY_BUTTON, "apply_button", timeout=10000)
             if not clicked:
+                # Log what buttons are visible for debugging
+                try:
+                    debug = await self.page.evaluate("""() => {
+                        const buttons = Array.from(document.querySelectorAll('button, a[href], input[type="submit"]'))
+                            .filter(el => {
+                                const t = (el.textContent || el.value || '').toLowerCase();
+                                const c = (el.className || '').toLowerCase();
+                                return t.includes('apply') || c.includes('apply') || c.includes('sign-up') || el.tagName === 'BUTTON';
+                            })
+                            .slice(0, 20)
+                            .map(b => `${b.tagName}.${(b.className || '').substring(0,50)} | ${(b.textContent || b.value || '').trim().substring(0, 80)}`);
+                        const title = document.title;
+                        const url = window.location.href;
+                        const bodySnippet = document.body.innerText.substring(0, 500);
+                        return { buttons, title, url, bodySnippet };
+                    }""")
+                    logger.info("LinkedIn: page debug - title='%s' url='%s' buttons=%s body='%s'", debug.get('title', '?'), debug.get('url', '?'), debug.get('buttons', []), debug.get('bodySnippet', '?')[:300])
+                except Exception:
+                    pass
                 return self._make_result(
                     job_id, ApplicationStatus.SKIPPED,
                     error_message="Easy Apply button not found — likely requires auth",

@@ -345,10 +345,17 @@ async def discover_all_boards(
         for r in items:
             mem = getattr(r, "long_term_memory", None) or ""
             mem_str = str(mem)
-            if not (mem_str.startswith("[") and '"title"' in mem_str):
+            if '"title"' not in mem_str:
                 continue
             try:
-                parsed_list = json.loads(mem_str)
+                parsed = json.loads(mem_str)
+                # Handle both [{...}] and {"jobs": [{...}]} formats
+                if isinstance(parsed, dict) and "jobs" in parsed:
+                    parsed_list = parsed["jobs"]
+                elif isinstance(parsed, list):
+                    parsed_list = parsed
+                else:
+                    continue
                 for j in parsed_list:
                     if not isinstance(j, dict):
                         continue

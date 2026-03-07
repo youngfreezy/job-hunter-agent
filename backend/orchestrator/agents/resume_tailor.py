@@ -50,7 +50,7 @@ def _pick_model(is_top_tier: bool) -> str:
 
 
 def _build_llm(model: str):
-    return _shared_build_llm(model=model, max_tokens=4096, temperature=0.3)
+    return _shared_build_llm(model=model, max_tokens=8192, temperature=0.3)
 
 
 # ---------------------------------------------------------------------------

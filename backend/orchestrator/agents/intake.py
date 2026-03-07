@@ -50,7 +50,7 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
     Returns a dict that LangGraph merges back into the pipeline state.
     """
     try:
-        llm = build_llm(model=default_model(), max_tokens=2048, temperature=0.0)
+        llm = build_llm(model=default_model(), max_tokens=4096, temperature=0.0)
         structured_llm = llm.with_structured_output(SearchConfig)
 
         # -- Build the user message from available state fields -------------

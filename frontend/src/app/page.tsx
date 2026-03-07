@@ -169,12 +169,12 @@ export default function Home() {
               <Badge variant="secondary" className="bg-blue-50 text-blue-700">
                 Review before applications are sent
               </Badge>
-              <Badge
+              {/* <Badge
                 variant="secondary"
                 className="bg-emerald-50 text-emerald-700"
               >
                 Take over when a site needs you
-              </Badge>
+              </Badge> */}
                   </div>
                   <h1 className="max-w-4xl text-5xl font-bold tracking-tight text-zinc-950 dark:text-white md:text-6xl">
                     Job searching should feel less chaotic.

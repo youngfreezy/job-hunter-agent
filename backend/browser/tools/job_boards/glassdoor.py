@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 GLASSDOOR_BASE = "https://www.glassdoor.com"
 GLASSDOOR_JOBS = f"{GLASSDOOR_BASE}/Job"
 
-MAX_PAGES = 2
+MAX_PAGES = 1
 
 # Captcha / block selectors
 _BLOCK_SELECTORS = [
@@ -108,17 +108,27 @@ async def scrape_glassdoor(
                     break
 
                 url = search_url if page_num == 0 else f"{search_url}&p={page_num + 1}"
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await page.wait_for_timeout(random.randint(2000, 4000))
+                await page.goto(url, wait_until="domcontentloaded", timeout=90000)
+                # Extra wait for Bright Data CAPTCHA solving
+                await page.wait_for_timeout(random.randint(5000, 8000))
 
-                if await _is_blocked(page):
+                # Bright Data auto-solves CAPTCHAs — retry block check
+                blocked = await _is_blocked(page)
+                if blocked:
+                    for retry in range(3):
+                        logger.info("Glassdoor: waiting for CAPTCHA solve (attempt %d/3)...", retry + 1)
+                        await page.wait_for_timeout(10000)
+                        blocked = await _is_blocked(page)
+                        if not blocked:
+                            break
+                if blocked:
                     logger.warning("Glassdoor: blocked on page %d -- returning %d partial results", page_num + 1, len(listings))
-                    break
+                    return listings
 
                 try:
                     await page.wait_for_selector(
                         'li.react-job-listing, li[data-test="jobListing"], div.JobCard_jobCardContainer',
-                        timeout=10000,
+                        timeout=20000,
                     )
                 except Exception:
                     logger.warning("Glassdoor: no job cards on page %d (query: %s)", page_num + 1, query)

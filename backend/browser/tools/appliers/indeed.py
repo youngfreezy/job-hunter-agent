@@ -33,6 +33,10 @@ NEXT_BUTTON = [
 
 SUBMIT_BUTTON = [
     'button:has-text("Submit your application")',
+    'button:has-text("Submit application")',
+    'button:has-text("Submit")',
+    'button[data-testid="submit-button"]',
+    'button.ia-continueButton[type="submit"]',
 ]
 
 MAX_PAGES = 6

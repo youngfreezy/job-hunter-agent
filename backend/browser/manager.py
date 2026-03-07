@@ -76,9 +76,6 @@ def should_use_brightdata(
     if settings.BRIGHT_DATA_BROWSER_FORCE:
         return True
 
-    if purpose != "apply":
-        return False
-
     targets = _csv_to_set(settings.BRIGHT_DATA_BROWSER_BOARDS)
     if not targets:
         return False

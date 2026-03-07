@@ -20,8 +20,11 @@ logger = logging.getLogger(__name__)
 INDEED_BASE = "https://www.indeed.com"
 INDEED_SEARCH = f"{INDEED_BASE}/jobs"
 
-# Maximum pages to paginate through per search
-MAX_PAGES = 3
+# Maximum pages to paginate through per search.
+# Keep at 1 — page 1 returns ~15 results per keyword, and Bright Data's
+# remote browser is slow (~10-20s per navigation). With 5 keywords that's
+# already 50-100s. Pagination adds latency without enough extra value.
+MAX_PAGES = 1
 
 # Captcha / block selectors
 _BLOCK_SELECTORS = [
@@ -109,16 +112,28 @@ async def scrape_indeed(
                     break
 
                 url = search_url if page_num == 0 else f"{search_url}&start={page_num * 10}"
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.goto(url, wait_until="domcontentloaded", timeout=90000)
+                # Extra wait for Bright Data CAPTCHA solving
+                await page.wait_for_timeout(random.randint(3000, 6000))
 
-                if await _is_blocked(page):
+                # Bright Data auto-solves CAPTCHAs — retry block check
+                blocked = await _is_blocked(page)
+                if blocked:
+                    for retry in range(3):
+                        logger.info("Indeed: waiting for CAPTCHA solve (attempt %d/3)...", retry + 1)
+                        await page.wait_for_timeout(10000)
+                        blocked = await _is_blocked(page)
+                        if not blocked:
+                            break
+                if blocked:
                     logger.warning("Indeed: blocked on page %d -- returning %d partial results", page_num + 1, len(listings))
-                    break
+                    # Return partial results immediately instead of trying more keywords
+                    return listings
 
                 try:
                     await page.wait_for_selector(
                         'div.job_seen_beacon, div[class*="jobsearch-ResultsList"] li',
-                        timeout=10000,
+                        timeout=20000,
                     )
                 except Exception:
                     logger.warning("Indeed: no job cards found on page %d (query: %s)", page_num + 1, query)
