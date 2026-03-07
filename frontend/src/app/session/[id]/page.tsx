@@ -84,6 +84,7 @@ type SessionData = {
   steering_mode: string;
   applications_used: number;
   applications_skipped: string[] | number;
+  created_at?: string;
 };
 
 type SessionSummaryData = {
@@ -441,19 +442,15 @@ export default function SessionPage() {
     } catch { /* quota exceeded – non-critical */ }
   }, [session, sessionStorageKey]);
 
-  // Elapsed timer — persist start time so navigation doesn't reset it
-  const startTimeKey = `jh_start_${sessionId}`;
-  const [sessionStartTime] = useState(() => {
-    if (typeof window === "undefined") return Date.now();
-    const stored = sessionStorage.getItem(startTimeKey);
-    if (stored) return Number(stored);
-    const now = Date.now();
-    sessionStorage.setItem(startTimeKey, String(now));
-    return now;
-  });
+  // Elapsed timer — driven by the session's created_at timestamp from the DB
+  const sessionStartTime = session?.created_at
+    ? new Date(session.created_at).getTime()
+    : null;
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   useEffect(() => {
+    if (!sessionStartTime) return;
     if (session?.status === "completed" || session?.status === "failed") return;
+    setElapsedSeconds(Math.floor((Date.now() - sessionStartTime) / 1000));
     const interval = setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - sessionStartTime) / 1000));
     }, 1000);
