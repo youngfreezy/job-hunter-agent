@@ -38,6 +38,11 @@ cryptography==44.0.0
 # HTTP
 httpx==0.28.1
 
+# Google Gmail API (verification code extraction)
+google-api-python-client==2.166.0
+google-auth==2.38.0
+google-auth-oauthlib==1.2.1
+
 # Resume parsing
 pypdf==5.1.0
 python-docx==1.1.2

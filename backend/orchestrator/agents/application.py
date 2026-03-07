@@ -695,7 +695,7 @@ async def _apply_to_job(
             })
 
             # --- Step 6: Run application ---
-            result = await applier.apply(
+            result = await applier.run(
                 job=job,
                 user_profile=user_profile,
                 resume_text=resume_text,

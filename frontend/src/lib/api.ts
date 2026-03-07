@@ -227,6 +227,21 @@ export async function getApplicationLog(
   return res.json();
 }
 
+export async function sendGmailToken(
+  sessionId: string,
+  accessToken: string,
+): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/api/sessions/${sessionId}/gmail-token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: accessToken }),
+    });
+  } catch {
+    // Non-critical — verification codes will fall back to manual entry
+  }
+}
+
 export async function sendSteer(
   sessionId: string,
   data: { message: string; mode?: string }
