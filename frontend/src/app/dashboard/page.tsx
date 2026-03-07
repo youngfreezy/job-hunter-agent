@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,13 +79,34 @@ function getSessionHeadline(session: SessionListItem) {
 export default function Dashboard() {
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  const fetchSessions = useCallback(() => {
     listSessions()
       .then(setSessions)
       .catch((err) => console.error("Failed to load sessions:", err))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  // Auto-refresh every 15s when there are active sessions
+  const hasActive = sessions.some(
+    (s) => !["completed", "failed"].includes(s.status)
+  );
+  useEffect(() => {
+    if (!hasActive) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+      return;
+    }
+    pollRef.current = setInterval(fetchSessions, 15000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [hasActive, fetchSessions]);
 
   const sortedSessions = useMemo(() => {
     return [...sessions].sort((a, b) => {
@@ -156,16 +177,16 @@ export default function Dashboard() {
                   <Button size="lg">Start New Session</Button>
                 </Link>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-4">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
                   <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Needs Your Attention
+                    Needs Attention
                   </p>
                   <p className="mt-2 text-3xl font-bold text-amber-900 dark:text-amber-100">
                     {actionRequiredSessions.length}
                   </p>
-                  <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
-                    These sessions need a quick decision from you before they can continue.
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                    Waiting for your decision
                   </p>
                 </div>
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
@@ -175,19 +196,36 @@ export default function Dashboard() {
                   <p className="mt-2 text-3xl font-bold text-blue-900 dark:text-blue-100">
                     {activeSessions.length}
                   </p>
-                  <p className="mt-1 text-sm text-blue-700 dark:text-blue-400">
-                    Your active searches are finding jobs and sending applications right now.
+                  <p className="mt-1 text-xs text-blue-700 dark:text-blue-400">
+                    {hasActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1" />}
+                    Actively running
                   </p>
                 </div>
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
                   <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
-                    Applications Sent
+                    Apps Sent
                   </p>
                   <p className="mt-2 text-3xl font-bold text-emerald-900 dark:text-emerald-100">
-                    {sessions.reduce((sum, session) => sum + session.applications_submitted, 0)}
+                    {sessions.reduce((sum, s) => sum + s.applications_submitted, 0)}
                   </p>
-                  <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-400">
-                    Total applications sent across all your job searches.
+                  <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
+                    Total submitted
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/30">
+                  <p className="text-sm font-medium text-violet-800 dark:text-violet-300">
+                    Success Rate
+                  </p>
+                  <p className="mt-2 text-3xl font-bold text-violet-900 dark:text-violet-100">
+                    {(() => {
+                      const total = sessions.reduce((sum, s) => sum + s.applications_submitted + s.applications_failed, 0);
+                      if (total === 0) return "—";
+                      const rate = Math.round((sessions.reduce((sum, s) => sum + s.applications_submitted, 0) / total) * 100);
+                      return `${rate}%`;
+                    })()}
+                  </p>
+                  <p className="mt-1 text-xs text-violet-700 dark:text-violet-400">
+                    Submitted / attempted
                   </p>
                 </div>
               </div>
@@ -318,6 +356,9 @@ export default function Dashboard() {
 function SessionCard({ session }: { session: SessionListItem }) {
   const submitted = session.applications_submitted;
   const failed = session.applications_failed;
+  const total = submitted + failed;
+  const successRate = total > 0 ? Math.round((submitted / total) * 100) : null;
+  const isRunning = !["completed", "failed"].includes(session.status) && !ACTION_REQUIRED.has(session.status);
 
   return (
     <Link href={`/session/${session.session_id}`} className="block">
@@ -327,6 +368,9 @@ function SessionCard({ session }: { session: SessionListItem }) {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={STATUS_COLORS[session.status] || "secondary"}>
+                  {isRunning && (
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-current mr-1.5 animate-pulse" />
+                  )}
                   {STATUS_LABELS[session.status] || session.status}
                 </Badge>
                 <span className="text-sm text-zinc-500">
@@ -348,21 +392,28 @@ function SessionCard({ session }: { session: SessionListItem }) {
                 </p>
               )}
             </div>
-            <div className="grid min-w-[220px] grid-cols-3 gap-2 text-center">
-              <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
-                <p className="text-xl font-bold text-emerald-600">{submitted}</p>
-                <p className="text-xs text-zinc-500">Submitted</p>
+            <div className="min-w-[220px]">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
+                  <p className="text-xl font-bold text-emerald-600">{submitted}</p>
+                  <p className="text-xs text-zinc-500">Submitted</p>
+                </div>
+                <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
+                  <p className="text-xl font-bold text-red-500">{failed}</p>
+                  <p className="text-xs text-zinc-500">Failed</p>
+                </div>
+                <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
+                  <p className="text-xl font-bold text-zinc-900 dark:text-white">
+                    {successRate !== null ? `${successRate}%` : "—"}
+                  </p>
+                  <p className="text-xs text-zinc-500">Success</p>
+                </div>
               </div>
-              <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
-                <p className="text-xl font-bold text-red-500">{failed}</p>
-                <p className="text-xs text-zinc-500">Failed</p>
-              </div>
-              <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
-                <p className="text-xl font-bold text-zinc-900 dark:text-white">
-                  {submitted + failed}
-                </p>
-                <p className="text-xs text-zinc-500">Reviewed</p>
-              </div>
+              {isRunning && (
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                  <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse" style={{ width: "60%" }} />
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

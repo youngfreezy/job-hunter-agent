@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
+// Note: page-level metadata must come from a separate metadata export in a
+// server component.  Since this page is "use client", the root layout metadata
+// covers it.  The JSON-LD structured data below provides additional SEO value.
+
 const steps = [
   {
     num: "1",
@@ -133,9 +137,52 @@ const faqs = [
   },
 ];
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "JobHunter Agent",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description:
+    "AI-powered job application automation. Searches 5 job boards, tailors resumes per role, and submits applications automatically with human approval checkpoints.",
+  offers: [
+    {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+      description: "3 free applications",
+    },
+    {
+      "@type": "Offer",
+      price: "29.99",
+      priceCurrency: "USD",
+      description: "20 application pack",
+    },
+    {
+      "@type": "Offer",
+      price: "64.99",
+      priceCurrency: "USD",
+      description: "50 application pack",
+    },
+  ],
+  featureList: [
+    "AI resume optimization",
+    "Automated job board search across LinkedIn, Indeed, Glassdoor, ZipRecruiter",
+    "Per-role resume tailoring",
+    "Cover letter generation",
+    "Two human approval checkpoints",
+    "Real-time application tracking",
+    "Support for Greenhouse, Lever, Workday, Ashby ATS platforms",
+  ],
+};
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Nav */}
       <nav className="border-b border-zinc-200/80 bg-white/80 px-6 py-4 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/80">
         <div className="mx-auto flex max-w-7xl items-center justify-between">

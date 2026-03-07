@@ -101,6 +101,38 @@ def _spawn_background(coro: Any) -> asyncio.Task[Any]:
     return task
 
 
+async def _release_task_slot(session_id: str) -> None:
+    """Release the task queue concurrency slot for a completed/failed session."""
+    try:
+        from backend.shared.task_queue import mark_complete
+        await mark_complete(session_id)
+    except Exception:
+        logger.debug("Failed to release task queue slot for %s", session_id, exc_info=True)
+
+
+async def _send_completion_email(session_id: str) -> None:
+    """Send a session-complete email notification (best-effort, non-blocking)."""
+    try:
+        from backend.shared.email_notifications import send_session_complete_email
+        # TODO: resolve user email from auth — for now skip if not available
+        meta = session_registry.get(session_id, {})
+        user_email = meta.get("user_email")
+        if not user_email:
+            return
+        await send_session_complete_email(
+            to_email=user_email,
+            session_id=session_id,
+            total_applied=meta.get("applications_submitted", 0),
+            total_failed=meta.get("applications_failed", 0),
+            total_skipped=0,
+            top_companies=[],
+            avg_fit_score=0.0,
+            duration_minutes=0.0,
+        )
+    except Exception:
+        logger.debug("Failed to send completion email for %s", session_id, exc_info=True)
+
+
 STATUS_MESSAGES = {
     "intake": "Setting up your job hunt session...",
     "coaching": "Your Career Coach is reviewing your resume — this usually takes about a minute...",
@@ -362,9 +394,13 @@ async def _run_pipeline(
             await _handle_shortlist_interrupt(session_id, graph, config)
             return
 
-        # Terminal run (completed/failed): release emitter registration.
+        # Terminal run (completed/failed): release emitter and task queue slot.
         if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
             unregister_emitter(session_id)
+            await _release_task_slot(session_id)
+
+            # Send session-complete email notification (best-effort)
+            await _send_completion_email(session_id)
 
     except Exception as exc:
         logger.exception("Pipeline error for session %s", session_id)
@@ -379,6 +415,7 @@ async def _run_pipeline(
             "error": str(exc),
         })
         unregister_emitter(session_id)
+        await _release_task_slot(session_id)
 
 
 async def _resume_pipeline(
@@ -747,6 +784,23 @@ async def start_session(body: StartSessionRequest, request: Request):
     """Create a new pipeline session and begin execution in the background."""
     session_id = str(uuid.uuid4())
     graph = request.app.state.graph
+    user_id = "test-user"  # TODO: resolve from auth
+
+    # Enforce per-user concurrency limits via Redis task queue
+    try:
+        from backend.shared.task_queue import enqueue_session, mark_active
+        enqueued = await enqueue_session(session_id, user_id)
+        if not enqueued:
+            raise HTTPException(
+                status_code=429,
+                detail="You already have the maximum number of active sessions. Wait for one to finish before starting another.",
+            )
+        await mark_active(session_id)
+    except HTTPException:
+        raise
+    except Exception:
+        # Redis unavailable — allow the request through (graceful degradation)
+        logger.debug("Task queue unavailable — skipping concurrency check", exc_info=True)
 
     # Initialize event log and subscriber list
     event_logs[session_id] = []
