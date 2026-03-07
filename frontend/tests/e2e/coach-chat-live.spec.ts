@@ -4,9 +4,7 @@ import { login } from "./helpers/auth";
 const API_BASE = "http://localhost:8000";
 
 test.describe("Coach Chat Live", () => {
-  test.beforeEach(async ({ page, request }) => {
-    const health = await request.get(`${API_BASE}/api/health`);
-    expect(health.status()).toBe(200);
+  test.beforeEach(async ({ page }) => {
     await login(page);
   });
 

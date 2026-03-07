@@ -1,29 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { login } from "./helpers/auth";
-import path from "path";
-import fs from "fs";
-
-// Create a temp resume file for upload tests
 const RESUME_TEXT =
   "Senior Software Engineer with 8 years of experience in React, Python, and cloud infrastructure.";
+const RESUME_FILE = {
+  name: "test-resume.txt",
+  mimeType: "text/plain",
+  buffer: Buffer.from(RESUME_TEXT),
+};
 
 test.describe("Session Creation - Multi-Step Wizard", () => {
-  let resumeFilePath: string;
-
-  test.beforeAll(() => {
-    // Create a temp resume .txt file for upload
-    resumeFilePath = path.join(__dirname, "fixtures", "test-resume.txt");
-    fs.mkdirSync(path.dirname(resumeFilePath), { recursive: true });
-    fs.writeFileSync(resumeFilePath, RESUME_TEXT);
-  });
-
-  test.afterAll(() => {
-    try {
-      fs.unlinkSync(resumeFilePath);
-    } catch {
-      // ignore
-    }
-  });
 
   test.beforeEach(async ({ page }) => {
     await login(page);
@@ -47,7 +32,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await expect(
       page.getByRole("heading", { name: "New Session" })
     ).toBeVisible();
-    await expect(page.getByText("Configure your job search.")).toBeVisible();
+    await expect(page.getByText("Configure the search once.")).toBeVisible();
   });
 
   // -- Step 1: Job Search --
@@ -73,7 +58,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
       .fill("React, Python, Machine Learning");
 
     await expect(page.getByText("React").first()).toBeVisible();
-    await expect(page.getByText("Python")).toBeVisible();
+    await expect(page.getByText("Python").first()).toBeVisible();
     await expect(page.getByText("Machine Learning")).toBeVisible();
   });
 
@@ -150,8 +135,8 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     // Upload resume file
-    await page.locator("#resume-upload").setInputFiles(resumeFilePath);
-    await expect(page.getByText("test-resume.txt")).toBeVisible();
+    await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
+    await expect(page.getByText("test-resume.txt").first()).toBeVisible();
 
     await page
       .getByPlaceholder("https://linkedin.com/in/yourprofile")
@@ -169,8 +154,8 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     // Upload resume file
-    await page.locator("#resume-upload").setInputFiles(resumeFilePath);
-    await expect(page.getByText("test-resume.txt")).toBeVisible();
+    await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
+    await expect(page.getByText("test-resume.txt").first()).toBeVisible();
 
     await page
       .getByPlaceholder("https://linkedin.com/in/yourprofile")
@@ -201,16 +186,16 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     // Upload resume file
-    await page.locator("#resume-upload").setInputFiles(resumeFilePath);
-    await expect(page.getByText("test-resume.txt")).toBeVisible();
+    await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
+    await expect(page.getByText("test-resume.txt").first()).toBeVisible();
     await page.getByRole("button", { name: "Next" }).click();
 
     // Step 3: verify review content
     await expect(page.getByText("React").first()).toBeVisible();
-    await expect(page.getByText("Python")).toBeVisible();
+    await expect(page.getByText("Python").first()).toBeVisible();
     await expect(page.getByText("San Francisco")).toBeVisible();
     await expect(page.getByText("Remote only")).toBeVisible();
-    await expect(page.getByText("test-resume.txt")).toBeVisible();
+    await expect(page.getByText("test-resume.txt").first()).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Start Job Hunt Session" })
     ).toBeVisible();
@@ -226,8 +211,8 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
       .fill("React");
     await page.getByRole("button", { name: "Next" }).click();
 
-    await page.locator("#resume-upload").setInputFiles(resumeFilePath);
-    await expect(page.getByText("test-resume.txt")).toBeVisible();
+    await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
+    await expect(page.getByText("test-resume.txt").first()).toBeVisible();
     await page.getByRole("button", { name: "Next" }).click();
 
     // Click "Edit" on Job Search section
@@ -312,8 +297,8 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     // Step 2
-    await page.locator("#resume-upload").setInputFiles(resumeFilePath);
-    await expect(page.getByText("test-resume.txt")).toBeVisible();
+    await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
+    await expect(page.getByText("test-resume.txt").first()).toBeVisible();
     await page.getByRole("button", { name: "Next" }).click();
 
     // Step 3: Submit
@@ -344,8 +329,8 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     // Step 2
-    await page.locator("#resume-upload").setInputFiles(resumeFilePath);
-    await expect(page.getByText("test-resume.txt")).toBeVisible();
+    await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
+    await expect(page.getByText("test-resume.txt").first()).toBeVisible();
     await page.getByRole("button", { name: "Next" }).click();
 
     // Step 3: Submit
@@ -381,8 +366,8 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     // Step 2
-    await page.locator("#resume-upload").setInputFiles(resumeFilePath);
-    await expect(page.getByText("test-resume.txt")).toBeVisible();
+    await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
+    await expect(page.getByText("test-resume.txt").first()).toBeVisible();
     await page.getByRole("button", { name: "Next" }).click();
 
     // Step 3: Submit — click the launch button

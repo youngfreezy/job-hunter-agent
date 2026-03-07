@@ -49,7 +49,7 @@ test.describe("Session Persistence and Dashboard", () => {
 
     await page.goto("/dashboard");
 
-    await expect(page.getByText("No sessions yet")).not.toBeVisible();
+    await expect(page.getByText("Action Queue")).toBeVisible();
     await expect(page.getByText("React, Python")).toBeVisible();
     // STATUS_LABELS maps "completed" → "Completed"
     await expect(page.getByText("Completed").first()).toBeVisible();
@@ -74,7 +74,7 @@ test.describe("Session Persistence and Dashboard", () => {
     });
 
     await page.goto("/dashboard");
-    await expect(page.getByText("No sessions yet")).toBeVisible();
+    await expect(page.getByText("No active sessions")).toBeVisible();
   });
 
   test("dashboard session card links to session page", async ({ page }) => {
@@ -163,17 +163,13 @@ test.describe("Session Persistence and Dashboard", () => {
 
     await page.goto("/dashboard");
 
-    // Total Sessions = 2
-    await expect(
-      page.locator("text=Total Sessions").locator("..").getByText("2")
-    ).toBeVisible();
     // Applications Sent = 5 (3 + 2)
     await expect(
-      page.locator("text=Applications Sent").locator("..").getByText("5")
+      page.locator("text=Applications sent").locator("..").getByText("5")
     ).toBeVisible();
-    // Completed = 1 — use first() since "Completed" appears in stats label + badge
+    // Needs attention = 0 for these fixtures
     await expect(
-      page.locator("text=Completed").locator("..").getByText("1").first()
+      page.locator("text=Needs attention").locator("..").getByText("0")
     ).toBeVisible();
   });
 

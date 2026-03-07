@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,8 @@ type SessionData = {
   session_summary?: boolean;
   session_id: string;
   status: string;
+  pause_resume_node?: string | null;
+  status_before_pause?: string | null;
   keywords: string[];
   scored_jobs: Array<{
     job: {
@@ -234,6 +236,75 @@ const AGENT_COLORS: Record<string, string> = {
   system:
     "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-800",
 };
+
+function getStepIndexForStatus(
+  status: string,
+  session?: Pick<SessionData, "pause_resume_node" | "status_before_pause">
+): number {
+  const directIndex = PIPELINE_STEPS.indexOf(status);
+  if (directIndex >= 0) return directIndex;
+
+  if (status === "needs_intervention" || status === "takeover") {
+    return PIPELINE_STEPS.indexOf("applying");
+  }
+  if (status === "paused") {
+    const resumeTarget = session?.pause_resume_node || session?.status_before_pause;
+    if (resumeTarget) {
+      const resumeIndex = PIPELINE_STEPS.indexOf(resumeTarget);
+      if (resumeIndex >= 0) return resumeIndex;
+    }
+    return PIPELINE_STEPS.indexOf("applying");
+  }
+  return 0;
+}
+
+function compressEvents(events: SSEEvent[]): SSEEvent[] {
+  const compressed: SSEEvent[] = [];
+
+  for (const event of events) {
+    const summary = String(event.step || event.message || event.status || event.event || "");
+    const signature = [event.event, event.agent || "", summary.trim()].join("|");
+    const previous = compressed[compressed.length - 1];
+    const previousSummary = previous
+      ? String(previous.step || previous.message || previous.status || previous.event || "")
+      : "";
+    const previousSignature = previous
+      ? [previous.event, previous.agent || "", previousSummary.trim()].join("|")
+      : "";
+
+    if (previous && signature === previousSignature) {
+      compressed[compressed.length - 1] = event;
+      continue;
+    }
+
+    if (
+      event.event === "status" &&
+      previous &&
+      previous.event === "status" &&
+      previous.status === event.status
+    ) {
+      compressed[compressed.length - 1] = event;
+      continue;
+    }
+
+    compressed.push(event);
+  }
+
+  return compressed.slice(-50);
+}
+
+function checkpointLabel(status: string): string {
+  switch (status) {
+    case "awaiting_coach_review":
+      return "Coach Review";
+    case "awaiting_review":
+      return "Shortlist Review";
+    case "paused":
+      return "Paused Run";
+    default:
+      return STATUS_LABELS[status] || status;
+  }
+}
 
 export default function SessionPage() {
   const params = useParams();
@@ -878,7 +949,213 @@ export default function SessionPage() {
     }
   };
 
-  const rawStepIndex = session ? PIPELINE_STEPS.indexOf(session.status) : 0;
+  const sendSuggestedMessage = (message: string) => {
+    void handleSendChat(message);
+  };
+
+  const surfacedEvents = useMemo(() => compressEvents(events), [events]);
+  const recentMilestones = useMemo(
+    () =>
+      [...surfacedEvents]
+        .reverse()
+        .filter((event) =>
+          [
+            "coach_review",
+            "shortlist_review",
+            "needs_intervention",
+            "ready_to_submit",
+            "login_required",
+            "done",
+            "error",
+          ].includes(event.event)
+        )
+        .slice(0, 3),
+    [surfacedEvents]
+  );
+
+  const activePane = useMemo(() => {
+    if (!session) return "overview";
+    if (coachReviewOpen || session.status === "awaiting_coach_review") {
+      return "coach";
+    }
+    if (shortlistReviewOpen || session.status === "awaiting_review") {
+      return "shortlist";
+    }
+    if (
+      interventionData ||
+      submitConfirmData ||
+      loginPrompt ||
+      takeoverActive ||
+      session.status === "applying" ||
+      session.status === "needs_intervention" ||
+      session.status === "paused"
+    ) {
+      return "apply";
+    }
+    if (session.status === "completed" || session.status === "failed") {
+      return "summary";
+    }
+    return "overview";
+  }, [
+    coachReviewOpen,
+    interventionData,
+    loginPrompt,
+    session,
+    shortlistReviewOpen,
+    submitConfirmData,
+    takeoverActive,
+  ]);
+
+  const focusSummary = useMemo(() => {
+    if (!session) {
+      return {
+        eyebrow: "Current phase",
+        title: "Loading session",
+        body: "Fetching session state and replaying live events.",
+        tone: "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/60",
+        accent: "text-zinc-700 dark:text-zinc-300",
+      };
+    }
+    if (interventionData) {
+      return {
+        eyebrow: "Blocked on you",
+        title: "Manual help is required in the live browser",
+        body: `${interventionData.job_title} at ${interventionData.company} needs manual intervention before the apply agent can continue.`,
+        tone:
+          "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
+        accent: "text-amber-700 dark:text-amber-300",
+      };
+    }
+    if (submitConfirmData) {
+      return {
+        eyebrow: "Pending approval",
+        title: "Application is ready to submit",
+        body: `${submitConfirmData.job_title} at ${submitConfirmData.company} is filled and waiting for your submit or skip decision.`,
+        tone:
+          "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30",
+        accent: "text-blue-700 dark:text-blue-300",
+      };
+    }
+    if (loginPrompt) {
+      return {
+        eyebrow: "Authentication required",
+        title: `Log in to ${loginPrompt.board}`,
+        body: loginPrompt.message,
+        tone:
+          "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
+        accent: "text-amber-700 dark:text-amber-300",
+      };
+    }
+    if (coachReviewOpen || session.status === "awaiting_coach_review") {
+      return {
+        eyebrow: "Awaiting review",
+        title: "Approve the coached resume before discovery continues",
+        body: "You can revise the coach output in chat, inspect the rewritten resume, and approve when it is strong enough to launch.",
+        tone:
+          "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30",
+        accent: "text-blue-700 dark:text-blue-300",
+      };
+    }
+    if (shortlistReviewOpen || session.status === "awaiting_review") {
+      return {
+        eyebrow: "Awaiting shortlist decision",
+        title: "Choose which ranked jobs are allowed into the apply queue",
+        body: "This is the final quality gate before live applications begin.",
+        tone:
+          "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
+        accent: "text-amber-700 dark:text-amber-300",
+      };
+    }
+    if (session.status === "completed") {
+      return {
+        eyebrow: "Session complete",
+        title: "The workflow finished and the audit trail is ready",
+        body: "Review outcomes, manual apply entries, and checkpoints for this run.",
+        tone:
+          "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30",
+        accent: "text-emerald-700 dark:text-emerald-300",
+      };
+    }
+    if (session.status === "failed") {
+      return {
+        eyebrow: "Run failed",
+        title: "Something stopped the workflow before completion",
+        body: "Use the event timeline and rewind controls to inspect what failed and resume from a safe point.",
+        tone: "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30",
+        accent: "text-red-700 dark:text-red-300",
+      };
+    }
+    return {
+      eyebrow: "Current phase",
+      title: STATUS_LABELS[session.status] || session.status,
+      body: "The pipeline header, focus card, and event timeline are synced to the current state so you can see exactly what is happening now.",
+      tone: "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/60",
+      accent: "text-zinc-700 dark:text-zinc-300",
+    };
+  }, [
+    coachReviewOpen,
+    interventionData,
+    loginPrompt,
+    session,
+    shortlistReviewOpen,
+    submitConfirmData,
+  ]);
+
+  const quickActions = useMemo(() => {
+    if (!session) {
+      return ["Explain the current step"];
+    }
+    if (coachReviewOpen || session.status === "awaiting_coach_review") {
+      return [
+        "Explain the strongest resume changes",
+        "Tighten the resume for senior AI platform roles",
+        "Change the coaching tone to more direct and technical",
+      ];
+    }
+    if (shortlistReviewOpen || session.status === "awaiting_review") {
+      return [
+        "Explain why these jobs made the shortlist",
+        "Bias harder toward remote AI platform roles",
+        "Skip lower-signal frontend matches",
+      ];
+    }
+    if (interventionData || submitConfirmData || loginPrompt || session.status === "applying") {
+      return [
+        "Explain what the apply agent is doing now",
+        "Pause after this job",
+        "Skip the next job",
+      ];
+    }
+    if (session.status === "completed") {
+      return [
+        "Summarize the strongest outcomes from this run",
+        "List the most promising companies",
+      ];
+    }
+    return [
+      "Explain the current step",
+      "Pause after the current phase",
+      "Bias more toward AI agent roles",
+    ];
+  }, [
+    coachReviewOpen,
+    interventionData,
+    loginPrompt,
+    session,
+    shortlistReviewOpen,
+    submitConfirmData,
+  ]);
+
+  const chatModeLabel =
+    coachReviewOpen || latestStatusRef.current === "awaiting_coach_review"
+      ? "Coach"
+      : activePane === "apply"
+      ? "Apply"
+      : "Workflow";
+
+  const rawStepIndex = session
+    ? getStepIndexForStatus(session.status, session)
+    : 0;
   const currentStepIndex = Math.max(0, rawStepIndex);
   const isActive =
     session && session.status !== "completed" && session.status !== "failed";
@@ -1022,6 +1299,16 @@ export default function SessionPage() {
             {PIPELINE_STEPS.map((step, i) => {
               const isCompleted = i < currentStepIndex;
               const isCurrent = i === currentStepIndex;
+              const isFailed = session.status === "failed" && isCurrent;
+              const isBlocked =
+                (session.status === "awaiting_coach_review" && step === "awaiting_coach_review") ||
+                (session.status === "awaiting_review" && step === "awaiting_review") ||
+                ((session.status === "needs_intervention" ||
+                  session.status === "paused" ||
+                  interventionData ||
+                  submitConfirmData ||
+                  loginPrompt) &&
+                  step === "applying");
               return (
                 <div
                   key={step}
@@ -1034,6 +1321,10 @@ export default function SessionPage() {
                       ${
                         isCompleted
                           ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
+                          : isFailed
+                          ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                          : isBlocked
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
                           : isCurrent
                           ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
                           : "text-muted-foreground/60"
@@ -1041,7 +1332,7 @@ export default function SessionPage() {
                     `}
                   >
                     {/* Shimmer effect on active step */}
-                    {isCurrent && isActive && (
+                    {isCurrent && isActive && !isBlocked && !isFailed && (
                       <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[gradient-shift_2s_ease_infinite] bg-[length:200%_100%]" />
                     )}
                     {isCompleted ? (
@@ -1058,6 +1349,10 @@ export default function SessionPage() {
                           d="M5 13l4 4L19 7"
                         />
                       </svg>
+                    ) : isFailed ? (
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+                    ) : isBlocked ? (
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-current" />
                     ) : isCurrent && isActive ? (
                       <span className="relative flex h-2 w-2 shrink-0">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
@@ -1074,7 +1369,11 @@ export default function SessionPage() {
                       <div className="h-0.5 w-full rounded-full bg-border/50 overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all duration-700 ease-out ${
-                            isCurrent && isActive
+                            isFailed
+                              ? "bg-red-400 dark:bg-red-500"
+                              : isBlocked
+                              ? "bg-amber-400 dark:bg-amber-500"
+                              : isCurrent && isActive
                               ? "bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
                               : "bg-blue-400 dark:bg-blue-500"
                           }`}
@@ -1201,165 +1500,243 @@ export default function SessionPage() {
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex max-w-7xl mx-auto w-full">
-        {/* Left: Main viewer */}
-        <div className="flex-1 p-5 flex flex-col">
-          <div className="flex-1 flex flex-col gap-4">
-            <Card className="overflow-hidden">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold">
-                  Browser Takeover
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <TakeoverViewer
-                  imageUrl={liveBrowserImage}
-                  currentUrl={liveBrowserUrl}
-                  wsStatus={takeoverWsStatus}
-                  controlActive={takeoverActive}
-                  onRequestControl={handleRequestTakeover}
-                  onReleaseControl={handleReleaseTakeover}
-                  onMouseAction={handleTakeoverMouseAction}
-                  onKeyboardAction={handleTakeoverKeyboardAction}
-                />
-                {takeoverMessage && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    {takeoverMessage}
+      <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-5">
+          <Card className={focusSummary.tone}>
+            <CardContent className="grid gap-4 p-6 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+              <div>
+                <p className={`text-xs font-medium uppercase tracking-[0.22em] ${focusSummary.accent}`}>
+                  {focusSummary.eyebrow}
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold">{focusSummary.title}</h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                  {focusSummary.body}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+                <div className="rounded-2xl bg-background/80 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Current status
                   </p>
-                )}
-              </CardContent>
-            </Card>
+                  <p className="mt-2 font-semibold">
+                    {STATUS_LABELS[session.status] || session.status}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-background/80 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Steering target
+                  </p>
+                  <p className="mt-2 font-semibold">{chatModeLabel}</p>
+                </div>
+                <div className="rounded-2xl bg-background/80 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Next best action
+                  </p>
+                  <p className="mt-2 text-sm font-medium">
+                    {activePane === "coach"
+                      ? "Approve or revise the coached resume"
+                      : activePane === "shortlist"
+                      ? "Approve the shortlist"
+                      : activePane === "apply"
+                      ? "Use steering or takeover if the run blocks"
+                      : activePane === "summary"
+                      ? "Review outcomes and rewind points"
+                      : "Let the agents continue and monitor the timeline"}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-            <Card className="flex-1 flex flex-col overflow-hidden">
-              <CardHeader className="pb-2 border-b border-border/50">
-                <div className="flex items-center justify-between">
+          {recentMilestones.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-3">
+              {recentMilestones.map((event, index) => (
+                <Card key={`${event.event}-${index}`} className="border-zinc-200 dark:border-zinc-800">
+                  <CardContent className="p-4">
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      {AGENT_DISPLAY_NAMES[event.agent || event.event || "system"] ||
+                        event.event}
+                    </p>
+                    <p className="mt-2 text-sm font-medium">
+                      {event.message || event.step || event.status || event.event}
+                    </p>
+                    {event.timestamp && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {new Date(event.timestamp).toLocaleTimeString()}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b border-border/50 pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-sm font-semibold">
+                    Browser Takeover
+                  </CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    The live page appears here during application work. Use this
+                    when login, CAPTCHA, or ambiguous forms need direct control.
+                  </p>
+                </div>
+                <Badge variant={takeoverActive ? "default" : "secondary"}>
+                  {takeoverActive ? "Live control active" : "On standby"}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <TakeoverViewer
+                imageUrl={liveBrowserImage}
+                currentUrl={liveBrowserUrl}
+                wsStatus={takeoverWsStatus}
+                controlActive={takeoverActive}
+                onRequestControl={handleRequestTakeover}
+                onReleaseControl={handleReleaseTakeover}
+                onMouseAction={handleTakeoverMouseAction}
+                onKeyboardAction={handleTakeoverKeyboardAction}
+              />
+              {takeoverMessage && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {takeoverMessage}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="flex min-h-[420px] flex-col overflow-hidden">
+            <CardHeader className="border-b border-border/50 pb-2">
+              <div className="flex items-center justify-between">
+                <div>
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     Live Status
                   </CardTitle>
-                  <span className="text-xs text-muted-foreground">
-                    {events.length} events
-                  </span>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Surfacing the latest meaningful events instead of every duplicate status tick.
+                  </p>
                 </div>
-              </CardHeader>
-              <CardContent className="flex-1 overflow-y-auto min-h-0 max-h-[calc(100vh-220px)] py-3 space-y-1">
-                {events.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <svg
-                      className="w-10 h-10 mb-3 animate-pulse opacity-50"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"
-                      />
-                    </svg>
-                    <p className="text-sm font-medium">Waiting for events...</p>
-                    <p className="text-xs mt-1">The agent is warming up</p>
-                  </div>
-                )}
-                {events.map((evt, i) => {
-                  const time = evt.timestamp
-                    ? new Date(evt.timestamp).toLocaleTimeString()
-                    : "";
+                <span className="text-xs text-muted-foreground">
+                  {surfacedEvents.length} surfaced / {events.length} raw
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 overflow-y-auto py-3 space-y-1">
+              {surfacedEvents.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <svg
+                    className="mb-3 h-10 w-10 animate-pulse opacity-50"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"
+                    />
+                  </svg>
+                  <p className="text-sm font-medium">Waiting for events...</p>
+                  <p className="mt-1 text-xs">The agent is warming up</p>
+                </div>
+              )}
+              {surfacedEvents.map((evt, i) => {
+                const time = evt.timestamp
+                  ? new Date(evt.timestamp).toLocaleTimeString()
+                  : "";
 
-                  if (evt.event?.endsWith("_progress")) {
-                    const label = evt.event.replace("_progress", "");
-                    const pct =
-                      typeof evt.progress === "number"
-                        ? evt.progress
-                        : undefined;
-                    return (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors animate-fade-in-up"
-                      >
-                        <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-20 shrink-0">
-                          {time}
-                        </span>
-                        <span
-                          className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${
-                            AGENT_COLORS[label] || AGENT_COLORS.system
-                          }`}
-                        >
-                          {AGENT_DISPLAY_NAMES[label] || label}
-                        </span>
-                        <span
-                          className={`text-sm flex-1 min-w-0 break-words ${
-                            typeof evt.step === "string" &&
-                            evt.step.startsWith("Skipped")
-                              ? "text-amber-600 dark:text-amber-400"
-                              : "text-foreground/80"
-                          }`}
-                        >
-                          {evt.step}
-                        </span>
-                        {pct !== undefined && pct >= 0 && (
-                          <span className="text-[11px] font-mono text-muted-foreground ml-auto tabular-nums">
-                            {Math.round(pct)}%
-                          </span>
-                        )}
-                      </div>
-                    );
-                  }
-
-                  const agent = evt.agent || evt.event || "system";
-                  const msg =
-                    evt.message ||
-                    (evt.event === "discovery"
-                      ? `Found ${evt.jobs_found ?? 0} matching ${
-                          (evt.jobs_found ?? 0) === 1 ? "job" : "jobs"
-                        }`
-                      : "") ||
-                    (evt.event === "scoring"
-                      ? `Ranked ${evt.scored_count ?? 0} jobs by fit`
-                      : "") ||
-                    (evt.event === "agent_complete"
-                      ? `${agent.replace(/_/g, " ")} finished`
-                      : "") ||
-                    evt.status ||
-                    evt.event;
+                if (evt.event?.endsWith("_progress")) {
+                  const label = evt.event.replace("_progress", "");
+                  const pct =
+                    typeof evt.progress === "number" ? evt.progress : undefined;
                   return (
                     <div
-                      key={i}
-                      className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors animate-fade-in-up"
+                      key={`${evt.event}-${i}`}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/50 animate-fade-in-up"
                     >
-                      <span className="text-muted-foreground text-[11px] font-mono whitespace-nowrap w-20 shrink-0">
+                      <span className="w-20 shrink-0 whitespace-nowrap text-[11px] font-mono text-muted-foreground">
                         {time}
                       </span>
                       <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${
-                          AGENT_COLORS[agent] || AGENT_COLORS.system
+                        className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                          AGENT_COLORS[label] || AGENT_COLORS.system
                         }`}
                       >
-                        {AGENT_DISPLAY_NAMES[agent] || agent}
+                        {AGENT_DISPLAY_NAMES[label] || label}
                       </span>
                       <span
-                        className={`text-sm flex-1 min-w-0 break-words ${
-                          evt.event === "error"
-                            ? "text-red-500 font-medium"
+                        className={`min-w-0 flex-1 break-words text-sm ${
+                          typeof evt.step === "string" && evt.step.startsWith("Skipped")
+                            ? "text-amber-600 dark:text-amber-400"
                             : "text-foreground/80"
                         }`}
                       >
-                        {msg}
+                        {evt.step}
                       </span>
+                      {pct !== undefined && pct >= 0 && (
+                        <span className="ml-auto text-[11px] font-mono tabular-nums text-muted-foreground">
+                          {Math.round(pct)}%
+                        </span>
+                      )}
                     </div>
                   );
-                })}
-                <div ref={eventsEndRef} />
-              </CardContent>
-            </Card>
-          </div>
+                }
+
+                const agent = evt.agent || evt.event || "system";
+                const msg =
+                  evt.message ||
+                  (evt.event === "discovery"
+                    ? `Found ${evt.jobs_found ?? 0} matching ${
+                        (evt.jobs_found ?? 0) === 1 ? "job" : "jobs"
+                      }`
+                    : "") ||
+                  (evt.event === "scoring"
+                    ? `Ranked ${evt.scored_count ?? 0} jobs by fit`
+                    : "") ||
+                  (evt.event === "agent_complete"
+                    ? `${agent.replace(/_/g, " ")} finished`
+                    : "") ||
+                  evt.status ||
+                  evt.event;
+
+                return (
+                  <div
+                    key={`${evt.event}-${i}`}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/50 animate-fade-in-up"
+                  >
+                    <span className="w-20 shrink-0 whitespace-nowrap text-[11px] font-mono text-muted-foreground">
+                      {time}
+                    </span>
+                    <span
+                      className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                        AGENT_COLORS[agent] || AGENT_COLORS.system
+                      }`}
+                    >
+                      {AGENT_DISPLAY_NAMES[agent] || agent}
+                    </span>
+                    <span
+                      className={`min-w-0 flex-1 break-words text-sm ${
+                        evt.event === "error"
+                          ? "font-medium text-red-500"
+                          : "text-foreground/80"
+                      }`}
+                    >
+                      {msg}
+                    </span>
+                  </div>
+                );
+              })}
+              <div ref={eventsEndRef} />
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Right: Sidebar */}
-        <div className="w-80 border-l border-border/50 p-5 space-y-4 overflow-y-auto bg-card/30">
-          {/* Session info */}
-          <Card className="bg-gradient-to-br from-blue-50 to-sky-50 dark:from-blue-950/50 dark:to-sky-950/50 border-blue-100 dark:border-blue-900">
+        <div className="space-y-4 overflow-y-auto border-l border-border/50 bg-card/30 p-5">
+          <Card className="border-blue-100 bg-gradient-to-br from-blue-50 to-sky-50 dark:border-blue-900 dark:from-blue-950/50 dark:to-sky-950/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <svg
@@ -1380,8 +1757,8 @@ export default function SessionPage() {
             </CardHeader>
             <CardContent className="space-y-2.5 text-sm">
               {isActive && (
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/30">
-                  <span className="text-muted-foreground text-xs uppercase tracking-wider">
+                <div className="mb-2 flex items-center justify-between border-b border-border/30 pb-2">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground">
                     Elapsed
                   </span>
                   <span className="font-mono text-lg font-bold text-blue-600 dark:text-blue-400">
@@ -1390,22 +1767,22 @@ export default function SessionPage() {
                 </div>
               )}
               <div>
-                <span className="text-muted-foreground text-xs uppercase tracking-wider">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">
                   Keywords
                 </span>
-                <div className="flex flex-wrap gap-1 mt-1">
+                <div className="mt-1 flex flex-wrap gap-1">
                   {session.keywords?.map((kw, i) => (
                     <Badge
                       key={i}
                       variant="secondary"
-                      className="text-xs bg-white/80 dark:bg-white/10"
+                      className="bg-white/80 text-xs dark:bg-white/10"
                     >
                       {kw}
                     </Badge>
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 w-full pt-1">
+              <div className="grid w-full grid-cols-2 gap-2 pt-1">
                 {[
                   {
                     value: session.applications_used ?? 0,
@@ -1433,7 +1810,7 @@ export default function SessionPage() {
                   <a
                     key={label}
                     href={`/session/${sessionId}/manual-apply`}
-                    className="text-center py-2.5 rounded-lg bg-white/60 dark:bg-white/5 hover:bg-white/90 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                    className="cursor-pointer rounded-lg bg-white/60 py-2.5 text-center transition-colors hover:bg-white/90 dark:bg-white/5 dark:hover:bg-white/10"
                   >
                     <p className={`text-xl font-bold ${color}`}>{value}</p>
                     <p className="text-xs text-muted-foreground">{label}</p>
@@ -1443,30 +1820,92 @@ export default function SessionPage() {
             </CardContent>
           </Card>
 
-          <Card className="overflow-hidden">
+          <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">
-                Session Steering
-              </CardTitle>
+              <CardTitle className="text-sm font-semibold">Current Focus</CardTitle>
             </CardHeader>
-            <CardContent className="p-0 h-72">
-              <ChatPanel
-                messages={chatMessages}
-                onSend={handleSendChat}
-                disabled={!isActive}
-                placeholder={
-                  coachReviewOpen ||
-                  latestStatusRef.current === "awaiting_coach_review"
-                    ? "Ask the coach to revise your resume or strategy..."
-                    : "Ask the agent to adjust..."
-                }
-              />
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                {activePane === "coach"
+                  ? "Coach chat and coached artifacts are the primary controls right now."
+                  : activePane === "shortlist"
+                  ? "Shortlist review is the active gate before apply can continue."
+                  : activePane === "apply"
+                  ? "The apply stage is active. Use steering or takeover when the browser needs help."
+                  : activePane === "summary"
+                  ? "The run is complete. Review outcomes, logs, and rewind points."
+                  : "The workflow is running. Monitor the timeline and adjust strategy if needed."}
+              </p>
+              {activePane === "coach" && (
+                <Button className="w-full" onClick={() => setCoachReviewOpen(true)}>
+                  Open Coach Review
+                </Button>
+              )}
+              {activePane === "shortlist" && (
+                <Button className="w-full" onClick={() => setShortlistReviewOpen(true)}>
+                  Open Shortlist Review
+                </Button>
+              )}
+              {activePane === "apply" && interventionData && (
+                <Button className="w-full" onClick={handleResumeIntervention}>
+                  Resume After Intervention
+                </Button>
+              )}
+              {activePane === "summary" && (
+                <Link href={`/session/${sessionId}/manual-apply`} className="block">
+                  <Button className="w-full" variant="outline">
+                    Review Manual Apply Log
+                  </Button>
+                </Link>
+              )}
             </CardContent>
           </Card>
 
-          {/* Coach output */}
-          {session.coach_output && (
-            <Card className="bg-gradient-to-br from-slate-50 to-gray-50 dark:from-slate-950/50 dark:to-gray-950/50 border-slate-200 dark:border-slate-800">
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm font-semibold">
+                  Session Steering
+                </CardTitle>
+                <Badge variant="outline">Controlling {chatModeLabel}</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Suggested commands are based on the current workflow phase.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3 p-0">
+              <div className="flex flex-wrap gap-2 px-4 pt-1">
+                {quickActions.map((action) => (
+                  <Button
+                    key={action}
+                    variant="outline"
+                    size="sm"
+                    className="h-auto whitespace-normal text-left text-xs"
+                    onClick={() => sendSuggestedMessage(action)}
+                    disabled={!isActive}
+                  >
+                    {action}
+                  </Button>
+                ))}
+              </div>
+              <div className="h-72">
+                <ChatPanel
+                  messages={chatMessages}
+                  onSend={handleSendChat}
+                  disabled={!isActive}
+                  placeholder={
+                    coachReviewOpen ||
+                    latestStatusRef.current === "awaiting_coach_review"
+                      ? "Ask the coach to revise your resume or strategy..."
+                      : "Ask the agent to adjust..."
+                  }
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {session.coach_output && activePane !== "summary" && (
+            <Card className="border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50 dark:border-slate-800 dark:from-slate-950/50 dark:to-gray-950/50">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <svg
@@ -1500,14 +1939,11 @@ export default function SessionPage() {
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <p className="text-xs text-muted-foreground italic leading-relaxed line-clamp-3 cursor-help">
+                      <p className="cursor-help line-clamp-3 text-xs italic leading-relaxed text-muted-foreground">
                         {session.coach_output.confidence_message}
                       </p>
                     </TooltipTrigger>
-                    <TooltipContent
-                      side="left"
-                      className="max-w-sm text-xs leading-relaxed"
-                    >
+                    <TooltipContent side="left" className="max-w-sm text-xs leading-relaxed">
                       {session.coach_output.confidence_message}
                     </TooltipContent>
                   </Tooltip>
@@ -1516,9 +1952,9 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {/* LinkedIn Update — standalone sidebar button */}
           {session.coach_output?.linkedin_advice &&
-            session.coach_output.linkedin_advice.length > 0 && (
+            session.coach_output.linkedin_advice.length > 0 &&
+            activePane !== "summary" && (
               <LinkedInUpdateButton
                 sessionId={sessionId}
                 linkedinAdvice={session.coach_output.linkedin_advice}
@@ -1528,9 +1964,8 @@ export default function SessionPage() {
               />
             )}
 
-          {/* Shortlist summary */}
-          {shortlistJobs.length > 0 && (
-            <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/50 dark:to-orange-950/50 border-amber-100 dark:border-amber-900">
+          {shortlistJobs.length > 0 && activePane !== "summary" && (
+            <Card className="border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 dark:border-amber-900 dark:from-amber-950/50 dark:to-orange-950/50">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <svg
@@ -1551,15 +1986,11 @@ export default function SessionPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-xs">
-                    Jobs scored
-                  </span>
+                  <span className="text-xs text-muted-foreground">Jobs scored</span>
                   <span className="font-semibold">{shortlistJobs.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-xs">
-                    Top score
-                  </span>
+                  <span className="text-xs text-muted-foreground">Top score</span>
                   <CircularProgress
                     value={shortlistJobs[0]?.score || 0}
                     size={28}
@@ -1570,7 +2001,7 @@ export default function SessionPage() {
                 {session.status === "awaiting_review" && (
                   <Button
                     size="sm"
-                    className="w-full mt-1"
+                    className="mt-1 w-full"
                     onClick={() => setShortlistReviewOpen(true)}
                   >
                     Review Shortlist
@@ -1580,9 +2011,8 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {/* Session Summary */}
           {sessionSummary && session.status === "completed" && (
-            <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50 border-emerald-200 dark:border-emerald-800">
+            <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 dark:border-emerald-800 dark:from-emerald-950/50 dark:to-teal-950/50">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
                   <svg
@@ -1604,69 +2034,38 @@ export default function SessionPage() {
               <CardContent className="space-y-3 text-sm">
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    {
-                      label: "Discovered",
-                      value: sessionSummary.total_discovered,
-                      color: "",
-                    },
-                    {
-                      label: "Scored",
-                      value: sessionSummary.total_scored,
-                      color: "",
-                    },
+                    { label: "Discovered", value: sessionSummary.total_discovered, color: "" },
+                    { label: "Scored", value: sessionSummary.total_scored, color: "" },
                     {
                       label: "Applied",
                       value: sessionSummary.total_applied,
                       color: "text-emerald-600 dark:text-emerald-400",
                     },
-                    {
-                      label: "Failed",
-                      value: sessionSummary.total_failed,
-                      color: "text-red-500",
-                    },
-                    {
-                      label: "Skipped",
-                      value: sessionSummary.total_skipped,
-                      color: "",
-                    },
-                    {
-                      label: "Avg Fit",
-                      value: `${sessionSummary.avg_fit_score}/100`,
-                      color: "",
-                    },
+                    { label: "Failed", value: sessionSummary.total_failed, color: "text-red-500" },
+                    { label: "Skipped", value: sessionSummary.total_skipped, color: "" },
+                    { label: "Avg Fit", value: `${sessionSummary.avg_fit_score}/100`, color: "" },
                   ].map(({ label, value, color }) => (
-                    <div
-                      key={label}
-                      className="flex items-center justify-between py-1"
-                    >
-                      <span className="text-xs text-muted-foreground">
-                        {label}
-                      </span>
+                    <div key={label} className="flex items-center justify-between py-1">
+                      <span className="text-xs text-muted-foreground">{label}</span>
                       <span className={`font-semibold ${color}`}>{value}</span>
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center justify-between py-1 border-t border-emerald-200/50 dark:border-emerald-800/50">
-                  <span className="text-xs text-muted-foreground">
-                    Duration
-                  </span>
-                  <span className="font-semibold">
-                    {sessionSummary.duration_minutes}m
-                  </span>
+                <div className="flex items-center justify-between border-t border-emerald-200/50 py-1 dark:border-emerald-800/50">
+                  <span className="text-xs text-muted-foreground">Duration</span>
+                  <span className="font-semibold">{sessionSummary.duration_minutes}m</span>
                 </div>
                 {sessionSummary.top_companies.length > 0 && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1.5">
-                      Top Companies
-                    </p>
+                    <p className="mb-1.5 text-xs text-muted-foreground">Top Companies</p>
                     <div className="flex flex-wrap gap-1">
-                      {sessionSummary.top_companies.slice(0, 5).map((c, i) => (
+                      {sessionSummary.top_companies.slice(0, 5).map((company, i) => (
                         <Badge
                           key={i}
                           variant="secondary"
-                          className="text-xs bg-white/80 dark:bg-white/10"
+                          className="bg-white/80 text-xs dark:bg-white/10"
                         >
-                          {c}
+                          {company}
                         </Badge>
                       ))}
                     </div>
@@ -1674,16 +2073,14 @@ export default function SessionPage() {
                 )}
                 {sessionSummary.next_steps.length > 0 && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1.5">
-                      Next Steps
-                    </p>
+                    <p className="mb-1.5 text-xs text-muted-foreground">Next Steps</p>
                     <ul className="space-y-1.5">
                       {sessionSummary.next_steps.map((step, i) => (
                         <li
                           key={i}
-                          className="text-xs text-foreground/70 flex items-start gap-1.5"
+                          className="flex items-start gap-1.5 text-xs text-foreground/70"
                         >
-                          <span className="text-emerald-500 mt-0.5 shrink-0">
+                          <span className="mt-0.5 shrink-0 text-emerald-500">
                             {i + 1}.
                           </span>
                           {step}
@@ -1696,7 +2093,6 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {/* Rewind */}
           {(session.status === "completed" || session.status === "failed") && (
             <Card className="border-amber-200 dark:border-amber-800">
               <CardHeader className="pb-2">
@@ -1714,7 +2110,7 @@ export default function SessionPage() {
                       d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"
                     />
                   </svg>
-                  Rewind Session
+                  Checkpoints
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -1728,38 +2124,35 @@ export default function SessionPage() {
                     Load Checkpoints
                   </Button>
                 ) : (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      Select a checkpoint to resume from:
+                      Resume from a meaningful checkpoint instead of restarting the whole run.
                     </p>
                     {checkpoints
-                      .filter(
-                        (cp) =>
-                          cp.status === "paused" ||
-                          cp.status === "awaiting_review" ||
-                          cp.status === "awaiting_coach_review"
+                      .filter((cp) =>
+                        ["paused", "awaiting_review", "awaiting_coach_review"].includes(cp.status)
                       )
                       .map((cp) => (
-                        <Button
+                        <button
                           key={cp.checkpoint_id}
-                          size="sm"
-                          variant="outline"
-                          className="w-full text-xs justify-between"
+                          className="flex w-full items-center justify-between rounded-xl border border-amber-200 px-3 py-3 text-left text-xs transition-colors hover:bg-amber-50 disabled:opacity-60 dark:border-amber-900 dark:hover:bg-amber-950/40"
                           disabled={rewindLoading}
                           onClick={() => handleRewind(cp.checkpoint_id)}
+                          type="button"
                         >
-                          <span>
-                            {cp.status} ({cp.application_queue} jobs queued)
-                          </span>
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {checkpointLabel(cp.status)}
+                            </p>
+                            <p className="mt-1 text-muted-foreground">
+                              {cp.application_queue} jobs queued
+                            </p>
+                          </div>
                           <span className="text-amber-600">Rewind</span>
-                        </Button>
+                        </button>
                       ))}
                     {checkpoints.filter((cp) =>
-                      [
-                        "paused",
-                        "awaiting_review",
-                        "awaiting_coach_review",
-                      ].includes(cp.status)
+                      ["paused", "awaiting_review", "awaiting_coach_review"].includes(cp.status)
                     ).length === 0 && (
                       <p className="text-xs text-muted-foreground">
                         No rewindable checkpoints found.
@@ -1771,60 +2164,58 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {/* Application log */}
-          {session.applications_submitted &&
-            session.applications_submitted.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <svg
-                      className="w-4 h-4 text-emerald-500"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    Applications
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1 max-h-64 overflow-y-auto">
-                  {session.applications_submitted.map((app, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors text-xs"
-                    >
-                      <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center shrink-0">
-                        <svg
-                          className="w-3 h-3 text-emerald-600 dark:text-emerald-400"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={3}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </span>
-                      <span className="truncate flex-1 text-foreground/70">
-                        {app.job_id.slice(0, 12)}...
-                      </span>
-                      <Badge variant="secondary" className="text-[10px]">
-                        {app.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
+          {session.applications_submitted && session.applications_submitted.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <svg
+                    className="w-4 h-4 text-emerald-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Applications
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-64 space-y-1 overflow-y-auto">
+                {session.applications_submitted.map((app, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-muted/50"
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950">
+                      <svg
+                        className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    </span>
+                    <span className="flex-1 truncate text-foreground/70">
+                      {app.job_id.slice(0, 12)}...
+                    </span>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {app.status}
+                    </Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 

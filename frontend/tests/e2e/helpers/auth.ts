@@ -27,9 +27,7 @@ export async function login(
     try {
       // The login handler redirects to /dashboard on success.
       await page.waitForURL("**/dashboard", { timeout: 30_000 });
-      await expect(
-        page.getByRole("heading", { name: "Dashboard" })
-      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "Start New Session" })).toBeVisible();
       return;
     } catch {
       const url = page.url();
