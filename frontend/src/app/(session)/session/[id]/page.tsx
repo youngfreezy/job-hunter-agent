@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1047,16 +1047,6 @@ export default function SessionPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-background">
-        <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-6 py-3 shadow-sm supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="h-6 w-40 bg-muted rounded-lg animate-pulse" />
-            <div className="flex gap-3">
-              <div className="h-8 w-24 bg-muted rounded-full animate-pulse" />
-              <div className="h-8 w-24 bg-muted rounded-lg animate-pulse" />
-            </div>
-          </div>
-        </nav>
         <div className="max-w-7xl mx-auto px-6 py-8">
           {/* Pipeline skeleton */}
           <div className="flex items-center gap-1 mb-8 px-4">
@@ -1097,65 +1087,29 @@ export default function SessionPage() {
             </div>
           </div>
         </div>
-      </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-6 py-3 shadow-sm supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-lg font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent"
-          >
-            JobHunter Agent
-          </Link>
-          <div className="hidden sm:flex items-center gap-1">
-            <Link
-              href={`/session/${sessionId}`}
-              className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary/10 text-primary"
-            >
-              Activity
-            </Link>
-            <Link
-              href={`/session/${sessionId}/manual-apply`}
-              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              Review & Apply
-            </Link>
-            <Link
-              href={`/session/${sessionId}/settings`}
-              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              Settings
-            </Link>
-          </div>
-          <div className="flex items-center gap-3">
-            <Badge
-              variant={session.status === "completed" ? "default" : "secondary"}
-              className={
-                isActive
-                  ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 animate-pulse"
-                  : session.status === "completed"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
-                    : ""
-              }
-            >
-              {isActive && (
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse" />
-              )}
-              {STATUS_LABELS[session.status] || session.status}
-            </Badge>
-            <Link href="/dashboard">
-              <Button variant="outline" size="sm">
-                Dashboard
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
+    <>
+      {/* Status Badge */}
+      <div className="max-w-6xl mx-auto px-6 pt-4 flex justify-end">
+        <Badge
+          variant={session.status === "completed" ? "default" : "secondary"}
+          className={
+            isActive
+              ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 animate-pulse"
+              : session.status === "completed"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+                : ""
+          }
+        >
+          {isActive && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse" />
+          )}
+          {STATUS_LABELS[session.status] || session.status}
+        </Badge>
+      </div>
 
       {/* Pipeline Stepper */}
       <div className="border-b border-border/70 bg-card/95 shadow-sm supports-[backdrop-filter]:bg-card/90 supports-[backdrop-filter]:backdrop-blur-sm">
@@ -2224,6 +2178,6 @@ export default function SessionPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
