@@ -23,9 +23,19 @@ def _guess_field_value(field: Field, resume_text: str, cover_letter: str) -> str
     name = first_line if first_line and "@" not in first_line else "Applicant"
 
     if "email" in label or input_type == "email":
-        return email_match.group(0) if email_match else "applicant@example.com"
+        if not email_match:
+            raise ValueError(
+                "No email address found in your resume. "
+                "Please add your email to your resume and try again."
+            )
+        return email_match.group(0)
     if "phone" in label or "mobile" in label or input_type == "tel":
-        return phone_match.group(0).strip() if phone_match else "5555555555"
+        if not phone_match:
+            raise ValueError(
+                "No phone number found in your resume. "
+                "Please add your phone number to your resume and try again."
+            )
+        return phone_match.group(0).strip()
     if "name" in label:
         return name
     if "linkedin" in label:
