@@ -147,6 +147,49 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
           )}
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">Configuration</CardTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onEditStep(2)}
+          >
+            <Pencil className="w-4 h-4 mr-1" /> Edit
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="font-medium text-zinc-500">Max jobs</p>
+              <p>{values.maxJobs ?? 20}</p>
+            </div>
+            <div>
+              <p className="font-medium text-zinc-500">Tailoring quality</p>
+              <p className="capitalize">{values.tailoringQuality ?? "standard"}</p>
+            </div>
+            <div>
+              <p className="font-medium text-zinc-500">Application mode</p>
+              <p>{values.applicationMode === "materials_only" ? "Materials only" : "Auto apply"}</p>
+            </div>
+            <div>
+              <p className="font-medium text-zinc-500">Cover letters</p>
+              <p>{values.generateCoverLetters !== false ? "Yes" : "No"}</p>
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-zinc-500">Job boards</p>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {(values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"]).map((b: string) => (
+                <Badge key={b} variant="secondary" className="capitalize">
+                  {b}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </>
   );
 }

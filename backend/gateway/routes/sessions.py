@@ -317,6 +317,11 @@ async def _run_pipeline(
             "errors": [],
             "consecutive_failures": 0,
             "applications_used": 0,
+            "session_config": (
+                request_body.config.model_dump()
+                if request_body.config
+                else None
+            ),
         }
 
         await _emit(session_id, "status", {

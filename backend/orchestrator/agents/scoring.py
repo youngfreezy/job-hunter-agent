@@ -283,6 +283,16 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # Sort descending by score
         scored_jobs.sort(key=lambda sj: sj.score, reverse=True)
 
+        # Cap to max_jobs from session config
+        config = state.get("session_config")
+        max_jobs = 20  # default
+        if config:
+            cfg = config if isinstance(config, dict) else config.model_dump()
+            max_jobs = cfg.get("max_jobs", 20)
+        if len(scored_jobs) > max_jobs:
+            logger.info("Capping scored jobs from %d to %d (session config)", len(scored_jobs), max_jobs)
+            scored_jobs = scored_jobs[:max_jobs]
+
         logger.info(
             "Scoring agent finished -- %d jobs scored, top score=%d",
             len(scored_jobs),
