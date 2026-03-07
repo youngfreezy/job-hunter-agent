@@ -1,16 +1,14 @@
 import NextAuth, { type NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import CredentialsProvider from "next-auth/providers/credentials";
 
-// Credentials auth is for local/dev-only bootstrapping unless explicitly enabled.
-const allowCredentialsAuth =
-  process.env.NODE_ENV !== "production" ||
-  process.env.ENABLE_CREDENTIALS_AUTH === "true";
+if (!process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID === "xxx") {
+  throw new Error(
+    "GOOGLE_CLIENT_ID is required. Set it in .env to enable Google sign-in."
+  );
+}
 
-// Only include Google provider when credentials are configured
-const providers: NextAuthOptions["providers"] = [];
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID !== "xxx") {
-  providers.push(
+const authOptions: NextAuthOptions = {
+  providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
@@ -22,37 +20,8 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID !== "xxx") {
           prompt: "consent",
         },
       },
-    })
-  );
-}
-
-// Email/password — dev mode accepts any email/password
-providers.push(
-  CredentialsProvider({
-    name: "Email",
-    credentials: {
-      email: { label: "Email", type: "email", placeholder: "you@example.com" },
-      password: { label: "Password", type: "password" },
-    },
-    async authorize(credentials) {
-      if (!allowCredentialsAuth) {
-        return null;
-      }
-      // TODO: Replace with real DB lookup in Phase 4.
-      if (credentials?.email && credentials?.password) {
-        return {
-          id: "dev-user-1",
-          email: credentials.email,
-          name: credentials.email.split("@")[0],
-        };
-      }
-      return null;
-    },
-  })
-);
-
-const authOptions: NextAuthOptions = {
-  providers,
+    }),
+  ],
   session: {
     strategy: "jwt",
     maxAge: 7 * 24 * 60 * 60, // 7 days
