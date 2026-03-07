@@ -23,7 +23,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
-import { TakeoverViewer } from "@/components/TakeoverViewer";
 import {
   LinkedInUpdateButton,
   type LinkedInProgress,
@@ -45,7 +44,6 @@ import {
 } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
-import { WebSocketManager } from "@/lib/websocket";
 
 type SessionData = {
   session_summary?: boolean;
@@ -81,7 +79,6 @@ type SessionData = {
   coach_output?: CoachOutput;
   coach_chat_history?: Array<{ role: string; text: string }>;
   linkedin_url?: string;
-  steering_mode: string;
   applications_used: number;
   applications_skipped: string[] | number;
   created_at?: string;
@@ -150,8 +147,6 @@ type SSEEvent = {
   }>;
 };
 
-type WebSocketStatus = "connecting" | "connected" | "disconnected" | "error";
-
 const STATUS_LABELS: Record<string, string> = {
   intake: "Setting Up",
   coaching: "Coaching Resume",
@@ -165,7 +160,6 @@ const STATUS_LABELS: Record<string, string> = {
   reporting: "Preparing Summary",
   paused: "Paused",
   needs_intervention: "Needs Your Help",
-  takeover: "Manual Control",
   completed: "All Done",
   failed: "Something Went Wrong",
 };
@@ -183,11 +177,6 @@ const PIPELINE_STEPS = [
   "reporting",
   "completed",
 ];
-
-function normalizeScreenshotSrc(image: string): string {
-  if (!image) return image;
-  return image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`;
-}
 
 const STEP_LABELS: Record<string, string> = {
   intake: "Setup",
@@ -250,7 +239,7 @@ function getStepIndexForStatus(
   const directIndex = PIPELINE_STEPS.indexOf(status);
   if (directIndex >= 0) return directIndex;
 
-  if (status === "needs_intervention" || status === "takeover") {
+  if (status === "needs_intervention") {
     return PIPELINE_STEPS.indexOf("applying");
   }
   if (status === "paused") {
@@ -403,15 +392,7 @@ export default function SessionPage() {
     message: string;
   } | null>(null);
   const [loginConfirming, setLoginConfirming] = useState(false);
-  const [liveBrowserImage, setLiveBrowserImage] = useState<string | null>(null);
-  const [liveBrowserUrl, setLiveBrowserUrl] = useState("");
-  const [takeoverActive, setTakeoverActive] = useState(false);
-  const [takeoverMessage, setTakeoverMessage] = useState<string | null>(null);
-  const [takeoverWsStatus, setTakeoverWsStatus] =
-    useState<WebSocketStatus>("connecting");
-
   const eventsEndRef = useRef<HTMLDivElement>(null);
-  const wsManagerRef = useRef<WebSocketManager | null>(null);
   const latestStatusRef = useRef(
     (() => {
       if (typeof window === "undefined") return "intake";
@@ -527,7 +508,6 @@ export default function SessionPage() {
           scored_jobs: [],
           applications_submitted: [],
           applications_failed: [],
-          steering_mode: "status",
           applications_used: 0,
           applications_skipped: 0,
         });
@@ -824,54 +804,6 @@ export default function SessionPage() {
     return cleanup;
   }, [sessionId, sseKey]);
 
-  useEffect(() => {
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL ||
-      (window.location.port === "3000"
-        ? "http://localhost:8000"
-        : window.location.origin);
-    const wsUrl = apiBase.replace(/^http/, "ws") + `/ws/sessions/${sessionId}`;
-
-    const manager = new WebSocketManager(
-      wsUrl,
-      (payload) => {
-        const messageType = String(payload.type || "");
-        if (messageType === "screenshot" || messageType === "takeover_frame") {
-          if (typeof payload.image === "string") {
-            setLiveBrowserImage(normalizeScreenshotSrc(String(payload.image)));
-          }
-          if (typeof payload.url === "string") {
-            setLiveBrowserUrl(String(payload.url));
-          }
-          return;
-        }
-
-        if (messageType === "takeover_status") {
-          setTakeoverActive(Boolean(payload.active));
-          if (typeof payload.reason === "string" && payload.reason.trim()) {
-            setTakeoverMessage(String(payload.reason));
-          } else {
-            setTakeoverMessage(null);
-          }
-          if (typeof payload.url === "string") {
-            setLiveBrowserUrl(String(payload.url));
-          }
-        }
-      },
-      (status) => {
-        setTakeoverWsStatus(status);
-      },
-    );
-
-    wsManagerRef.current = manager;
-    manager.connect();
-
-    return () => {
-      wsManagerRef.current?.disconnect();
-      wsManagerRef.current = null;
-    };
-  }, [sessionId]);
-
   const handleSendChat = async (message: string) => {
     const msg = message.trim();
     if (!msg) return;
@@ -925,30 +857,6 @@ export default function SessionPage() {
         { role: "system", text: "Could not send message to the agent." },
       ]);
     }
-  };
-
-  const handleRequestTakeover = () => {
-    setTakeoverMessage(null);
-    wsManagerRef.current?.requestControl();
-  };
-
-  const handleReleaseTakeover = () => {
-    wsManagerRef.current?.releaseControl();
-    setTakeoverActive(false);
-  };
-
-  const handleTakeoverMouseAction = (payload: Record<string, unknown>) => {
-    wsManagerRef.current?.sendTakeoverInput({
-      input_type: "mouse",
-      ...payload,
-    });
-  };
-
-  const handleTakeoverKeyboardAction = (payload: Record<string, unknown>) => {
-    wsManagerRef.current?.sendTakeoverInput({
-      input_type: "keyboard",
-      ...payload,
-    });
   };
 
   const handleApproveShortlist = async () => {
@@ -1056,7 +964,6 @@ export default function SessionPage() {
       interventionData ||
       submitConfirmData ||
       loginPrompt ||
-      takeoverActive ||
       session.status === "applying" ||
       session.status === "needs_intervention" ||
       session.status === "paused"
@@ -1074,7 +981,6 @@ export default function SessionPage() {
     session,
     shortlistReviewOpen,
     submitConfirmData,
-    takeoverActive,
   ]);
 
   const quickActions = useMemo(() => {
@@ -1465,42 +1371,6 @@ export default function SessionPage() {
       {/* Main content */}
       <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
-          {/* <Card className="overflow-hidden">
-            <CardHeader className="border-b border-border/50 pb-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="text-sm font-semibold">
-                    Browser Takeover
-                  </CardTitle>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    The live page appears here during application work. Use this
-                    when login, CAPTCHA, or ambiguous forms need direct control.
-                  </p>
-                </div>
-                <Badge variant={takeoverActive ? "default" : "secondary"}>
-                  {takeoverActive ? "Live control active" : "On standby"}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <TakeoverViewer
-                imageUrl={liveBrowserImage}
-                currentUrl={liveBrowserUrl}
-                wsStatus={takeoverWsStatus}
-                controlActive={takeoverActive}
-                onRequestControl={handleRequestTakeover}
-                onReleaseControl={handleReleaseTakeover}
-                onMouseAction={handleTakeoverMouseAction}
-                onKeyboardAction={handleTakeoverKeyboardAction}
-              />
-              {takeoverMessage && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  {takeoverMessage}
-                </p>
-              )}
-            </CardContent>
-          </Card> */}
-
           <Card className="flex min-h-[420px] flex-col overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-2">
               <div className="flex items-center justify-between">

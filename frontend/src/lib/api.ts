@@ -477,44 +477,6 @@ export function connectSSE(
   return () => es.close();
 }
 
-// ---------- WebSocket (for Phase 3: screenshot feed + chat) ----------
-
-export function createWebSocket(sessionId: string): WebSocket {
-  const wsBase = API_BASE.replace(/^http/, "ws");
-  return new WebSocket(`${wsBase}/ws/sessions/${sessionId}`);
-}
-
-/**
- * Connect to WebSocket for screenshot feed + chat.
- * Returns a cleanup function.
- */
-export function connectWebSocket(
-  sessionId: string,
-  onMessage: (data: Record<string, unknown>) => void
-): () => void {
-  const ws = createWebSocket(sessionId);
-
-  ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      onMessage(data);
-    } catch {
-      // ignore parse errors
-    }
-  };
-
-  ws.onerror = (err) => console.error("WebSocket error:", err);
-
-  return () => {
-    if (
-      ws.readyState === WebSocket.OPEN ||
-      ws.readyState === WebSocket.CONNECTING
-    ) {
-      ws.close();
-    }
-  };
-}
-
 // ---------- Resume Parsing ----------
 
 export async function parseResume(
