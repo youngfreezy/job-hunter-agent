@@ -26,7 +26,10 @@ from backend.browser.streaming.takeover_registry import (
 from backend.browser.tools.ats_detector import detect_ats_type
 from backend.browser.tools.appliers import get_applier
 from backend.orchestrator.pipeline.state import JobHunterState
-from backend.shared.application_store import record_result as _db_record_result
+from backend.shared.application_store import (
+    check_already_applied,
+    record_result as _db_record_result,
+)
 from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
@@ -473,6 +476,34 @@ async def _apply_to_job(
             job_id=job_id,
             status=ApplicationStatus.SKIPPED,
             error_message="auth_required",
+            duration_seconds=int(time.monotonic() - start_time),
+        )
+
+    # Pre-flight: skip jobs already submitted in any session
+    prior = check_already_applied(job_id)
+    if prior:
+        applied_at = prior.get("applied_at", "unknown date")
+        msg = f"Already applied on {applied_at}"
+        logger.info("Duplicate skipped: %s — %s", job.title, msg)
+        await emit_agent_event(session_id, "application_progress", {
+            "job_id": job_id,
+            "step": f"Skipped — {msg}",
+        })
+        _db_record_result(
+            session_id=session_id,
+            job_id=job_id,
+            status="skipped",
+            job_title=job.title,
+            job_company=job.company,
+            job_url=job.url,
+            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+            job_location=job.location or "",
+            error_message=f"duplicate: {msg}",
+        )
+        return ApplicationResult(
+            job_id=job_id,
+            status=ApplicationStatus.SKIPPED,
+            error_message=f"duplicate: {msg}",
             duration_seconds=int(time.monotonic() - start_time),
         )
 
