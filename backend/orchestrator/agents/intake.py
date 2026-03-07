@@ -60,12 +60,14 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
         if keywords:
             parts.append(f"Keywords: {', '.join(keywords)}")
 
-        locations = state.get("locations", [])
-        if locations:
-            parts.append(f"Locations: {', '.join(locations)}")
+        remote_only = state.get("remote_only", False)
 
-        if state.get("remote_only"):
-            parts.append("Remote only: yes")
+        if remote_only:
+            parts.append("Remote only: yes — ignore any physical locations")
+        else:
+            locations = state.get("locations", [])
+            if locations:
+                parts.append(f"Locations: {', '.join(locations)}")
 
         salary_min = state.get("salary_min")
         if salary_min is not None:

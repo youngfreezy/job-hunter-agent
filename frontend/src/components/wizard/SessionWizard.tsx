@@ -51,10 +51,12 @@ export function SessionWizard() {
           .split(",")
           .map((k) => k.trim())
           .filter(Boolean);
-        const locationList = values.locations
-          .split(",")
-          .map((l) => l.trim())
-          .filter(Boolean);
+        const locationList = values.remoteOnly
+          ? []
+          : values.locations
+              .split(",")
+              .map((l) => l.trim())
+              .filter(Boolean);
 
         const session = await startSession({
           keywords: keywordList,
