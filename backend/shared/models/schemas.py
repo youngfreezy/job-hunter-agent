@@ -127,6 +127,7 @@ class ScoredJob(BaseModel):
     score_breakdown: Dict[str, int] = Field(default_factory=dict)
     # e.g. {"keyword_match": 85, "location_match": 100, "salary_match": 70}
     reasons: List[str] = Field(default_factory=list)
+    fit_summary: str = Field(default="")
 
 
 class TailoredResume(BaseModel):

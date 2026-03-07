@@ -41,6 +41,7 @@ import {
   rewindSession,
   resumeSession,
   confirmLogin,
+  sendGmailToken,
 } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
@@ -323,6 +324,21 @@ function checkpointLabel(status: string): string {
 export default function SessionPage() {
   const params = useParams();
   const sessionId = params.id as string;
+  // Send Gmail token to backend so the agent can auto-extract verification codes
+  const gmailTokenSent = useRef(false);
+  useEffect(() => {
+    if (gmailTokenSent.current) return;
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((s) => {
+        const token = s?.user?.googleAccessToken as string | undefined;
+        if (token) {
+          gmailTokenSent.current = true;
+          sendGmailToken(sessionId, token);
+        }
+      })
+      .catch(() => {});
+  }, [sessionId]);
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [events, setEvents] = useState<SSEEvent[]>([]);

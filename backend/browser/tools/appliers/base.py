@@ -65,6 +65,25 @@ class BaseApplier(ABC):
         self._step_count = 0
         self._start_time = time.monotonic()
         self._screenshot_path: Optional[str] = None
+        self._current_company: str = ""
+
+    async def run(
+        self,
+        job: JobListing,
+        user_profile: Dict[str, str],
+        resume_text: str,
+        cover_letter: str,
+        resume_file_path: Optional[str] = None,
+    ) -> ApplicationResult:
+        """Entry point — sets context then delegates to platform-specific apply()."""
+        self._current_company = getattr(job, "company", "") or ""
+        return await self.apply(
+            job=job,
+            user_profile=user_profile,
+            resume_text=resume_text,
+            cover_letter=cover_letter,
+            resume_file_path=resume_file_path,
+        )
 
     @abstractmethod
     async def apply(
@@ -304,24 +323,102 @@ class BaseApplier(ABC):
             return False
 
     async def _handle_verification(self) -> bool:
-        """Emit an SSE event asking the user for a verification code, then wait for it.
+        """Try Gmail auto-extraction first, then fall back to manual entry.
 
         Returns True if verification was completed, False if timed out.
         """
-        await self._emit_step("Verification code required — check your email and enter the code in the browser window.")
+        company = getattr(self, "_current_company", "")
+        await self._emit_step(f"Verification code required — checking Gmail for code from {company or self.PLATFORM}...")
+
+        # --- Phase 1: Gmail auto-extraction ---
+        try:
+            from backend.shared.gmail_client import poll_for_verification_code
+
+            code = await poll_for_verification_code(
+                session_id=self.session_id,
+                company=company,
+                platform=self.PLATFORM,
+                max_wait=90,
+                poll_interval=8,
+            )
+            if code:
+                await self._emit_step(f"Found verification code — entering automatically")
+                filled = await self._fill_verification_code(code)
+                if filled:
+                    await self._random_delay(0.5, 1.0)
+                    # Try to submit the code
+                    for btn_sel in [
+                        "button[type='submit']",
+                        "button:has-text('Verify')",
+                        "button:has-text('Continue')",
+                        "button:has-text('Submit')",
+                        "button:has-text('Confirm')",
+                    ]:
+                        try:
+                            btn = await self.page.query_selector(btn_sel)
+                            if btn and await btn.is_visible():
+                                await btn.click()
+                                break
+                        except Exception:
+                            continue
+                    await asyncio.sleep(3)
+                    if not await self._detect_verification_prompt():
+                        logger.info("Verification resolved via Gmail auto-extraction")
+                        return True
+                    logger.warning("Verification prompt still present after auto-fill — falling back to manual")
+        except Exception as exc:
+            logger.warning("Gmail auto-extraction failed: %s", exc)
+
+        # --- Phase 2: Manual fallback ---
+        await self._emit_step("Could not auto-extract code — please enter it manually in the browser window.")
         await emit_agent_event(self.session_id, "verification_required", {
             "message": "A verification code was requested. Please check your email and enter the code in the browser window.",
             "platform": self.PLATFORM,
         })
 
-        # Wait up to 120s for the user to enter the code and the page to change
         for _ in range(24):  # 24 * 5s = 120s
             await asyncio.sleep(5)
             if not await self._detect_verification_prompt():
-                logger.info("Verification prompt resolved — continuing")
+                logger.info("Verification prompt resolved (manual)")
                 return True
 
         logger.warning("Verification timed out after 120s")
+        return False
+
+    async def _fill_verification_code(self, code: str) -> bool:
+        """Find a verification code input on the page and fill it."""
+        selectors = [
+            'input[autocomplete="one-time-code"]',
+            'input[name*="code" i]',
+            'input[name*="verification" i]',
+            'input[name*="otp" i]',
+            'input[inputmode="numeric"]',
+            'input[type="tel"]',
+            'input[name*="pin" i]',
+        ]
+        for sel in selectors:
+            try:
+                el = await self.page.query_selector(sel)
+                if el and await el.is_visible():
+                    await el.fill(code)
+                    logger.info("Filled verification code via selector: %s", sel)
+                    return True
+            except Exception:
+                continue
+        # Last resort: find any visible short text input that's empty
+        try:
+            inputs = await self.page.query_selector_all('input[type="text"], input:not([type])')
+            for inp in inputs:
+                if await inp.is_visible():
+                    val = await inp.get_attribute("value") or ""
+                    maxlen = await inp.get_attribute("maxlength") or ""
+                    if not val and maxlen and int(maxlen) <= 10:
+                        await inp.fill(code)
+                        logger.info("Filled verification code via generic short input")
+                        return True
+        except Exception:
+            pass
+        logger.warning("Could not find a verification code input field")
         return False
 
     async def _upload_resume(self, file_path: str) -> bool:

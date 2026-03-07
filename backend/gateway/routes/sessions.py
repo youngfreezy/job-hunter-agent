@@ -2002,3 +2002,27 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
     _spawn_background(_run_linkedin_update())
 
     return {"status": "ok", "message": "LinkedIn update started — open the browser and log in"}
+
+
+# ---------------------------------------------------------------------------
+# Gmail token storage (for automatic verification-code extraction)
+# ---------------------------------------------------------------------------
+
+@router.post("/{session_id}/gmail-token")
+async def store_gmail_token_endpoint(session_id: str, request: Request):
+    """Store a Gmail OAuth token so the agent can auto-extract verification codes."""
+    body = await request.json()
+    access_token = body.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="access_token is required")
+
+    from backend.shared.gmail_client import store_gmail_token
+
+    store_gmail_token(
+        session_id=session_id,
+        access_token=access_token,
+        refresh_token=body.get("refresh_token"),
+        client_id=body.get("client_id"),
+        client_secret=body.get("client_secret"),
+    )
+    return {"status": "ok"}

@@ -14,6 +14,14 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID !== "xxx") {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      authorization: {
+        params: {
+          scope:
+            "openid email profile https://www.googleapis.com/auth/gmail.readonly",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
     })
   );
 }
@@ -54,15 +62,22 @@ const authOptions: NextAuthOptions = {
     newUser: "/session/new",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.userId = user.id;
+      }
+      // Capture Google OAuth tokens on initial sign-in
+      if (account?.provider === "google") {
+        token.googleAccessToken = account.access_token;
+        token.googleRefreshToken = account.refresh_token;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as Record<string, unknown>).id = token.userId;
+        const u = session.user as Record<string, unknown>;
+        u.id = token.userId;
+        u.googleAccessToken = token.googleAccessToken;
       }
       return session;
     },
