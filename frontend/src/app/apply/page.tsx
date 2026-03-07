@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   listSessions,
   getApplicationLog,
   type SessionListItem,
@@ -118,6 +124,12 @@ export default function ApplyPage() {
             >
               Dashboard
             </Link>
+            <Link
+              href="/history"
+              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              History
+            </Link>
             <Link href="/session/new">
               <Button size="sm">New Session</Button>
             </Link>
@@ -156,16 +168,60 @@ export default function ApplyPage() {
               </p>
             </CardContent>
           </Card>
-          <Card className="border-blue-200 dark:border-blue-900">
-            <CardContent className="p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                Sessions
-              </p>
-              <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-blue-400">
-                {sessions.length}
-              </p>
-            </CardContent>
-          </Card>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Card className="border-blue-200 dark:border-blue-900 cursor-pointer transition-colors hover:bg-muted/40">
+                  <CardContent className="p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                      Sessions
+                    </p>
+                    <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {sessions.length}
+                    </p>
+                  </CardContent>
+                </Card>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="bg-popover text-popover-foreground border border-border shadow-lg p-0 rounded-xl"
+              >
+                {sessions.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">
+                    No sessions yet
+                  </p>
+                ) : (
+                  <div className="py-1">
+                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-medium">
+                      Recent Sessions
+                    </p>
+                    {sessions.slice(0, 5).map((s) => (
+                      <Link
+                        key={s.session_id}
+                        href={`/session/${s.session_id}`}
+                        className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors"
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                            s.status === "running"
+                              ? "bg-emerald-500"
+                              : s.status === "paused"
+                                ? "bg-amber-500"
+                                : "bg-zinc-400"
+                          }`}
+                        />
+                        <span className="truncate max-w-[180px]">
+                          {s.keywords.length > 0
+                            ? s.keywords.join(", ")
+                            : s.session_id.slice(0, 8)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         {/* Tabs */}
