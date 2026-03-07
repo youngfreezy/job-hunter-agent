@@ -56,24 +56,24 @@ function formatRelativeDate(value: string) {
 
 function getSessionHeadline(session: SessionListItem) {
   if (session.status === "awaiting_coach_review") {
-    return "Resume rewrite is waiting for approval";
+    return "Your improved resume is ready for review";
   }
   if (session.status === "awaiting_review") {
-    return "Shortlist is ready for approval";
+    return "Your matched jobs are ready for review";
   }
   if (session.status === "needs_intervention") {
-    return "Application flow is blocked and needs manual help";
+    return "A site needs your help to continue";
   }
   if (session.status === "paused") {
-    return "Workflow paused. Resume when you are ready.";
+    return "Search paused — resume whenever you're ready";
   }
   if (session.status === "completed") {
-    return "Session complete. Review results and proofs.";
+    return "Search complete — review your results";
   }
   if (session.status === "failed") {
-    return "A failure stopped the session. Inspect the log before retrying.";
+    return "Something went wrong — check the details to retry";
   }
-  return "Automation is running with live updates and operator controls.";
+  return "Your search is running — check in anytime for live updates";
 }
 
 export default function Dashboard() {
@@ -116,6 +116,12 @@ export default function Dashboard() {
             JobHunter Agent
           </Link>
           <div className="flex items-center gap-4">
+            <Link
+              href="/apply"
+              className="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+            >
+              Review & Apply
+            </Link>
             <span className="text-sm text-zinc-500">test@example.com</span>
             <Link href="/session/new">
               <Button size="sm">New Session</Button>
@@ -134,12 +140,10 @@ export default function Dashboard() {
                     Dashboard
                   </p>
                   <h1 className="mt-2 text-4xl font-bold tracking-tight">
-                    Keep sessions moving without losing context
+                    Your Job Search at a Glance
                   </h1>
                   <p className="mt-3 max-w-2xl text-zinc-600 dark:text-zinc-400">
-                    Sessions that need your attention are surfaced first. Active
-                    runs, completed runs, and blocked runs are separated so you
-                    can decide quickly what to do next.
+                    Sessions that need your attention come first. See what&apos;s active, what&apos;s done, and what needs you — all in one view.
                   </p>
                 </div>
                 <Link href="/session/new">
@@ -149,35 +153,35 @@ export default function Dashboard() {
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
                   <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Needs attention
+                    Needs Your Attention
                   </p>
                   <p className="mt-2 text-3xl font-bold text-amber-900 dark:text-amber-100">
                     {actionRequiredSessions.length}
                   </p>
                   <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
-                    Coach review, shortlist review, pauses, or manual intervention.
+                    These sessions need a quick decision from you before they can continue.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
                   <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                    In progress
+                    In Progress
                   </p>
                   <p className="mt-2 text-3xl font-bold text-blue-900 dark:text-blue-100">
                     {activeSessions.length}
                   </p>
                   <p className="mt-1 text-sm text-blue-700 dark:text-blue-400">
-                    Sessions currently coaching, discovering, tailoring, or applying.
+                    Your active searches are finding jobs and sending applications right now.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
                   <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
-                    Applications sent
+                    Applications Sent
                   </p>
                   <p className="mt-2 text-3xl font-bold text-emerald-900 dark:text-emerald-100">
                     {sessions.reduce((sum, session) => sum + session.applications_submitted, 0)}
                   </p>
                   <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-400">
-                    Successful submissions across every session in the workspace.
+                    Total applications sent across all your job searches.
                   </p>
                 </div>
               </div>
@@ -186,7 +190,7 @@ export default function Dashboard() {
 
           <Card className="border-zinc-200 dark:border-zinc-800">
             <CardHeader>
-              <CardTitle className="text-lg">Action Queue</CardTitle>
+              <CardTitle className="text-lg">Needs Your Attention</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {loading ? (
@@ -198,8 +202,7 @@ export default function Dashboard() {
                 ))
               ) : actionRequiredSessions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-zinc-300 p-5 text-sm text-zinc-500 dark:border-zinc-700">
-                  No sessions are blocked right now. Start a new session or
-                  check active runs for progress.
+                  You&apos;re all caught up. Start a new search or check your active sessions.
                 </div>
               ) : (
                 actionRequiredSessions.map((session) => (
@@ -239,7 +242,7 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-xl font-semibold">Active Sessions</h2>
                 <p className="text-sm text-zinc-500">
-                  Runs that are currently moving through discovery or apply.
+                  Your searches that are actively finding and applying to jobs.
                 </p>
               </div>
             </div>
@@ -257,8 +260,7 @@ export default function Dashboard() {
                 <CardContent className="py-12 text-center">
                   <p className="text-lg font-medium">No active sessions</p>
                   <p className="mt-2 text-sm text-zinc-500">
-                    Start a new session to begin discovery, coaching, and
-                    applications.
+                    Start a new search to find matching jobs and begin applying.
                   </p>
                 </CardContent>
               </Card>
@@ -273,9 +275,9 @@ export default function Dashboard() {
 
           <section>
             <div className="mb-4">
-              <h2 className="text-xl font-semibold">Completed And Historical</h2>
+              <h2 className="text-xl font-semibold">Past Searches</h2>
               <p className="text-sm text-zinc-500">
-                Finished or failed sessions kept for audit and replay.
+                Review results from completed searches or retry ones that ran into issues.
               </p>
             </div>
             {loading ? (

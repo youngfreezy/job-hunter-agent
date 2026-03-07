@@ -16,7 +16,7 @@ export default function LoginPage() {
           >
             JobHunter Agent
           </Link>
-          <CardTitle className="text-lg">Sign in to get started</CardTitle>
+          <CardTitle className="text-lg">Welcome back</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           <Button
@@ -47,11 +47,8 @@ export default function LoginPage() {
 
           <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 px-4 py-3">
             <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-              <span className="font-semibold">Email access for verification codes.</span>{" "}
-              When a job application requires an email verification code,
-              JobHunter reads your recent emails to find and enter the code
-              automatically. We only search for verification-related messages
-              and never store your email content.
+              <span className="font-semibold">Why we need email access:</span>{" "}
+              Some job sites send verification codes by email. We&apos;ll find and enter those codes automatically so you don&apos;t lose momentum. We only look for verification emails and never store your messages.
             </p>
           </div>
         </CardContent>
