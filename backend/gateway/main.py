@@ -111,6 +111,9 @@ async def lifespan(app: FastAPI):
     from backend.shared.redis_client import redis_client
     try:
         await redis_client.connect()
+        # Clear stale task queue counters from previous runs
+        from backend.shared.task_queue import flush_all_active
+        await flush_all_active()
     except Exception as exc:
         logger.warning("Redis connection failed (%s) — rate limiting and task queue disabled", exc)
 

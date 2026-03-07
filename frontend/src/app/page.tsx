@@ -204,17 +204,17 @@ export default function Home() {
           <div className="relative overflow-hidden rounded-[36px] border border-zinc-200/80 bg-white px-8 py-10 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.35)] dark:border-zinc-800 dark:bg-zinc-950 lg:px-12 lg:py-12">
             <div className="absolute -left-24 top-10 h-64 w-64 rounded-full bg-blue-200/40 blur-3xl dark:bg-blue-500/10" />
             <div className="absolute right-0 top-0 h-80 w-80 rounded-full bg-emerald-200/35 blur-3xl dark:bg-emerald-500/10" />
-            <div className="relative max-w-3xl">
+            <div className="relative mx-auto max-w-3xl text-center">
               <Badge variant="secondary" className="mb-5 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                 You approve everything before it goes out
               </Badge>
               <h1 className="text-5xl font-bold tracking-tight text-zinc-950 dark:text-white md:text-6xl">
                 Land more interviews<br />while saving 15+ hours a week.
               </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
                 Your AI assistant finds the best roles across 5 job boards, tailors your resume for each one, and submits applications automatically. You stay in complete control with two approval checkpoints.
               </p>
-              <div className="mt-8 flex flex-wrap items-center gap-3">
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
                 <Link href="/session/new">
                   <Button size="lg" data-umami-event="cta-get-started" data-umami-event-location="hero">Start with 3 Free Applications</Button>
                 </Link>
