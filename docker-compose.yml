@@ -12,6 +12,7 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U jobhunter -d jobhunter"]
       interval: 5s
@@ -28,6 +29,20 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    container_name: jobhunter_umami
+    environment:
+      DATABASE_URL: postgresql://jobhunter:jobhunter@postgres:5432/umami
+      DATABASE_TYPE: postgresql
+      APP_SECRET: umami-secret-change-me
+    ports:
+      - "3001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    init: true
 
 volumes:
   pgdata:
