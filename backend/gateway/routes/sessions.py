@@ -29,7 +29,6 @@ from langgraph.types import Command
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.orchestrator.agents.coach_chat import revise_coach_output
 from backend.orchestrator.agents.workflow_supervisor import preview_steering_message
-from backend.browser.streaming.takeover_registry import get_active_page
 from backend.shared.config import MAX_APPLICATION_JOBS
 from backend.shared.event_bus import register_emitter, unregister_emitter
 from backend.shared.models.schemas import (
@@ -783,9 +782,6 @@ class TestApplyRequest(_BaseModel):
     resume_text: str = ""
 
 
-class TestTakeoverRequest(_BaseModel):
-    url: str | None = None
-
 
 @router.post("/test-apply")
 async def test_apply_endpoint(body: TestApplyRequest, request: Request):
@@ -833,177 +829,6 @@ async def test_apply_endpoint(body: TestApplyRequest, request: Request):
     }
 
 
-@router.post("/test-takeover")
-async def test_takeover_endpoint(body: TestTakeoverRequest):
-    """Open a real browser page for live takeover verification."""
-    session_id = f"takeover-{uuid.uuid4().hex[:8]}"
-    event_logs[session_id] = []
-    sse_subscribers[session_id] = []
-    session_registry[session_id] = {
-        "session_id": session_id,
-        "status": "takeover",
-        "keywords": ["takeover-test"],
-        "locations": [],
-        "remote_only": False,
-        "salary_min": None,
-        "resume_text_snippet": "",
-        "linkedin_url": None,
-        "applications_submitted": 0,
-        "applications_failed": 0,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-    if body.url:
-        test_url = body.url
-    else:
-        test_html = """
-        <html>
-          <head>
-            <title>Takeover Smoke Test</title>
-          </head>
-          <body style="margin:0;font-family:ui-sans-serif,system-ui,sans-serif;background:#f4f7fb;color:#111827">
-            <div style="padding:32px">
-              <h1 style="margin:0 0 12px;font-size:32px">Takeover Smoke Test</h1>
-              <p style="margin:0 0 24px;color:#4b5563">
-                Type into the field and press the button through the UI takeover panel.
-              </p>
-              <div style="display:flex;gap:16px;align-items:center">
-                <input
-                  id="name"
-                  placeholder="Type here"
-                  style="width:360px;height:48px;padding:0 14px;border:1px solid #cbd5e1;border-radius:12px;font-size:18px;background:white"
-                  oninput="document.getElementById('mirror').textContent=this.value"
-                />
-                <button
-                  id="clicker"
-                  style="height:48px;padding:0 22px;border:none;border-radius:12px;background:#2563eb;color:white;font-size:18px;font-weight:600;cursor:pointer"
-                  onclick="window.clicks=(window.clicks||0)+1;document.getElementById('count').textContent=String(window.clicks)"
-                >
-                  Click me
-                </button>
-              </div>
-              <div style="margin-top:28px;display:grid;gap:12px;max-width:560px">
-                <div style="padding:18px;border-radius:16px;background:white;box-shadow:0 8px 30px rgba(15,23,42,0.08)">
-                  <div style="font-size:12px;text-transform:uppercase;color:#64748b">Mirror</div>
-                  <p id="mirror" style="margin:8px 0 0;font-size:24px;min-height:32px"></p>
-                </div>
-                <div style="padding:18px;border-radius:16px;background:white;box-shadow:0 8px 30px rgba(15,23,42,0.08)">
-                  <div style="font-size:12px;text-transform:uppercase;color:#64748b">Click Count</div>
-                  <p id="count" style="margin:8px 0 0;font-size:24px">0</p>
-                </div>
-              </div>
-            </div>
-          </body>
-        </html>
-        """
-        test_url = f"data:text/html;charset=utf-8,{quote(test_html)}"
-    _spawn_background(_run_takeover_test_page(session_id, test_url))
-    return {
-        "session_id": session_id,
-        "message": f"Takeover test started. Open /session/{session_id} to control it.",
-    }
-
-
-async def _run_takeover_test_page(session_id: str, url: str) -> None:
-    """Keep a controllable browser page open long enough for takeover tests."""
-    from backend.browser.manager import BrowserManager, apply_stealth
-    from backend.browser.streaming.screenshot_streamer import ScreenshotStreamer
-    from backend.browser.streaming.takeover_registry import (
-        register_active_page,
-        unregister_active_page,
-    )
-
-    manager: BrowserManager | None = None
-    streamer: ScreenshotStreamer | None = None
-    page: Any = None
-
-    try:
-        manager = BrowserManager()
-        # Use a deterministic Playwright browser here so takeover verification
-        # isn't blocked on local Chrome/CDP startup or profile contention.
-        await manager.start(headless=True)
-
-        _, context = await manager.new_context()
-        page = await context.new_page()
-        await page.set_viewport_size({"width": 1280, "height": 900})
-        register_active_page(session_id, page)
-        await apply_stealth(page)
-
-        streamer = ScreenshotStreamer(session_id=session_id, interval_ms=900, quality=55)
-        await streamer.start(page)
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        await _emit(session_id, "status", {
-            "status": "takeover",
-            "message": "Live takeover page is ready.",
-        })
-
-        for _ in range(180):
-            if page.is_closed():
-                break
-            await asyncio.sleep(1)
-    except Exception as exc:
-        logger.exception("Takeover test page failed for %s", session_id)
-        await _emit(session_id, "error", {"message": f"Takeover test failed: {exc}"})
-    finally:
-        unregister_active_page(session_id, page)
-        if streamer:
-            try:
-                await streamer.stop()
-            except Exception:
-                pass
-        if page and not page.is_closed():
-            await page.close()
-        if manager:
-            await manager.stop()
-        session_registry[session_id]["status"] = "completed"
-
-
-@router.get("/{session_id}/takeover-state")
-async def get_takeover_state(session_id: str):
-    """Return a small live snapshot of the currently controlled page."""
-    page = get_active_page(session_id)
-    if page is None or page.is_closed():
-        return {"available": False}
-
-    try:
-        state = await page.evaluate(
-            """() => ({
-                title: document.title,
-                url: window.location.href,
-                inputValue: document.querySelector('#name')?.value || '',
-                clickCount: document.querySelector('#count')?.textContent || '',
-                mirror: document.querySelector('#mirror')?.textContent || '',
-                viewport: {
-                    width: window.innerWidth,
-                    height: window.innerHeight,
-                },
-                inputRect: (() => {
-                    const el = document.querySelector('#name');
-                    if (!el) return null;
-                    const rect = el.getBoundingClientRect();
-                    return {
-                        left: rect.left,
-                        top: rect.top,
-                        width: rect.width,
-                        height: rect.height,
-                    };
-                })(),
-                buttonRect: (() => {
-                    const el = document.querySelector('#clicker');
-                    if (!el) return null;
-                    const rect = el.getBoundingClientRect();
-                    return {
-                        left: rect.left,
-                        top: rect.top,
-                        width: rect.width,
-                        height: rect.height,
-                    };
-                })(),
-            })"""
-        )
-        return {"available": True, **state}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to inspect takeover page: {exc}")
 
 
 async def _test_apply_single(

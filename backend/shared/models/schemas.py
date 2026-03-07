@@ -20,15 +20,12 @@ class SessionStatus(str, Enum):
     AWAITING_REVIEW = "awaiting_review"
     APPLYING = "applying"
     PAUSED = "paused"
-    TAKEOVER = "takeover"
     COMPLETED = "completed"
     FAILED = "failed"
 
 
 class SteeringMode(str, Enum):
     STATUS = "status"
-    SCREENSHOT = "screenshot"
-    TAKEOVER = "takeover"
 
 
 class ApplicationStatus(str, Enum):

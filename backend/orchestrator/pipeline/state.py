@@ -92,7 +92,7 @@ class JobHunterState(TypedDict):
     # can each set status without conflicting.
     status: Annotated[str, _last_value]
     human_messages: Annotated[List[str], operator.add]
-    steering_mode: Literal["status", "screenshot", "takeover"]
+    steering_mode: Literal["status"]
     steering_messages_processed: int
     pending_supervisor_response: Optional[str]
     pending_supervisor_directives: List[Dict[str, Any]]

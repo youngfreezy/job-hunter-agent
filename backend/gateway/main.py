@@ -149,14 +149,11 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.payments import router as payments_router
     from backend.gateway.routes.selectors import router as selectors_router
     from backend.gateway.routes.sessions import router as sessions_router
-    from backend.gateway.routes.ws import router as ws_router
-
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
     app.include_router(payments_router)
     app.include_router(selectors_router)
-    app.include_router(ws_router)
 
     return app
 

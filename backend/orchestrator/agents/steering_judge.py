@@ -32,7 +32,7 @@ class SteeringDirective(BaseModel):
         "confirm_login",
         "set_mode",
     ] = "none"
-    mode: Literal["status", "screenshot", "takeover"] | None = None
+    mode: Literal["status"] | None = None
     reason: str = ""
 
 
