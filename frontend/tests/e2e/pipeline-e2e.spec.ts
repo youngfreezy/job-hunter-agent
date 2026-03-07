@@ -22,7 +22,10 @@ const RESUME_TEXT =
   "- PostgreSQL, Redis\n- CI/CD pipelines\n\nEducation:\nBS Computer Science, UC Berkeley";
 
 // Helper: create a resume file and fill wizard to create a session
-async function createSessionViaWizard(page: Page, resumeFilePath: string): Promise<string> {
+async function createSessionViaWizard(
+  page: Page,
+  resumeFilePath: string
+): Promise<string> {
   await page.goto("/session/new");
   await expect(
     page.getByRole("heading", { name: "New Session" })
@@ -88,13 +91,21 @@ test.describe("Full Pipeline E2E", () => {
   let resumeFilePath: string;
 
   test.beforeAll(() => {
-    resumeFilePath = path.join(__dirname, "fixtures", "test-resume-pipeline.txt");
+    resumeFilePath = path.join(
+      __dirname,
+      "fixtures",
+      "test-resume-pipeline.txt"
+    );
     fs.mkdirSync(path.dirname(resumeFilePath), { recursive: true });
     fs.writeFileSync(resumeFilePath, RESUME_TEXT);
   });
 
   test.afterAll(() => {
-    try { fs.unlinkSync(resumeFilePath); } catch { /* ignore */ }
+    try {
+      fs.unlinkSync(resumeFilePath);
+    } catch {
+      /* ignore */
+    }
   });
 
   test.beforeEach(async ({ page, request }) => {
@@ -117,7 +128,9 @@ test.describe("Full Pipeline E2E", () => {
     });
 
     // Verify SSE events start streaming (message from backend status event)
-    await expect(page.getByText("Starting your job hunt session...")).toBeVisible({
+    await expect(
+      page.getByText("Starting your job hunt session...")
+    ).toBeVisible({
       timeout: 10_000,
     });
 
@@ -173,7 +186,9 @@ test.describe("Full Pipeline E2E", () => {
     await expect(dialog).not.toBeVisible({ timeout: 10_000 });
 
     // Status should advance past coaching
-    await expect(page.getByText(/discover|search|finding/i).first()).toBeVisible({
+    await expect(
+      page.getByText(/discover|search|finding/i).first()
+    ).toBeVisible({
       timeout: 30_000,
     });
 

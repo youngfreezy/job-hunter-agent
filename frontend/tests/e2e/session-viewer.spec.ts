@@ -72,9 +72,7 @@ test.describe("Live Session Viewer", () => {
     await expect(page.getByText("JobHunter Agent").first()).toBeVisible();
 
     // Should show session status badge — STATUS_LABELS["discovering"] = "Finding Jobs"
-    await expect(
-      page.getByText("Finding Jobs").first()
-    ).toBeVisible();
+    await expect(page.getByText("Finding Jobs").first()).toBeVisible();
   });
 
   test("shows pipeline progress steps", async ({ page }) => {

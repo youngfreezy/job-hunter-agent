@@ -32,6 +32,7 @@ import {
   getSession,
   connectSSE,
   sendSteer,
+  sendCoachChat,
   submitReview,
   submitCoachReview,
   resumeIntervention,
@@ -72,6 +73,7 @@ type SessionData = {
     error_message?: string;
   }>;
   coach_output?: CoachOutput;
+  coach_chat_history?: Array<{ role: string; text: string }>;
   linkedin_url?: string;
   steering_mode: string;
   applications_used: number;
@@ -336,6 +338,20 @@ export default function SessionPage() {
         if (s.status === "awaiting_coach_review" && s.coach_output) {
           setCoachReviewData(s.coach_output as unknown as CoachOutput);
           setCoachReviewOpen(true);
+          if (
+            Array.isArray(s.coach_chat_history) &&
+            s.coach_chat_history.length > 0
+          ) {
+            setChatMessages(
+              s.coach_chat_history.map((entry) => ({
+                role:
+                  entry.role === "assistant"
+                    ? "agent"
+                    : (entry.role as ChatMessage["role"]),
+                text: entry.text,
+              }))
+            );
+          }
         }
         if (
           s.status === "awaiting_review" &&
@@ -427,7 +443,9 @@ export default function SessionPage() {
             Notification.requestPermission().then((perm) => {
               if (perm === "granted") {
                 new Notification("Verification Code Required", {
-                  body: evt.message as string || "Check your email for a verification code and enter it in the browser window.",
+                  body:
+                    (evt.message as string) ||
+                    "Check your email for a verification code and enter it in the browser window.",
                   icon: "/favicon.ico",
                 });
               }
@@ -440,8 +458,14 @@ export default function SessionPage() {
           const fail = typeof evt.failed === "number" ? evt.failed : 0;
           const skip = typeof evt.skipped === "number" ? evt.skipped : 0;
           updates.applications_used = sub + fail + skip;
-          updates.applications_submitted = Array(sub).fill({ job_id: "", status: "submitted" });
-          updates.applications_failed = Array(fail).fill({ job_id: "", error_message: "" });
+          updates.applications_submitted = Array(sub).fill({
+            job_id: "",
+            status: "submitted",
+          });
+          updates.applications_failed = Array(fail).fill({
+            job_id: "",
+            error_message: "",
+          });
           updates.applications_skipped = skip;
         }
         return { ...prev, ...updates };
@@ -482,6 +506,25 @@ export default function SessionPage() {
 
       if (evt.event === "coach_review" && evt.coach_output) {
         setCoachReviewData(evt.coach_output as unknown as CoachOutput);
+        const history = (evt.data?.coach_chat_history ||
+          (
+            evt as unknown as {
+              coach_chat_history?: Array<{ role: string; text: string }>;
+            }
+          ).coach_chat_history) as
+          | Array<{ role: string; text: string }>
+          | undefined;
+        if (Array.isArray(history) && history.length > 0) {
+          setChatMessages(
+            history.map((entry) => ({
+              role:
+                entry.role === "assistant"
+                  ? "agent"
+                  : (entry.role as ChatMessage["role"]),
+              text: entry.text,
+            }))
+          );
+        }
         if (
           !coachApprovedRef.current &&
           (latestStatusRef.current === "coaching" ||
@@ -672,11 +715,40 @@ export default function SessionPage() {
   const handleSendChat = async (message: string) => {
     const msg = message.trim();
     if (!msg) return;
+    const isCoachChatMode =
+      coachReviewOpen || latestStatusRef.current === "awaiting_coach_review";
 
     setChatMessages((prev) => [...prev, { role: "user", text: msg }]);
 
     try {
-      const response = await sendSteer(sessionId, { message: msg, mode: "status" });
+      if (isCoachChatMode) {
+        const response = await sendCoachChat(sessionId, { message: msg });
+        if (response.coach_output) {
+          setCoachReviewData(response.coach_output);
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  coach_output: response.coach_output,
+                  coach_chat_history: response.coach_chat_history,
+                }
+              : prev
+          );
+          setCoachReviewOpen(true);
+        }
+        if (response.message) {
+          setChatMessages((prev) => [
+            ...prev,
+            { role: "agent", text: response.message },
+          ]);
+        }
+        return;
+      }
+
+      const response = await sendSteer(sessionId, {
+        message: msg,
+        mode: "status",
+      });
       if (response.message) {
         setChatMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -1216,11 +1288,14 @@ export default function SessionPage() {
                         >
                           {AGENT_DISPLAY_NAMES[label] || label}
                         </span>
-                        <span className={`text-sm flex-1 min-w-0 break-words ${
-                          typeof evt.step === 'string' && evt.step.startsWith('Skipped')
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-foreground/80'
-                        }`}>
+                        <span
+                          className={`text-sm flex-1 min-w-0 break-words ${
+                            typeof evt.step === "string" &&
+                            evt.step.startsWith("Skipped")
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-foreground/80"
+                          }`}
+                        >
                           {evt.step}
                         </span>
                         {pct !== undefined && pct >= 0 && (
@@ -1332,10 +1407,28 @@ export default function SessionPage() {
               </div>
               <div className="grid grid-cols-2 gap-2 w-full pt-1">
                 {[
-                  { value: session.applications_used ?? 0, label: "Applied", color: "text-blue-600 dark:text-blue-400" },
-                  { value: session.applications_submitted?.length ?? 0, label: "Submitted", color: "text-emerald-600 dark:text-emerald-400" },
-                  { value: session.applications_failed?.length ?? 0, label: "Failed", color: "text-red-500" },
-                  { value: Array.isArray(session.applications_skipped) ? session.applications_skipped.length : session.applications_skipped ?? 0, label: "Skipped", color: "text-amber-600 dark:text-amber-400" },
+                  {
+                    value: session.applications_used ?? 0,
+                    label: "Applied",
+                    color: "text-blue-600 dark:text-blue-400",
+                  },
+                  {
+                    value: session.applications_submitted?.length ?? 0,
+                    label: "Submitted",
+                    color: "text-emerald-600 dark:text-emerald-400",
+                  },
+                  {
+                    value: session.applications_failed?.length ?? 0,
+                    label: "Failed",
+                    color: "text-red-500",
+                  },
+                  {
+                    value: Array.isArray(session.applications_skipped)
+                      ? session.applications_skipped.length
+                      : session.applications_skipped ?? 0,
+                    label: "Skipped",
+                    color: "text-amber-600 dark:text-amber-400",
+                  },
                 ].map(({ value, label, color }) => (
                   <a
                     key={label}
@@ -1361,7 +1454,12 @@ export default function SessionPage() {
                 messages={chatMessages}
                 onSend={handleSendChat}
                 disabled={!isActive}
-                placeholder="Ask the agent to adjust..."
+                placeholder={
+                  coachReviewOpen ||
+                  latestStatusRef.current === "awaiting_coach_review"
+                    ? "Ask the coach to revise your resume or strategy..."
+                    : "Ask the agent to adjust..."
+                }
               />
             </CardContent>
           </Card>
@@ -1908,16 +2006,20 @@ export default function SessionPage() {
 
       {/* Pre-login modal */}
       <Dialog open={!!loginPrompt} onOpenChange={() => {}}>
-        <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent
+          className="sm:max-w-md"
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
-            <DialogTitle>Log in to {loginPrompt?.board?.replace(/^\w/, c => c.toUpperCase())}</DialogTitle>
-            <DialogDescription>
-              {loginPrompt?.message}
-            </DialogDescription>
+            <DialogTitle>
+              Log in to{" "}
+              {loginPrompt?.board?.replace(/^\w/, (c) => c.toUpperCase())}
+            </DialogTitle>
+            <DialogDescription>{loginPrompt?.message}</DialogDescription>
           </DialogHeader>
           <div className="bg-muted/50 rounded p-3 text-sm text-muted-foreground">
-            A browser window has opened with the login page.
-            Log in with your account, then click the button below to continue.
+            A browser window has opened with the login page. Log in with your
+            account, then click the button below to continue.
           </div>
           <DialogFooter>
             <Button

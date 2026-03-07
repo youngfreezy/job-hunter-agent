@@ -32,7 +32,11 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
   });
 
   test.afterAll(() => {
-    try { fs.unlinkSync(resumeFilePath); } catch { /* ignore */ }
+    try {
+      fs.unlinkSync(resumeFilePath);
+    } catch {
+      /* ignore */
+    }
   });
 
   test.beforeEach(async ({ page, request }) => {
@@ -111,15 +115,21 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await expect(page.getByText("Live Status")).toBeVisible();
 
     // Verify keywords appear in sidebar (as individual badges)
-    await expect(page.getByText("React").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("React").first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Verify SSE events are streaming
-    await expect(page.getByText("Pipeline started")).toBeVisible({
+    await expect(
+      page.getByText("Starting your job hunt session...")
+    ).toBeVisible({
       timeout: 10_000,
     });
 
     // Wait for coaching to start — STEP_LABELS shows "Coach"
-    await expect(page.getByText("Coach").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Coach").first()).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("session page refresh preserves keywords and replays events", async ({
@@ -150,10 +160,14 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.waitForTimeout(2000);
 
     // Verify keywords from registry/checkpointer (individual badges)
-    await expect(page.getByText("TypeScript").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("TypeScript").first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Verify replayed SSE events
-    await expect(page.getByText("Pipeline started")).toBeVisible({
+    await expect(
+      page.getByText("Starting your job hunt session...")
+    ).toBeVisible({
       timeout: 10_000,
     });
 
@@ -162,10 +176,14 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.waitForTimeout(2000);
 
     // Keywords should still be visible after refresh
-    await expect(page.getByText("TypeScript").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("TypeScript").first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Events should be replayed
-    await expect(page.getByText("Pipeline started")).toBeVisible({
+    await expect(
+      page.getByText("Starting your job hunt session...")
+    ).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -192,7 +210,7 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.waitForTimeout(2000);
 
     // Should show the session keywords
-    await expect(page.getByText("Dashboard Test")).toBeVisible({
+    await expect(page.getByText("Dashboard Test").first()).toBeVisible({
       timeout: 10_000,
     });
   });

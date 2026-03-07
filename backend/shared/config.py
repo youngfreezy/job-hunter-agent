@@ -21,7 +21,16 @@ class Settings(BaseSettings):
     """
 
     # --- LLM ---
-    ANTHROPIC_API_KEY: str
+    LLM_PROVIDER: str = "openai"  # "openai" or "anthropic"
+    OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    OPENAI_DEFAULT_MODEL: str = "gpt-5-mini"
+    OPENAI_PREMIUM_MODEL: str = "gpt-5"
+    OPENAI_BROWSER_MODEL: str = "gpt-5-mini"
+    ANTHROPIC_DEFAULT_MODEL: str = "claude-sonnet-4-6"
+    ANTHROPIC_PREMIUM_MODEL: str = "claude-opus-4-6"
+    ANTHROPIC_LIGHT_MODEL: str = "claude-haiku-4-5-20251001"
+    ANTHROPIC_BROWSER_MODEL: str = "claude-sonnet-4-5"
 
     # --- Postgres ---
     DATABASE_URL: str = (
@@ -62,7 +71,10 @@ class Settings(BaseSettings):
     BROWSER_MODE: str = "cdp"  # "cdp" (real Chrome) or "patchright" (built-in Chromium)
 
     model_config = {
-        "env_file": str(_PROJECT_ROOT / ".env"),
+        "env_file": (
+            str(_PROJECT_ROOT / ".env"),
+            str(_PROJECT_ROOT / ".env.local"),
+        ),
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

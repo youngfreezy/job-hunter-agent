@@ -13,8 +13,8 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import signal
 import subprocess
-import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
@@ -91,6 +91,7 @@ class BrowserManager:
         self._contexts: Dict[str, BrowserContext] = {}
         self._running: bool = False
         self._chrome_process: Optional[subprocess.Popen] = None
+        self._launched_chrome: bool = False
         self._mode: str = "patchright"  # "patchright" or "cdp"
 
     # ------------------------------------------------------------------
@@ -138,79 +139,38 @@ class BrowserManager:
             await self.start(headless=headless)
             return
 
-        # Ensure persistent profile directory exists
-        _CHROME_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-
-        # Launch Chrome with remote debugging
-        chrome_args = [
-            chrome_path,
-            f"--remote-debugging-port={_CDP_PORT}",
-            f"--user-data-dir={_CHROME_PROFILE_DIR}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-background-timer-throttling",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-renderer-backgrounding",
-            "--disable-hang-monitor",
-            "--disable-popup-blocking",
-            "--disable-infobars",
-            "--window-size=1920,1080",
-        ]
-        if headless:
-            chrome_args.append("--headless=new")
-
-        logger.info("Launching Chrome CDP: %s (port=%d, profile=%s)", chrome_path, _CDP_PORT, _CHROME_PROFILE_DIR)
-
-        try:
-            self._chrome_process = subprocess.Popen(
-                chrome_args,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception as exc:
-            logger.warning("Failed to launch Chrome (%s) — falling back to Patchright", exc)
-            await self.start(headless=headless)
-            return
-
-        # Wait for Chrome to start accepting CDP connections
-        import asyncio
-        import aiohttp
-
         cdp_url = f"http://127.0.0.1:{_CDP_PORT}"
-        for attempt in range(15):
-            try:
-                async with aiohttp.ClientSession() as http:
-                    async with http.get(f"{cdp_url}/json/version", timeout=aiohttp.ClientTimeout(total=2)) as resp:
-                        if resp.status == 200:
-                            version_info = await resp.json()
-                            logger.info("Chrome CDP ready: %s", version_info.get("Browser", "unknown"))
-                            break
-            except Exception:
-                pass
-            await asyncio.sleep(1)
+        version_info = await self._wait_for_cdp_endpoint(cdp_url, attempts=3, sleep_seconds=1)
+        if version_info:
+            logger.info("Reusing existing Chrome CDP endpoint: %s", version_info.get("Browser", "unknown"))
         else:
-            logger.warning("Chrome CDP didn't respond after 15s — falling back to Patchright")
-            self._kill_chrome()
+            version_info = await self._launch_chrome_for_cdp(chrome_path, cdp_url, headless=headless)
+            if not version_info:
+                await self.start(headless=headless)
+                return
+
+        connect_error = await self._connect_to_cdp_browser(cdp_url)
+        if connect_error is None:
+            return
+
+        logger.warning("CDP connection failed (%s) — attempting clean Chrome restart", connect_error)
+        await self._reset_cdp_listener()
+
+        version_info = await self._launch_chrome_for_cdp(chrome_path, cdp_url, headless=headless)
+        if not version_info:
             await self.start(headless=headless)
             return
 
-        # Connect Playwright to Chrome via CDP
-        self._playwright = await async_playwright().start()
-        try:
-            self._browser = await self._playwright.chromium.connect_over_cdp(
-                cdp_url,
-                timeout=15_000,
-            )
-            self._running = True
-            self._mode = "cdp"
-            logger.info("Connected to Chrome via CDP (contexts=%d)", len(self._browser.contexts))
-        except Exception as exc:
-            logger.warning("CDP connection failed (%s) — falling back to Patchright", exc)
-            self._kill_chrome()
-            if self._playwright:
-                await self._playwright.stop()
-                self._playwright = None
-            await self.start(headless=headless)
+        connect_error = await self._connect_to_cdp_browser(cdp_url)
+        if connect_error is None:
+            return
+
+        logger.warning("CDP connection failed after clean restart (%s) — falling back to Patchright", connect_error)
+        self._kill_chrome()
+        if self._playwright:
+            await self._playwright.stop()
+            self._playwright = None
+        await self.start(headless=headless)
 
     def _kill_chrome(self) -> None:
         """Terminate the Chrome process we launched."""
@@ -224,6 +184,7 @@ class BrowserManager:
                 except Exception:
                     pass
             self._chrome_process = None
+        self._launched_chrome = False
 
     async def stop(self) -> None:
         """Gracefully shut down all contexts and the browser process."""
@@ -247,8 +208,12 @@ class BrowserManager:
             await self._playwright.stop()
             self._playwright = None
 
-        # Kill Chrome process if we launched it
-        self._kill_chrome()
+        # Keep an existing Chrome debugger alive across runs to preserve session
+        # state and avoid repeated profile/port contention on ATS flows.
+        if self._launched_chrome:
+            logger.info("Leaving launched Chrome CDP process running on port %d for reuse", _CDP_PORT)
+            self._chrome_process = None
+            self._launched_chrome = False
 
         self._running = False
         logger.info("BrowserManager stopped")
@@ -355,6 +320,137 @@ class BrowserManager:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def _wait_for_cdp_endpoint(
+        self,
+        cdp_url: str,
+        attempts: int,
+        sleep_seconds: int,
+    ) -> Optional[dict[str, Any]]:
+        import asyncio
+        import aiohttp
+
+        for _ in range(attempts):
+            try:
+                async with aiohttp.ClientSession() as http:
+                    async with http.get(
+                        f"{cdp_url}/json/version",
+                        timeout=aiohttp.ClientTimeout(total=2),
+                    ) as resp:
+                        if resp.status == 200:
+                            return await resp.json()
+            except Exception:
+                pass
+            await asyncio.sleep(sleep_seconds)
+        return None
+
+    async def _launch_chrome_for_cdp(
+        self,
+        chrome_path: str,
+        cdp_url: str,
+        headless: bool,
+    ) -> Optional[dict[str, Any]]:
+        _CHROME_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+
+        chrome_args = [
+            chrome_path,
+            f"--remote-debugging-port={_CDP_PORT}",
+            f"--user-data-dir={_CHROME_PROFILE_DIR}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-hang-monitor",
+            "--disable-popup-blocking",
+            "--disable-infobars",
+            "--window-size=1920,1080",
+        ]
+        if headless:
+            chrome_args.append("--headless=new")
+
+        logger.info(
+            "Launching Chrome CDP: %s (port=%d, profile=%s)",
+            chrome_path,
+            _CDP_PORT,
+            _CHROME_PROFILE_DIR,
+        )
+
+        try:
+            self._chrome_process = subprocess.Popen(
+                chrome_args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self._launched_chrome = True
+        except Exception as exc:
+            logger.warning("Failed to launch Chrome (%s) — falling back to Patchright", exc)
+            return None
+
+        version_info = await self._wait_for_cdp_endpoint(cdp_url, attempts=20, sleep_seconds=1)
+        if not version_info:
+            logger.warning("Chrome CDP didn't respond after launch — falling back to Patchright")
+            self._kill_chrome()
+            return None
+
+        logger.info("Chrome CDP ready: %s", version_info.get("Browser", "unknown"))
+        return version_info
+
+    async def _connect_to_cdp_browser(self, cdp_url: str) -> Optional[Exception]:
+        if self._playwright:
+            try:
+                await self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = None
+
+        self._playwright = await async_playwright().start()
+        try:
+            self._browser = await self._playwright.chromium.connect_over_cdp(
+                cdp_url,
+                timeout=45_000,
+            )
+            self._running = True
+            self._mode = "cdp"
+            logger.info("Connected to Chrome via CDP (contexts=%d)", len(self._browser.contexts))
+            return None
+        except Exception as exc:
+            if self._playwright:
+                await self._playwright.stop()
+                self._playwright = None
+            return exc
+
+    async def _reset_cdp_listener(self) -> None:
+        self._kill_chrome()
+        for pid in self._find_cdp_listener_pids():
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                continue
+            except Exception:
+                logger.debug("Failed to terminate CDP listener pid=%s", pid, exc_info=True)
+
+    def _find_cdp_listener_pids(self) -> list[int]:
+        try:
+            result = subprocess.run(
+                ["lsof", "-ti", f"tcp:{_CDP_PORT}"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception:
+            return []
+
+        pids: list[int] = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                pids.append(int(line))
+            except ValueError:
+                continue
+        return pids
 
     async def new_stealth_page(
         self,

@@ -11,8 +11,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
+from backend.shared.llm import build_browser_use_llm
 from backend.shared.models.schemas import ApplicationResult, ApplicationStatus, JobListing
 
 logger = logging.getLogger(__name__)
@@ -77,10 +77,9 @@ async def apply_with_browser_use(
     2-5 s cold-start per call).  If *None*, a fresh instance is created and
     cleaned up after use.
     """
-    from browser_use import Agent, Browser, ChatAnthropic, ActionResult, Tools
+    from browser_use import Agent, Browser, ActionResult, Tools
 
     start_time = time.monotonic()
-    settings = get_settings()
 
     task = _build_task_prompt(job, resume_text, cover_letter, user_profile)
 
@@ -111,11 +110,7 @@ async def apply_with_browser_use(
             except Exception as e:
                 return ActionResult(error=f"Resume upload failed: {e}")
 
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-5",
-        api_key=settings.ANTHROPIC_API_KEY,
-        max_tokens=8192,
-    )
+    llm = build_browser_use_llm(max_tokens=8192, temperature=0.0)
     # Step callback for SSE progress
     step_count = 0
 

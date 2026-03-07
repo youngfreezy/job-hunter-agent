@@ -4,7 +4,7 @@ Analyses the user's resume, rewrites it like a salesperson pitching their best
 client, coaches away impostor-syndrome language, drafts a master cover letter
 template, offers LinkedIn advice, and scores the resume on five dimensions.
 
-Uses the Anthropic SDK directly (not LangChain) for streaming so we can emit
+Uses the shared chat-model abstraction for streaming so we can emit
 real-time progress events to the frontend via SSE.
 """
 
@@ -14,11 +14,11 @@ import json
 import logging
 from typing import Any, Dict
 
-import anthropic
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.orchestrator.pipeline.state import JobHunterState
-from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
+from backend.shared.llm import build_llm, premium_model
 from backend.shared.models.schemas import CoachOutput, ResumeScore
 
 logger = logging.getLogger(__name__)
@@ -118,16 +118,17 @@ _PROGRESS_KEYS = [
 async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
     """Analyse resume, rewrite it, coach the user, and score the original.
 
-    Uses Anthropic SDK streaming to emit real-time progress events so
+    Uses chat-model streaming to emit real-time progress events so
     the user sees what the coach is working on instead of a blank wait.
     """
     session_id = state.get("session_id", "")
 
     try:
-        settings = get_settings()
-        client = anthropic.AsyncAnthropic(
-            api_key=settings.ANTHROPIC_API_KEY,
-            max_retries=5,
+        llm = build_llm(
+            model=premium_model(),
+            max_tokens=6000,
+            temperature=0.0,
+            timeout=180,
         )
 
         # -- Build user message from state ----------------------------------
@@ -174,26 +175,32 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
         seen_keys: set[str] = set()
         char_count = 0
 
-        async with client.messages.stream(
-            model="claude-sonnet-4-6",
-            max_tokens=6000,
-            temperature=0,
-            system=COACH_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        ) as stream:
-            async for text in stream.text_stream:
-                raw_json += text
-                char_count += len(text)
+        messages = [
+            SystemMessage(content=COACH_SYSTEM_PROMPT),
+            HumanMessage(content=user_message),
+        ]
 
-                # Detect progress milestones as JSON keys appear in the stream
-                for key, message in _PROGRESS_KEYS:
-                    if key not in seen_keys and f'"{key}"' in raw_json:
-                        seen_keys.add(key)
-                        progress = int((len(seen_keys) / len(_PROGRESS_KEYS)) * 100)
-                        await emit_agent_event(session_id, "coaching_progress", {
-                            "step": message,
-                            "progress": progress,
-                        })
+        async for chunk in llm.astream(messages):
+            text = chunk.content
+            if isinstance(text, list):
+                text = "".join(
+                    block if isinstance(block, str) else block.get("text", "")
+                    for block in text
+                )
+            if not text:
+                continue
+            raw_json += text
+            char_count += len(text)
+
+            # Detect progress milestones as JSON keys appear in the stream
+            for key, message in _PROGRESS_KEYS:
+                if key not in seen_keys and f'"{key}"' in raw_json:
+                    seen_keys.add(key)
+                    progress = int((len(seen_keys) / len(_PROGRESS_KEYS)) * 100)
+                    await emit_agent_event(session_id, "coaching_progress", {
+                        "step": message,
+                        "progress": progress,
+                    })
 
         await emit_agent_event(session_id, "coaching_progress", {
             "step": "Putting the finishing touches on your coaching report...",

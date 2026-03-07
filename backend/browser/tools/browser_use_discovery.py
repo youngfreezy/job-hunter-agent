@@ -16,8 +16,8 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 from pydantic import BaseModel, Field
 
-from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
+from backend.shared.llm import build_browser_use_llm
 from backend.shared.selector_memory import get_top_selectors, record_success
 from backend.shared.models.schemas import (
     ATSType,
@@ -306,9 +306,7 @@ async def discover_all_boards(
     max_per_board: int = 20,
 ) -> List[JobListing]:
     """Run one browser-use agent that searches all boards sequentially."""
-    from browser_use import Agent, Browser, ChatAnthropic
-
-    settings = get_settings()
+    from browser_use import Agent, Browser
 
     # Reorder boards: reliable first, glassdoor last (heavy CDP timeouts)
     priority = ["linkedin", "ziprecruiter", "indeed", "glassdoor"]
@@ -316,12 +314,7 @@ async def discover_all_boards(
 
     task = _build_unified_prompt(boards, search_config, max_per_board)
 
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-5",
-        api_key=settings.ANTHROPIC_API_KEY,
-        max_tokens=8192,
-        temperature=0.0,
-    )
+    llm = build_browser_use_llm(max_tokens=8192, temperature=0.0)
 
     browser = Browser(
         headless=False,

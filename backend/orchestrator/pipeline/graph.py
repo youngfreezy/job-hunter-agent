@@ -30,6 +30,7 @@ from backend.orchestrator.agents import (
     resume_tailor,
     scoring,
     verification,
+    workflow_supervisor,
 )
 from backend.orchestrator.pipeline.state import JobHunterState
 
@@ -112,6 +113,11 @@ async def discovery_node(state: JobHunterState) -> dict:
     """Scrape all job boards sequentially with a single browser process."""
     logger.info("Discovery node invoked — scraping all boards sequentially")
     return await discovery.run(state)
+
+
+async def workflow_supervisor_node(state: JobHunterState) -> dict:
+    """Apply any pending steering judgment inside the graph."""
+    return await workflow_supervisor.run_workflow_supervisor(state)
 
 
 # ---------------------------------------------------------------------------
@@ -285,13 +291,21 @@ def build_graph(checkpointer=None):
     # ---- Register nodes ----
     g.add_node("intake", intake_node)
     g.add_node("career_coach", career_coach_node)
+    g.add_node("supervise_after_intake", workflow_supervisor_node)
     g.add_node("coach_review", coach_review_gate)
+    g.add_node("supervise_after_coach_review", workflow_supervisor_node)
     g.add_node("discovery", discovery_node)
+    g.add_node("supervise_after_discovery", workflow_supervisor_node)
     g.add_node("scoring", scoring_node)
+    g.add_node("supervise_after_scoring", workflow_supervisor_node)
     g.add_node("resume_tailor", resume_tailor_node)
+    g.add_node("supervise_after_tailor", workflow_supervisor_node)
     g.add_node("shortlist_review", shortlist_review_gate)
+    g.add_node("supervise_after_shortlist", workflow_supervisor_node)
     g.add_node("application", application_node)
+    g.add_node("supervise_after_application", workflow_supervisor_node)
     g.add_node("verification", verification_node)
+    g.add_node("supervise_after_verification", workflow_supervisor_node)
     g.add_node("reporting", reporting_node)
 
     # ---- Edges ----
@@ -300,37 +314,43 @@ def build_graph(checkpointer=None):
     g.add_edge(START, "intake")
 
     # 2. intake -> career_coach
-    g.add_edge("intake", "career_coach")
+    g.add_edge("intake", "supervise_after_intake")
+    g.add_edge("supervise_after_intake", "career_coach")
 
     # 3. career_coach -> HITL gate (coach review)
     g.add_edge("career_coach", "coach_review")
 
     # 4. coach_review -> discovery (single node, sequential scraping)
-    g.add_edge("coach_review", "discovery")
+    g.add_edge("coach_review", "supervise_after_coach_review")
+    g.add_edge("supervise_after_coach_review", "discovery")
 
     # 5. discovery -> scoring (conditional in case 0 results)
     g.add_conditional_edges(
-        "discovery",
+        "supervise_after_discovery",
         route_after_discovery,
         {"scoring": "scoring", "reporting": "reporting"},
     )
+    g.add_edge("discovery", "supervise_after_discovery")
 
     # 6. scoring -> resume_tailor (conditional in case 0 scored)
     g.add_conditional_edges(
-        "scoring",
+        "supervise_after_scoring",
         route_after_scoring,
         {"resume_tailor": "resume_tailor", "reporting": "reporting"},
     )
+    g.add_edge("scoring", "supervise_after_scoring")
 
     # 7. resume_tailor -> HITL gate (shortlist review)
-    g.add_edge("resume_tailor", "shortlist_review")
+    g.add_edge("resume_tailor", "supervise_after_tailor")
+    g.add_edge("supervise_after_tailor", "shortlist_review")
 
     # 8. shortlist_review -> first application
-    g.add_edge("shortlist_review", "application")
+    g.add_edge("shortlist_review", "supervise_after_shortlist")
+    g.add_edge("supervise_after_shortlist", "application")
 
     # 9. application loop with circuit breaker (retries go back to HITL gate)
     g.add_conditional_edges(
-        "application",
+        "supervise_after_application",
         route_after_application,
         {
             "application": "application",
@@ -338,9 +358,11 @@ def build_graph(checkpointer=None):
             "shortlist_review": "shortlist_review",
         },
     )
+    g.add_edge("application", "supervise_after_application")
 
     # 10. verification -> reporting
-    g.add_edge("verification", "reporting")
+    g.add_edge("verification", "supervise_after_verification")
+    g.add_edge("supervise_after_verification", "reporting")
 
     # 11. reporting -> END
     g.add_edge("reporting", END)

@@ -61,6 +61,7 @@ class JobHunterState(TypedDict):
     coach_output: Optional[CoachOutput]
     coached_resume: Optional[str]  # The rewritten resume text
     cover_letter_template: Optional[str]
+    coach_chat_history: Annotated[List[Dict[str, str]], operator.add]
 
     # --- Discovery results (fan-out: each board appends) ---
     discovered_jobs: Annotated[List[JobListing], operator.add]
@@ -92,6 +93,9 @@ class JobHunterState(TypedDict):
     status: Annotated[str, _last_value]
     human_messages: Annotated[List[str], operator.add]
     steering_mode: Literal["status", "screenshot", "takeover"]
+    steering_messages_processed: int
+    pending_supervisor_response: Optional[str]
+    pending_supervisor_directives: List[Dict[str, Any]]
 
     # --- LangGraph messages ---
     messages: Annotated[List[BaseMessage], add_messages]

@@ -12,8 +12,8 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
-from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
+from backend.shared.llm import build_browser_use_llm
 
 logger = logging.getLogger(__name__)
 
@@ -243,9 +243,7 @@ async def update_linkedin_profile(
     -------
     Dict with results per section.
     """
-    from browser_use import Agent, Browser, ChatAnthropic
-
-    settings = get_settings()
+    from browser_use import Agent, Browser
     start_time = time.monotonic()
     results: List[Dict[str, Any]] = []
 
@@ -295,11 +293,7 @@ async def update_linkedin_profile(
         })
 
         # Initialize the LLM for profile editing
-        llm = ChatAnthropic(
-            model="claude-sonnet-4-5",
-            api_key=settings.ANTHROPIC_API_KEY,
-            max_tokens=4096,
-        )
+        llm = build_browser_use_llm(max_tokens=4096, temperature=0.0)
 
         await emit_agent_event(session_id, "linkedin_update_progress", {
             "step": "Starting profile updates...",

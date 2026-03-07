@@ -22,9 +22,7 @@ export default function Loading() {
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
               <div key={i} className="flex items-center flex-1">
                 <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
-                {i < 10 && (
-                  <div className="flex-1 h-0.5 mx-2 bg-muted" />
-                )}
+                {i < 10 && <div className="flex-1 h-0.5 mx-2 bg-muted" />}
               </div>
             ))}
           </div>
@@ -66,7 +64,10 @@ export default function Loading() {
             {/* Stats pills skeleton */}
             <div className="grid grid-cols-2 gap-2">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
+                <div
+                  key={i}
+                  className="h-16 bg-muted rounded-lg animate-pulse"
+                />
               ))}
             </div>
           </div>

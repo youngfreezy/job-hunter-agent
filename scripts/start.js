@@ -16,11 +16,14 @@
  */
 
 const { execSync, spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const BACKEND = path.join(ROOT, "backend");
 const FRONTEND = path.join(ROOT, "frontend");
+const RUNTIME = path.join(ROOT, ".runtime");
+const PID_FILE = path.join(RUNTIME, "launcher.pid");
 const SKIP_DOCKER = process.argv.includes("--no-docker");
 
 // ── colour helpers ────────────────────────────────────────────────────────────
@@ -46,6 +49,44 @@ const log = (prefix, line) => console.log(`${prefix} ${line}`);
 // ── helpers ───────────────────────────────────────────────────────────────────
 function run(cmd, opts = {}) {
   return execSync(cmd, { stdio: "pipe", ...opts }).toString().trim();
+}
+
+function ensureRuntimeDir() {
+  fs.mkdirSync(RUNTIME, { recursive: true });
+}
+
+function cleanupPidFile() {
+  try {
+    if (fs.existsSync(PID_FILE)) {
+      fs.unlinkSync(PID_FILE);
+    }
+  } catch {}
+}
+
+function ensureSingleInstance() {
+  ensureRuntimeDir();
+  if (!fs.existsSync(PID_FILE)) {
+    fs.writeFileSync(PID_FILE, String(process.pid));
+    return;
+  }
+
+  const existingPid = Number(fs.readFileSync(PID_FILE, "utf8").trim());
+  if (!existingPid || Number.isNaN(existingPid)) {
+    fs.writeFileSync(PID_FILE, String(process.pid));
+    return;
+  }
+
+  try {
+    process.kill(existingPid, 0);
+    throw new Error(
+      `Another launcher instance is already running (pid ${existingPid}). Use scripts/stop-app.sh first.`
+    );
+  } catch (error) {
+    if (error.code !== "ESRCH") {
+      throw error;
+    }
+    fs.writeFileSync(PID_FILE, String(process.pid));
+  }
 }
 
 function isDockerRunning() {
@@ -107,10 +148,35 @@ function shutdown() {
       ch.kill("SIGTERM");
     } catch {}
   });
+  cleanupPidFile();
   setTimeout(() => process.exit(0), 1500);
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+async function waitForHttp200(url, timeoutMs = 60_000, label = url) {
+  await waitFor(
+    label,
+    async () => {
+      try {
+        const response = await fetch(url);
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    1000,
+    timeoutMs
+  );
+}
+
+function openBrowser(url) {
+  try {
+    run(`open ${JSON.stringify(url)}`);
+  } catch (error) {
+    log(SYS_TAG, `Could not auto-open browser: ${error.message.split("\n")[0]}`);
+  }
+}
 
 // ── find python venv ──────────────────────────────────────────────────────────
 function findPython() {
@@ -148,6 +214,7 @@ function findNpmCommand() {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 (async () => {
+  ensureSingleInstance();
   console.log(
     `\n${c.bold}${c.cyan}  ╔═══════════════════════════════════════╗${c.reset}`
   );
@@ -258,7 +325,7 @@ function findNpmCommand() {
   );
 
   // Wait briefly for backend to bind
-  await new Promise((r) => setTimeout(r, 3000));
+  await waitForHttp200("http://localhost:8000/api/health", 60_000, "backend health");
 
   // 6. Next.js frontend
   log(UI_TAG, "Starting Next.js frontend on :3000…");
@@ -268,8 +335,16 @@ function findNpmCommand() {
     env: { PATH: pathEnv },
   });
 
+  await waitForHttp200("http://localhost:3000", 90_000, "frontend");
+  openBrowser("http://localhost:3000");
+
   log(SYS_TAG, `\n  ${c.bold}All services started.${c.reset}`);
   log(SYS_TAG, `  Backend  → http://localhost:8000/api/health`);
   log(SYS_TAG, `  Frontend → http://localhost:3000`);
+  log(SYS_TAG, `  Runtime  → ${RUNTIME}`);
   log(SYS_TAG, `  Press Ctrl-C to stop everything.\n`);
-})();
+})().catch((error) => {
+  cleanupPidFile();
+  log(SYS_TAG, `${c.red}${error.message}${c.reset}`);
+  process.exit(1);
+});

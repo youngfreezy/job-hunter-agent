@@ -186,7 +186,9 @@ export function TakeoverViewer({
         ) : (
           <div className="flex h-full min-h-[320px] items-center justify-center text-center text-zinc-400">
             <div>
-              <p className="text-lg font-medium">Waiting for a live browser page</p>
+              <p className="text-lg font-medium">
+                Waiting for a live browser page
+              </p>
               <p className="mt-2 text-sm">
                 Start an application or manual intervention flow, then request
                 control here.

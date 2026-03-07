@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Literal, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from backend.shared.llm import build_llm, invoke_with_retry
+from backend.shared.llm import build_llm, default_model, invoke_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -436,7 +436,7 @@ async def analyse_form(
     Uses structured output (tool calling) to guarantee valid JSON responses.
     Returns a list of fill instructions.
     """
-    llm = build_llm(model="claude-sonnet-4-6", max_tokens=4096, temperature=0.0)
+    llm = build_llm(model=default_model(), max_tokens=4096, temperature=0.0)
     structured_llm = llm.with_structured_output(FormAnalysisResult)
 
     user_content = (
@@ -455,7 +455,7 @@ async def analyse_form(
 
     instructions = [instr.model_dump() for instr in result.instructions]
     instructions = _enforce_required_field_fallbacks(fields, instructions)
-    logger.info("Claude produced %d fill instructions", len(instructions))
+    logger.info("LLM produced %d fill instructions", len(instructions))
     return instructions
 
 

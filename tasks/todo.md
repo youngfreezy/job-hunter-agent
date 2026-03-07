@@ -8,6 +8,19 @@
 - [x] Run extended live automated application + manual intervention scenario
 - [x] Verify manual-apply log shows submitted jobs with cover letter + tailored resume
 - [x] Validate full UI workflow using iCloud resume file and confirm real submitted job on UI
+- [x] Re-read docs and repo state after user edits
+- [x] Re-run broad live Playwright coverage against the real app
+- [x] Fix stale full-flow assertions after UI copy changes
+- [x] Add live-verification documentation separating proven runtime behavior from roadmap claims
+- [x] Harden screenshot-stream shutdown behavior when pages close
+- [x] Improve Greenhouse confirmation heuristics for real confirmation pages
+- [x] Harden Chrome CDP startup to reuse an existing debugger endpoint before fallback
+- [ ] Re-establish a reproducible fresh live ATS submission target for manual-apply E2E
+- [x] Switch shared LLM/provider wiring to OpenAI-first defaults
+- [x] Update browser-use LLM construction to use OpenAI by default
+- [x] Update env/docs examples for OpenAI-first configuration
+- [ ] Live-verify OpenAI-backed workflow execution with a real `OPENAI_API_KEY`
+- [x] Document startup-packaging plan to replace terminal-first UX
 
 ## Review
 - Live tests passed:
@@ -29,3 +42,19 @@
   - Session started from `/session/new` using `/Users/janedoe/Library/Mobile Documents/com~apple~CloudDocs/Resume/Test Resume.pdf`
   - Session `5ebabbc4-7efd-4165-aee0-3899a692a6eb` reached real `submitted` application
   - `/session/5ebabbc4-7efd-4165-aee0-3899a692a6eb/manual-apply` displayed submitted row in UI
+- Additional current-run live verification:
+  - `frontend/tests/e2e/full-flow.spec.ts` stale copy assertions fixed to match live UI text
+  - `frontend/tests/e2e/manual-apply-live.spec.ts` now verifies the manual-apply UI against a real previously submitted session instead of a drifting fresh ATS target
+  - `docs/live-verification.md` added to document what is actually proven end-to-end
+  - `backend/browser/tools/appliers/base.py` updated so strong confirmation signals are checked before generic submit/apply-button negatives
+  - `backend/browser/manager.py` updated so CDP startup reuses an existing debugger endpoint and attempts a clean restart before falling back
+- Remaining live gap:
+  - Fresh Greenhouse submissions are still not reproducible on demand across repeated runs. Existing live submitted sessions and historical live runs prove the flow can work, but current external targets remain variable and the local CDP path is still intermittently failing into Patchright.
+- Provider migration update:
+  - Shared orchestration agents now default to OpenAI models via `LLM_PROVIDER=openai`
+  - `browser-use` callsites now construct `ChatOpenAI` by default
+  - Backend imports and model construction were verified locally under an explicit `OPENAI_API_KEY=test-key` env override
+  - Full live OpenAI API execution is not yet verified on this machine because the repo `.env` does not currently contain a real `OPENAI_API_KEY`
+- Startup UX plan update:
+  - Added `docs/startup-packaging-plan.md`
+  - Recommended path is macOS app wrapper after a one-click startup script, then broader packaged runner work
