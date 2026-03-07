@@ -196,3 +196,25 @@ async def get_user_active_count(user_id: str) -> int:
     r = redis_client.client
     count = await r.get(_active_count_key(user_id))
     return int(count) if count is not None else 0
+
+
+async def flush_all_active() -> None:
+    """Clear all active session counters and sets.
+
+    Called on backend startup to prevent stale Redis state from blocking
+    new sessions after a restart (in-memory session data is lost but
+    Redis counters persist).
+    """
+    r = redis_client.client
+    keys = []
+    async for key in r.scan_iter("taskq:active:*"):
+        keys.append(key)
+    async for key in r.scan_iter("taskq:active_count:*"):
+        keys.append(key)
+    async for key in r.scan_iter("taskq:meta:*"):
+        keys.append(key)
+    # Also clear the pending queue
+    keys.append(_PENDING_KEY)
+    if keys:
+        await r.delete(*keys)
+        logger.info("Flushed %d stale task queue keys on startup", len(keys))
