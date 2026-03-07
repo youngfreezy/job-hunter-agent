@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormikProvider } from "formik";
 import { usePersistedFormik } from "@/lib/hooks/usePersistedFormik";
@@ -24,11 +24,21 @@ const WIZARD_STEPS = [
   { label: "Review & Launch", description: "Confirm and start" },
 ];
 
+declare global {
+  interface Window {
+    umami?: { track: (event: string, data?: Record<string, unknown>) => void };
+  }
+}
+
 export function SessionWizard() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [submitError, setSubmitError] = useState("");
   const [isNavigating, setIsNavigating] = useState(false);
+
+  useEffect(() => {
+    window.umami?.track("wizard-start");
+  }, []);
 
   const { formik, hydrated } = usePersistedFormik<SessionFormValues>({
     persistKey: "session_wizard",
@@ -64,6 +74,7 @@ export function SessionWizard() {
           },
         });
 
+        window.umami?.track("wizard-complete");
         setIsNavigating(true);
         router.push(`/session/${session.session_id}`);
       } catch (err) {
@@ -80,6 +91,7 @@ export function SessionWizard() {
         } else {
           setSubmitError(msg);
         }
+        window.umami?.track("wizard-error", { error: msg });
       }
     },
   });
@@ -97,7 +109,9 @@ export function SessionWizard() {
 
     try {
       await currentSchema.validate(formik.values, { abortEarly: false });
-      setStep((prev) => Math.min(prev + 1, WIZARD_STEPS.length - 1));
+      const nextStep = Math.min(step + 1, WIZARD_STEPS.length - 1);
+      window.umami?.track("wizard-step", { step: WIZARD_STEPS[nextStep].label, number: nextStep + 1 });
+      setStep(nextStep);
     } catch {
       // Validation errors display via FormError components
     }
