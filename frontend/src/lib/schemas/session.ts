@@ -25,9 +25,16 @@ export const jobSearchSchema = Yup.object({
 
 // ---------- Step 2: Resume & Profile ----------
 export const resumeProfileSchema = Yup.object({
-  resumeText: Yup.string().required(
-    "Upload a resume file (.pdf, .docx, or .txt)."
-  ),
+  resumeText: Yup.string()
+    .required("Upload a resume file (.pdf, .docx, or .txt).")
+    .test(
+      "has-email",
+      "Your resume must include an email address so employers can contact you.",
+      (value) => {
+        if (!value) return false;
+        return /[\w.+-]+@[\w-]+\.[\w.-]+/.test(value);
+      }
+    ),
   resumeFileName: Yup.string().default(""),
   resumeFilePath: Yup.string().default(""),
   linkedinUrl: Yup.string()
