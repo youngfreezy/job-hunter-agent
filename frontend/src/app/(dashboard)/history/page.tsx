@@ -180,42 +180,6 @@ export default function HistoryPage() {
   }, [sessionsWithApps]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Nav */}
-      <nav className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-6 py-3 shadow-sm supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-lg font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent"
-          >
-            JobHunter Agent
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/dashboard"
-              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/apply"
-              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              Review &amp; Apply
-            </Link>
-            <Link
-              href="/history"
-              className="px-3 py-1.5 text-sm font-medium rounded-md bg-muted text-foreground transition-colors"
-            >
-              History
-            </Link>
-            <Link href="/session/new">
-              <Button size="sm">New Session</Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
-
       <div className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
         {/* Header */}
         <div className="mb-6">
@@ -514,6 +478,5 @@ export default function HistoryPage() {
           </>
         )}
       </div>
-    </div>
   );
 }

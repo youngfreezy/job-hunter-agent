@@ -1,23 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { SessionWizard } from "@/components/wizard/SessionWizard";
 
 export default function NewSession() {
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950">
-      <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
-        <Link href="/" className="text-xl font-bold tracking-tight">
-          JobHunter Agent
-        </Link>
-        <Link
-          href="/dashboard"
-          className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900"
-        >
-          Dashboard
-        </Link>
-      </nav>
-
       <div className="max-w-4xl mx-auto px-6 py-12">
         <div className="mb-8 grid gap-4 rounded-3xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-900/60 md:grid-cols-[1.15fr_0.85fr]">
           <div>
@@ -44,6 +30,5 @@ export default function NewSession() {
 
         <SessionWizard />
       </div>
-    </div>
   );
 }

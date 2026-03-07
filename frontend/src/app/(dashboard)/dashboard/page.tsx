@@ -130,33 +130,6 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-white dark:bg-zinc-950">
-      <nav className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight">
-            JobHunter Agent
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/apply"
-              className="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            >
-              Review & Apply
-            </Link>
-            <Link
-              href="/history"
-              className="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            >
-              History
-            </Link>
-            <span className="text-sm text-zinc-500">test@example.com</span>
-            <Link href="/session/new">
-              <Button size="sm">New Session</Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
-
       <div className="mx-auto max-w-6xl px-6 py-12">
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <Card className="border-zinc-200 dark:border-zinc-800">
@@ -349,7 +322,6 @@ export default function Dashboard() {
           </section>
         </div>
       </div>
-    </div>
   );
 }
 
