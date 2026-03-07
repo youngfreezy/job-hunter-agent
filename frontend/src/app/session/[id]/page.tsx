@@ -1387,7 +1387,7 @@ export default function SessionPage() {
       {/* Main content */}
       <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
-          <Card className="overflow-hidden">
+          {/* <Card className="overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1421,7 +1421,7 @@ export default function SessionPage() {
                 </p>
               )}
             </CardContent>
-          </Card>
+          </Card> */}
 
           <Card className="flex min-h-[420px] flex-col overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-2">
@@ -1431,14 +1431,7 @@ export default function SessionPage() {
                     <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     Live Status
                   </CardTitle>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Surfacing the latest meaningful events instead of every
-                    duplicate status tick.
-                  </p>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {surfacedEvents.length} surfaced / {events.length} raw
-                </span>
               </div>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-y-auto py-3 space-y-1">
@@ -1642,12 +1635,12 @@ export default function SessionPage() {
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-sm font-semibold">
-                  Session Steering
+                  Guide the Agent
                 </CardTitle>
-                <Badge variant="outline">Controlling {chatModeLabel}</Badge>
+                <Badge variant="outline">{chatModeLabel}</Badge>
               </div>
               <p className="text-xs text-muted-foreground">
-                Suggested commands are based on the current workflow phase.
+                Quick actions tailored to what the agent is doing right now.
               </p>
             </CardHeader>
             <CardContent className="space-y-3 p-0">

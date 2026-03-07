@@ -183,7 +183,10 @@ _DEFAULTS: Dict[str, Dict[str, List[str]]] = {
     "linkedin": {
         "apply_button": [
             'button.jobs-apply-button',
+            'button.apply-button',
+            'button.sign-up-modal__outlet',
             'button:has-text("Easy Apply")',
+            'button:has-text("Apply")',
         ],
         "next_button": [
             'button[aria-label="Continue to next step"]',

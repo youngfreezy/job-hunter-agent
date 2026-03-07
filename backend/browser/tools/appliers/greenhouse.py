@@ -84,11 +84,48 @@ class GreenhouseApplier(BaseApplier):
             resume_file_path=resume_file_path,
         )
 
-        # Step 4: Upload resume
-        if resume_file_path:
+        # Step 4: Upload resume (generate temp file if no PDF provided)
+        _upload_path = resume_file_path
+        _temp_resume = None
+        if not _upload_path and resume_text:
+            import os, tempfile
+            _temp_resume = tempfile.NamedTemporaryFile(
+                suffix=".txt", prefix="resume_", delete=False, mode="w",
+            )
+            _temp_resume.write(resume_text)
+            _temp_resume.close()
+            _upload_path = _temp_resume.name
+            logger.info("Generated temp resume file: %s", _upload_path)
+
+        if _upload_path:
             await self._emit_step("Uploading resume...")
-            await self._upload_resume(resume_file_path)
+            await self._upload_resume(_upload_path)
             await self._random_delay(0.5, 1.0)
+
+        if _temp_resume:
+            try:
+                import os
+                os.unlink(_temp_resume.name)
+            except Exception:
+                pass
+
+        # Step 4b: Check for empty required react-select fields before submit
+        try:
+            empty_required = await self.page.evaluate("""() => {
+                const empty = [];
+                document.querySelectorAll('[class*="select__control"]').forEach(ctrl => {
+                    const container = ctrl.closest('[class*="select__container"]') || ctrl.parentElement;
+                    const label = container?.closest('.field')?.querySelector('label')?.textContent?.trim() || '';
+                    if (!label.includes('*')) return;  // not required
+                    const hasValue = ctrl.querySelector('[class*="select__single-value"]');
+                    if (!hasValue) empty.push(label);
+                });
+                return empty;
+            }""")
+            if empty_required:
+                logger.warning("Greenhouse: empty required dropdowns before submit: %s", empty_required)
+        except Exception:
+            pass
 
         # Step 5: Submit the application
         await self._emit_step("Submitting application...")
@@ -101,8 +138,36 @@ class GreenhouseApplier(BaseApplier):
                 error_message="Could not find Greenhouse submit button",
             )
 
-        await self._random_delay(3.0, 5.0)
-        await self._wait_for_navigation(timeout=15000)
+        await self._random_delay(5.0, 8.0)
+        await self._wait_for_navigation(timeout=20000)
+
+        # Step 5b: Log any validation errors visible on page
+        try:
+            error_info = await self.page.evaluate("""() => {
+                const errs = [];
+                // Greenhouse marks invalid fields with .field--error class
+                document.querySelectorAll('.field--error').forEach(el => {
+                    const label = el.querySelector('label')?.textContent?.trim() || '';
+                    const errMsg = el.querySelector('.field-error-text, [class*="error-text"], .custom-message')?.textContent?.trim() || '';
+                    if (label) errs.push(label + (errMsg ? ': ' + errMsg : ''));
+                });
+                // Also check for standalone error messages
+                document.querySelectorAll('[class*="error-message"], [class*="field-error"], .custom-message.error').forEach(el => {
+                    if (el.offsetParent !== null && el.textContent.trim().length < 200) {
+                        errs.push(el.textContent.trim());
+                    }
+                });
+                // Check if form is still present (means submit didn't navigate)
+                const formPresent = !!document.querySelector('form#application_form, form[action*="applications"]');
+                const url = window.location.href;
+                return { errors: [...new Set(errs)].slice(0, 15), formPresent, url };
+            }""")
+            if error_info.get("errors"):
+                logger.warning("Greenhouse: validation errors after submit: %s", error_info["errors"])
+            logger.info("Greenhouse post-submit: url=%s formPresent=%s errors=%d",
+                        error_info.get("url", "?"), error_info.get("formPresent"), len(error_info.get("errors", [])))
+        except Exception:
+            pass
 
         # Step 6: Take post-submit screenshot for verification
         try:

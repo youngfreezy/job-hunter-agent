@@ -105,9 +105,20 @@ class BaseApplier(ABC):
 
         for sel in all_selectors:
             try:
-                el = await self.page.wait_for_selector(sel, timeout=timeout, state="visible")
+                # Try wait_for_selector first, then direct query_selector (for below-fold buttons)
+                el = None
+                try:
+                    el = await self.page.wait_for_selector(sel, timeout=timeout, state="visible")
+                except Exception:
+                    try:
+                        el = await self.page.query_selector(sel)
+                    except Exception:
+                        pass
                 if el:
-                    await el.scroll_into_view_if_needed()
+                    try:
+                        await el.scroll_into_view_if_needed()
+                    except Exception:
+                        pass
                     await self._random_delay(0.2, 0.5)
                     await el.click()
                     record_success(self.PLATFORM, step_type, sel)
@@ -117,6 +128,17 @@ class BaseApplier(ABC):
                 record_failure(self.PLATFORM, step_type, sel)
                 continue
 
+        # Log visible buttons for debugging
+        if step_type == "submit_button":
+            try:
+                buttons = await self.page.evaluate("""() => {
+                    return Array.from(document.querySelectorAll('button, input[type="submit"]'))
+                        .slice(0, 15)
+                        .map(b => `${b.tagName}.${b.className.substring(0,40)} | ${(b.textContent || b.value || '').trim().substring(0, 60)}`)
+                }""")
+                logger.info("Visible buttons when submit not found (%s): %s", self.PLATFORM, buttons)
+            except Exception:
+                pass
         logger.warning("No selector matched for %s/%s", self.PLATFORM, step_type)
         return False
 
@@ -174,13 +196,12 @@ class BaseApplier(ABC):
                     .map(el => ((el.innerText || el.value || '') + '').toLowerCase().trim());
                 // NEGATIVE: submit/apply controls still visible usually means form didn't go through.
                 // Ignore unrelated buttons like "sign in", "back to job post", etc.
+                // Only match form-specific submit buttons, NOT generic nav buttons like "Apply now"
                 const submitVisible = visibleButtons.some(label =>
                     label === 'submit' ||
+                    label === 'submit application' ||
                     label.includes('submit application') ||
-                    label.includes('submit your application') ||
-                    label === 'apply' ||
-                    label.includes('apply for this job') ||
-                    label.includes('apply now')
+                    label.includes('submit your application')
                 );
                 // NEGATIVE: validation errors present
                 const hasErrors = [...document.querySelectorAll(
@@ -220,6 +241,8 @@ class BaseApplier(ABC):
             confirm_el_text = result.get("confirmElText", "")
             text = result.get("text", "")
             url_confirm = result.get("urlConfirm", False)
+            logger.info("Confirmation check: submitVisible=%s hasErrors=%s urlConfirm=%s text[:500]='%s'",
+                        submit_visible, has_errors, url_confirm, text[:500])
 
             # Hard negative — visible validation errors mean the form did not submit.
             if has_errors:
@@ -238,6 +261,8 @@ class BaseApplier(ABC):
                 "thank you for applying", "application received",
                 "successfully submitted", "we have received your application",
                 "your application has been received",
+                "we successfully received your application",
+                "good news! we successfully received",
             ]
             for phrase in _SAFE_PHRASES:
                 if phrase in text:

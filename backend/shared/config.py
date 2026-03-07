@@ -79,7 +79,11 @@ class Settings(BaseSettings):
     BRIGHT_DATA_BROWSER_TIMEOUT_MS: int = 45000
     BRIGHT_DATA_BROWSER_FORCE: bool = False
     BRIGHT_DATA_BROWSER_USE_FOR_DISCOVERY: bool = False
-    BRIGHT_DATA_BROWSER_BOARDS: str = "greenhouse,workday,lever,ashby"
+    BRIGHT_DATA_BROWSER_BOARDS: str = "linkedin,indeed,glassdoor"
+
+    # --- Bright Data Datasets API (for discovery) ---
+    BRIGHT_DATA_API_TOKEN: Optional[str] = None
+    BRIGHT_DATA_DISCOVERY_ENABLED: bool = False
 
     model_config = {
         "env_file": (

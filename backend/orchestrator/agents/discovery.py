@@ -51,14 +51,22 @@ def _dedup_key(job: JobListing) -> str:
 # ---------------------------------------------------------------------------
 
 async def run_discovery_agent(state: Dict[str, Any]) -> dict:
-    """Discover job listings: direct Playwright first, browser-use fallback."""
-    from backend.browser.tools.direct_discovery import discover_all_boards
+    """Discover job listings: Bright Data API first, Playwright fallback."""
+    from backend.shared.config import settings
 
     session_id: str = state.get("session_id", "")
     search_config = _get_search_config(state)
-    # greenhouse_lever first — public ATS forms we can actually apply to
-    # Indeed last — slowest and most anti-bot
-    _BOARD_ORDER = ["greenhouse_lever", "linkedin", "glassdoor", "ziprecruiter", "indeed"]
+
+    # Use Bright Data Datasets API when enabled (no browser needed)
+    if settings.BRIGHT_DATA_DISCOVERY_ENABLED and settings.BRIGHT_DATA_API_TOKEN:
+        from backend.browser.tools.brightdata_discovery import (
+            discover_all_boards,
+        )
+        _BOARD_ORDER = ["linkedin", "indeed", "glassdoor", "greenhouse_lever"]
+    else:
+        from backend.browser.tools.direct_discovery import discover_all_boards
+        _BOARD_ORDER = ["linkedin", "indeed", "glassdoor", "greenhouse_lever"]
+
     boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS]
 
     logger.info(
@@ -90,6 +98,12 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         "Discovery complete -- %d total jobs (%d after dedup)",
         len(all_jobs), len(deduped),
     )
+    for job in deduped:
+        logger.info(
+            "  [%s] %s @ %s — %s",
+            job.board.value if hasattr(job.board, 'value') else job.board,
+            job.title, job.company, job.url[:120],
+        )
 
     return {
         "discovered_jobs": deduped,

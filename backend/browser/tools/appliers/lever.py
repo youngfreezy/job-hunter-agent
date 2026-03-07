@@ -74,10 +74,28 @@ class LeverApplier(BaseApplier):
             )
 
         # Step 3: Upload resume first (Lever shows it at the top of the form)
-        if resume_file_path:
+        _upload_path = resume_file_path
+        _temp_resume = None
+        if not _upload_path and resume_text:
+            import os, tempfile
+            _temp_resume = tempfile.NamedTemporaryFile(
+                suffix=".txt", prefix="resume_", delete=False, mode="w",
+            )
+            _temp_resume.write(resume_text)
+            _temp_resume.close()
+            _upload_path = _temp_resume.name
+
+        if _upload_path:
             await self._emit_step("Uploading resume...")
-            await self._upload_resume(resume_file_path)
+            await self._upload_resume(_upload_path)
             await self._random_delay(0.5, 1.0)
+
+        if _temp_resume:
+            try:
+                import os
+                os.unlink(_temp_resume.name)
+            except Exception:
+                pass
 
         # Step 4: Fill the form
         await self._emit_step("Filling Lever application form...")
