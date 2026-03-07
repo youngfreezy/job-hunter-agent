@@ -23,7 +23,7 @@ export default function NewSession() {
           <div>
             <h1 className="text-3xl font-bold mb-2">New Session</h1>
             <p className="text-zinc-600 dark:text-zinc-400">
-              Set up your search in a few minutes. We&apos;ll coach your resume, find the best matches, and only apply after you give the green light.
+              Set up your search in a few minutes. We&apos;ll optimize your resume, find the best matches, and only apply after you give the green light.
             </p>
           </div>
           <div className="grid gap-3 text-sm">
