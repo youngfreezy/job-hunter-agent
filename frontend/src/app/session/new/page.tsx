@@ -23,24 +23,20 @@ export default function NewSession() {
           <div>
             <h1 className="text-3xl font-bold mb-2">New Session</h1>
             <p className="text-zinc-600 dark:text-zinc-400">
-              Configure the search once. The workflow will coach your resume,
-              rank the market, pause for review at key gates, and only then move
-              into live applications.
+              Set up your search in a few minutes. We&apos;ll coach your resume, find the best matches, and only apply after you give the green light.
             </p>
           </div>
           <div className="grid gap-3 text-sm">
             <div className="rounded-2xl bg-white p-4 dark:bg-zinc-950/70">
               <p className="font-medium">What to expect</p>
               <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-                Coach review first, shortlist review second, live oversight
-                during apply.
+                First we improve your resume, then we find and rank jobs, and finally we apply — with your approval at every step.
               </p>
             </div>
             <div className="rounded-2xl bg-white p-4 dark:bg-zinc-950/70">
               <p className="font-medium">What to have ready</p>
               <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-                A clean resume file and the keywords you actually want the
-                system to prioritize.
+                Your latest resume and the job titles or skills you want to search for.
               </p>
             </div>
           </div>

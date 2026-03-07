@@ -14,18 +14,14 @@ export function ResumeProfileStep() {
         <CardContent className="space-y-3">
           <FormikFileUpload />
           <p className="text-xs text-zinc-500">
-            Upload your resume and we&apos;ll extract the text automatically.
-            The AI Career Coach will analyze, score, and rewrite it before
-            applying.
+            Upload your resume and our AI coach will analyze it, improve it, and create tailored versions for each job you apply to.
           </p>
           <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
             <p className="font-medium text-zinc-900 dark:text-white">
-              What this changes
+              Why this matters
             </p>
             <p className="mt-1">
-              The coached resume becomes the base document for scoring,
-              tailoring, and manual apply logs. Review the parsed text before
-              launch if formatting matters.
+              This becomes the foundation for every application. Our coach improves it first, then creates customized versions for each job.
             </p>
           </div>
         </CardContent>
@@ -41,15 +37,14 @@ export function ResumeProfileStep() {
             placeholder="https://linkedin.com/in/yourprofile"
           />
           <p className="text-xs text-zinc-500 mt-2">
-            If provided, the Career Coach will advise on profile improvements.
+            If provided, we&apos;ll suggest improvements to keep your LinkedIn aligned with your resume.
           </p>
           <div className="mt-3 rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
             <p className="font-medium text-zinc-900 dark:text-white">
-              What this changes
+              Why this matters
             </p>
             <p className="mt-1">
-              LinkedIn guidance is optional. It improves profile consistency,
-              but it does not block discovery or application flow.
+              This is optional. Adding your LinkedIn helps us give better advice, but it won&apos;t slow down your job search.
             </p>
           </div>
         </CardContent>

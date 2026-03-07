@@ -20,11 +20,10 @@ export function JobSearchStep() {
           />
           <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
             <p className="font-medium text-zinc-900 dark:text-white">
-              What this changes
+              Why this matters
             </p>
             <p className="mt-1">
-              Keywords drive discovery, ranking, and the direction of resume
-              tailoring. Be specific enough to exclude weak matches.
+              Your keywords determine which jobs we find and how we tailor your resume. Be specific to get the best matches.
             </p>
           </div>
         </CardContent>
@@ -58,12 +57,10 @@ export function JobSearchStep() {
           </div>
           <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
             <p className="font-medium text-zinc-900 dark:text-white">
-              What this changes
+              Why this matters
             </p>
             <p className="mt-1">
-              Location, salary, and remote preference filter the boards before
-              scoring so the shortlist reflects constraints you actually care
-              about.
+              These preferences filter your results so you only see jobs that actually fit what you&apos;re looking for.
             </p>
           </div>
         </CardContent>

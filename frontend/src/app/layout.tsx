@@ -15,8 +15,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "JobHunter Agent — AI-Powered Job Applications",
-  description: "Let AI apply to jobs for you. Watch and steer in real-time.",
+  title: "JobHunter Agent - Your AI-Powered Job Search Dashboard",
+  description: "Find jobs, tailor your resume, and track every application from one dashboard. JobHunter Agent handles the busywork so you can focus on landing the right role.",
 };
 
 export default function RootLayout({

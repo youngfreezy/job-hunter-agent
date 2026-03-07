@@ -34,28 +34,27 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
               First
             </p>
-            <p className="mt-2 text-sm font-medium">Coach review gate</p>
+            <p className="mt-2 text-sm font-medium">Resume review</p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              The workflow pauses so you can approve the rewritten resume.
+              We&apos;ll pause so you can review and approve your improved resume.
             </p>
           </div>
           <div className="rounded-xl bg-white/90 p-4 dark:bg-zinc-950/60">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
               Next
             </p>
-            <p className="mt-2 text-sm font-medium">Shortlist review gate</p>
+            <p className="mt-2 text-sm font-medium">Job shortlist review</p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              You approve which ranked jobs the agent is allowed to apply to.
+              You pick which matched jobs you want to apply to.
             </p>
           </div>
           <div className="rounded-xl bg-white/90 p-4 dark:bg-zinc-950/60">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
               During apply
             </p>
-            <p className="mt-2 text-sm font-medium">Live oversight</p>
+            <p className="mt-2 text-sm font-medium">You&apos;re always in control</p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Steering chat, screenshot streaming, and takeover are available if
-              the workflow needs you.
+              Watch applications in real time, chat with the agent, or step in whenever you need to.
             </p>
           </div>
         </CardContent>
@@ -116,7 +115,7 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
               <div className="space-y-2">
                 <p className="text-sm text-green-600">{values.resumeFileName}</p>
                 <p className="text-xs text-zinc-500">
-                  Parsed text ready for coaching and tailoring.
+                  Ready for coaching and tailoring.
                 </p>
               </div>
             ) : (
