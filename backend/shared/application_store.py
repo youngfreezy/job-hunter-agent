@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS application_results (
 );
 CREATE INDEX IF NOT EXISTS idx_app_results_session ON application_results(session_id);
 CREATE INDEX IF NOT EXISTS idx_app_results_session_status ON application_results(session_id, status);
+CREATE INDEX IF NOT EXISTS idx_app_results_job_id_status ON application_results(job_id, status);
 """
 
 
@@ -101,6 +102,41 @@ def record_result(
             conn.close()
     except Exception:
         logger.exception("Failed to record application result for %s", job_id)
+
+
+def check_already_applied(job_id: str) -> Optional[Dict[str, Any]]:
+    """Check if this job was already submitted (any session).
+
+    Returns the prior application record if found, None otherwise.
+    Only ``submitted`` status counts -- failed/skipped don't block re-attempts.
+    """
+    try:
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                """
+                SELECT session_id, job_title, job_company, created_at
+                FROM application_results
+                WHERE job_id = %s AND status = 'submitted'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (job_id,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "session_id": row[0],
+                    "job_title": row[1],
+                    "job_company": row[2],
+                    "applied_at": row[3].isoformat() if row[3] else None,
+                }
+            return None
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to check duplicate for %s", job_id)
+        return None
 
 
 def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
