@@ -1,5 +1,5 @@
 # Core
-fastapi>=0.135.0
+fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-dotenv==1.0.1
 pydantic==2.10.4
@@ -28,7 +28,7 @@ neo4j==5.27.0
 
 # Browser automation
 patchright==1.58.0
-browser-use>=0.12.0
+browser-use==0.12.1
 
 # Auth + Security
 python-jose[cryptography]==3.3.0
@@ -55,5 +55,5 @@ pytest==8.3.4
 pytest-asyncio==0.24.0
 
 # Billing
-stripe>=8.0.0
-scipy>=1.12.0
+stripe==14.4.1
+scipy==1.17.1
