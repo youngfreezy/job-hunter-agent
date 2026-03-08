@@ -764,6 +764,10 @@ async def _load_sessions_from_db(checkpointer) -> Dict[str, dict]:
 @router.get("")
 async def list_sessions(request: Request):
     """Return all sessions, merging in-memory registry with durable DB state."""
+    from backend.gateway.deps import get_current_user
+    user = get_current_user(request)
+    user_id = user["id"]
+
     checkpointer = request.app.state.checkpointer
 
     # Load persisted sessions from Postgres
@@ -772,8 +776,9 @@ async def list_sessions(request: Request):
     # Merge: in-memory registry takes precedence (has live status updates)
     merged = {**db_sessions, **session_registry}
 
+    # Filter to only this user's sessions
     sessions = sorted(
-        merged.values(),
+        [s for s in merged.values() if s.get("user_id") == user_id],
         key=lambda s: s.get("created_at", ""),
         reverse=True,
     )
@@ -812,6 +817,7 @@ async def start_session(body: StartSessionRequest, request: Request):
     # Register session metadata immediately (before pipeline starts)
     session_registry[session_id] = {
         "session_id": session_id,
+        "user_id": user_id,
         "status": "intake",
         "keywords": body.keywords,
         "locations": body.locations,
