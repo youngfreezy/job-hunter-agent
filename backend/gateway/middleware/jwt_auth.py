@@ -125,18 +125,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # Try JWT-based auth
         email = _extract_email(request)
 
-        if email:
-            request.state.user_email = email
-        else:
-            # Fallback: check legacy X-User-Email header (deprecated)
-            legacy_email = request.headers.get("X-User-Email")
-            if legacy_email:
-                logger.warning(
-                    "Deprecated X-User-Email header used for %s %s — migrate to JWT auth",
-                    request.method,
-                    path,
-                )
-            request.state.user_email = legacy_email
+        request.state.user_email = email  # None if JWT missing/invalid
 
         response = await call_next(request)
         return response
