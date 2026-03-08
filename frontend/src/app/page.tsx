@@ -62,7 +62,7 @@ export default function Home() {
 
       {/* Hero */}
       <section className="px-6 py-24 text-center max-w-4xl mx-auto">
-        <Badge variant="secondary" className="mb-4">US Only — Powered by Claude AI</Badge>
+        <Badge variant="secondary" className="mb-4">US Only</Badge>
         <h1 className="text-5xl font-bold tracking-tight mb-6">
           Stop applying to jobs.<br />Let AI do it for you.
         </h1>
