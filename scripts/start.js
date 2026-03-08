@@ -340,6 +340,8 @@ function findNpmCommand() {
       "backend/shared",
       "--reload-exclude",
       "*.log",
+      "--reload-exclude",
+      "backend/venv/*",
     ],
     { cwd: ROOT, pidFile: BACKEND_PID_FILE }
   );

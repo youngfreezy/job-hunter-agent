@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { API_BASE, getAuthHeaders, getWallet } from "@/lib/api";
+import { API_BASE, getAuthHeaders, getSSEToken, getWallet } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import TaskRiskBars from "@/components/charts/TaskRiskBars";
 import PivotComparisonBars from "@/components/charts/PivotComparisonBars";
@@ -30,8 +30,9 @@ export default function PivotResultPage() {
     let es: EventSource | null = null;
 
     async function connect() {
-      const url = `${API_BASE}/api/career-pivot/${id}/stream`;
-      es = new EventSource(url);
+      const token = await getSSEToken();
+      const sep = token ? `?token=${encodeURIComponent(token)}` : "";
+      es = new EventSource(`${API_BASE}/api/career-pivot/${id}/stream${sep}`);
 
       es.addEventListener("status", (e) => {
         const data = JSON.parse(e.data);

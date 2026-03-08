@@ -159,6 +159,28 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
   return csrfHeaders();
 }
 
+/**
+ * Get a raw JWT token string for use in SSE query params.
+ * EventSource cannot send headers, so we pass ?token=<jwt>.
+ */
+export async function getSSEToken(): Promise<string> {
+  if (_cachedToken && Date.now() - _tokenFetchedAt < _TOKEN_TTL_MS) {
+    return _cachedToken;
+  }
+  try {
+    const res = await fetch("/api/auth/token");
+    if (res.ok) {
+      const { token } = await res.json();
+      if (token) {
+        _cachedToken = token;
+        _tokenFetchedAt = Date.now();
+        return token;
+      }
+    }
+  } catch {}
+  return "";
+}
+
 // ---------- REST API ----------
 
 export async function startSession(params: {
@@ -474,8 +496,10 @@ export async function rewindSession(
 
 // ---------- SSE ----------
 
-export function createSSEConnection(sessionId: string): EventSource {
-  return new EventSource(`${API_BASE}/api/sessions/${sessionId}/stream`);
+export async function createSSEConnection(sessionId: string): Promise<EventSource> {
+  const token = await getSSEToken();
+  const sep = token ? `?token=${encodeURIComponent(token)}` : "";
+  return new EventSource(`${API_BASE}/api/sessions/${sessionId}/stream${sep}`);
 }
 
 /**
@@ -486,7 +510,8 @@ export function connectSSE(
   sessionId: string,
   onEvent: (event: Record<string, unknown>) => void
 ): () => void {
-  const es = createSSEConnection(sessionId);
+  let es: EventSource | null = null;
+  let cancelled = false;
 
   const EVENT_TYPES: SSEEventType[] = [
     "status",
@@ -515,43 +540,44 @@ export function connectSSE(
     "error",
   ];
 
-  for (const eventType of EVENT_TYPES) {
-    es.addEventListener(eventType, (e: Event) => {
+  createSSEConnection(sessionId).then((source) => {
+    if (cancelled) { source.close(); return; }
+    es = source;
+
+    for (const eventType of EVENT_TYPES) {
+      es.addEventListener(eventType, (e: Event) => {
+        try {
+          const me = e as MessageEvent;
+          const data = JSON.parse(me.data);
+          onEvent({
+            ...data,
+            event: eventType,
+            timestamp: data.timestamp || new Date().toISOString(),
+          });
+          if (eventType === "done") {
+            es?.close();
+          }
+        } catch {
+          // ignore parse errors
+        }
+      });
+    }
+
+    es.onmessage = (e: MessageEvent) => {
       try {
-        const me = e as MessageEvent;
-        const data = JSON.parse(me.data);
-        // Enrich with event type and timestamp so the UI can display them
+        const data = JSON.parse(e.data);
         onEvent({
           ...data,
-          event: eventType,
+          event: data.event || "message",
           timestamp: data.timestamp || new Date().toISOString(),
         });
-        // Close EventSource on terminal event to prevent auto-reconnect
-        // (EventSource auto-reconnects when the stream ends, causing
-        // infinite replay loops for completed/failed sessions)
-        if (eventType === "done") {
-          es.close();
-        }
       } catch {
         // ignore parse errors
       }
-    });
-  }
+    };
+  });
 
-  es.onmessage = (e: MessageEvent) => {
-    try {
-      const data = JSON.parse(e.data);
-      onEvent({
-        ...data,
-        event: data.event || "message",
-        timestamp: data.timestamp || new Date().toISOString(),
-      });
-    } catch {
-      // ignore parse errors
-    }
-  };
-
-  return () => es.close();
+  return () => { cancelled = true; es?.close(); };
 }
 
 // ---------- Resume Parsing ----------
@@ -653,5 +679,100 @@ export async function createCheckout(packId: string): Promise<{ url: string }> {
     body: JSON.stringify({ pack_id: packId }),
   });
   if (!res.ok) throw new Error("Failed to create checkout");
+  return res.json();
+}
+
+// ---------- Autopilot ----------
+
+export interface AutopilotSchedule {
+  id: string;
+  name: string;
+  keywords: string[];
+  locations: string[];
+  remote_only: boolean;
+  salary_min: number | null;
+  search_radius: number;
+  cron_expression: string;
+  timezone: string;
+  is_active: boolean;
+  auto_approve: boolean;
+  notification_email: string | null;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  last_session_id: string | null;
+  created_at: string;
+}
+
+export async function listAutopilotSchedules(): Promise<AutopilotSchedule[]> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/autopilot/schedules`, { headers: auth });
+  if (!res.ok) throw new Error("Failed to list autopilot schedules");
+  return res.json();
+}
+
+export async function createAutopilotSchedule(params: {
+  name: string;
+  keywords: string[];
+  locations: string[];
+  remote_only?: boolean;
+  salary_min?: number | null;
+  search_radius?: number;
+  resume_text?: string | null;
+  linkedin_url?: string | null;
+  session_config?: Record<string, unknown>;
+  cron_expression?: string;
+  timezone?: string;
+  auto_approve?: boolean;
+}): Promise<AutopilotSchedule> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/autopilot/schedules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error("Failed to create autopilot schedule");
+  return res.json();
+}
+
+export async function updateAutopilotSchedule(
+  id: string,
+  updates: Partial<AutopilotSchedule>,
+): Promise<AutopilotSchedule> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error("Failed to update autopilot schedule");
+  return res.json();
+}
+
+export async function deleteAutopilotSchedule(id: string): Promise<void> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}`, {
+    method: "DELETE",
+    headers: auth,
+  });
+  if (!res.ok) throw new Error("Failed to delete autopilot schedule");
+}
+
+export async function toggleAutopilotPause(id: string): Promise<AutopilotSchedule> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}/pause`, {
+    method: "POST",
+    headers: auth,
+  });
+  if (!res.ok) throw new Error("Failed to toggle autopilot pause");
+  return res.json();
+}
+
+export async function triggerAutopilotNow(id: string): Promise<{ triggered: boolean }> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}/run-now`, {
+    method: "POST",
+    headers: auth,
+  });
+  if (!res.ok) throw new Error("Failed to trigger autopilot run");
   return res.json();
 }

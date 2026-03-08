@@ -34,6 +34,8 @@ _EXEMPT_PREFIXES = (
     "/docs",
     "/openapi",
     "/redoc",
+    "/api/autopilot/approve/",
+    "/api/sms/webhook",
 )
 
 
@@ -82,12 +84,22 @@ def decrypt_nextauth_jwt(token: str, secret: str) -> dict:
 
 
 def _extract_email(request: Request) -> Optional[str]:
-    """Try to extract user email from JWT in Authorization header."""
-    auth_header = request.headers.get("authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return None
+    """Try to extract user email from JWT in Authorization header or query param.
 
-    token = auth_header[7:]  # Strip "Bearer "
+    EventSource (SSE) cannot send custom headers, so we also accept
+    ``?token=<jwt>`` for SSE stream endpoints.
+    """
+    token: Optional[str] = None
+
+    # 1. Prefer Authorization header
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+
+    # 2. Fall back to ?token= query param (for EventSource / SSE)
+    if not token:
+        token = request.query_params.get("token")
+
     if not token:
         return None
 

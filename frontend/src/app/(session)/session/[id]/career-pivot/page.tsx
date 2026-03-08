@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { API_BASE, getAuthHeaders, getWallet } from "@/lib/api";
+import { API_BASE, getAuthHeaders, getSSEToken, getWallet } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import TaskRiskBars from "@/components/charts/TaskRiskBars";
@@ -69,54 +69,60 @@ export default function SessionCareerPivotPage() {
   // SSE connection
   useEffect(() => {
     if (!pivotId) return;
-    const es = new EventSource(
-      `${API_BASE}/api/career-pivot/${pivotId}/stream`,
-    );
+    let es: EventSource | null = null;
+    let cancelled = false;
 
-    es.addEventListener("status", (e) => {
-      const data = JSON.parse(e.data);
-      setStatus(data.status);
-      setStatusMessage(data.message);
+    getSSEToken().then((token) => {
+      if (cancelled) return;
+      const sep = token ? `?token=${encodeURIComponent(token)}` : "";
+      es = new EventSource(`${API_BASE}/api/career-pivot/${pivotId}/stream${sep}`);
+
+      es.addEventListener("status", (e) => {
+        const data = JSON.parse(e.data);
+        setStatus(data.status);
+        setStatusMessage(data.message);
+      });
+
+      es.addEventListener("risk_assessment", (e) => {
+        setRisk(JSON.parse(e.data));
+      });
+
+      es.addEventListener("pivot_roles", (e) => {
+        const data = JSON.parse(e.data);
+        setPivots(data.recommended_pivots || []);
+        setPaywall(null);
+      });
+
+      es.addEventListener("transferable_skills", (e) => {
+        const data = JSON.parse(e.data);
+        setSkillBridges(data.skill_bridges || []);
+      });
+
+      es.addEventListener("paywall", (e) => {
+        const data = JSON.parse(e.data);
+        setPaywall({ count: data.count, message: data.message, cost: data.cost });
+        getWallet()
+          .then((w) => setWalletBalance(w.balance))
+          .catch(() => {});
+      });
+
+      es.addEventListener("done", () => {
+        setStatus("completed");
+        setStatusMessage("Analysis complete!");
+        es?.close();
+      });
+
+      es.addEventListener("error", (e) => {
+        if (e instanceof MessageEvent) {
+          setError(JSON.parse(e.data).message);
+        }
+        es?.close();
+      });
+
+      es.onerror = () => es?.close();
     });
 
-    es.addEventListener("risk_assessment", (e) => {
-      setRisk(JSON.parse(e.data));
-    });
-
-    es.addEventListener("pivot_roles", (e) => {
-      const data = JSON.parse(e.data);
-      setPivots(data.recommended_pivots || []);
-      setPaywall(null);
-    });
-
-    es.addEventListener("transferable_skills", (e) => {
-      const data = JSON.parse(e.data);
-      setSkillBridges(data.skill_bridges || []);
-    });
-
-    es.addEventListener("paywall", (e) => {
-      const data = JSON.parse(e.data);
-      setPaywall({ count: data.count, message: data.message, cost: data.cost });
-      getWallet()
-        .then((w) => setWalletBalance(w.balance))
-        .catch(() => {});
-    });
-
-    es.addEventListener("done", () => {
-      setStatus("completed");
-      setStatusMessage("Analysis complete!");
-      es.close();
-    });
-
-    es.addEventListener("error", (e) => {
-      if (e instanceof MessageEvent) {
-        setError(JSON.parse(e.data).message);
-      }
-      es.close();
-    });
-
-    es.onerror = () => es.close();
-    return () => es.close();
+    return () => { cancelled = true; es?.close(); };
   }, [pivotId]);
 
   async function handleUnlock() {
