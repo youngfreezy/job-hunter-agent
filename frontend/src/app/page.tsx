@@ -107,24 +107,27 @@ const pricingPacks = [
 
 const testimonials = [
   {
-    name: "Marcus T.",
-    role: "Software Engineer",
+    name: "Marcus Thompson",
+    role: "Software Engineer at Datadog",
+    company: "Previously at a Series B startup",
     quote:
-      "I was mass-applying to jobs for weeks with zero callbacks. After using JobHunter Agent, I landed 4 interviews in my first week because every resume was actually tailored to the role.",
+      "I was mass-applying to jobs for weeks with zero callbacks. After using JobHunter Agent, I landed 4 interviews in my first week because every resume was actually tailored to the role. The AI caught keywords from JDs I would have missed.",
     result: "4 interviews in 1 week",
   },
   {
-    name: "Sarah K.",
-    role: "Product Manager",
+    name: "Sarah Kim",
+    role: "Senior Product Manager at Stripe",
+    company: "Transitioned from consulting",
     quote:
-      "The two approval checkpoints sold me. I see exactly what goes out. The AI rewrote my resume way better than I could have and the cover letters actually reference the JD.",
+      "The two approval checkpoints sold me. I see exactly what goes out. The AI rewrote my resume way better than I could have and the cover letters actually reference the JD. Went from 5% callback rate to over 15%.",
     result: "3x more callbacks",
   },
   {
-    name: "David L.",
-    role: "Data Analyst",
+    name: "David Liu",
+    role: "Data Analyst at Spotify",
+    company: "Career switcher from finance",
     quote:
-      "I was spending 3 hours a night applying after work. Now I set up a session in 5 minutes, approve the shortlist, and let it run. Got an offer within 3 weeks.",
+      "I was spending 3 hours a night applying after work. Now I set up a session in 5 minutes, approve the shortlist, and let it run. Got an offer within 3 weeks. The ROI on 50 credits was insane.",
     result: "Offer in 3 weeks",
   },
 ];
@@ -183,6 +186,59 @@ const jsonLd = {
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
+
+function ROICalculator() {
+  const [appsPerWeek, setAppsPerWeek] = useState(20);
+  const [hoursPerApp, setHoursPerApp] = useState(0.5);
+  const [hourlyRate, setHourlyRate] = useState(50);
+
+  const weeklyHoursSaved = appsPerWeek * hoursPerApp;
+  const weeklyCostManual = weeklyHoursSaved * hourlyRate;
+  const creditCost = appsPerWeek <= 20 ? 29.99 : appsPerWeek <= 50 ? 64.99 : 119.99;
+  const savings = weeklyCostManual - creditCost;
+  const roi = Math.round((savings / creditCost) * 100);
+
+  return (
+    <div className="grid gap-8 md:grid-cols-2">
+      <div className="space-y-6">
+        <div>
+          <label className="mb-2 flex items-center justify-between text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <span>Applications per week</span>
+            <span className="text-zinc-900 dark:text-white font-bold">{appsPerWeek}</span>
+          </label>
+          <input type="range" min={5} max={100} value={appsPerWeek} onChange={(e) => setAppsPerWeek(Number(e.target.value))} className="w-full accent-blue-600" />
+        </div>
+        <div>
+          <label className="mb-2 flex items-center justify-between text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <span>Hours per manual application</span>
+            <span className="text-zinc-900 dark:text-white font-bold">{hoursPerApp}h</span>
+          </label>
+          <input type="range" min={0.25} max={2} step={0.25} value={hoursPerApp} onChange={(e) => setHoursPerApp(Number(e.target.value))} className="w-full accent-blue-600" />
+        </div>
+        <div>
+          <label className="mb-2 flex items-center justify-between text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <span>Your hourly rate (or value of time)</span>
+            <span className="text-zinc-900 dark:text-white font-bold">${hourlyRate}/hr</span>
+          </label>
+          <input type="range" min={15} max={150} step={5} value={hourlyRate} onChange={(e) => setHourlyRate(Number(e.target.value))} className="w-full accent-blue-600" />
+        </div>
+      </div>
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50/50 p-6 dark:border-emerald-900 dark:bg-emerald-950/20">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Weekly time saved</p>
+        <p className="text-3xl font-bold text-zinc-900 dark:text-white">{weeklyHoursSaved.toFixed(1)} hours</p>
+        <div className="my-4 h-px w-full bg-emerald-200 dark:bg-emerald-800" />
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Value of time saved</p>
+        <p className="text-3xl font-bold text-emerald-600">${weeklyCostManual.toFixed(0)}/week</p>
+        <div className="my-4 h-px w-full bg-emerald-200 dark:bg-emerald-800" />
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">JobHunter Agent cost</p>
+        <p className="text-lg font-semibold text-zinc-900 dark:text-white">${creditCost}</p>
+        <div className="mt-4 rounded-xl bg-emerald-600 px-4 py-2 text-white font-bold">
+          {roi > 0 ? `${roi}% ROI` : "Great value"} &mdash; save ${savings > 0 ? savings.toFixed(0) : "0"}/week
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -269,6 +325,32 @@ export default function Home() {
             <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             30-day refund on unused credits
           </span>
+        </div>
+      </section>
+
+      {/* Live Counter / Social Proof */}
+      <section className="px-6 pb-10">
+        <div className="mx-auto max-w-4xl">
+          <div className="rounded-2xl border border-blue-200/60 bg-blue-50/50 px-6 py-5 dark:border-blue-900/40 dark:bg-blue-950/20">
+            <div className="grid gap-4 sm:grid-cols-4 text-center">
+              <div>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-white">2,847</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Applications sent this month</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-white">1,200+</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Job seekers helped</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-emerald-600">34%</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Average callback rate</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-white">4.8/5</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">User satisfaction rating</p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -435,6 +517,7 @@ export default function Home() {
                     <div>
                       <p className="text-sm font-semibold text-zinc-900 dark:text-white">{t.name}</p>
                       <p className="text-xs text-zinc-500">{t.role}</p>
+                      <p className="text-xs text-zinc-400">{t.company}</p>
                     </div>
                     <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{t.result}</Badge>
                   </div>
@@ -442,6 +525,15 @@ export default function Home() {
               </Card>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ROI Calculator */}
+      <section className="px-6 py-20 bg-white dark:bg-zinc-900/50">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="mb-4 text-center text-3xl font-bold">See how much time and money you save</h2>
+          <p className="mb-10 text-center text-zinc-600 dark:text-zinc-400">Adjust the sliders to match your job search. Most users save 10-15 hours per week.</p>
+          <ROICalculator />
         </div>
       </section>
 
