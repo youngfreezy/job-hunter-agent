@@ -322,9 +322,10 @@ export default function SessionPage() {
       .then((r) => r.json())
       .then((s) => {
         const token = s?.user?.googleAccessToken as string | undefined;
+        const refreshToken = s?.user?.googleRefreshToken as string | undefined;
         if (token) {
           gmailTokenSent.current = true;
-          sendGmailToken(sessionId, token);
+          sendGmailToken(sessionId, token, refreshToken);
         }
       })
       .catch(() => {});

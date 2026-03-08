@@ -1,6 +1,6 @@
 """Gmail API client for automatic verification-code extraction.
 
-Stores OAuth tokens per session (in-memory), polls for recent
+Stores OAuth tokens per session in Redis, polls for recent
 verification emails, and extracts numeric codes.  Falls back
 gracefully -- never blocks the application flow.
 """
@@ -11,51 +11,67 @@ import asyncio
 import base64
 import logging
 import re
-from typing import Dict, Optional
+from typing import Optional
+
+from backend.shared.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# In-memory token store  (session_id -> credentials)
+# Redis-backed token store  (key: gmail_token:{session_id})
 # ---------------------------------------------------------------------------
 
-_gmail_creds: Dict[str, object] = {}
+_GMAIL_TOKEN_TTL = 7200  # 2 hours
 
 
-def store_gmail_token(
+async def store_gmail_token(
     session_id: str,
     access_token: str,
     refresh_token: Optional[str] = None,
     client_id: Optional[str] = None,
     client_secret: Optional[str] = None,
 ) -> None:
-    """Store a Gmail OAuth credential for *session_id*."""
-    from google.oauth2.credentials import Credentials
-
-    creds = Credentials(
-        token=access_token,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
+    """Store a Gmail OAuth credential for *session_id* in Redis."""
+    await redis_client.set_json(
+        f"gmail_token:{session_id}",
+        {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        },
+        expire_seconds=_GMAIL_TOKEN_TTL,
     )
-    _gmail_creds[session_id] = creds
     logger.info("Gmail token stored for session %s (refresh=%s)", session_id, bool(refresh_token))
 
 
-def clear_gmail_token(session_id: str) -> None:
-    _gmail_creds.pop(session_id, None)
+async def clear_gmail_token(session_id: str) -> None:
+    await redis_client.delete(f"gmail_token:{session_id}")
 
 
-def _get_service(session_id: str):
+def _build_gmail_service(creds):
+    """Build a Gmail API service from credentials."""
+    from googleapiclient.discovery import build
+
+    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+
+
+async def _get_service(session_id: str):
     """Return a Gmail API service for *session_id*, or None."""
-    creds = _gmail_creds.get(session_id)
-    if not creds:
+    data = await redis_client.get_json(f"gmail_token:{session_id}")
+    if not data:
         return None
     try:
-        from googleapiclient.discovery import build
+        from google.oauth2.credentials import Credentials
 
-        return build("gmail", "v1", credentials=creds, cache_discovery=False)
+        creds = Credentials(
+            token=data["access_token"],
+            refresh_token=data.get("refresh_token"),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=data.get("client_id"),
+            client_secret=data.get("client_secret"),
+        )
+        return _build_gmail_service(creds)
     except Exception:
         logger.exception("Failed to build Gmail service for %s", session_id)
         return None
@@ -130,9 +146,9 @@ async def poll_for_verification_code(
 
     Returns the extracted code string, or None.
     """
-    service = _get_service(session_id)
+    service = await _get_service(session_id)
     if not service:
-        logger.debug("No Gmail token for session %s — skipping auto-extraction", session_id)
+        logger.warning("No Gmail token for session %s — skipping auto-extraction", session_id)
         return None
 
     # Build search query — look for very recent verification emails

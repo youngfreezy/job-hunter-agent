@@ -47,6 +47,7 @@ const authOptions: NextAuthOptions = {
         const u = session.user as Record<string, unknown>;
         u.id = token.userId;
         u.googleAccessToken = token.googleAccessToken;
+        u.googleRefreshToken = token.googleRefreshToken;
       }
       return session;
     },
