@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Neo4j knowledge graph client for ATS strategies and cross-session learning.
 
 Provides async queries for ATS form field patterns, application strategies,

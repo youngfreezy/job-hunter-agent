@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Generic Applier -- fallback for unknown ATS platforms.
 
 Tries to find any Apply button, fill the form via form_filler, and submit.

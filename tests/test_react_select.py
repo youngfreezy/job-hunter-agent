@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test interacting with React Select on Greenhouse forms."""
 import asyncio
 import sys

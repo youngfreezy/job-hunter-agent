@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 /**
  * WebSocket manager for screenshot feed and chat steering.
  * Handles reconnection, message parsing, and frame throttling.

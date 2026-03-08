@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test submitting a Greenhouse application via the Job Board API directly.
 
 The Greenhouse Job Board API supports application submission:

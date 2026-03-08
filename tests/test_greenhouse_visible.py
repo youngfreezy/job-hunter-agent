@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test Greenhouse submission with headless=False (visible browser).
 reCAPTCHA v3 invisible should auto-pass in a real browser window.
 """

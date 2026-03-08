@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 export default function HistoryLoading() {
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">

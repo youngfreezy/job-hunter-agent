@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Base scraper class with shared utilities for all job board scrapers.
 
 Every job board scraper inherits from :class:`BaseScraper` to get consistent

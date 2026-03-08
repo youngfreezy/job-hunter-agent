@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """CSRF protection middleware using double-submit cookie pattern.
 
 For state-changing requests (POST, PUT, PATCH, DELETE), validates that

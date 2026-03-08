@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Intake Agent -- parses user inputs + resume into a structured SearchConfig."""
 
 from __future__ import annotations

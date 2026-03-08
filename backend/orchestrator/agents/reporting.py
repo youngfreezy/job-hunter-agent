@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Reporting Agent -- aggregates session data into a final summary."""
 
 from __future__ import annotations

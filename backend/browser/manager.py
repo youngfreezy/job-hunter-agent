@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Browser lifecycle manager for the JobHunter Agent.
 
 Manages Playwright browser instances using either:

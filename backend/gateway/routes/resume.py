@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Resume analysis endpoint for Quick Start mode.
 
 Extracts keywords, locations, and preferences from resume text using a fast

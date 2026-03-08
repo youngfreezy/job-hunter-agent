@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Browser-Use Discovery -- single-agent, single-browser job discovery.
 
 One browser-use agent navigates all job boards sequentially in a single

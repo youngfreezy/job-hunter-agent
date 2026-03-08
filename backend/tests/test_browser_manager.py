@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 from backend.browser.manager import build_brightdata_cdp_url, should_use_brightdata
 from backend.shared.config import settings
 

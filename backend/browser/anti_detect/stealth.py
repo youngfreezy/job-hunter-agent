@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Anti-detection utilities for Playwright browser automation.
 
 Provides stealth configurations, randomised browser fingerprints, and runtime

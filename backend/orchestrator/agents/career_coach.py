@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Career Coach Agent -- the emotional and strategic heart of JobHunter.
 
 Analyses the user's resume, rewrites it like a salesperson pitching their best

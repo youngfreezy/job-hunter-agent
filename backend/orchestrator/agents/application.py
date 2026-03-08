@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Application Agent -- submits job applications via direct Playwright + LLM form analysis.
 
 Uses platform-specific Playwright appliers for known boards/ATS platforms,

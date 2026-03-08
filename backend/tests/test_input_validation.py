@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Tests for Pydantic model input validation — verify bad data is rejected."""
 
 import tempfile

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """CLI entry point for the RAGAS-style evaluation system.
 
 Usage:

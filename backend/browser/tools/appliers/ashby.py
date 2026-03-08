@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Ashby Applier -- handles application forms at jobs.ashbyhq.com.
 
 Ashby forms use a React-based system where each field fill triggers a

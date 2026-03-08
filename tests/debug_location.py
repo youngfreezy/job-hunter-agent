@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Debug the candidate-location React Select autocomplete field."""
 import asyncio
 import os

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Verification Agent -- confirms application submissions were successful."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Gmail API client for automatic verification-code extraction.
 
 Stores OAuth tokens per session in Redis, polls for recent

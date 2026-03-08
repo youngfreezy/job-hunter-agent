@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 /**
  * Core marketing agent powered by the Vercel AI SDK and Anthropic Claude.
  *

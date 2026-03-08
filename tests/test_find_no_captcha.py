@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Find Greenhouse companies that don't have reCAPTCHA on their forms."""
 import asyncio
 import os

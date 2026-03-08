@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test a REAL Greenhouse form submission end-to-end with React Select handling."""
 import asyncio
 import os

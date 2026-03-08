@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Resume Tailor Agent -- customises the coached resume per job listing.
 
 Tailors resumes concurrently in batches of CONCURRENCY to avoid blocking

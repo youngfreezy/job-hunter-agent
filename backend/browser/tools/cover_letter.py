@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Cover Letter Generator -- creates job-specific cover letters using Claude.
 
 Produces a tailored cover letter based on the user's coached resume,

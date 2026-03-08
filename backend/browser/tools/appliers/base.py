@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """BaseApplier -- abstract base class for all platform-specific job appliers.
 
 Provides shared helpers for clicking selectors (with DB-ranked fallback),

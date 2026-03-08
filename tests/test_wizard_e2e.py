@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """End-to-end test: Drive the wizard UI → start session → monitor SSE → verify applications."""
 import asyncio
 import os

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Glassdoor job board scraper using Playwright browser automation.
 
 Glassdoor uses aggressive bot-detection (PerimeterX), so this scraper is

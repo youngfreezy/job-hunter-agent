@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 from backend.browser.tools.form_filler import _enforce_required_field_fallbacks
 
 

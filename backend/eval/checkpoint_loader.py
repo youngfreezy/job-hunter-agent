@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Load session state from LangGraph Postgres checkpoints."""
 
 from __future__ import annotations

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test individual pipeline stages without running the full pipeline.
 
 Usage:

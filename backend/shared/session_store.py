@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Persistent session metadata storage in Postgres.
 
 Replaces the in-memory session_registry dict so session metadata survives

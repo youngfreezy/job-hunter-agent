@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Account Creator -- handles ATS account creation when required for applications.
 
 Some job sites (Workday, iCIMS, Taleo) require account creation before

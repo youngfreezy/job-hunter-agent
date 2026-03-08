@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """LinkedIn Profile Updater -- guided semi-automatic profile updates via browser-use.
 
 Opens a visible browser to LinkedIn, waits for the user to log in, then

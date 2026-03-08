@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """CDP screenshot capture loop for the live screenshot feed.
 
 Captures JPEG screenshots from a Playwright page at 1-2 FPS and publishes

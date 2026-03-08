@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Direct Playwright discovery -- fast scraping using existing per-board scrapers.
 
 Uses the dedicated scrapers in ``job_boards/`` (linkedin.py, indeed.py, etc.)

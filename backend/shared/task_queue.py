@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Redis-backed task queue for pipeline session runs.
 
 Provides a lightweight FIFO queue using Redis lists (LPUSH/BRPOP),

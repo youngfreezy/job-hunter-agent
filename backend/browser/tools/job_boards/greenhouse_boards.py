@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Greenhouse board scraper -- discovers jobs via Greenhouse's public JSON API.
 
 Greenhouse provides a free, public API at boards-api.greenhouse.io that returns

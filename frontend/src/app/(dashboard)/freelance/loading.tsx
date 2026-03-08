@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 export default function FreelanceLoading() {
   return (
     <div className="container mx-auto max-w-4xl p-6 space-y-6">

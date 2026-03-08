@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Lever Applier -- handles applications at jobs.lever.co.
 
 Lever uses a single-page form: click Apply, the form scrolls into view with

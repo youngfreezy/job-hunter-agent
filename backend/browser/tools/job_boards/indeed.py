@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Indeed job board scraper using Playwright browser automation.
 
 Navigates to Indeed's search page, enters query parameters, and extracts

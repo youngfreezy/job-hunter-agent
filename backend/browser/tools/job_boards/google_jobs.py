@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Google Jobs scraper using Playwright browser automation.
 
 Google Jobs results appear inline in Google search with the "jobs" chip.

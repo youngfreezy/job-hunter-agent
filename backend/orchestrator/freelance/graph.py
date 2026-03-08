@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """LangGraph graph definition for the Freelance/Contract Matchmaker."""
 
 from __future__ import annotations

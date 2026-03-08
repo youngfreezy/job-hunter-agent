@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 import { type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { cookies } from "next/headers";

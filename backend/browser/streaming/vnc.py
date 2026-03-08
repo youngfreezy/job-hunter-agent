@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """On-demand noVNC setup and teardown for live takeover mode.
 
 Manages Xvfb (virtual framebuffer), x11vnc (VNC server), and websockify

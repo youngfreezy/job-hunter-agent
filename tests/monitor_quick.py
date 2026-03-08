@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Quick session monitor with auto-approve."""
 import asyncio
 import aiohttp

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test discovery end-to-end: run all boards, validate URLs are real and ≤20."""
 import asyncio
 import logging

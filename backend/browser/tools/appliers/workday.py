@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Workday Applier -- handles multi-step wizard at *.myworkdayjobs.com.
 
 Workday applications use a multi-step wizard: click Apply, then iterate through

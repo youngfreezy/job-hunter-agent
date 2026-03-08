@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """ATS Detector -- identifies the Applicant Tracking System from a page.
 
 Detects Workday, Greenhouse, Lever, iCIMS, Taleo, and other common ATS

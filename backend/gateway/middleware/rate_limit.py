@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Redis-backed sliding window rate limiting middleware for FastAPI.
 
 Uses a sliding window counter algorithm with Redis sorted sets to provide

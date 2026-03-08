@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 "use client";
 
 import { signIn } from "next-auth/react";

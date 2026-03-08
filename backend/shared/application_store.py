@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Persistent storage for application results.
 
 Writes each application attempt (submitted/failed/skipped) to Postgres
