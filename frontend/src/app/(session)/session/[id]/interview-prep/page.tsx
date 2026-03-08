@@ -72,7 +72,6 @@ export default function InterviewPrepPage() {
   const [paid, setPaid] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
   const maxFreeQuestions = 2;
   const router = useRouter();
 
@@ -105,8 +104,6 @@ export default function InterviewPrepPage() {
         err instanceof Error ? err.message : "An unknown error occurred",
       );
       setStarting(false);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -334,7 +331,7 @@ export default function InterviewPrepPage() {
             />
             {error && <p className="text-destructive text-sm">{error}</p>}
             <Button
-              loading={loading}
+              loading={starting}
               onClick={() => {
                 const company = (
                   document.getElementById("company") as HTMLInputElement
@@ -342,7 +339,6 @@ export default function InterviewPrepPage() {
                 const role = (
                   document.getElementById("role") as HTMLInputElement
                 ).value;
-                setLoading(true);
                 if (company && role) handleStart(company, role, savedResume);
               }}
             >
