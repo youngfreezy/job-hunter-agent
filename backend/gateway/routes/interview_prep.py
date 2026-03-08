@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.gateway.deps import get_current_user
+from backend.shared.billing_store import debit_wallet, get_wallet
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/interview-prep", tags=["interview-prep"])
@@ -75,12 +76,15 @@ async def _run_prep_pipeline(session_id: str, graph, config, initial_state):
                 _prep_registry[session_id]["brief_emitted"] = True
 
             if snapshot.get("questions") and not _prep_registry[session_id].get("questions_emitted"):
+                all_questions = snapshot["questions"]
+                max_free = _prep_registry[session_id].get("max_free_questions", 2)
+                # Only send free questions initially; rest unlocked after payment
                 _emit_prep(session_id, "questions_ready", {
-                    "questions": snapshot["questions"],
-                    "total": len(snapshot["questions"]),
+                    "questions": all_questions[:max_free],
+                    "total": len(all_questions),
                 })
                 _prep_registry[session_id]["questions_emitted"] = True
-                _prep_registry[session_id]["questions"] = snapshot["questions"]
+                _prep_registry[session_id]["questions"] = all_questions
 
         _emit_prep(session_id, "ready_for_practice", {"message": "Ready to start mock interview!"})
         _prep_registry[session_id]["status"] = "ready"
@@ -107,6 +111,8 @@ async def start_prep(request: Request, body: StartPrepRequest):
         "company": body.company,
         "role": body.role,
         "coaching_cache": {},
+        "paid": False,
+        "max_free_questions": 2,
     }
     _prep_events[session_id] = []
 
@@ -130,7 +136,7 @@ async def start_prep(request: Request, body: StartPrepRequest):
         "waiting_for_answer": False,
         "is_free_session": True,
         "questions_answered": 0,
-        "max_free_questions": 7,
+        "max_free_questions": 2,
     }
 
     asyncio.create_task(_run_prep_pipeline(session_id, graph, config, initial_state))
@@ -158,6 +164,19 @@ async def submit_answer(request: Request, session_id: str, body: SubmitAnswerReq
 
     if not question:
         raise HTTPException(404, "Question not found")
+
+    # Enforce free question limit
+    max_free = meta.get("max_free_questions", 2)
+    if meta.get("questions_answered", 0) >= max_free and not meta.get("paid"):
+        wallet = get_wallet(meta["user_id"])
+        raise HTTPException(402, detail={
+            "error": "free_limit_reached",
+            "questions_answered": meta["questions_answered"],
+            "max_free": max_free,
+            "balance": wallet["balance"],
+            "cost": 1.0,
+            "message": "You've used your free questions. Unlock unlimited questions for 1 credit.",
+        })
 
     # Grade the answer
     llm = build_llm(model=default_model(), max_tokens=2048, temperature=0.0)
@@ -211,6 +230,14 @@ async def get_coaching(request: Request, session_id: str, body: CoachRequest):
         raise HTTPException(404, "Prep session not found")
 
     meta = _prep_registry[session_id]
+
+    # Enforce free question limit for coaching too
+    max_free = meta.get("max_free_questions", 2)
+    if meta.get("questions_answered", 0) >= max_free and not meta.get("paid"):
+        raise HTTPException(402, detail={
+            "error": "free_limit_reached",
+            "message": "Unlock unlimited questions to access coaching.",
+        })
 
     # Return cached coaching if available
     cached = meta.get("coaching_cache", {}).get(body.question_id)
@@ -288,6 +315,48 @@ Return ONLY valid JSON, no markdown fences:
     # Cache for this question
     meta.setdefault("coaching_cache", {})[body.question_id] = coaching
     return coaching
+
+
+@router.post("/{session_id}/unlock")
+async def unlock_prep(request: Request, session_id: str):
+    """Unlock unlimited interview questions by spending 1 credit."""
+    if session_id not in _prep_registry:
+        raise HTTPException(404, "Prep session not found")
+
+    user = get_current_user(request)
+    meta = _prep_registry[session_id]
+
+    if meta["user_id"] != user["id"]:
+        raise HTTPException(403, "Not your session")
+
+    if meta.get("paid"):
+        return {"status": "already_unlocked"}
+
+    try:
+        result = debit_wallet(
+            user["id"], 1.0, "interview_prep", session_id, "Interview prep unlimited questions"
+        )
+    except ValueError:
+        wallet = get_wallet(user["id"])
+        raise HTTPException(402, detail={
+            "error": "insufficient_credits",
+            "balance": wallet["balance"],
+            "cost": 1.0,
+        })
+
+    meta["paid"] = True
+
+    # Emit remaining questions that were held back
+    all_questions = meta.get("questions", [])
+    max_free = meta.get("max_free_questions", 2)
+    if len(all_questions) > max_free:
+        _emit_prep(session_id, "questions_unlocked", {
+            "questions": all_questions[max_free:],
+        })
+
+    _emit_prep(session_id, "unlocked", {"message": "Unlimited questions unlocked!"})
+
+    return {"status": "unlocked", "balance": result["balance"]}
 
 
 @router.post("/{session_id}/end")
@@ -370,18 +439,30 @@ async def get_prep(request: Request, session_id: str):
         raise HTTPException(404, "Prep session not found")
 
     meta = _prep_registry[session_id]
+    max_free = meta.get("max_free_questions", 2)
+    answered = meta.get("questions_answered", 0)
+    paid = meta.get("paid", False)
     result: Dict[str, Any] = {
         "session_id": session_id,
         "status": meta.get("status", "unknown"),
         "created_at": meta.get("created_at"),
-        "questions_answered": meta.get("questions_answered", 0),
+        "questions_answered": answered,
+        "paid": paid,
+        "max_free_questions": max_free,
+        "free_remaining": max(0, max_free - answered) if not paid else None,
     }
 
     for event in _prep_events.get(session_id, []):
         if event["type"] == "company_brief":
             result["company_brief"] = event["data"]
         elif event["type"] == "questions_ready":
-            result["questions"] = event["data"]["questions"]
+            # Only expose free questions unless paid
+            all_q = meta.get("questions", event["data"]["questions"])
+            if paid:
+                result["questions"] = all_q
+            else:
+                result["questions"] = all_q[:max_free]
+            result["total_questions"] = len(meta.get("questions", []))
         elif event["type"] == "readiness_report":
             result["readiness_report"] = event["data"]
 
