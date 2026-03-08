@@ -122,26 +122,5 @@ class LeverApplier(BaseApplier):
         await self._random_delay(1.5, 3.0)
         await self._wait_for_navigation()
 
-        # Step 6: Detect confirmation
-        if await self._detect_confirmation():
-            await self._emit_step("Application submitted!")
-            return self._make_result(
-                job.id, ApplicationStatus.SUBMITTED,
-                cover_letter_used=cover_letter,
-            )
-
-        # Check for failure indicators
-        failure = await self._detect_failure()
-        if failure:
-            return self._make_result(
-                job.id, ApplicationStatus.FAILED,
-                error_message=f"Lever detected: {failure}",
-            )
-
-        # Submit was clicked but no confirmation detected — FAILED
-        logger.info("Lever: submit clicked, no confirmation detected -- FAILED")
-        await self._emit_step("Application submitted (no explicit confirmation).")
-        return self._make_result(
-            job.id, ApplicationStatus.FAILED,
-            error_message="Submit clicked but no confirmation detected",
-        )
+        # Step 6: Post-submit checks (verification, captcha, confirmation, failure)
+        return await self._post_submit_check(job.id, cover_letter)

@@ -95,28 +95,8 @@ class WorkdayApplier(BaseApplier):
                 await self._random_delay(1.5, 3.0)
                 await self._wait_for_navigation()
 
-                if await self._detect_confirmation():
-                    await self._emit_step("Application submitted!")
-                    return self._make_result(
-                        job.id, ApplicationStatus.SUBMITTED,
-                        cover_letter_used=cover_letter,
-                    )
-
-                # Check for failure after submit attempt
-                failure = await self._detect_failure()
-                if failure:
-                    return self._make_result(
-                        job.id, ApplicationStatus.FAILED,
-                        error_message=f"Workday detected after submit: {failure}",
-                    )
-
-                # Submit clicked, no confirmation — FAILED
-                logger.info("Workday: submit clicked, no confirmation -- FAILED")
-                await self._emit_step("Application submitted (no explicit confirmation).")
-                return self._make_result(
-                    job.id, ApplicationStatus.FAILED,
-                    error_message="Submit clicked but no confirmation detected",
-                )
+                # Post-submit checks (verification, captcha, confirmation, failure)
+                return await self._post_submit_check(job.id, cover_letter)
 
             # Try Next button to advance the wizard
             has_next = await self._click_selector(_NEXT_SELECTORS, "next_button", timeout=3000)

@@ -92,10 +92,10 @@ class GenericApplier(BaseApplier):
             if submitted:
                 await self._random_delay(1.0, 2.0)
                 await self._wait_for_navigation()
-                if await self._detect_confirmation():
-                    await self._emit_step("Application submitted!")
-                    return self._make_result(job.id, ApplicationStatus.SUBMITTED,
-                                             cover_letter_used=cover_letter)
+                # Post-submit checks (verification, captcha, confirmation, failure)
+                result = await self._post_submit_check(job.id, cover_letter)
+                if result.status == ApplicationStatus.SUBMITTED:
+                    return result
                 # Might have been a Next disguised as Submit, continue
                 continue
 
@@ -115,11 +115,10 @@ class GenericApplier(BaseApplier):
             # Nothing worked -- break out
             break
 
-        # Check for failure indicators
-        failure = await self._detect_failure()
-        if failure:
-            return self._make_result(job.id, ApplicationStatus.FAILED,
-                                     error_message=f"Detected: {failure}")
+        # Post-loop: run full post-submit checks (verification, captcha, confirmation, failure)
+        result = await self._post_submit_check(job.id, cover_letter)
+        if result.status != ApplicationStatus.FAILED:
+            return result
 
         # Generic couldn't complete -- return SKIPPED for browser-use fallback
         logger.info("Generic applier could not complete application, returning SKIPPED")
