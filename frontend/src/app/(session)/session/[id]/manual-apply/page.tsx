@@ -87,17 +87,17 @@ export default function ManualApplyPage() {
                 Skipped
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Jobs you or the system decided to skip. You can still apply manually using your saved materials.
+                Jobs skipped before any work was done (already applied, duplicate, rate-limited). No credits charged. You can still apply manually.
               </p>
             </CardContent>
           </Card>
-          <Card className="border-red-200 dark:border-red-900">
+          <Card className="border-amber-200 dark:border-amber-900">
             <CardContent className="p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                Failed
+                Failed <span className="text-[10px] normal-case tracking-normal text-amber-600">(0.5 credits)</span>
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                These applications ran into an issue. Use the saved resume and cover letter to apply directly.
+                Work was done on your behalf — resume tailored and cover letter generated. Charged at half rate (0.5 credits). Use the saved materials to apply directly.
               </p>
             </CardContent>
           </Card>

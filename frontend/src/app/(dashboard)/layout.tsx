@@ -1,24 +1,9 @@
-"use client";
-
-import { usePathname } from "next/navigation";
-import { GlobalNav } from "@/components/nav/GlobalNav";
+import { DashboardShell } from "@/components/nav/DashboardShell";
 
 export default function DashboardGroupLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const isLanding = pathname === "/";
-
-  if (isLanding) {
-    return <>{children}</>;
-  }
-
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <GlobalNav />
-      <div className="flex-1">{children}</div>
-    </div>
-  );
+  return <DashboardShell>{children}</DashboardShell>;
 }

@@ -1,9 +1,11 @@
 """Billing routes: wallet, transactions, Stripe checkout, webhooks.
 
-Pricing:
-  - $1.99 per successful application
+Pricing (credit-based):
+  - Successful application: 1 credit
+  - Partial attempt (work done, form didn't complete): 0.5 credits
+  - Skipped (duplicate, rate-limited, no work done): 0 credits
   - 3 free applications for new users
-  - Bulk packs: 20 ($29.99), 50 ($64.99), 100 ($119.99)
+  - Packs: 20 credits ($29.99), 50 credits ($64.99), 100 credits ($119.99)
 """
 
 from __future__ import annotations
@@ -26,17 +28,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
-# Pack definitions
+# Pack definitions (credit-based)
 PACKS = {
-    "20": {"label": "20 Applications", "price_dollars": 29.99, "credit_amount": 39.80},
-    "50": {"label": "50 Applications", "price_dollars": 64.99, "credit_amount": 99.50},
-    "100": {"label": "100 Applications", "price_dollars": 119.99, "credit_amount": 199.00},
-    "top_up_10": {"label": "$10 Top-up", "price_dollars": 10.00, "credit_amount": 10.00},
-    "top_up_25": {"label": "$25 Top-up", "price_dollars": 25.00, "credit_amount": 25.00},
-    "top_up_50": {"label": "$50 Top-up", "price_dollars": 50.00, "credit_amount": 50.00},
+    "20": {"label": "20 Credits", "price_dollars": 29.99, "credit_amount": 20},
+    "50": {"label": "50 Credits", "price_dollars": 64.99, "credit_amount": 50},
+    "100": {"label": "100 Credits", "price_dollars": 119.99, "credit_amount": 100},
+    "top_up_5": {"label": "5 Credits", "price_dollars": 7.99, "credit_amount": 5},
+    "top_up_10": {"label": "10 Credits", "price_dollars": 14.99, "credit_amount": 10},
+    "top_up_25": {"label": "25 Credits", "price_dollars": 34.99, "credit_amount": 25},
 }
 
-APPLICATION_COST = 1.99
+# Credit costs per application outcome
+CREDIT_COST_SUBMITTED = 1.0   # Successful application
+CREDIT_COST_PARTIAL = 0.5     # Failed but work was done (resume tailored, cover letter, form filled)
+CREDIT_COST_SKIPPED = 0.0     # No work done (duplicate, rate-limited, auth-required)
 
 
 @router.get("/wallet")
@@ -47,7 +52,8 @@ async def wallet_endpoint(request: Request):
     return {
         "balance": wallet["balance"],
         "free_remaining": wallet["free_remaining"],
-        "application_cost": APPLICATION_COST,
+        "credit_cost_submitted": CREDIT_COST_SUBMITTED,
+        "credit_cost_partial": CREDIT_COST_PARTIAL,
     }
 
 
@@ -62,7 +68,11 @@ async def transactions_endpoint(request: Request):
 @router.get("/packs")
 async def packs_endpoint():
     """Return available purchase packs."""
-    return {"packs": PACKS, "application_cost": APPLICATION_COST}
+    return {
+        "packs": PACKS,
+        "credit_cost_submitted": CREDIT_COST_SUBMITTED,
+        "credit_cost_partial": CREDIT_COST_PARTIAL,
+    }
 
 
 class CheckoutRequest(BaseModel):
@@ -152,10 +162,10 @@ async def webhook_endpoint(request: Request):
                 amount=credit_amount,
                 tx_type="pack_purchase",
                 reference_id=session_obj.get("id", ""),
-                description=f"Pack purchase: {pack_id}",
+                description=f"Pack purchase: {pack['label']}",
             )
             logger.info(
-                "Credited $%.2f to user %s (pack=%s)",
+                "Credited %d credits to user %s (pack=%s)",
                 credit_amount, user_id, pack_id,
             )
 

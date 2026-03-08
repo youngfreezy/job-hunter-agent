@@ -8,7 +8,7 @@ function _resolveApiBase(): string {
   if (process.env.NODE_ENV === "production") {
     throw new Error("NEXT_PUBLIC_API_URL must be set in production");
   }
-  return typeof window !== "undefined" && window.location.port === "3000"
+  return typeof window !== "undefined" && ["3000", "3001"].includes(window.location.port)
     ? "http://localhost:8000"
     : "";
 }
@@ -125,22 +125,42 @@ export interface SSEEvent {
   data: Record<string, unknown>;
 }
 
+// ---------- CSRF helpers ----------
+
+function getCsrfToken(): string {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function csrfHeaders(): Record<string, string> {
+  const token = getCsrfToken();
+  return token ? { "x-csrf-token": token } : {};
+}
+
 // ---------- Auth helpers ----------
 
-let _cachedEmail: string | null = null;
+let _cachedToken: string | null = null;
+let _tokenFetchedAt = 0;
+const _TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
-  if (_cachedEmail) return { "X-User-Email": _cachedEmail };
+  // Return cached JWT if still fresh
+  if (_cachedToken && Date.now() - _tokenFetchedAt < _TOKEN_TTL_MS) {
+    return { Authorization: `Bearer ${_cachedToken}`, ...csrfHeaders() };
+  }
   try {
-    const res = await fetch("/api/auth/session");
-    const s = await res.json();
-    const email = s?.user?.email as string | undefined;
-    if (email) {
-      _cachedEmail = email;
-      return { "X-User-Email": email };
+    const res = await fetch("/api/auth/token");
+    if (res.ok) {
+      const { token } = await res.json();
+      if (token) {
+        _cachedToken = token;
+        _tokenFetchedAt = Date.now();
+        return { Authorization: `Bearer ${token}`, ...csrfHeaders() };
+      }
     }
   } catch {}
-  return {};
+  return csrfHeaders();
 }
 
 // ---------- REST API ----------
@@ -187,7 +207,8 @@ export interface SessionListItem {
 }
 
 export async function listSessions(): Promise<SessionListItem[]> {
-  const res = await fetch(`${API_BASE}/api/sessions`);
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/sessions`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to list sessions: ${res.statusText}`);
   return res.json();
 }
@@ -195,7 +216,8 @@ export async function listSessions(): Promise<SessionListItem[]> {
 export async function getSession(
   sessionId: string
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`);
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to get session: ${res.statusText}`);
   return res.json();
 }
@@ -259,25 +281,6 @@ export async function getApplicationLog(
   return res.json();
 }
 
-export async function sendGmailToken(
-  sessionId: string,
-  accessToken: string,
-  refreshToken?: string,
-): Promise<void> {
-  try {
-    await fetch(`${API_BASE}/api/sessions/${sessionId}/gmail-token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      }),
-    });
-  } catch {
-    // Non-critical — verification codes will fall back to manual entry
-  }
-}
-
 export async function sendSteer(
   sessionId: string,
   data: { message: string; mode?: string }
@@ -288,7 +291,7 @@ export async function sendSteer(
 }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/steer`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to send steer: ${res.statusText}`);
@@ -306,7 +309,7 @@ export async function sendCoachChat(
 }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/coach-chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to send coach chat: ${res.statusText}`);
@@ -321,7 +324,7 @@ export async function submitCoachReview(
     `${API_BASE}/api/sessions/${sessionId}/coach-review`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify(data),
     }
   );
@@ -335,7 +338,7 @@ export async function submitReview(
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/review`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to submit review: ${res.statusText}`);
@@ -349,7 +352,7 @@ export async function submitDecision(
     `${API_BASE}/api/sessions/${sessionId}/submit-decision`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({ decision }),
     }
   );
@@ -361,7 +364,7 @@ export async function resumeIntervention(sessionId: string): Promise<void> {
     `${API_BASE}/api/sessions/${sessionId}/resume-intervention`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
     }
   );
   if (!res.ok) throw new Error(`Failed to resume intervention: ${res.status}`);
@@ -372,7 +375,7 @@ export async function resumeIntervention(sessionId: string): Promise<void> {
 export async function confirmLogin(sessionId: string): Promise<void> {
   const res = await fetch(
     `${API_BASE}/api/sessions/${sessionId}/login-complete`,
-    { method: "POST" }
+    { method: "POST", headers: csrfHeaders() }
   );
   if (!res.ok) throw new Error(`Failed to confirm login: ${res.status}`);
 }
@@ -384,7 +387,7 @@ export async function resumeSession(
 ): Promise<{ status: string; next: string[]; action: string }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/resume`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
   });
   if (!res.ok) throw new Error(`Failed to resume session: ${res.statusText}`);
   return res.json();
@@ -416,7 +419,7 @@ export async function rewindSession(
 ): Promise<{ status: string; message: string }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/rewind`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify({
       checkpoint_id: checkpointId,
       approved_job_ids: approvedJobIds,
@@ -518,10 +521,12 @@ export function connectSSE(
 export async function parseResume(
   file: File
 ): Promise<{ text: string; filename: string; file_path?: string }> {
+  const auth = await getAuthHeaders();
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${API_BASE}/api/sessions/parse-resume`, {
     method: "POST",
+    headers: auth,
     body: form,
   });
   if (!res.ok) {
@@ -549,7 +554,7 @@ export async function startLinkedInUpdate(
     `${API_BASE}/api/sessions/${sessionId}/linkedin-update`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({ updates, linkedin_url: linkedinUrl }),
     }
   );
@@ -564,7 +569,8 @@ export async function getWallet(): Promise<{
   free_remaining: number;
   application_cost: number;
 }> {
-  const res = await fetch(`${API_BASE}/api/billing/wallet`);
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/billing/wallet`, { headers: auth });
   if (!res.ok) throw new Error("Failed to fetch wallet");
   return res.json();
 }
@@ -579,15 +585,17 @@ export async function getTransactions(): Promise<{
     created_at: string | null;
   }>;
 }> {
-  const res = await fetch(`${API_BASE}/api/billing/transactions`);
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/billing/transactions`, { headers: auth });
   if (!res.ok) throw new Error("Failed to fetch transactions");
   return res.json();
 }
 
 export async function createCheckout(packId: string): Promise<{ url: string }> {
+  const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/billing/checkout`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify({ pack_id: packId }),
   });
   if (!res.ok) throw new Error("Failed to create checkout");

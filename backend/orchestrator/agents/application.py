@@ -27,6 +27,7 @@ from backend.shared.application_store import (
     check_company_rate_limit,
     record_result as _db_record_result,
 )
+from backend.shared.billing_store import check_sufficient_credits, debit_wallet
 from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
@@ -34,6 +35,52 @@ from backend.shared.models.schemas import (
     ApplicationStatus,
     JobListing,
 )
+
+# Credit costs per application outcome
+_CREDIT_COST_SUBMITTED = 1.0
+_CREDIT_COST_PARTIAL = 0.5
+
+
+def _charge_for_application(
+    user_id: str,
+    status: str,
+    job_title: str = "",
+    job_company: str = "",
+    job_id: str = "",
+) -> None:
+    """Charge the user's wallet based on application outcome.
+
+    - submitted: 1 credit (full charge)
+    - failed: 0.5 credits (partial — work was done)
+    - skipped: 0 credits (no charge)
+    """
+    if not user_id or user_id == "unknown":
+        return
+
+    if status == "skipped":
+        return  # No charge for skips
+
+    amount = _CREDIT_COST_SUBMITTED if status == "submitted" else _CREDIT_COST_PARTIAL
+    tx_type = "application_submitted" if status == "submitted" else "application_partial"
+    label = f"{job_title} @ {job_company}" if job_title and job_company else job_id
+    description = (
+        f"Application submitted: {label}" if status == "submitted"
+        else f"Partial attempt: {label}"
+    )
+
+    try:
+        debit_wallet(
+            user_id=user_id,
+            amount=amount,
+            tx_type=tx_type,
+            reference_id=job_id,
+            description=description,
+        )
+    except ValueError as e:
+        logger.warning("Billing charge failed for user %s: %s", user_id, e)
+    except Exception:
+        logger.exception("Unexpected billing error for user %s, job %s", user_id, job_id)
+
 
 # Login page indicators — if the final URL contains any of these after
 # navigation, the page requires authentication and should be skipped.
@@ -462,6 +509,22 @@ async def _apply_to_job(
     detected_ats = "unknown"
     streamer: Any = None
 
+    # Pre-flight: check if user has sufficient credits
+    user_id = state.get("user_id", "")
+    if user_id and user_id != "unknown":
+        if not check_sufficient_credits(user_id):
+            logger.info("Insufficient credits for user %s — stopping applications", user_id)
+            await emit_agent_event(session_id, "application_progress", {
+                "job_id": job_id,
+                "step": "Skipped — insufficient credits. Visit Billing to add more.",
+            })
+            return ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.SKIPPED,
+                error_message="insufficient_credits",
+                duration_seconds=int(time.monotonic() - start_time),
+            )
+
     # Pre-flight: skip "Easy Apply" jobs (need board login)
     if getattr(job, "is_easy_apply", False):
         logger.info("Easy Apply job — skipping %s (needs %s login)", job.title, job.board.value)
@@ -813,6 +876,16 @@ async def _apply_to_job(
             screenshot_path=result.screenshot_url,
         )
 
+        # Charge the user based on outcome
+        user_id = state.get("user_id", "")
+        _charge_for_application(
+            user_id=user_id,
+            status=result.status.value,
+            job_title=job.title,
+            job_company=job.company,
+            job_id=job_id,
+        )
+
         return result
 
     except Exception as exc:
@@ -839,6 +912,30 @@ async def _apply_to_job(
             job_location=job.location or "",
             error_message=str(exc),
             duration_seconds=duration,
+        )
+
+        # Charge partial credit for failed attempt (work was done)
+        user_id = state.get("user_id", "")
+        _charge_for_application(
+            user_id=user_id,
+            status="failed",
+            job_title=job.title,
+            job_company=job.company,
+            job_id=job_id,
+        )
+
+        # Enqueue to dead letter queue for review/retry
+        from backend.shared.dead_letter_queue import enqueue_failed_application
+        enqueue_failed_application(
+            session_id=session_id,
+            user_id=user_id,
+            job_id=job_id,
+            job_title=job.title,
+            job_company=job.company,
+            job_url=job.url,
+            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+            error_message=str(exc)[:500],
+            error_type=type(exc).__name__,
         )
 
         return ApplicationResult(

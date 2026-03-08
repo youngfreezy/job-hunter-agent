@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: Optional[str] = None
 
     # --- Redis ---
-    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_URL: str = "redis://:jobhunter_redis_dev@localhost:6379"
 
     # --- Auth ---
     NEXTAUTH_SECRET: Optional[str] = None

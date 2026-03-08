@@ -32,6 +32,27 @@ patches.apply_all()
 
 logger = logging.getLogger(__name__)
 
+# --- Sentry error tracking ---
+_settings = get_settings()
+if _settings.SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
+
+        sentry_sdk.init(
+            dsn=_settings.SENTRY_DSN,
+            integrations=[
+                FastApiIntegration(transaction_style="endpoint"),
+                LoggingIntegration(level=logging.WARNING, event_level=logging.ERROR),
+            ],
+            traces_sample_rate=0.1,
+            send_default_pii=False,
+        )
+        logger.info("Sentry initialized")
+    except ImportError:
+        logger.warning("sentry-sdk not installed — error tracking disabled")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -107,6 +128,18 @@ async def lifespan(app: FastAPI):
 
     graph = build_graph(checkpointer=checkpointer)
 
+    # --- Build Career Pivot graph ---
+    from backend.orchestrator.career_pivot.graph import build_career_pivot_graph
+    career_pivot_graph = build_career_pivot_graph(checkpointer=checkpointer)
+
+    # --- Build Interview Prep graph ---
+    from backend.orchestrator.interview_prep.graph import build_interview_prep_graph
+    interview_prep_graph = build_interview_prep_graph(checkpointer=checkpointer)
+
+    # --- Build Freelance Matchmaker graph ---
+    from backend.orchestrator.freelance.graph import build_freelance_graph
+    freelance_graph = build_freelance_graph(checkpointer=checkpointer)
+
     # --- Redis ---
     from backend.shared.redis_client import redis_client
     try:
@@ -121,6 +154,9 @@ async def lifespan(app: FastAPI):
     app.state.graph = graph
     app.state.checkpointer = checkpointer
     app.state.settings = settings
+    app.state.career_pivot_graph = career_pivot_graph
+    app.state.interview_prep_graph = interview_prep_graph
+    app.state.freelance_graph = freelance_graph
 
     yield
 
@@ -154,6 +190,8 @@ def create_app() -> FastAPI:
         allow_origins=[
             "http://localhost:3000",
             "https://localhost:3000",
+            "http://localhost:3001",
+            "https://localhost:3001",
         ],
         allow_origin_regex=r"https://job-hunter-agent(-[a-z0-9]+)?\.vercel\.app",
         allow_credentials=True,
@@ -161,21 +199,37 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # --- Rate Limiting (runs after CORS in middleware stack) ---
+    # Starlette middleware execution order is REVERSED from registration.
+    # Last registered = first to run on incoming request.
+    # Desired request flow: JWT Auth → CSRF → Rate Limiter → Route
+    # So register in reverse:
+
     from backend.gateway.middleware.rate_limit import attach_rate_limiter
     attach_rate_limiter(app)
+
+    from backend.gateway.middleware.csrf import attach_csrf_protection
+    attach_csrf_protection(app)
+
+    from backend.gateway.middleware.jwt_auth import attach_jwt_auth
+    attach_jwt_auth(app)
 
     # --- Routes ---
     from backend.gateway.routes.auth import router as auth_router
     from backend.gateway.routes.health import router as health_router
     from backend.gateway.routes.payments import router as payments_router
     from backend.gateway.routes.selectors import router as selectors_router
+    from backend.gateway.routes.career_pivot import router as career_pivot_router
+    from backend.gateway.routes.interview_prep import router as interview_prep_router
+    from backend.gateway.routes.freelance import router as freelance_router
     from backend.gateway.routes.sessions import router as sessions_router
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
     app.include_router(payments_router)
     app.include_router(selectors_router)
+    app.include_router(career_pivot_router)
+    app.include_router(interview_prep_router)
+    app.include_router(freelance_router)
 
     return app
 

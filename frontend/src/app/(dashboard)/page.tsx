@@ -65,7 +65,7 @@ const pricingPacks = [
     perApp: "$0",
     summary: "Try the full platform risk-free.",
     features: [
-      "3 fully automated applications",
+      "3 free application credits",
       "AI resume optimization",
       "Job matching across 5 boards",
       "Shortlist approval before submission",
@@ -75,38 +75,38 @@ const pricingPacks = [
     popular: false,
   },
   {
-    name: "20 Pack",
+    name: "20 Credits",
     apps: 20,
     price: 29.99,
     priceLabel: "$29.99",
     perApp: "$1.50",
     summary: "Best for focused job searches.",
     features: [
-      "20 fully automated applications",
-      "Unlimited resume tailoring",
-      "Cover letter generation per role",
+      "20 application credits",
+      "Partial attempts only cost 0.5 credits",
+      "Cover letter + resume tailored per role",
       "Real-time progress tracking",
       "Full application history",
     ],
-    cta: "Get 20 Applications",
-    popular: true,
+    cta: "Get 20 Credits",
+    popular: false,
   },
   {
-    name: "50 Pack",
+    name: "50 Credits",
     apps: 50,
     price: 64.99,
     priceLabel: "$64.99",
     perApp: "$1.30",
     summary: "Maximum coverage for serious searchers.",
     features: [
-      "50 fully automated applications",
-      "Everything in 20 Pack",
+      "50 application credits",
+      "Everything in 20 Credits pack",
       "Priority application processing",
       "Direct browser control for complex sites",
-      "Best per-application value",
+      "Best value for most job seekers",
     ],
-    cta: "Get 50 Applications",
-    popular: false,
+    cta: "Get 50 Credits",
+    popular: true,
   },
 ];
 
@@ -129,11 +129,11 @@ const faqs = [
   },
   {
     q: "What if an application fails?",
-    a: "You can see the status of every application in your dashboard. If an application encounters an issue, we pause and notify you. You can retry, skip, or take over the browser directly to complete it yourself with your pre-filled materials.",
+    a: "Partial attempts — where your resume was tailored, a cover letter was written, or a form was partially filled — use only 0.5 credits. You keep all the tailored materials and can apply manually. If a job was skipped entirely (duplicate, already applied), no credits are used.",
   },
   {
     q: "Can I get a refund?",
-    a: "If an application fails due to a platform issue on our end, it does not count against your balance. For unused application credits, contact us within 30 days for a full refund.",
+    a: "Partial attempts are charged at a reduced rate (0.5 credits) because real work was performed — your resume was tailored and a custom cover letter was generated. For unused credits, contact us within 30 days for a full refund.",
   },
 ];
 
@@ -150,19 +150,19 @@ const jsonLd = {
       "@type": "Offer",
       price: "0",
       priceCurrency: "USD",
-      description: "3 free applications",
+      description: "3 free application credits",
     },
     {
       "@type": "Offer",
       price: "29.99",
       priceCurrency: "USD",
-      description: "20 application pack",
+      description: "20 credit pack",
     },
     {
       "@type": "Offer",
       price: "64.99",
       priceCurrency: "USD",
-      description: "50 application pack",
+      description: "50 credit pack",
     },
   ],
   featureList: [
@@ -225,7 +225,7 @@ export default function Home() {
               <div className="mt-10 grid gap-6 sm:grid-cols-3">
                 {[
                   { value: "5 job boards", label: "Searched simultaneously" },
-                  { value: "$1.50/app", label: "Starting at, with 3 free" },
+                  { value: "$1.20/credit", label: "As low as, with 3 free" },
                   { value: "2 approval steps", label: "You control everything" },
                 ].map((s) => (
                   <div key={s.value}>
@@ -326,7 +326,7 @@ export default function Home() {
         <div className="mx-auto max-w-6xl">
           <div className="mb-10">
             <h2 className="text-3xl font-bold">Pay Per Application. No Subscriptions.</h2>
-            <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">Start with 3 free applications. Buy packs when you&apos;re ready. Only pay for applications that actually submit.</p>
+            <p className="mt-2 max-w-2xl text-zinc-600 dark:text-zinc-400">Start with 3 free credits. Buy packs when you&apos;re ready. Successful applications cost 1 credit, partial attempts just 0.5.</p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-3">
@@ -340,7 +340,7 @@ export default function Home() {
                     <span className="text-4xl font-bold">{plan.priceLabel}</span>
                     {plan.price > 0 && <span className="ml-2 text-sm text-zinc-500">{plan.perApp}/application</span>}
                   </div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{plan.apps} applications</p>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{plan.apps} {plan.apps === 3 ? "free applications" : "credits"}</p>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col">
                   <ul className="mb-6 space-y-3">
@@ -362,7 +362,7 @@ export default function Home() {
           </div>
 
           <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            Also available: 100 applications for $119.99 ($1.20/app). Need more?{" "}
+            Also available: 100 credits for $119.99 ($1.20/credit). Need more?{" "}
             <a href="mailto:support@jobhunteragent.com" className="underline hover:text-zinc-900 dark:hover:text-white">Contact us</a> for volume pricing.
           </p>
         </div>
