@@ -42,6 +42,20 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+-- Auto-refill preferences
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS auto_refill_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS auto_refill_threshold DECIMAL(10,2) DEFAULT 5.0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS auto_refill_pack_id TEXT DEFAULT 'top_up_10';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
@@ -148,17 +162,73 @@ def get_stripe_customer_id(user_id: str) -> Optional[str]:
 
 
 def get_wallet(user_id: str) -> Dict[str, Any]:
-    """Get wallet balance and free applications remaining."""
+    """Get wallet balance, free applications remaining, and auto-refill info."""
     conn = _connect()
     try:
         cur = conn.execute(
-            "SELECT wallet_balance, free_applications_remaining FROM users WHERE id = %s",
+            """SELECT wallet_balance, free_applications_remaining,
+                      auto_refill_enabled, auto_refill_threshold, auto_refill_pack_id
+               FROM users WHERE id = %s""",
             (user_id,),
         )
         row = cur.fetchone()
         if not row:
-            return {"balance": 0.0, "free_remaining": 0}
-        return {"balance": float(row[0]), "free_remaining": row[1]}
+            return {"balance": 0.0, "free_remaining": 0,
+                    "auto_refill_enabled": False, "auto_refill_threshold": 5.0,
+                    "auto_refill_pack_id": "top_up_10", "low_balance": False}
+        balance = float(row[0])
+        auto_refill_enabled = bool(row[2]) if row[2] is not None else False
+        auto_refill_threshold = float(row[3]) if row[3] is not None else 5.0
+        auto_refill_pack_id = row[4] or "top_up_10"
+        low_balance = auto_refill_enabled and balance < auto_refill_threshold
+        return {
+            "balance": balance,
+            "free_remaining": row[1],
+            "auto_refill_enabled": auto_refill_enabled,
+            "auto_refill_threshold": auto_refill_threshold,
+            "auto_refill_pack_id": auto_refill_pack_id,
+            "low_balance": low_balance,
+        }
+    finally:
+        conn.close()
+
+
+def get_auto_refill_settings(user_id: str) -> Dict[str, Any]:
+    """Get auto-refill preferences for a user."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            """SELECT auto_refill_enabled, auto_refill_threshold, auto_refill_pack_id
+               FROM users WHERE id = %s""",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"enabled": False, "threshold": 5.0, "pack_id": "top_up_10"}
+        return {
+            "enabled": bool(row[0]) if row[0] is not None else False,
+            "threshold": float(row[1]) if row[1] is not None else 5.0,
+            "pack_id": row[2] or "top_up_10",
+        }
+    finally:
+        conn.close()
+
+
+def update_auto_refill_settings(
+    user_id: str, enabled: bool, threshold: float, pack_id: str
+) -> None:
+    """Update auto-refill preferences for a user."""
+    conn = _connect()
+    try:
+        conn.execute(
+            """UPDATE users
+               SET auto_refill_enabled = %s,
+                   auto_refill_threshold = %s,
+                   auto_refill_pack_id = %s
+               WHERE id = %s""",
+            (enabled, threshold, pack_id, user_id),
+        )
+        conn.commit()
     finally:
         conn.close()
 

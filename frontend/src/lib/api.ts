@@ -630,6 +630,21 @@ export async function getTransactions(): Promise<{
   return res.json();
 }
 
+export async function updateAutoRefill(settings: {
+  enabled: boolean;
+  threshold: number;
+  pack_id: string;
+}): Promise<{ ok: boolean }> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/billing/auto-refill`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error("Failed to update auto-refill settings");
+  return res.json();
+}
+
 export async function createCheckout(packId: string): Promise<{ url: string }> {
   const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/billing/checkout`, {
