@@ -125,6 +125,24 @@ export interface SSEEvent {
   data: Record<string, unknown>;
 }
 
+// ---------- Auth helpers ----------
+
+let _cachedEmail: string | null = null;
+
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (_cachedEmail) return { "X-User-Email": _cachedEmail };
+  try {
+    const res = await fetch("/api/auth/session");
+    const s = await res.json();
+    const email = s?.user?.email as string | undefined;
+    if (email) {
+      _cachedEmail = email;
+      return { "X-User-Email": email };
+    }
+  } catch {}
+  return {};
+}
+
 // ---------- REST API ----------
 
 export async function startSession(params: {
@@ -144,9 +162,10 @@ export async function startSession(params: {
     job_boards: string[];
   };
 }): Promise<{ session_id: string }> {
+  const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error(`Failed to start session: ${res.statusText}`);
