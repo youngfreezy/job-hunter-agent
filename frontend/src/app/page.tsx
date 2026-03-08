@@ -72,38 +72,55 @@ const pricingPacks = [
     popular: false,
   },
   {
-    name: "20 Credits",
-    apps: 20,
-    price: 29.99,
-    priceLabel: "$29.99",
-    perApp: "$1.50",
-    summary: "Best for focused job searches.",
+    name: "10 Credits",
+    apps: 10,
+    price: 12.99,
+    priceLabel: "$12.99",
+    perApp: "$1.30",
+    summary: "Perfect first purchase after free trial.",
     features: [
-      "20 application credits",
+      "10 application credits",
       "Partial attempts only cost 0.5 credits",
       "Cover letter + resume tailored per role",
       "Real-time progress tracking",
       "Full application history",
     ],
-    cta: "Get 20 Credits",
+    cta: "Get 10 Credits",
     popular: false,
   },
   {
     name: "50 Credits",
     apps: 50,
-    price: 64.99,
-    priceLabel: "$64.99",
-    perApp: "$1.30",
-    summary: "Maximum coverage for serious searchers.",
+    price: 49.99,
+    priceLabel: "$49.99",
+    perApp: "$1.00",
+    summary: "Best value for serious job searches.",
     features: [
       "50 application credits",
-      "Everything in 20 Credits pack",
+      "Everything in 10 Credits pack",
       "Priority application processing",
       "Direct browser control for complex sites",
-      "Best value for most job seekers",
+      "Save 23% vs 10-credit packs",
     ],
     cta: "Get 50 Credits",
     popular: true,
+  },
+  {
+    name: "Unlimited Monthly",
+    apps: -1,
+    price: 79.99,
+    priceLabel: "$79.99",
+    perApp: "unlimited",
+    summary: "Unlimited applications for active searchers.",
+    features: [
+      "Unlimited application credits",
+      "Everything in 50 Credits pack",
+      "Cancel or pause anytime",
+      "Priority support",
+      "Best for 50+ applications/month",
+    ],
+    cta: "Go Unlimited",
+    popular: false,
   },
 ];
 
@@ -171,8 +188,9 @@ const jsonLd = {
     "AI-powered job application automation. Searches 5 job boards, tailors resumes per role, and submits applications automatically with human approval checkpoints.",
   offers: [
     { "@type": "Offer", price: "0", priceCurrency: "USD", description: "3 free application credits" },
-    { "@type": "Offer", price: "29.99", priceCurrency: "USD", description: "20 credit pack" },
-    { "@type": "Offer", price: "64.99", priceCurrency: "USD", description: "50 credit pack" },
+    { "@type": "Offer", price: "12.99", priceCurrency: "USD", description: "10 credit pack" },
+    { "@type": "Offer", price: "49.99", priceCurrency: "USD", description: "50 credit pack" },
+    { "@type": "Offer", price: "79.99", priceCurrency: "USD", description: "Unlimited monthly subscription" },
   ],
   featureList: [
     "AI resume optimization",
@@ -196,7 +214,7 @@ function ROICalculator() {
 
   const weeklyHoursSaved = appsPerWeek * hoursPerApp;
   const weeklyCostManual = weeklyHoursSaved * hourlyRate;
-  const creditCost = appsPerWeek <= 20 ? 29.99 : appsPerWeek <= 50 ? 64.99 : 119.99;
+  const creditCost = appsPerWeek <= 10 ? 12.99 : appsPerWeek <= 50 ? 49.99 : 79.99;
   const savings = weeklyCostManual - creditCost;
   const roi = Math.round((savings / creditCost) * 100);
 
@@ -543,11 +561,11 @@ export default function Home() {
       <section id="pricing" className="px-6 py-20">
         <div className="mx-auto max-w-6xl">
           <div className="mb-10 text-center">
-            <h2 className="text-3xl font-bold">Pay Per Application. No Subscriptions.</h2>
-            <p className="mt-2 text-zinc-600 dark:text-zinc-400">Start with 3 free credits. Buy packs when you&apos;re ready. Successful applications cost 1 credit, partial attempts just 0.5.</p>
+            <h2 className="text-3xl font-bold">Simple, Flexible Pricing</h2>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">Start free. Buy credit packs or go unlimited. Successful applications cost 1 credit, partial attempts just 0.5.</p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
             {pricingPacks.map((plan) => (
               <Card key={plan.name} className={"relative flex h-full flex-col rounded-[32px] bg-white/95 shadow-[0_18px_48px_-32px_rgba(15,23,42,0.28)] dark:bg-zinc-950 " + (plan.popular ? "border-2 border-zinc-900 dark:border-white" : "border-zinc-200 dark:border-zinc-800")}>
                 {plan.popular && <div className="absolute -top-3 left-6"><Badge>Most Popular</Badge></div>}
@@ -556,9 +574,15 @@ export default function Home() {
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">{plan.summary}</p>
                   <div className="pt-2">
                     <span className="text-4xl font-bold">{plan.priceLabel}</span>
-                    {plan.price > 0 && <span className="ml-2 text-sm text-zinc-500">{plan.perApp}/application</span>}
+                    {plan.apps === -1 ? (
+                      <span className="ml-2 text-sm text-zinc-500">/month</span>
+                    ) : plan.price > 0 ? (
+                      <span className="ml-2 text-sm text-zinc-500">{plan.perApp}/application</span>
+                    ) : null}
                   </div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{plan.apps} {plan.apps === 3 ? "free applications" : "credits"}</p>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    {plan.apps === -1 ? "Unlimited applications" : `${plan.apps} ${plan.apps === 3 ? "free applications" : "credits"}`}
+                  </p>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col">
                   <ul className="mb-6 space-y-3">
@@ -581,7 +605,7 @@ export default function Home() {
           </div>
 
           <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            Also available: 100 credits for $119.99 ($1.20/credit). Need more?{" "}
+            Also available: 100 credits for $89.99 ($0.90/credit). Need more?{" "}
             <a href="mailto:support@jobhunteragent.com" className="underline hover:text-zinc-900 dark:hover:text-white">Contact us</a> for volume pricing.
           </p>
         </div>
