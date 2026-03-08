@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { API_BASE, getAuthHeaders } from "@/lib/api";
+import { API_BASE, getAuthHeaders, getWallet } from "@/lib/api";
 import AnswerGradeRadar from "@/components/charts/AnswerGradeRadar";
 import ReadinessScoreBars from "@/components/charts/ReadinessScoreBars";
 
@@ -66,6 +66,13 @@ export default function InterviewPrepSessionPage() {
   const [error, setError] = useState<string | null>(null);
   const [coaching, setCoaching] = useState<Record<string, CoachingHints>>({});
   const [coachingLoading, setCoachingLoading] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paid, setPaid] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [freeRemaining, setFreeRemaining] = useState<number | null>(null);
+  const maxFreeQuestions = 2;
+  const router = useRouter();
 
   // SSE connection
   useEffect(() => {
@@ -77,6 +84,10 @@ export default function InterviewPrepSessionPage() {
       const data = JSON.parse(e.data);
       setQuestions(data.questions || []);
       setStatus("ready");
+    });
+    es.addEventListener("questions_unlocked", (e) => {
+      const data = JSON.parse(e.data);
+      setQuestions((prev) => [...prev, ...(data.questions || [])]);
     });
     es.addEventListener("ready_for_practice", () => setStatus("practicing"));
     es.addEventListener("status", (e) => {
@@ -112,11 +123,17 @@ export default function InterviewPrepSessionPage() {
           body: JSON.stringify({ question_id: currentQuestion.id, answer }),
         }
       );
+      if (res.status === 402) {
+        setShowPaywall(true);
+        getWallet().then((w) => setWalletBalance(w.balance)).catch(() => {});
+        return;
+      }
       if (!res.ok) throw new Error("Failed to grade answer");
       const data = await res.json();
       setLastGrade(data.grade);
       setGrades((prev) => [...prev, data.grade]);
       setAnswer("");
+      if (!paid) setFreeRemaining(Math.max(0, maxFreeQuestions - data.questions_answered));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
@@ -139,6 +156,11 @@ export default function InterviewPrepSessionPage() {
           body: JSON.stringify({ question_id: q.id }),
         }
       );
+      if (res.status === 402) {
+        setShowPaywall(true);
+        getWallet().then((w) => setWalletBalance(w.balance)).catch(() => {});
+        return;
+      }
       if (!res.ok) throw new Error("Failed to get coaching");
       const data = await res.json();
       setCoaching((prev) => ({ ...prev, [q.id]: data }));
@@ -160,6 +182,31 @@ export default function InterviewPrepSessionPage() {
     if (res.ok) {
       setReport(await res.json());
       setStatus("completed");
+    }
+  }
+
+  // Unlock unlimited questions
+  async function handleUnlock() {
+    if (!prepId) return;
+    setUnlocking(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${API_BASE}/api/interview-prep/${prepId}/unlock`,
+        { method: "POST", headers: { ...headers, "Content-Type": "application/json" } }
+      );
+      if (res.status === 402) {
+        router.push("/billing");
+        return;
+      }
+      if (!res.ok) throw new Error("Unlock failed");
+      setPaid(true);
+      setShowPaywall(false);
+      setFreeRemaining(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to unlock");
+    } finally {
+      setUnlocking(false);
     }
   }
 
@@ -242,7 +289,12 @@ export default function InterviewPrepSessionPage() {
         <div className="bg-card border rounded-lg p-6 space-y-4">
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>Q{currentQ + 1} of {questions.length}</span>
-            <span className="capitalize">{q.category.replace("_", " ")}</span>
+            <div className="flex items-center gap-3">
+              {!paid && currentQ < maxFreeQuestions && (
+                <span className="text-xs text-yellow-400">{maxFreeQuestions - currentQ} free question{maxFreeQuestions - currentQ !== 1 ? "s" : ""} left</span>
+              )}
+              <span className="capitalize">{q.category.replace("_", " ")}</span>
+            </div>
           </div>
           <p className="text-lg font-medium">{q.question}</p>
 
@@ -325,27 +377,64 @@ export default function InterviewPrepSessionPage() {
             </div>
           )}
 
-          <textarea
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="Type your answer..."
-            rows={5}
-            className="w-full border rounded px-3 py-2 bg-background text-sm resize-y"
-          />
+          {showPaywall ? (
+            <div className="border-2 border-primary/30 rounded-lg p-6 text-center space-y-4">
+              <div className="text-3xl">&#128170;</div>
+              <h3 className="text-lg font-semibold">You&apos;re doing great! Continue practicing?</h3>
+              <p className="text-sm text-muted-foreground">
+                You&apos;ve used your {maxFreeQuestions} free questions. Unlock unlimited questions and coaching for the rest of this session.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Button onClick={handleUnlock} loading={unlocking} size="lg">
+                  Unlock for 1 Credit
+                </Button>
+                <Button variant="outline" size="lg" onClick={() => router.push("/billing")}>
+                  Buy Credits
+                </Button>
+              </div>
+              {walletBalance !== null && (
+                <p className="text-xs text-muted-foreground">
+                  Current balance: {walletBalance} credit{walletBalance !== 1 ? "s" : ""}
+                </p>
+              )}
+              {grades.length > 0 && (
+                <button onClick={handleEnd} className="text-sm text-muted-foreground hover:text-foreground underline">
+                  Or end session and see your report
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <textarea
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder="Type your answer..."
+                rows={5}
+                className="w-full border rounded px-3 py-2 bg-background text-sm resize-y"
+              />
 
-          <div className="flex gap-3">
-            <Button onClick={handleSubmitAnswer} disabled={submitting || !answer.trim()}>
-              {submitting ? "Grading..." : "Submit Answer"}
-            </Button>
-            <Button variant="outline" onClick={() => { setCurrentQ(c => c + 1); setLastGrade(null); setAnswer(""); }}>
-              Skip
-            </Button>
-            {grades.length > 0 && (
-              <Button variant="secondary" onClick={handleEnd}>
-                End & See Report
-              </Button>
-            )}
-          </div>
+              <div className="flex gap-3">
+                <Button onClick={handleSubmitAnswer} disabled={submitting || !answer.trim()}>
+                  {submitting ? "Grading..." : "Submit Answer"}
+                </Button>
+                <Button variant="outline" onClick={() => {
+                  if (!paid && currentQ + 1 >= maxFreeQuestions) {
+                    setShowPaywall(true);
+                    getWallet().then((w) => setWalletBalance(w.balance)).catch(() => {});
+                    return;
+                  }
+                  setCurrentQ(c => c + 1); setLastGrade(null); setAnswer("");
+                }}>
+                  Skip
+                </Button>
+                {grades.length > 0 && (
+                  <Button variant="secondary" onClick={handleEnd}>
+                    End & See Report
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
