@@ -407,12 +407,12 @@ async def _run_pipeline(
         if session_id in session_registry:
             session_registry[session_id]["status"] = "failed"
         await _emit(session_id, "error", {
-            "message": str(exc),
+            "message": "An internal error occurred",
             "session_id": session_id,
         })
         await _emit(session_id, "done", {
             "status": "failed",
-            "error": str(exc),
+            "error": "An internal error occurred",
         })
         unregister_emitter(session_id)
         await _release_task_slot(session_id)
@@ -463,12 +463,12 @@ async def _resume_pipeline(
         if session_id in session_registry:
             session_registry[session_id]["status"] = "failed"
         await _emit(session_id, "error", {
-            "message": str(exc),
+            "message": "An internal error occurred",
             "session_id": session_id,
         })
         await _emit(session_id, "done", {
             "status": "failed",
-            "error": str(exc),
+            "error": "An internal error occurred",
         })
     finally:
         if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
@@ -506,8 +506,8 @@ async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) ->
         logger.exception("Stalled pipeline resume failed for session %s", session_id)
         if session_id in session_registry:
             session_registry[session_id]["status"] = "failed"
-        await _emit(session_id, "error", {"message": str(exc), "session_id": session_id})
-        await _emit(session_id, "done", {"status": "failed", "error": str(exc)})
+        await _emit(session_id, "error", {"message": "An internal error occurred", "session_id": session_id})
+        await _emit(session_id, "done", {"status": "failed", "error": "An internal error occurred"})
         unregister_emitter(session_id)
     finally:
         if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
@@ -991,8 +991,8 @@ async def _test_apply_single(
 
     except Exception as exc:
         logger.exception("Test apply failed for %s", session_id)
-        await _emit(session_id, "error", {"message": str(exc)})
-        await _emit(session_id, "done", {"status": "failed", "error": str(exc)})
+        await _emit(session_id, "error", {"message": "An internal error occurred"})
+        await _emit(session_id, "done", {"status": "failed", "error": "An internal error occurred"})
         terminal_status = "failed"
     finally:
         if session_id in session_registry:
@@ -1266,7 +1266,7 @@ async def coach_chat(session_id: str, body: CoachChatRequest, request: Request):
     try:
         graph_state = await graph.aget_state(config)
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Session not found: {exc}")
+        raise HTTPException(status_code=404, detail="Session not found")
 
     next_nodes = getattr(graph_state, "next", ()) or ()
     if "coach_review" not in next_nodes:
@@ -1422,7 +1422,7 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
         await graph.aupdate_state(config, state_update)
     except Exception as exc:
         logger.exception("Failed to steer session %s", session_id)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to process steering command")
 
     should_resume = any(
         directive.action == "resume_workflow"
@@ -1552,7 +1552,8 @@ async def resume_intervention(session_id: str):
         await redis_client.set(f"intervention:resume:{session_id}", "1", ex=600)
         await redis_client.close()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to signal resume: {exc}")
+        logger.exception("Failed to signal resume for session %s", session_id)
+        raise HTTPException(status_code=500, detail="Failed to signal resume")
 
     await _emit(session_id, "status", {
         "status": "applying",
@@ -1580,7 +1581,8 @@ async def submit_decision(session_id: str, body: SubmitDecisionRequest):
         await redis_client.set(f"submit:approve:{session_id}", body.decision, ex=600)
         await redis_client.close()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to send decision: {exc}")
+        logger.exception("Failed to send decision for session %s", session_id)
+        raise HTTPException(status_code=500, detail="Failed to send decision")
 
     action_msg = "Submitting your application..." if body.decision == "submit" else "Skipping this one — moving on..."
     await _emit(session_id, "status", {
@@ -1615,7 +1617,7 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
     try:
         graph_state = await graph.aget_state(config)
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Checkpoint not found: {exc}")
+        raise HTTPException(status_code=404, detail="Checkpoint not found")
 
     next_nodes = getattr(graph_state, "next", ()) or ()
     if not next_nodes:
@@ -1696,7 +1698,7 @@ async def resume_session(session_id: str, request: Request):
     try:
         graph_state = await graph.aget_state(config)
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"No checkpoint found: {exc}")
+        raise HTTPException(status_code=404, detail="No checkpoint found for this session")
 
     next_nodes = getattr(graph_state, "next", ()) or ()
     if not next_nodes:
@@ -1887,8 +1889,8 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
         except Exception as exc:
             logger.exception("LinkedIn update task failed for session %s", session_id)
             await _emit(session_id, "linkedin_update_failed", {
-                "step": f"Update failed: {str(exc)[:200]}",
-                "error": str(exc),
+                "step": "LinkedIn update failed due to an internal error",
+                "error": "An internal error occurred",
             })
         finally:
             unregister_emitter(session_id)

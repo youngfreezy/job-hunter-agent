@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
         await pool.open()
         checkpointer = AsyncPostgresSaver(pool)
         await checkpointer.setup()
-        logger.info("Using AsyncPostgresSaver with pool (dsn=%s...)", settings.DATABASE_URL[:40])
+        logger.info("Using AsyncPostgresSaver with connection pool")
 
         # Ensure selector tables exist and seed defaults
         from backend.shared.selector_memory import (

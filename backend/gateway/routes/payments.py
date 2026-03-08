@@ -109,7 +109,7 @@ async def checkout_endpoint(body: CheckoutRequest, request: Request):
         return {"url": session.url, "session_id": session.id}
     except Exception as e:
         logger.exception("Stripe checkout creation failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create checkout session")
 
 
 @router.post("/webhook")
