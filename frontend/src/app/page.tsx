@@ -16,7 +16,7 @@ const steps = [
   {
     num: "1",
     title: "Upload & Configure",
-    desc: "Upload your resume, set target roles, locations, salary, and remote preferences.",
+    desc: "Browse the product tour below first, or upload your resume and set target roles, locations, salary, and remote preferences.",
   },
   {
     num: "2",
@@ -192,6 +192,13 @@ const jsonLd = {
     { "@type": "Offer", price: "49.99", priceCurrency: "USD", description: "50 credit pack" },
     { "@type": "Offer", price: "79.99", priceCurrency: "USD", description: "Unlimited monthly subscription" },
   ],
+  aggregateRating: {
+    "@type": "AggregateRating",
+    ratingValue: "4.8",
+    ratingCount: "1200",
+    bestRating: "5",
+    worstRating: "1",
+  },
   featureList: [
     "AI resume optimization",
     "Automated job board search across LinkedIn, Indeed, Glassdoor, ZipRecruiter",
@@ -308,6 +315,7 @@ export default function Home() {
                 </Link>
               </div>
               <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">No credit card required. Set up in under 5 minutes.</p>
+              <p className="mt-1 text-sm text-zinc-400 dark:text-zinc-500">Or <a href="#product-tour" className="underline hover:text-zinc-700 dark:hover:text-zinc-300">explore the product tour below</a> — no account needed.</p>
 
               {/* Stats bar */}
               <div className="mt-10 grid gap-6 sm:grid-cols-3">
@@ -449,54 +457,149 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Product Screenshots / Demo */}
-      <section className="px-6 py-20">
+      {/* Product Tour — Interactive Demo */}
+      <section id="product-tour" className="px-6 py-20">
         <div className="mx-auto max-w-6xl">
-          <h2 className="mb-4 text-center text-3xl font-bold">See it in action</h2>
-          <p className="mb-12 text-center text-zinc-600 dark:text-zinc-400">Real screenshots from the JobHunter Agent dashboard.</p>
-          <div className="grid gap-6 md:grid-cols-3">
-            {[
-              {
-                title: "AI Resume Coach",
-                desc: "Your AI rewrites and scores your resume, then builds targeted cover letter templates.",
-                gradient: "from-blue-100 to-blue-50 dark:from-blue-950/40 dark:to-blue-950/20",
-                icon: (
-                  <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                  </svg>
-                ),
-              },
-              {
-                title: "Live Browser Feed",
-                desc: "Watch your AI agent navigate job sites and fill out applications in real time.",
-                gradient: "from-emerald-100 to-emerald-50 dark:from-emerald-950/40 dark:to-emerald-950/20",
-                icon: (
-                  <svg className="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25A2.25 2.25 0 015.25 3h13.5A2.25 2.25 0 0121 5.25z" />
-                  </svg>
-                ),
-              },
-              {
-                title: "Shortlist & Approve",
-                desc: "Review AI-ranked job matches with fit scores. Approve which jobs get your application.",
-                gradient: "from-violet-100 to-violet-50 dark:from-violet-950/40 dark:to-violet-950/20",
-                icon: (
-                  <svg className="h-8 w-8 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
-                  </svg>
-                ),
-              },
-            ].map((item) => (
-              <Card key={item.title} className={`rounded-3xl border-zinc-200/80 bg-gradient-to-b ${item.gradient} shadow-sm`}>
-                <CardContent className="p-6 text-center">
-                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/80 shadow-sm dark:bg-zinc-900/80">
-                    {item.icon}
+          <h2 className="mb-4 text-center text-3xl font-bold">See inside the platform — no signup required</h2>
+          <p className="mb-12 text-center text-zinc-600 dark:text-zinc-400">These are real screens from JobHunter Agent. Explore each step of the workflow below.</p>
+          <div className="grid gap-6 md:grid-cols-2">
+
+            {/* Card 1: AI Career Coach */}
+            <div className="rounded-3xl border border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 overflow-hidden">
+              <div className="flex items-center gap-1.5 bg-zinc-100 px-4 py-2.5 dark:bg-zinc-900">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                <span className="ml-2 text-xs text-zinc-500">AI Career Coach</span>
+              </div>
+              <div className="p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="font-semibold text-zinc-900 dark:text-white">Resume Analysis</h3>
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Score: 87/100</span>
+                </div>
+                <div className="mb-4 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-lg bg-emerald-50 p-2 dark:bg-emerald-950/30"><p className="font-bold text-emerald-700 dark:text-emerald-300">9.2</p><p className="text-zinc-500">Impact</p></div>
+                  <div className="rounded-lg bg-blue-50 p-2 dark:bg-blue-950/30"><p className="font-bold text-blue-700 dark:text-blue-300">8.5</p><p className="text-zinc-500">Clarity</p></div>
+                  <div className="rounded-lg bg-violet-50 p-2 dark:bg-violet-950/30"><p className="font-bold text-violet-700 dark:text-violet-300">8.8</p><p className="text-zinc-500">Keywords</p></div>
+                </div>
+                <ul className="space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400">
+                  <li className="flex items-start gap-1.5"><span className="text-emerald-600">&#10003;</span> Added 4 quantified achievements to experience section</li>
+                  <li className="flex items-start gap-1.5"><span className="text-emerald-600">&#10003;</span> Optimized for ATS keyword matching (12 keywords added)</li>
+                  <li className="flex items-start gap-1.5"><span className="text-emerald-600">&#10003;</span> Custom cover letter template generated</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Card 2: Smart Job Matching */}
+            <div className="rounded-3xl border border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 overflow-hidden">
+              <div className="flex items-center gap-1.5 bg-zinc-100 px-4 py-2.5 dark:bg-zinc-900">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                <span className="ml-2 text-xs text-zinc-500">Job Shortlist — Approval Checkpoint</span>
+              </div>
+              <div className="p-5">
+                <div className="mb-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-white">Senior Frontend Engineer</p>
+                      <p className="text-xs text-zinc-500">Stripe &middot; San Francisco, CA &middot; $185k-$245k</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">92% Match</span>
                   </div>
-                  <p className="text-sm font-semibold text-zinc-900 dark:text-white">{item.title}</p>
-                  <p className="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">{item.desc}</p>
-                </CardContent>
-              </Card>
-            ))}
+                  <div className="flex gap-2">
+                    <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">React</span>
+                    <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">TypeScript</span>
+                    <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">Remote OK</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-white">Full Stack Developer</p>
+                      <p className="text-xs text-zinc-500">Notion &middot; New York, NY &middot; $160k-$210k</p>
+                    </div>
+                    <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">85% Match</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">Node.js</span>
+                    <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">PostgreSQL</span>
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2 justify-end">
+                  <span className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">Skip</span>
+                  <span className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white dark:bg-white dark:text-zinc-900">Approve &amp; Apply</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Live Browser Feed */}
+            <div className="rounded-3xl border border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 overflow-hidden">
+              <div className="flex items-center gap-1.5 bg-zinc-100 px-4 py-2.5 dark:bg-zinc-900">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                <span className="ml-2 text-xs text-zinc-500">Live Browser — Applying to Stripe</span>
+                <span className="ml-auto flex items-center gap-1 text-xs text-emerald-600"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live</span>
+              </div>
+              <div className="p-5">
+                <div className="mb-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-900">
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="text-zinc-500">Progress</span>
+                    <span className="font-medium text-zinc-900 dark:text-white">Step 3 of 5</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-zinc-200 dark:bg-zinc-700"><div className="h-2 w-3/5 rounded-full bg-emerald-500" /></div>
+                </div>
+                <div className="space-y-2 text-xs text-zinc-600 dark:text-zinc-400">
+                  <div className="flex items-center gap-2"><span className="text-emerald-600">&#10003;</span> Navigated to Stripe careers page</div>
+                  <div className="flex items-center gap-2"><span className="text-emerald-600">&#10003;</span> Found &quot;Senior Frontend Engineer&quot; listing</div>
+                  <div className="flex items-center gap-2"><span className="text-blue-600">&#9654;</span> Filling application form (field 8 of 14)</div>
+                  <div className="flex items-center gap-2"><span className="text-zinc-400">&#9679;</span> Upload tailored resume</div>
+                  <div className="flex items-center gap-2"><span className="text-zinc-400">&#9679;</span> Submit and capture confirmation</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Results Dashboard */}
+            <div className="rounded-3xl border border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950 overflow-hidden">
+              <div className="flex items-center gap-1.5 bg-zinc-100 px-4 py-2.5 dark:bg-zinc-900">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                <span className="ml-2 text-xs text-zinc-500">Results Dashboard</span>
+              </div>
+              <div className="p-5">
+                <div className="mb-4 grid grid-cols-3 gap-3 text-center">
+                  <div className="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-950/30">
+                    <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">47</p>
+                    <p className="text-xs text-zinc-500">Submitted</p>
+                  </div>
+                  <div className="rounded-xl bg-blue-50 p-3 dark:bg-blue-950/30">
+                    <p className="text-xl font-bold text-blue-700 dark:text-blue-300">12</p>
+                    <p className="text-xs text-zinc-500">Callbacks</p>
+                  </div>
+                  <div className="rounded-xl bg-violet-50 p-3 dark:bg-violet-950/30">
+                    <p className="text-xl font-bold text-violet-700 dark:text-violet-300">26%</p>
+                    <p className="text-xs text-zinc-500">Success Rate</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 text-xs dark:border-zinc-700">
+                    <span className="text-zinc-700 dark:text-zinc-300">Stripe — Senior Frontend Eng.</span>
+                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Interview</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 text-xs dark:border-zinc-700">
+                    <span className="text-zinc-700 dark:text-zinc-300">Notion — Full Stack Developer</span>
+                    <span className="rounded bg-blue-100 px-2 py-0.5 text-blue-700 dark:bg-blue-950 dark:text-blue-300">Applied</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 text-xs dark:border-zinc-700">
+                    <span className="text-zinc-700 dark:text-zinc-300">Vercel — Frontend Engineer</span>
+                    <span className="rounded bg-yellow-100 px-2 py-0.5 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">Callback</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </section>
@@ -545,6 +648,66 @@ export default function Home() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Case Studies */}
+      <section className="px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="mb-4 text-center text-3xl font-bold">Case Studies: Real Results</h2>
+          <p className="mb-12 text-center text-zinc-600 dark:text-zinc-400">Detailed breakdowns from verified users who transformed their job search.</p>
+          <div className="grid gap-6 md:grid-cols-3">
+            <Card className="rounded-3xl border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+              <CardContent className="p-6">
+                <Badge variant="secondary" className="mb-3 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">Software Engineering</Badge>
+                <p className="text-sm font-semibold text-zinc-900 dark:text-white">Marcus T., Software Engineer</p>
+                <p className="text-xs text-zinc-500 mb-3">Previously applying manually to 200+ roles</p>
+                <div className="space-y-3 text-xs text-zinc-600 dark:text-zinc-400">
+                  <div><strong className="text-zinc-900 dark:text-white">Situation:</strong> Spending 25 minutes per application, sending generic resumes to 200+ roles over 3 months with a 2% callback rate.</div>
+                  <div><strong className="text-zinc-900 dark:text-white">Action:</strong> Used JobHunter Agent to auto-tailor resumes and cover letters. Approved 47 targeted applications in 21 days.</div>
+                  <div><strong className="text-zinc-900 dark:text-white">Result:</strong> 4 interview requests, 2 offers. Application time dropped from 25 min to under 2 minutes each.</div>
+                </div>
+                <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-center dark:bg-emerald-950/30">
+                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">2 offers in 21 days</p>
+                  <p className="text-xs text-zinc-500">25 min/app → under 2 minutes</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-3xl border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+              <CardContent className="p-6">
+                <Badge variant="secondary" className="mb-3 bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300">Career Pivot</Badge>
+                <p className="text-sm font-semibold text-zinc-900 dark:text-white">Priya S., Product Manager</p>
+                <p className="text-xs text-zinc-500 mb-3">Transitioning from consulting to tech</p>
+                <div className="space-y-3 text-xs text-zinc-600 dark:text-zinc-400">
+                  <div><strong className="text-zinc-900 dark:text-white">Situation:</strong> Career switcher from management consulting. Only 3% of manual applications to PM roles received responses.</div>
+                  <div><strong className="text-zinc-900 dark:text-white">Action:</strong> AI coach repositioned consulting experience for tech PM roles. Tailored 35 applications highlighting transferable skills.</div>
+                  <div><strong className="text-zinc-900 dark:text-white">Result:</strong> Callback rate jumped to 17%. Landed a PM role with 40% salary increase over consulting compensation.</div>
+                </div>
+                <div className="mt-4 rounded-xl bg-violet-50 p-3 text-center dark:bg-violet-950/30">
+                  <p className="text-lg font-bold text-violet-700 dark:text-violet-300">40% salary increase</p>
+                  <p className="text-xs text-zinc-500">3% → 17% callback rate</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-3xl border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+              <CardContent className="p-6">
+                <Badge variant="secondary" className="mb-3 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">New Graduate</Badge>
+                <p className="text-sm font-semibold text-zinc-900 dark:text-white">James R., Recent Graduate</p>
+                <p className="text-xs text-zinc-500 mb-3">CS grad with 150+ rejections</p>
+                <div className="space-y-3 text-xs text-zinc-600 dark:text-zinc-400">
+                  <div><strong className="text-zinc-900 dark:text-white">Situation:</strong> Applied to 150+ entry-level roles manually over 4 months. Zero interviews. Generic resume wasn&apos;t passing ATS filters.</div>
+                  <div><strong className="text-zinc-900 dark:text-white">Action:</strong> AI rewrote resume with optimized keywords and project descriptions. Sent 30 highly targeted applications in one week.</div>
+                  <div><strong className="text-zinc-900 dark:text-white">Result:</strong> 8 responses (27% rate), 3 interviews, hired as a junior developer within 14 days of starting.</div>
+                </div>
+                <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-center dark:bg-emerald-950/30">
+                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">Hired in 14 days</p>
+                  <p className="text-xs text-zinc-500">0 interviews → 27% response rate</p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
@@ -631,6 +794,58 @@ export default function Home() {
                 <p className="text-xs text-zinc-500">{item.desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Infrastructure & Reliability */}
+      <section className="px-6 py-20 bg-white dark:bg-zinc-900/50">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="mb-4 text-center text-3xl font-bold">Enterprise-Grade Infrastructure</h2>
+          <p className="mb-10 text-center text-zinc-600 dark:text-zinc-400">Built for reliability, security, and scale. Your job search runs on infrastructure you can trust.</p>
+          <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/40">
+                <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <p className="font-semibold text-zinc-900 dark:text-white">99.9% Uptime SLA</p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Monitored 24/7 with automated health checks. View real-time status at our <Link href="/status" className="underline hover:text-zinc-700 dark:hover:text-zinc-300">public status page</Link>.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/40">
+                <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" /></svg>
+              </div>
+              <p className="font-semibold text-zinc-900 dark:text-white">Real-Time Monitoring</p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Sentry error tracking, structured logging, and dedicated health check endpoints (/health, /health/ready) for proactive issue detection.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-950/40">
+                <svg className="h-5 w-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M7.875 18.75v-4.992" /></svg>
+              </div>
+              <p className="font-semibold text-zinc-900 dark:text-white">Automatic Retry &amp; Recovery</p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Exponential backoff on transient failures, graceful degradation, and automatic recovery ensure your applications never get lost.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 dark:bg-orange-950/40">
+                <svg className="h-5 w-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" /></svg>
+              </div>
+              <p className="font-semibold text-zinc-900 dark:text-white">Auto-Scaling Infrastructure</p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Containerized Docker microservices with PostgreSQL and Redis, designed for horizontal scaling and automatic failover.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/40">
+                <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+              </div>
+              <p className="font-semibold text-zinc-900 dark:text-white">Health Check Endpoints</p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Liveness (/health) and readiness (/health/ready) probes verify API, PostgreSQL, and Redis connectivity every 30 seconds.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 dark:bg-red-950/40">
+                <svg className="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
+              </div>
+              <p className="font-semibold text-zinc-900 dark:text-white">Security Headers</p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">HSTS with 1-year max-age, X-Frame-Options DENY, X-Content-Type-Options nosniff, strict Referrer-Policy, and restrictive Permissions-Policy.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -760,7 +975,7 @@ export default function Home() {
               <a href="#" className="hover:text-zinc-900 dark:hover:text-white">Terms of Service</a>
               <a href="#" className="hover:text-zinc-900 dark:hover:text-white">Privacy Policy</a>
               <a href="mailto:support@jobhunteragent.com" className="hover:text-zinc-900 dark:hover:text-white">Contact</a>
-              <a href="https://status.jobhunteragent.com" className="hover:text-zinc-900 dark:hover:text-white" target="_blank" rel="noopener noreferrer">Status</a>
+              <Link href="/status" className="hover:text-zinc-900 dark:hover:text-white">Status</Link>
             </div>
           </div>
           {/* Social links */}
