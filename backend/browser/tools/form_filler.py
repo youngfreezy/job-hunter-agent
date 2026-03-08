@@ -542,7 +542,7 @@ async def fill_form(
             skipped += 1
             continue
 
-        logger.info("FILL field: %s | action=%s value='%s'", field_name, action, str(value)[:80])
+        logger.info("FILL field: %s | action=%s value_len=%d", field_name, action, len(str(value)))
 
         try:
             el = await page.query_selector(selector)

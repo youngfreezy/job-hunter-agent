@@ -244,14 +244,13 @@ class StartSessionRequest(BaseModel):
     def validate_resume_path(cls, v: str | None) -> str | None:
         if v is None:
             return v
-        import os, tempfile
-        resume_dir = os.path.realpath(
-            os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
-        )
-        resolved = os.path.realpath(v)
-        if not resolved.startswith(resume_dir + os.sep):
+        from pathlib import Path
+        import tempfile
+        resume_dir = Path(tempfile.gettempdir(), "jobhunter_resumes").resolve()
+        resolved = Path(v).resolve()
+        if not resolved.is_relative_to(resume_dir):
             raise ValueError("Invalid resume file path")
-        return resolved
+        return str(resolved)
 
 
 class SteerRequest(BaseModel):

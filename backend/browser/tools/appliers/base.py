@@ -261,8 +261,8 @@ class BaseApplier(ABC):
             confirm_el_text = result.get("confirmElText", "")
             text = result.get("text", "")
             url_confirm = result.get("urlConfirm", False)
-            logger.info("Confirmation check: submitVisible=%s hasErrors=%s urlConfirm=%s text[:500]='%s'",
-                        submit_visible, has_errors, url_confirm, text[:500])
+            logger.info("Confirmation check: submitVisible=%s hasErrors=%s urlConfirm=%s text_len=%d",
+                        submit_visible, has_errors, url_confirm, len(text))
 
             # Hard negative — visible validation errors mean the form did not submit.
             if has_errors:

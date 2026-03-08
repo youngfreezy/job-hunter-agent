@@ -398,7 +398,7 @@ async def discover_all_boards(
                 for r in (last_results if isinstance(last_results, list) else [last_results]):
                     text = str(r)[:500] if r else ""
                     if text and len(text) > 10:
-                        logger.info("  [result] %s", text[:500])
+                        logger.debug("  [result] len=%d", len(text))
             logger.info("Step %d: %s", step_count, latest_raw)
 
             # Track current board from navigate actions
