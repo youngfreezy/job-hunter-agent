@@ -12,6 +12,7 @@ export function SessionNav({ sessionId }: { sessionId: string }) {
     { href: `/session/${sessionId}`, label: "Activity" },
     { href: `/session/${sessionId}/manual-apply`, label: "Review & Apply" },
     { href: `/session/${sessionId}/interview-prep`, label: "Interview Prep" },
+    { href: `/session/${sessionId}/career-pivot`, label: "Career Pivot" },
     { href: `/session/${sessionId}/settings`, label: "Settings" },
   ];
 
