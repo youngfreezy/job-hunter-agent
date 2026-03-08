@@ -49,7 +49,6 @@ export default function InterviewPrepLandingPage() {
       router.push(`/interview-prep/${session_id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
-    } finally {
       setLoading(false);
     }
   }

@@ -10,7 +10,7 @@ import PivotComparisonBars from "@/components/charts/PivotComparisonBars";
 import SkillGapRadar from "@/components/charts/SkillGapRadar";
 import SkillBridgeViz from "@/components/charts/SkillBridgeViz";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { setLocale } from "yup";
+
 
 interface TaskBreakdown {
   task: string;
@@ -97,7 +97,6 @@ export default function SessionCareerPivotPage() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
   const [hasResume, setHasResume] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
@@ -105,7 +104,6 @@ export default function SessionCareerPivotPage() {
 
   // Start pivot session
   async function handleStart() {
-    setLoading(true);
     const resumeText = localStorage.getItem("jh_resume_text") || "";
     if (!resumeText.trim()) {
       setError("Please upload your resume first.");
@@ -129,8 +127,6 @@ export default function SessionCareerPivotPage() {
         err instanceof Error ? err.message : "An unknown error occurred",
       );
       setStarting(false);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -284,7 +280,7 @@ export default function SessionCareerPivotPage() {
                 size="lg"
                 onClick={handleStart}
                 disabled={!hasResume}
-                loading={loading}
+                loading={starting}
               >
                 Start Free Assessment
               </Button>

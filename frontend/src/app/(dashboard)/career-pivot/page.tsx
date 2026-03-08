@@ -11,7 +11,7 @@ export default function CareerPivotPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasResume, setHasResume] = useState(false);
-
+  
   useEffect(() => {
     setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
   }, []);
@@ -42,7 +42,6 @@ export default function CareerPivotPage() {
       router.push(`/career-pivot/${session_id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
-    } finally {
       setLoading(false);
     }
   }
