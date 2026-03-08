@@ -7,7 +7,7 @@ interface PivotComparisonScatterProps {
   pivots: Array<{
     role: string;
     skill_overlap_pct: number;
-    salary_range: { min: number; max: number; median: number };
+    salary_range?: { min: number; max: number; median: number };
     market_demand: number;
     ai_risk_pct: number;
   }>;
@@ -51,15 +51,22 @@ export default function PivotComparisonScatter({
       .attr("width", width)
       .attr("height", height);
 
-    const data = pivots.map((p) => ({
-      role: p.role,
-      skillOverlap: p.skill_overlap_pct,
-      salaryMedian: p.salary_range.median / 1000,
-      salaryMin: p.salary_range.min / 1000,
-      salaryMax: p.salary_range.max / 1000,
-      demand: p.market_demand,
-      aiRisk: p.ai_risk_pct,
-    }));
+    const data = pivots
+      .filter((p) => p.salary_range)
+      .map((p) => {
+        const sr = p.salary_range!;
+        return {
+          role: p.role,
+          skillOverlap: p.skill_overlap_pct,
+          salaryMedian: sr.median / 1000,
+          salaryMin: sr.min / 1000,
+          salaryMax: sr.max / 1000,
+          demand: p.market_demand,
+          aiRisk: p.ai_risk_pct,
+        };
+      });
+
+    if (data.length === 0) return;
 
     const salaryExtent = d3.extent(data, (d) => d.salaryMedian) as [number, number];
     const demandExtent = d3.extent(data, (d) => d.demand) as [number, number];
