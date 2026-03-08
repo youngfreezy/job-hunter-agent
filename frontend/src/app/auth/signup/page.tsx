@@ -67,8 +67,7 @@ export default function SignupPage() {
             validationSchema={signupSchema}
             onSubmit={async (values, { setSubmitting }) => {
               setError("");
-              // TODO: Phase 4 — call backend to create user in Postgres
-              // For now, just sign in with credentials (dev mode accepts any email/password)
+              // User record created automatically on first API call via get_or_create_user
               const result = await signIn("credentials", {
                 email: values.email,
                 password: values.password,
