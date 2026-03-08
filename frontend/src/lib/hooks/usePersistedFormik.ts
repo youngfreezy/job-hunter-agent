@@ -36,6 +36,12 @@ export function usePersistedFormik<T extends FormikValues>({
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<T>;
+        // Resume text is never persisted (PII), so clear stale filename/path
+        // to avoid showing a filename with no actual content behind it.
+        if ("resumeText" in initialValues && !parsed.resumeText) {
+          (parsed as Record<string, unknown>).resumeFileName = "";
+          (parsed as Record<string, unknown>).resumeFilePath = "";
+        }
         const merged = { ...initialValues, ...parsed };
         formik.resetForm({ values: merged });
       }

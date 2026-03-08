@@ -136,19 +136,17 @@ export default function Dashboard() {
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <Card className="border-zinc-200 dark:border-zinc-800">
             <CardContent className="flex flex-col gap-5 p-8">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <p className="text-sm font-medium uppercase tracking-[0.22em] text-zinc-500">
-                    Dashboard
-                  </p>
-                  <h1 className="mt-2 text-4xl font-bold tracking-tight">
-                    Your Job Search at a Glance
-                  </h1>
-                  <p className="mt-3 max-w-2xl text-zinc-600 dark:text-zinc-400">
-                    Sessions that need your attention come first. See what&apos;s active, what&apos;s done, and what needs you — all in one view.
-                  </p>
-                </div>
-                <Link href="/session/new">
+              <div>
+                <p className="text-sm font-medium uppercase tracking-[0.22em] text-zinc-500">
+                  Dashboard
+                </p>
+                <h1 className="mt-2 text-4xl font-bold tracking-tight">
+                  Your Job Search at a Glance
+                </h1>
+                <p className="mt-3 max-w-2xl text-zinc-600 dark:text-zinc-400">
+                  Sessions that need your attention come first. See what&apos;s active, what&apos;s done, and what needs you — all in one view.
+                </p>
+                <Link href="/session/new" className="inline-block mt-4">
                   <Button size="lg">Start New Session</Button>
                 </Link>
               </div>
@@ -256,7 +254,29 @@ export default function Dashboard() {
           </Card>
         </div>
 
+        {!loading && sessions.length === 0 ? (
+          <div className="mt-10">
+            <Card className="border-dashed">
+              <CardContent className="py-16 text-center">
+                <div className="text-5xl mb-4">🚀</div>
+                <p className="text-xl font-semibold">Ready to start your job search?</p>
+                <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto">
+                  Create your first session to search job boards, get your resume optimized, and start applying automatically.
+                </p>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <Link href="/session/new">
+                    <Button size="lg">Start New Session</Button>
+                  </Link>
+                  <Link href="/career-pivot">
+                    <Button size="lg" variant="outline">Check Your AI Risk</Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
         <div className="mt-10 space-y-10">
+          {activeSessions.length > 0 && (
           <section>
             <div className="mb-4 flex items-center justify-between">
               <div>
@@ -266,35 +286,17 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2].map((item) => (
-                  <div
-                    key={item}
-                    className="h-24 rounded-2xl bg-zinc-100 animate-pulse dark:bg-zinc-900"
-                  />
-                ))}
-              </div>
-            ) : activeSessions.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <p className="text-lg font-medium">No active sessions</p>
-                  <p className="mt-2 text-sm text-zinc-500">
-                    Start a new search to find matching jobs and begin applying.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {activeSessions.map((session) => (
-                  <SessionCard key={session.session_id} session={session} />
-                ))}
-              </div>
-            )}
+            <div className="space-y-3">
+              {activeSessions.map((session) => (
+                <SessionCard key={session.session_id} session={session} />
+              ))}
+            </div>
           </section>
+          )}
 
           <ApplicationsTimeline sessions={completedSessions} />
 
+          {completedSessions.length > 0 && (
           <section>
             <div className="mb-4">
               <h2 className="text-xl font-semibold">Past Searches</h2>
@@ -302,30 +304,15 @@ export default function Dashboard() {
                 Review results from completed searches or retry ones that ran into issues.
               </p>
             </div>
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2].map((item) => (
-                  <div
-                    key={item}
-                    className="h-24 rounded-2xl bg-zinc-100 animate-pulse dark:bg-zinc-900"
-                  />
-                ))}
-              </div>
-            ) : completedSessions.length === 0 ? (
-              <Card>
-                <CardContent className="py-10 text-center text-sm text-zinc-500">
-                  No completed sessions yet.
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {completedSessions.map((session) => (
-                  <SessionCard key={session.session_id} session={session} />
-                ))}
-              </div>
-            )}
+            <div className="space-y-3">
+              {completedSessions.map((session) => (
+                <SessionCard key={session.session_id} session={session} />
+              ))}
+            </div>
           </section>
+          )}
         </div>
+        )}
       </div>
   );
 }

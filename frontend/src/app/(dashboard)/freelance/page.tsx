@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ResumeUpload } from "@/components/ResumeUpload";
 import { API_BASE, getAuthHeaders } from "@/lib/api";
 
 const PLATFORMS = [
@@ -20,11 +21,11 @@ export default function FreelancePage() {
   const [rateMax, setRateMax] = useState(120);
   const [platforms, setPlatforms] = useState(["upwork", "linkedin"]);
   const [availability, setAvailability] = useState("part_time");
+  const [hasResume, setHasResume] = useState(false);
 
-  const savedResume =
-    typeof window !== "undefined"
-      ? localStorage.getItem("jh_resume_text") || ""
-      : "";
+  useEffect(() => {
+    setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
+  }, []);
 
   function togglePlatform(id: string) {
     setPlatforms((prev) =>
@@ -33,8 +34,9 @@ export default function FreelancePage() {
   }
 
   async function handleStart() {
-    if (!savedResume) {
-      setError("Please upload a resume first via the Dashboard.");
+    const savedResume = localStorage.getItem("jh_resume_text") || "";
+    if (!savedResume.trim()) {
+      setError("Please upload your resume above first.");
       return;
     }
     if (platforms.length === 0) {
@@ -51,7 +53,7 @@ export default function FreelancePage() {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          resume_text: savedResume,
+          resume_text: localStorage.getItem("jh_resume_text") || "",
           hourly_rate_min: rateMin,
           hourly_rate_max: rateMax,
           platforms,
@@ -78,6 +80,8 @@ export default function FreelancePage() {
       </p>
 
       <div className="bg-card border rounded-lg p-6 space-y-6">
+        <ResumeUpload onResumeReady={() => setHasResume(true)} />
+
         <div>
           <label className="block text-sm font-medium mb-2">
             Hourly Rate Range
@@ -151,7 +155,7 @@ export default function FreelancePage() {
 
         {error && <p className="text-destructive text-sm">{error}</p>}
 
-        <Button size="lg" className="w-full" onClick={handleStart} disabled={loading}>
+        <Button size="lg" className="w-full" onClick={handleStart} disabled={loading || !hasResume}>
           {loading ? "Searching..." : "Start Searching"}
         </Button>
       </div>

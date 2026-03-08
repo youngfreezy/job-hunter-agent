@@ -289,9 +289,10 @@ export async function sendSteer(
   message: string;
   directives: Record<string, unknown>[];
 }> {
+  const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/steer`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to send steer: ${res.statusText}`);
@@ -307,9 +308,10 @@ export async function sendCoachChat(
   coach_output: CoachOutput;
   coach_chat_history: Array<{ role: string; text: string }>;
 }> {
+  const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/coach-chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to send coach chat: ${res.statusText}`);
@@ -320,11 +322,12 @@ export async function submitCoachReview(
   sessionId: string,
   data: { approved: boolean; edited_resume?: string; feedback?: string }
 ): Promise<void> {
+  const auth = await getAuthHeaders();
   const res = await fetch(
     `${API_BASE}/api/sessions/${sessionId}/coach-review`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...csrfHeaders() },
+      headers: { "Content-Type": "application/json", ...auth },
       body: JSON.stringify(data),
     }
   );
@@ -336,9 +339,10 @@ export async function submitReview(
   sessionId: string,
   data: { approved_job_ids: string[]; feedback: string }
 ): Promise<void> {
+  const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/review`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to submit review: ${res.statusText}`);
@@ -348,11 +352,12 @@ export async function submitDecision(
   sessionId: string,
   decision: "submit" | "skip"
 ): Promise<void> {
+  const auth = await getAuthHeaders();
   const res = await fetch(
     `${API_BASE}/api/sessions/${sessionId}/submit-decision`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...csrfHeaders() },
+      headers: { "Content-Type": "application/json", ...auth },
       body: JSON.stringify({ decision }),
     }
   );
@@ -360,11 +365,12 @@ export async function submitDecision(
 }
 
 export async function resumeIntervention(sessionId: string): Promise<void> {
+  const auth = await getAuthHeaders();
   const res = await fetch(
     `${API_BASE}/api/sessions/${sessionId}/resume-intervention`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...csrfHeaders() },
+      headers: { "Content-Type": "application/json", ...auth },
     }
   );
   if (!res.ok) throw new Error(`Failed to resume intervention: ${res.status}`);
@@ -373,9 +379,10 @@ export async function resumeIntervention(sessionId: string): Promise<void> {
 // ---------- Pre-login confirmation ----------
 
 export async function confirmLogin(sessionId: string): Promise<void> {
+  const auth = await getAuthHeaders();
   const res = await fetch(
     `${API_BASE}/api/sessions/${sessionId}/login-complete`,
-    { method: "POST", headers: csrfHeaders() }
+    { method: "POST", headers: auth }
   );
   if (!res.ok) throw new Error(`Failed to confirm login: ${res.status}`);
 }
@@ -385,9 +392,10 @@ export async function confirmLogin(sessionId: string): Promise<void> {
 export async function resumeSession(
   sessionId: string
 ): Promise<{ status: string; next: string[]; action: string }> {
+  const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/resume`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    headers: { "Content-Type": "application/json", ...auth },
   });
   if (!res.ok) throw new Error(`Failed to resume session: ${res.statusText}`);
   return res.json();
@@ -417,9 +425,10 @@ export async function rewindSession(
   checkpointId: string,
   approvedJobIds?: string[]
 ): Promise<{ status: string; message: string }> {
+  const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/rewind`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify({
       checkpoint_id: checkpointId,
       approved_job_ids: approvedJobIds,
@@ -550,11 +559,12 @@ export async function startLinkedInUpdate(
   updates: LinkedInUpdate[],
   linkedinUrl?: string
 ): Promise<{ status: string; message: string }> {
+  const auth = await getAuthHeaders();
   const res = await fetch(
     `${API_BASE}/api/sessions/${sessionId}/linkedin-update`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...csrfHeaders() },
+      headers: { "Content-Type": "application/json", ...auth },
       body: JSON.stringify({ updates, linkedin_url: linkedinUrl }),
     }
   );

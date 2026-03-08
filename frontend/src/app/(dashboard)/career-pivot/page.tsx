@@ -1,24 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ResumeUpload } from "@/components/ResumeUpload";
 import { API_BASE, getAuthHeaders } from "@/lib/api";
 
 export default function CareerPivotPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasResume, setHasResume] = useState(false);
 
-  // Check for existing resume in localStorage
-  const savedResume =
-    typeof window !== "undefined"
-      ? localStorage.getItem("jh_resume_text") || ""
-      : "";
+  useEffect(() => {
+    setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
+  }, []);
 
   async function handleStart() {
-    if (!savedResume) {
-      setError("Please upload a resume first via the Dashboard.");
+    const resumeText = localStorage.getItem("jh_resume_text") || "";
+    if (!resumeText.trim()) {
+      setError("Please upload your resume above first.");
       return;
     }
 
@@ -31,7 +32,7 @@ export default function CareerPivotPage() {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          resume_text: savedResume,
+          resume_text: resumeText,
           location: "Remote",
         }),
       });
@@ -53,26 +54,34 @@ export default function CareerPivotPage() {
         Is your job safe from AI? Find out in 60 seconds — free.
       </p>
 
-      <div className="bg-card border rounded-lg p-8 text-center space-y-6">
-        <div className="text-6xl">🔍</div>
-        <h2 className="text-xl font-semibold">
-          Analyze your AI automation risk
-        </h2>
-        <p className="text-muted-foreground max-w-lg mx-auto">
-          We&apos;ll analyze your resume against O*NET and BLS data to find your
-          automation risk score, adjacent roles you&apos;re qualified for, and a
-          learning plan to close skill gaps.
-        </p>
+      <div className="bg-card border rounded-lg p-8 space-y-6">
+        <div className="text-center space-y-3">
+          <div className="text-6xl">🔍</div>
+          <h2 className="text-xl font-semibold">
+            Analyze your AI automation risk
+          </h2>
+          <p className="text-muted-foreground max-w-lg mx-auto">
+            We&apos;ll analyze your resume against O*NET and BLS data to find your
+            automation risk score, adjacent roles you&apos;re qualified for, and a
+            learning plan to close skill gaps.
+          </p>
+        </div>
+
+        <div className="max-w-lg mx-auto">
+          <ResumeUpload onResumeReady={() => setHasResume(true)} />
+        </div>
 
         {error && (
-          <p className="text-destructive text-sm">{error}</p>
+          <p className="text-destructive text-sm text-center">{error}</p>
         )}
 
-        <Button size="lg" onClick={handleStart} disabled={loading}>
-          {loading ? "Analyzing..." : "Start Free Assessment"}
-        </Button>
+        <div className="text-center">
+          <Button size="lg" onClick={handleStart} disabled={loading || !hasResume}>
+            {loading ? "Analyzing..." : "Start Free Assessment"}
+          </Button>
+        </div>
 
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground text-center">
           Powered by O*NET + BLS data. No credit card required.
         </p>
       </div>
