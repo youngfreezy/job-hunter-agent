@@ -1,10 +1,76 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { parseResume } from "@/lib/api";
 
 const STORAGE_KEY = "jh_resume_text";
 const FILENAME_KEY = "jh_resume_filename";
+const FILE_BYTES_KEY = "jh_resume_bytes";
+const FILE_SAVED_AT_KEY = "jh_resume_saved_at";
+const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1] || result;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function saveResumeToStorage(text: string, fileName: string, fileBytes?: string) {
+  try {
+    localStorage.setItem(STORAGE_KEY, text);
+    localStorage.setItem(FILENAME_KEY, fileName);
+    if (fileBytes) {
+      localStorage.setItem(FILE_BYTES_KEY, fileBytes);
+      localStorage.setItem(FILE_SAVED_AT_KEY, Date.now().toString());
+    }
+  } catch {
+    try {
+      localStorage.removeItem(FILE_BYTES_KEY);
+      localStorage.removeItem(FILE_SAVED_AT_KEY);
+      localStorage.setItem(STORAGE_KEY, text);
+      localStorage.setItem(FILENAME_KEY, fileName);
+    } catch {
+      // truly full
+    }
+  }
+}
+
+function getCachedResumeBytes(): { bytes: string; fileName: string } | null {
+  try {
+    const bytes = localStorage.getItem(FILE_BYTES_KEY);
+    const savedAt = localStorage.getItem(FILE_SAVED_AT_KEY);
+    const fileName = localStorage.getItem(FILENAME_KEY) || "resume.pdf";
+    if (!bytes || !savedAt) return null;
+    if (Date.now() - parseInt(savedAt, 10) > TTL_MS) {
+      localStorage.removeItem(FILE_BYTES_KEY);
+      localStorage.removeItem(FILE_SAVED_AT_KEY);
+      return null;
+    }
+    return { bytes, fileName };
+  } catch {
+    return null;
+  }
+}
+
+function base64ToFile(base64: string, fileName: string): File {
+  const byteString = atob(base64);
+  const bytes = new Uint8Array(byteString.length);
+  for (let i = 0; i < byteString.length; i++) {
+    bytes[i] = byteString.charCodeAt(i);
+  }
+  const ext = fileName.split(".").pop()?.toLowerCase() || "pdf";
+  const mime = ext === "pdf" ? "application/pdf"
+    : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    : "text/plain";
+  return new File([bytes], fileName, { type: mime });
+}
 
 interface ResumeUploadProps {
   onResumeReady?: (text: string) => void;
@@ -15,12 +81,26 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
   const [fileName, setFileName] = useState("");
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+
     const saved = localStorage.getItem(STORAGE_KEY) || "";
     const savedName = localStorage.getItem(FILENAME_KEY) || "";
     setResumeText(saved);
     setFileName(savedName);
+
+    // If we have cached file bytes, re-upload to get a fresh server path
+    const cached = getCachedResumeBytes();
+    if (cached && saved) {
+      const file = base64ToFile(cached.bytes, cached.fileName);
+      setParsing(true);
+      parseResume(file)
+        .catch(() => {})
+        .finally(() => setParsing(false));
+    }
   }, []);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -33,18 +113,19 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
     if (file.type === "text/plain" || file.name.endsWith(".txt")) {
       const text = await file.text();
       setResumeText(text);
-      localStorage.setItem(STORAGE_KEY, text);
-      localStorage.setItem(FILENAME_KEY, file.name);
+      saveResumeToStorage(text, file.name);
       onResumeReady?.(text);
       return;
     }
 
     setParsing(true);
     try {
-      const result = await parseResume(file);
+      const [result, base64] = await Promise.all([
+        parseResume(file),
+        fileToBase64(file),
+      ]);
       setResumeText(result.text);
-      localStorage.setItem(STORAGE_KEY, result.text);
-      localStorage.setItem(FILENAME_KEY, file.name);
+      saveResumeToStorage(result.text, file.name, base64);
       onResumeReady?.(result.text);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to parse file";
