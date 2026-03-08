@@ -56,12 +56,8 @@ export function usePersistedFormik<T extends FormikValues>({
     timerRef.current = setTimeout(() => {
       try {
         const toStore = { ...formik.values };
-        // Exclude resume text >500KB to avoid localStorage quota
-        if (
-          typeof (toStore as Record<string, unknown>).resumeText === "string" &&
-          ((toStore as Record<string, unknown>).resumeText as string).length >
-            500_000
-        ) {
+        // Never persist resume text to localStorage (contains PII)
+        if ("resumeText" in toStore) {
           (toStore as Record<string, unknown>).resumeText = "";
         }
         localStorage.setItem(storageKey, JSON.stringify(toStore));
