@@ -852,6 +852,9 @@ async def test_apply_endpoint(body: TestApplyRequest, request: Request):
     Returns a session_id. Open http://localhost:3000/session/{session_id}
     and switch to the Screenshot Feed tab to watch live.
     """
+    from backend.gateway.deps import get_current_user
+    get_current_user(request)  # 401 if no authenticated user
+
     session_id = f"test-{uuid.uuid4().hex[:8]}"
 
     event_logs[session_id] = []
