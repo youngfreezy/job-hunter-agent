@@ -222,6 +222,8 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.interview_prep import router as interview_prep_router
     from backend.gateway.routes.freelance import router as freelance_router
     from backend.gateway.routes.sessions import router as sessions_router
+    from backend.gateway.routes.stats import router as stats_router
+    from backend.gateway.routes.resume import router as resume_router
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
@@ -230,6 +232,8 @@ def create_app() -> FastAPI:
     app.include_router(career_pivot_router)
     app.include_router(interview_prep_router)
     app.include_router(freelance_router)
+    app.include_router(stats_router)
+    app.include_router(resume_router)
 
     return app
 

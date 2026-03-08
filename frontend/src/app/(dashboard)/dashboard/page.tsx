@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { listSessions, type SessionListItem } from "@/lib/api";
+import { listSessions, getLifetimeStats, type SessionListItem, type LifetimeStats } from "@/lib/api";
 import FunnelChart from "@/components/charts/FunnelChart";
 import ApplicationsTimeline from "@/components/charts/ApplicationsTimeline";
 
@@ -78,8 +78,27 @@ function getSessionHeadline(session: SessionListItem) {
   return "Your search is running — check in anytime for live updates";
 }
 
+function formatTimeSaved(minutes: number): { value: string; unit: string; subtitle: string } {
+  const hours = minutes / 60;
+  if (hours >= 1) {
+    const h = Math.round(hours * 10) / 10;
+    const workDays = Math.round((hours / 8) * 10) / 10;
+    return {
+      value: h % 1 === 0 ? h.toFixed(0) : h.toFixed(1),
+      unit: h === 1 ? "hour" : "hours",
+      subtitle: workDays >= 1 ? `That\u2019s ${workDays >= 2 ? workDays.toFixed(0) : workDays.toFixed(1)} work ${workDays === 1 ? "day" : "days"} you got back` : `${Math.round(minutes)} minutes of manual work saved`,
+    };
+  }
+  return {
+    value: Math.round(minutes).toString(),
+    unit: "min",
+    subtitle: "of manual work saved",
+  };
+}
+
 export default function Dashboard() {
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
+  const [stats, setStats] = useState<LifetimeStats | null>(null);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -88,6 +107,12 @@ export default function Dashboard() {
       .then(setSessions)
       .catch((err) => console.error("Failed to load sessions:", err))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    getLifetimeStats()
+      .then(setStats)
+      .catch((err) => console.error("Failed to load lifetime stats:", err));
   }, []);
 
   useEffect(() => {
@@ -140,12 +165,31 @@ export default function Dashboard() {
                 <p className="text-sm font-medium uppercase tracking-[0.22em] text-zinc-500">
                   Dashboard
                 </p>
-                <h1 className="mt-2 text-4xl font-bold tracking-tight">
-                  Your Job Search at a Glance
-                </h1>
-                <p className="mt-3 max-w-2xl text-zinc-600 dark:text-zinc-400">
-                  Sessions that need your attention come first. See what&apos;s active, what&apos;s done, and what needs you — all in one view.
-                </p>
+                {stats && stats.total_submitted > 0 ? (() => {
+                  const ts = formatTimeSaved(stats.time_saved_minutes);
+                  return (
+                    <>
+                      <h1 className="mt-2 text-4xl font-bold tracking-tight">
+                        <span className="text-emerald-600 dark:text-emerald-400">{ts.value} {ts.unit}</span> saved
+                      </h1>
+                      <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+                        {ts.subtitle}
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {stats.total_submitted} applications sent across {stats.total_sessions} {stats.total_sessions === 1 ? "session" : "sessions"}
+                      </p>
+                    </>
+                  );
+                })() : (
+                  <>
+                    <h1 className="mt-2 text-4xl font-bold tracking-tight">
+                      Your Job Search at a Glance
+                    </h1>
+                    <p className="mt-3 max-w-2xl text-zinc-600 dark:text-zinc-400">
+                      Sessions that need your attention come first. See what&apos;s active, what&apos;s done, and what needs you — all in one view.
+                    </p>
+                  </>
+                )}
                 <Link href="/session/new" className="inline-block mt-4">
                   <Button size="lg">Start New Session</Button>
                 </Link>
@@ -258,7 +302,6 @@ export default function Dashboard() {
           <div className="mt-10">
             <Card className="border-dashed">
               <CardContent className="py-16 text-center">
-                <div className="text-5xl mb-4">🚀</div>
                 <p className="text-xl font-semibold">Ready to start your job search?</p>
                 <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto">
                   Create your first session to search job boards, get your resume optimized, and start applying automatically.
@@ -313,6 +356,21 @@ export default function Dashboard() {
           )}
         </div>
         )}
+
+        {/* Autopilot Coming Soon teaser */}
+        <div className="mt-10">
+          <Card className="border-dashed border-indigo-200 bg-gradient-to-br from-indigo-50/50 to-violet-50/50 dark:border-indigo-800 dark:from-indigo-950/30 dark:to-violet-950/30">
+            <CardContent className="py-8 text-center">
+              <Badge variant="outline" className="mb-3 border-indigo-300 text-indigo-600 dark:border-indigo-700 dark:text-indigo-400">
+                Coming Soon
+              </Badge>
+              <p className="text-xl font-semibold">Autopilot Mode</p>
+              <p className="mt-2 text-sm text-zinc-500 max-w-lg mx-auto">
+                Set your preferences once and let JobHunter run on autopilot — daily or weekly automated searches with an approval gate before any applications go out. You stay in control, we do the work.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
   );
 }

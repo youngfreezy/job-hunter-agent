@@ -1789,6 +1789,20 @@ export default function SessionPage() {
                     {sessionSummary.duration_minutes}m
                   </span>
                 </div>
+                {sessionSummary.total_applied > 0 && (
+                  <div className="rounded-xl bg-emerald-100/80 dark:bg-emerald-900/40 p-3 text-center border border-emerald-200 dark:border-emerald-700">
+                    <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                      {(() => {
+                        const saved = Math.max(0, sessionSummary.total_applied * 60 - sessionSummary.duration_minutes);
+                        if (saved >= 60) return `${Math.round(saved / 60 * 10) / 10}h`;
+                        return `${Math.round(saved)}m`;
+                      })()}
+                    </p>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                      of manual work saved
+                    </p>
+                  </div>
+                )}
                 {sessionSummary.top_companies.length > 0 && (
                   <div>
                     <p className="mb-1.5 text-xs text-muted-foreground">

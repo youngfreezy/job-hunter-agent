@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormikProvider } from "formik";
 import { usePersistedFormik } from "@/lib/hooks/usePersistedFormik";
@@ -127,6 +127,16 @@ export function SessionWizard() {
     formik.submitForm();
   };
 
+  // Live validation: disable Next/Submit when current step is invalid
+  const isStepValid = useMemo(() => {
+    try {
+      stepSchemas[step].validateSync(formik.values, { abortEarly: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [step, formik.values]);
+
   const stepComponents = [
     <JobSearchStep key="job-search" />,
     <ResumeProfileStep key="resume-profile" />,
@@ -172,6 +182,7 @@ export function SessionWizard() {
           onNext={handleNext}
           onSubmit={handleSubmit}
           isSubmitting={formik.isSubmitting || isNavigating}
+          isStepValid={isStepValid}
         />
       </form>
     </FormikProvider>

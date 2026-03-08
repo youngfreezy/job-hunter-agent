@@ -1,15 +1,7 @@
 "use client";
 
-import {
-  ScatterChart,
-  Scatter,
-  XAxis,
-  YAxis,
-  ZAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import { useEffect, useRef, useState } from "react";
+import * as d3 from "d3";
 
 interface PivotComparisonScatterProps {
   pivots: Array<{
@@ -27,110 +19,184 @@ function aiRiskColor(pct: number): string {
   return "#22c55e";
 }
 
-interface PivotDatum {
-  role: string;
-  skillOverlap: number;
-  salaryMedian: number;
-  salaryMin: number;
-  salaryMax: number;
-  demand: number;
-  aiRisk: number;
-}
-
-function CustomTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: Array<{ payload: PivotDatum }>;
-}) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div
-      style={{
-        backgroundColor: "#1f2937",
-        border: "1px solid #374151",
-        borderRadius: 6,
-        padding: "8px 12px",
-        color: "#e5e7eb",
-        fontSize: 13,
-        lineHeight: 1.5,
-      }}
-    >
-      <div style={{ fontWeight: 600, marginBottom: 4 }}>{d.role}</div>
-      <div>Skill Overlap: {d.skillOverlap}%</div>
-      <div>
-        Salary: ${d.salaryMin}K &ndash; ${d.salaryMax}K (median ${d.salaryMedian}K)
-      </div>
-      <div>Market Demand: {d.demand}</div>
-      <div>AI Risk: {d.aiRisk}%</div>
-    </div>
-  );
-}
-
 export default function PivotComparisonScatter({
   pivots,
 }: PivotComparisonScatterProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w > 0) setContainerWidth(w);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!containerRef.current || !pivots || pivots.length === 0 || containerWidth === 0) return;
+
+    const container = containerRef.current;
+    d3.select(container).selectAll("*").remove();
+
+    const margin = { top: 20, right: 30, bottom: 50, left: 65 };
+    const width = containerWidth;
+    const height = 340;
+
+    const svg = d3
+      .select(container)
+      .append("svg")
+      .attr("width", width)
+      .attr("height", height);
+
+    const data = pivots.map((p) => ({
+      role: p.role,
+      skillOverlap: p.skill_overlap_pct,
+      salaryMedian: p.salary_range.median / 1000,
+      salaryMin: p.salary_range.min / 1000,
+      salaryMax: p.salary_range.max / 1000,
+      demand: p.market_demand,
+      aiRisk: p.ai_risk_pct,
+    }));
+
+    const salaryExtent = d3.extent(data, (d) => d.salaryMedian) as [number, number];
+    const demandExtent = d3.extent(data, (d) => d.demand) as [number, number];
+
+    const x = d3
+      .scaleLinear()
+      .domain([0, 100])
+      .range([margin.left, width - margin.right]);
+
+    const y = d3
+      .scaleLinear()
+      .domain([Math.max(0, salaryExtent[0] - 15), salaryExtent[1] + 15])
+      .range([height - margin.bottom, margin.top]);
+
+    const r = d3
+      .scaleSqrt()
+      .domain(demandExtent)
+      .range([8, 35]);
+
+    // Gridlines
+    svg
+      .append("g")
+      .attr("transform", `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(x).ticks(5).tickFormat((d) => `${d}%`))
+      .call((g) => g.select(".domain").attr("stroke", "#374151"))
+      .call((g) => g.selectAll(".tick line").clone()
+        .attr("y2", -(height - margin.top - margin.bottom))
+        .attr("stroke", "#1f2937")
+        .attr("stroke-dasharray", "2,3"))
+      .call((g) => g.selectAll(".tick text").attr("fill", "#a1a1aa").attr("font-size", "11px"));
+
+    svg
+      .append("g")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5).tickFormat((d) => `$${d}K`))
+      .call((g) => g.select(".domain").attr("stroke", "#374151"))
+      .call((g) => g.selectAll(".tick line").clone()
+        .attr("x2", width - margin.left - margin.right)
+        .attr("stroke", "#1f2937")
+        .attr("stroke-dasharray", "2,3"))
+      .call((g) => g.selectAll(".tick text").attr("fill", "#a1a1aa").attr("font-size", "11px"));
+
+    // Axis labels
+    svg
+      .append("text")
+      .attr("x", (width + margin.left) / 2)
+      .attr("y", height - 6)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#a1a1aa")
+      .attr("font-size", "12px")
+      .text("Skill Overlap %");
+
+    svg
+      .append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("x", -(height - margin.bottom + margin.top) / 2)
+      .attr("y", 16)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#a1a1aa")
+      .attr("font-size", "12px")
+      .text("Median Salary ($K)");
+
+    // Tooltip div
+    const tooltip = d3
+      .select(container)
+      .append("div")
+      .style("position", "absolute")
+      .style("pointer-events", "none")
+      .style("background", "#1f2937")
+      .style("border", "1px solid #374151")
+      .style("border-radius", "6px")
+      .style("padding", "8px 12px")
+      .style("color", "#e5e7eb")
+      .style("font-size", "13px")
+      .style("line-height", "1.5")
+      .style("opacity", "0")
+      .style("z-index", "10");
+
+    // Bubbles
+    svg
+      .selectAll(".bubble")
+      .data(data)
+      .join("circle")
+      .attr("class", "bubble")
+      .attr("cx", (d) => x(d.skillOverlap))
+      .attr("cy", (d) => y(d.salaryMedian))
+      .attr("fill", (d) => aiRiskColor(d.aiRisk))
+      .attr("fill-opacity", 0.75)
+      .attr("stroke", (d) => aiRiskColor(d.aiRisk))
+      .attr("stroke-width", 1.5)
+      .attr("r", 0)
+      .transition()
+      .duration(600)
+      .delay((_, i) => i * 120)
+      .attr("r", (d) => r(d.demand));
+
+    // Role name labels
+    svg
+      .selectAll(".role-label")
+      .data(data)
+      .join("text")
+      .attr("class", "role-label")
+      .attr("x", (d) => x(d.skillOverlap))
+      .attr("y", (d) => y(d.salaryMedian) - r(d.demand) - 6)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#d1d5db")
+      .attr("font-size", "11px")
+      .attr("font-weight", "500")
+      .text((d) => d.role);
+
+    // Hover interactions (applied after transition)
+    svg
+      .selectAll<SVGCircleElement, (typeof data)[number]>(".bubble")
+      .on("mouseenter", function (event, d) {
+        d3.select(this).attr("fill-opacity", 1).attr("stroke-width", 2.5);
+        tooltip
+          .style("opacity", "1")
+          .html(
+            `<div style="font-weight:600;margin-bottom:4px">${d.role}</div>` +
+            `Skill Overlap: ${d.skillOverlap}%<br/>` +
+            `Salary: $${d.salaryMin}K – $${d.salaryMax}K (median $${d.salaryMedian}K)<br/>` +
+            `Openings: ${d.demand.toLocaleString()}<br/>` +
+            `AI Risk: ${d.aiRisk}%`
+          );
+      })
+      .on("mousemove", function (event) {
+        const [mx, my] = d3.pointer(event, container);
+        tooltip.style("left", `${mx + 14}px`).style("top", `${my - 10}px`);
+      })
+      .on("mouseleave", function () {
+        d3.select(this).attr("fill-opacity", 0.75).attr("stroke-width", 1.5);
+        tooltip.style("opacity", "0");
+      });
+
+  }, [pivots, containerWidth]);
+
   if (!pivots || pivots.length === 0) return null;
 
-  const data: PivotDatum[] = pivots.map((p) => ({
-    role: p.role,
-    skillOverlap: p.skill_overlap_pct,
-    salaryMedian: p.salary_range.median,
-    salaryMin: p.salary_range.min,
-    salaryMax: p.salary_range.max,
-    demand: p.market_demand,
-    aiRisk: p.ai_risk_pct,
-  }));
-
-  const demandValues = data.map((d) => d.demand);
-  const demandMin = Math.min(...demandValues);
-  const demandMax = Math.max(...demandValues);
-
-  return (
-    <ResponsiveContainer width="100%" height={300}>
-      <ScatterChart margin={{ top: 10, right: 20, bottom: 24, left: 10 }}>
-        <XAxis
-          type="number"
-          dataKey="skillOverlap"
-          domain={[0, 100]}
-          tick={{ fill: "#a1a1aa", fontSize: 12 }}
-          label={{
-            value: "Skill Overlap %",
-            position: "insideBottom",
-            offset: -10,
-            fill: "#a1a1aa",
-            fontSize: 12,
-          }}
-        />
-        <YAxis
-          type="number"
-          dataKey="salaryMedian"
-          tick={{ fill: "#a1a1aa", fontSize: 12 }}
-          tickFormatter={(v: number) => `$${v}K`}
-          label={{
-            value: "Median Salary ($K)",
-            angle: -90,
-            position: "insideLeft",
-            offset: 10,
-            fill: "#a1a1aa",
-            fontSize: 12,
-          }}
-        />
-        <ZAxis
-          type="number"
-          dataKey="demand"
-          domain={[demandMin, demandMax]}
-          range={[60, 400]}
-        />
-        <Tooltip content={<CustomTooltip />} />
-        <Scatter data={data}>
-          {data.map((entry, idx) => (
-            <Cell key={idx} fill={aiRiskColor(entry.aiRisk)} fillOpacity={0.85} />
-          ))}
-        </Scatter>
-      </ScatterChart>
-    </ResponsiveContainer>
-  );
+  return <div ref={containerRef} className="relative w-full" />;
 }

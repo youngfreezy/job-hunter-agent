@@ -9,6 +9,7 @@ interface WizardNavigationProps {
   onNext: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
+  isStepValid: boolean;
 }
 
 export function WizardNavigation({
@@ -18,6 +19,7 @@ export function WizardNavigation({
   onNext,
   onSubmit,
   isSubmitting,
+  isStepValid,
 }: WizardNavigationProps) {
   const isLastStep = currentStep === totalSteps - 1;
 
@@ -37,12 +39,13 @@ export function WizardNavigation({
           type="button"
           size="lg"
           onClick={onSubmit}
+          disabled={!isStepValid}
           loading={isSubmitting}
         >
           Start Job Hunt Session
         </Button>
       ) : (
-        <Button type="button" onClick={onNext}>
+        <Button type="button" onClick={onNext} disabled={!isStepValid}>
           Next
         </Button>
       )}

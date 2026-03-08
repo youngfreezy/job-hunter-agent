@@ -105,6 +105,16 @@ _SESSION_COMPLETE_TEMPLATE = """\
                 </tr>
               </table>
 
+              <!-- Time Saved highlight -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+                <tr>
+                  <td style="text-align:center;padding:20px;background-color:#ecfdf5;border-radius:8px;border:1px solid #a7f3d0;">
+                    <div style="font-size:36px;font-weight:700;color:#059669;">{time_saved}</div>
+                    <div style="font-size:14px;color:#065f46;margin-top:4px;">of manual work saved this session</div>
+                  </td>
+                </tr>
+              </table>
+
               <!-- Details -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
                 <tr>
@@ -157,6 +167,9 @@ def _format_duration(minutes: float) -> str:
     return f"{hours}h {remaining}m"
 
 
+_MANUAL_MINUTES_PER_APP = 60  # HR Dive + BLS benchmark
+
+
 async def send_session_complete_email(
     to_email: str,
     session_id: str,
@@ -172,6 +185,11 @@ async def send_session_complete_email(
 
     companies_str = ", ".join(escape(c) for c in top_companies) if top_companies else "—"
 
+    # Time saved: what manual work would have taken minus automation time
+    manual_estimate = total_applied * _MANUAL_MINUTES_PER_APP
+    time_saved_minutes = max(0, manual_estimate - duration_minutes)
+    time_saved_str = _format_duration(time_saved_minutes)
+
     html = _SESSION_COMPLETE_TEMPLATE.format(
         total_applied=total_applied,
         total_failed=total_failed,
@@ -180,6 +198,7 @@ async def send_session_complete_email(
         duration=_format_duration(duration_minutes),
         top_companies=companies_str,
         session_id=escape(session_id),
+        time_saved=time_saved_str,
     )
 
     return await send_email(to_email, subject, html)

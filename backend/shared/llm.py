@@ -155,10 +155,14 @@ def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, (TimeoutError, asyncio.TimeoutError, ConnectionError)):
         return True
     err_str = str(exc).lower()
+    if "length limit" in err_str or "length_limit" in err_str:
+        return False  # Token limit errors won't resolve on retry
     if "rate_limit" in err_str:
         return True
     for code in _RETRYABLE_STATUS_CODES:
-        if code in err_str:
+        # Match status codes as standalone numbers to avoid false positives
+        # (e.g. "500" in "completion_tokens=2500")
+        if f" {code}" in err_str or f"({code}" in err_str or f":{code}" in err_str or err_str.startswith(code):
             return True
     return False
 

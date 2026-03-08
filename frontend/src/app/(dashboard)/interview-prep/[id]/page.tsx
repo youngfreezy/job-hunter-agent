@@ -52,10 +52,9 @@ interface CoachingHints {
   pitfalls: string[];
 }
 
-export default function InterviewPrepPage() {
-  const { id: sessionId } = useParams<{ id: string }>();
-  const [prepId, setPrepId] = useState<string | null>(null);
-  const [status, setStatus] = useState("idle");
+export default function InterviewPrepSessionPage() {
+  const { id: prepId } = useParams<{ id: string }>();
+  const [status, setStatus] = useState("connecting");
   const [brief, setBrief] = useState<CompanyBrief | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
@@ -67,33 +66,6 @@ export default function InterviewPrepPage() {
   const [error, setError] = useState<string | null>(null);
   const [coaching, setCoaching] = useState<Record<string, CoachingHints>>({});
   const [coachingLoading, setCoachingLoading] = useState(false);
-  const [starting, setStarting] = useState(false);
-
-  // Start prep session
-  async function handleStart(company: string, role: string, resumeText: string) {
-    setStarting(true);
-    setError(null);
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/interview-prep`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company,
-          role,
-          resume_text: resumeText,
-          application_id: sessionId,
-        }),
-      });
-      if (!res.ok) throw new Error(`Failed: ${res.statusText}`);
-      const data = await res.json();
-      setPrepId(data.session_id);
-      setStatus("connecting");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An unknown error occurred");
-      setStarting(false);
-    }
-  }
 
   // SSE connection
   useEffect(() => {
@@ -121,6 +93,8 @@ export default function InterviewPrepPage() {
     return () => es.close();
   }, [prepId]);
 
+  const q = questions[currentQ];
+
   // Submit answer
   async function handleSubmitAnswer() {
     if (!prepId || !answer.trim()) return;
@@ -129,13 +103,13 @@ export default function InterviewPrepPage() {
 
     try {
       const headers = await getAuthHeaders();
-      const q = questions[currentQ];
+      const currentQuestion = questions[currentQ];
       const res = await fetch(
         `${API_BASE}/api/interview-prep/${prepId}/answer`,
         {
           method: "POST",
           headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ question_id: q.id, answer }),
+          body: JSON.stringify({ question_id: currentQuestion.id, answer }),
         }
       );
       if (!res.ok) throw new Error("Failed to grade answer");
@@ -153,7 +127,7 @@ export default function InterviewPrepPage() {
   // Get coaching hints for current question
   async function handleGetCoaching() {
     if (!prepId || !q) return;
-    if (coaching[q.id]) return; // already cached
+    if (coaching[q.id]) return;
     setCoachingLoading(true);
     try {
       const headers = await getAuthHeaders();
@@ -189,90 +163,13 @@ export default function InterviewPrepPage() {
     }
   }
 
-  // Not started yet — show start form
-  if (!prepId) {
-    const savedResume = typeof window !== "undefined" ? localStorage.getItem("jh_resume_text") || "" : "";
-    return (
-      <div className="container mx-auto max-w-3xl p-6 space-y-6">
-        <h1 className="text-2xl font-bold">Interview Prep</h1>
-        <p className="text-muted-foreground">
-          Practice for your interview with AI-powered mock questions and real-time feedback.
-        </p>
-
-        {starting ? (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="bg-card border rounded-lg p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
-                <p className="text-sm text-muted-foreground">
-                  Setting up your mock interview...
-                </p>
-              </div>
-              <div className="w-full bg-muted rounded-full h-1.5">
-                <div className="bg-primary h-1.5 rounded-full animate-pulse" style={{ width: "25%" }} />
-              </div>
-            </div>
-
-            <div className="bg-card border rounded-lg p-6 space-y-3">
-              <div className="h-5 w-32 bg-muted animate-pulse rounded" />
-              <div className="space-y-2">
-                <div className="h-3 w-full bg-muted animate-pulse rounded" />
-                <div className="h-3 w-4/5 bg-muted animate-pulse rounded" />
-                <div className="h-3 w-3/5 bg-muted animate-pulse rounded" />
-              </div>
-            </div>
-
-            <div className="bg-card border rounded-lg p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="h-4 w-20 bg-muted animate-pulse rounded" />
-                <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-              </div>
-              <div className="h-5 w-3/4 bg-muted animate-pulse rounded" />
-              <div className="h-28 w-full bg-muted animate-pulse rounded" />
-              <div className="flex gap-3">
-                <div className="h-9 w-28 bg-muted animate-pulse rounded" />
-                <div className="h-9 w-16 bg-muted animate-pulse rounded" />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-card border rounded-lg p-6 space-y-4">
-            <input
-              placeholder="Company name"
-              className="w-full border rounded px-3 py-2 bg-background text-sm"
-              id="company"
-            />
-            <input
-              placeholder="Role title"
-              className="w-full border rounded px-3 py-2 bg-background text-sm"
-              id="role"
-            />
-            {error && <p className="text-destructive text-sm">{error}</p>}
-            <Button
-              onClick={() => {
-                const company = (document.getElementById("company") as HTMLInputElement).value;
-                const role = (document.getElementById("role") as HTMLInputElement).value;
-                if (company && role) handleStart(company, role, savedResume);
-              }}
-            >
-              Start Mock Interview
-            </Button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const q = questions[currentQ];
-
   return (
     <div className="container mx-auto max-w-3xl p-6 space-y-6">
       <h1 className="text-2xl font-bold">Mock Interview</h1>
 
       {/* Loading skeleton — show until questions are ready */}
-      {status !== "idle" && status !== "completed" && questions.length === 0 && !error && (
+      {status !== "completed" && questions.length === 0 && !error && (
         <div className="space-y-6 animate-in fade-in duration-300">
-          {/* Progress indicator */}
           <div className="bg-card border rounded-lg p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
@@ -296,7 +193,6 @@ export default function InterviewPrepPage() {
             </div>
           </div>
 
-          {/* Company brief skeleton */}
           <div className="bg-card border rounded-lg p-6 space-y-3">
             <div className="h-5 w-32 bg-muted animate-pulse rounded" />
             <div className="space-y-2">
@@ -304,17 +200,8 @@ export default function InterviewPrepPage() {
               <div className="h-3 w-4/5 bg-muted animate-pulse rounded" />
               <div className="h-3 w-3/5 bg-muted animate-pulse rounded" />
             </div>
-            <div className="pt-2 space-y-2">
-              <div className="h-3 w-40 bg-muted animate-pulse rounded" />
-              <div className="flex gap-2">
-                <div className="h-6 w-24 bg-muted animate-pulse rounded-full" />
-                <div className="h-6 w-28 bg-muted animate-pulse rounded-full" />
-                <div className="h-6 w-20 bg-muted animate-pulse rounded-full" />
-              </div>
-            </div>
           </div>
 
-          {/* Question card skeleton */}
           <div className="bg-card border rounded-lg p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div className="h-4 w-20 bg-muted animate-pulse rounded" />

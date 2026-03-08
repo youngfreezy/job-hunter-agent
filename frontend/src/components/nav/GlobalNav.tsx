@@ -8,6 +8,7 @@ import { NavShell } from "./NavShell";
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/apply", label: "Review & Apply" },
+  { href: "/interview-prep", label: "Interview Prep" },
   { href: "/career-pivot", label: "Career Pivot" },
   { href: "/freelance", label: "Freelance" },
   { href: "/history", label: "History" },

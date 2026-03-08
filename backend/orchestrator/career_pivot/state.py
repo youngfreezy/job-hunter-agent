@@ -43,10 +43,17 @@ class CareerPivotState(TypedDict):
     parsed_skills: List[str]
     years_experience: Optional[int]
     industry: Optional[str]
+    soc_code: Optional[str]
+    knowledge_areas: List[str]
+    abilities: List[str]
+
+    # --- O*NET Research (fetched from web) ---
+    onet_research: Optional[str]  # raw text from O*NET pages for this SOC code
 
     # --- Risk Assessment output ---
     automation_risk_score: Optional[float]
-    task_breakdown: List[Dict[str, Any]]  # [{task, risk_pct}]
+    task_breakdown: List[Dict[str, Any]]  # [{task, risk_pct, onet_activity_id}]
+    resistant_abilities: List[str]
 
     # --- Role Mapping output ---
     recommended_pivots: List[PivotRole]
