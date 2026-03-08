@@ -298,6 +298,7 @@ async def _run_pipeline(
     session_id: str,
     request_body: StartSessionRequest,
     graph: Any,
+    user_id: str = "",
 ) -> None:
     """Execute the LangGraph pipeline and emit SSE events as agents complete.
 
@@ -312,7 +313,7 @@ async def _run_pipeline(
         # Build the initial state
         initial_state: Dict[str, Any] = {
             "session_id": session_id,
-            "user_id": "test-user",  # TODO: resolve from auth
+            "user_id": user_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "keywords": request_body.keywords,
             "locations": request_body.locations,
@@ -784,7 +785,9 @@ async def start_session(body: StartSessionRequest, request: Request):
     """Create a new pipeline session and begin execution in the background."""
     session_id = str(uuid.uuid4())
     graph = request.app.state.graph
-    user_id = "test-user"  # TODO: resolve from auth
+    from backend.gateway.deps import get_current_user
+    user = get_current_user(request)
+    user_id = user["id"]
 
     # Enforce per-user concurrency limits via Redis task queue
     try:
@@ -822,7 +825,7 @@ async def start_session(body: StartSessionRequest, request: Request):
     }
 
     # Launch the pipeline as a background coroutine
-    _spawn_background(_run_pipeline(session_id, body, graph))
+    _spawn_background(_run_pipeline(session_id, body, graph, user_id=user_id))
 
     return {"session_id": session_id}
 

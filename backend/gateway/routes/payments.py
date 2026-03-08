@@ -14,9 +14,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from backend.gateway.deps import get_current_user
 from backend.shared.billing_store import (
     credit_wallet,
-    get_or_create_user,
     get_transactions,
     get_wallet,
 )
@@ -42,7 +42,7 @@ APPLICATION_COST = 1.99
 @router.get("/wallet")
 async def wallet_endpoint(request: Request):
     """Return wallet balance and free applications remaining."""
-    user = get_or_create_user("test-user@example.com")
+    user = get_current_user(request)
     wallet = get_wallet(user["id"])
     return {
         "balance": wallet["balance"],
@@ -54,7 +54,7 @@ async def wallet_endpoint(request: Request):
 @router.get("/transactions")
 async def transactions_endpoint(request: Request):
     """Return recent wallet transactions."""
-    user = get_or_create_user("test-user@example.com")
+    user = get_current_user(request)
     txns = get_transactions(user["id"])
     return {"transactions": txns}
 
@@ -85,7 +85,7 @@ async def checkout_endpoint(body: CheckoutRequest, request: Request):
     import stripe
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
-    user = get_or_create_user("test-user@example.com")
+    user = get_current_user(request)
 
     try:
         session = stripe.checkout.Session.create(
