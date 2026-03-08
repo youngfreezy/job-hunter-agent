@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, getSSEToken } from "@/lib/api";
 import GigScatterChart from "@/components/charts/GigScatterChart";
 
 interface Gig {
@@ -44,8 +44,9 @@ export default function FreelanceResultPage() {
     let es: EventSource | null = null;
 
     async function connect() {
-      const url = `${API_BASE}/api/freelance/${id}/stream`;
-      es = new EventSource(url);
+      const token = await getSSEToken();
+      const sep = token ? `?token=${encodeURIComponent(token)}` : "";
+      es = new EventSource(`${API_BASE}/api/freelance/${id}/stream${sep}`);
 
       es.addEventListener("status", (e) => {
         const data = JSON.parse(e.data);
