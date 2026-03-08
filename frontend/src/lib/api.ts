@@ -3,11 +3,17 @@
  * Handles REST calls, SSE streaming, and WebSocket connections.
  */
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" && window.location.port === "3000"
+function _resolveApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("NEXT_PUBLIC_API_URL must be set in production");
+  }
+  return typeof window !== "undefined" && window.location.port === "3000"
     ? "http://localhost:8000"
-    : "");
+    : "";
+}
+
+export const API_BASE = _resolveApiBase();
 
 // ---------- Types ----------
 
