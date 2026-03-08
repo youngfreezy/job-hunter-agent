@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from backend.gateway.deps import get_current_user
 from backend.shared.billing_store import debit_wallet, get_wallet
+from backend.shared.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/interview-prep", tags=["interview-prep"])
@@ -77,10 +78,11 @@ async def _run_prep_pipeline(session_id: str, graph, config, initial_state):
 
             if snapshot.get("questions") and not _prep_registry[session_id].get("questions_emitted"):
                 all_questions = snapshot["questions"]
+                is_paid = _prep_registry[session_id].get("paid", False)
                 max_free = _prep_registry[session_id].get("max_free_questions", 2)
-                # Only send free questions initially; rest unlocked after payment
+                # Send all questions for paid/premium users; only free ones otherwise
                 _emit_prep(session_id, "questions_ready", {
-                    "questions": all_questions[:max_free],
+                    "questions": all_questions if is_paid else all_questions[:max_free],
                     "total": len(all_questions),
                 })
                 _prep_registry[session_id]["questions_emitted"] = True
@@ -100,6 +102,9 @@ async def start_prep(request: Request, body: StartPrepRequest):
     user = get_current_user(request)
     session_id = str(uuid.uuid4())
 
+    premium_emails = [e.strip().lower() for e in settings.PREMIUM_EMAILS.split(",") if e.strip()]
+    is_premium = user.get("is_premium", False) or user["email"].lower() in premium_emails
+
     _prep_registry[session_id] = {
         "user_id": user["id"],
         "user_email": user["email"],
@@ -111,7 +116,7 @@ async def start_prep(request: Request, body: StartPrepRequest):
         "company": body.company,
         "role": body.role,
         "coaching_cache": {},
-        "paid": False,
+        "paid": is_premium,
         "max_free_questions": 2,
     }
     _prep_events[session_id] = []

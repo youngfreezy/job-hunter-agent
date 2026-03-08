@@ -24,8 +24,15 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     wallet_balance DECIMAL(10,2) DEFAULT 0.00,
     free_applications_remaining INT DEFAULT 3,
+    is_premium BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Backfill: add is_premium column if table already exists
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -55,6 +62,16 @@ async def ensure_billing_tables() -> None:
             conn.execute(_CREATE_TABLES)
             conn.commit()
             logger.info("Billing tables ensured")
+
+            # Sync premium status from PREMIUM_EMAILS env var into DB
+            s = get_settings()
+            premium_emails = [e.strip().lower() for e in s.PREMIUM_EMAILS.split(",") if e.strip()]
+            if premium_emails:
+                conn.execute(
+                    "UPDATE users SET is_premium = TRUE WHERE LOWER(email) = ANY(%s) AND is_premium = FALSE",
+                    (premium_emails,),
+                )
+                conn.commit()
         finally:
             conn.close()
     except Exception:
@@ -66,7 +83,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
     conn = _connect()
     try:
         cur = conn.execute(
-            "SELECT id, email, wallet_balance, free_applications_remaining FROM users WHERE email = %s",
+            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium FROM users WHERE email = %s",
             (email,),
         )
         row = cur.fetchone()
@@ -76,6 +93,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
                 "email": row[1],
                 "wallet_balance": float(row[2]),
                 "free_applications_remaining": row[3],
+                "is_premium": row[4],
             }
 
         # Create new user
@@ -90,6 +108,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
             "email": email,
             "wallet_balance": 0.00,
             "free_applications_remaining": 3,
+            "is_premium": False,
         }
     finally:
         conn.close()
@@ -230,6 +249,24 @@ def check_sufficient_credits(user_id: str, amount: float = 1.0) -> bool:
         balance = float(row[0])
         free_remaining = row[1]
         return free_remaining > 0 or balance >= amount
+    finally:
+        conn.close()
+
+
+def set_premium(user_id: str, is_premium: bool = True) -> bool:
+    """Set or unset premium status for a user."""
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE users SET is_premium = %s WHERE id = %s",
+            (is_premium, user_id),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        logger.exception("Failed to set premium for user %s", user_id)
+        return False
     finally:
         conn.close()
 

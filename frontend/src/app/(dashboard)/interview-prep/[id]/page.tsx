@@ -29,6 +29,21 @@ export default function InterviewPrepSessionPage() {
   const maxFreeQuestions = 2;
   const router = useRouter();
 
+  // Fetch session state on mount (syncs paid status for premium users)
+  useEffect(() => {
+    if (!prepId) return;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`${API_BASE}/api/interview-prep/${prepId}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.paid) setPaid(true);
+        }
+      } catch {}
+    })();
+  }, [prepId]);
+
   // SSE connection
   useEffect(() => {
     if (!prepId) return;
