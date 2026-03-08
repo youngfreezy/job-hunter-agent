@@ -91,6 +91,9 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
           )}
           <div className="flex gap-4 text-sm">
             {values.remoteOnly && <Badge variant="outline">Remote only</Badge>}
+            {!values.remoteOnly && values.searchRadius !== 100 && (
+              <Badge variant="outline">{values.searchRadius} mi radius</Badge>
+            )}
             {values.salaryMin && <span>Min salary: ${values.salaryMin}</span>}
           </div>
         </CardContent>

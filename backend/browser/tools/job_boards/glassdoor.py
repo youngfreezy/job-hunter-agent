@@ -91,7 +91,7 @@ async def scrape_glassdoor(
         elif location and location.lower() != "remote":
             base_params["locT"] = "C"
             base_params["locKeyword"] = location
-            base_params["radius"] = "100"
+            base_params["radius"] = str(search_config.search_radius)
 
         for query in queries:
             if len(listings) >= max_results:

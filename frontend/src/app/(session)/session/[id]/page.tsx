@@ -23,10 +23,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
-import {
-  LinkedInUpdateButton,
-  type LinkedInProgress,
-} from "@/components/LinkedInUpdateButton";
 import ResumeScoreRadar from "@/components/charts/ResumeScoreRadar";
 import ScoreDistribution from "@/components/charts/ScoreDistribution";
 import JobComparisonChart from "@/components/charts/JobComparisonChart";
@@ -384,8 +380,6 @@ export default function SessionPage() {
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [rewindLoading, setRewindLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
-  const [linkedinProgress, setLinkedinProgress] =
-    useState<LinkedInProgress | null>(null);
   const [loginPrompt, setLoginPrompt] = useState<{
     board: string;
     message: string;
@@ -772,26 +766,6 @@ export default function SessionPage() {
         setLoginPrompt(null);
       }
 
-      // LinkedIn update SSE events
-      if (
-        evt.event === "linkedin_update_progress" ||
-        evt.event === "linkedin_update_complete"
-      ) {
-        setLinkedinProgress({
-          step: String(evt.step || ""),
-          section: String(evt.section || ""),
-          progress: typeof evt.progress === "number" ? evt.progress : 0,
-          success: evt.success as boolean | undefined,
-          results: evt.results as LinkedInProgress["results"],
-        });
-      }
-      if (evt.event === "linkedin_update_failed") {
-        setLinkedinProgress({
-          step: String(evt.step || "Update failed"),
-          section: String(evt.section || ""),
-          progress: -1,
-        });
-      }
 
       setTimeout(() => {
         const el = eventsEndRef.current;
@@ -1627,17 +1601,6 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {session.coach_output?.linkedin_advice &&
-            session.coach_output.linkedin_advice.length > 0 &&
-            activePane !== "summary" && (
-              <LinkedInUpdateButton
-                sessionId={sessionId}
-                linkedinAdvice={session.coach_output.linkedin_advice}
-                linkedinUrl={session.linkedin_url}
-                linkedinProgress={linkedinProgress}
-                disabled
-              />
-            )}
 
           {shortlistJobs.length > 0 && activePane !== "summary" && (
             <Card className="border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 dark:border-amber-900 dark:from-amber-950/50 dark:to-orange-950/50">
@@ -2016,9 +1979,6 @@ export default function SessionPage() {
             <div className="space-y-4">
               <CoachPanel
                 coach={coachReviewData}
-                sessionId={sessionId}
-                linkedinUrl={session?.linkedin_url}
-                linkedinProgress={linkedinProgress}
               />
               <Card>
                 <CardHeader className="pb-2">

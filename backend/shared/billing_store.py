@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import psycopg
+import stripe
 
 from backend.shared.config import get_settings
 
@@ -25,12 +26,19 @@ CREATE TABLE IF NOT EXISTS users (
     wallet_balance DECIMAL(10,2) DEFAULT 0.00,
     free_applications_remaining INT DEFAULT 3,
     is_premium BOOLEAN DEFAULT FALSE,
+    stripe_customer_id TEXT UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Backfill: add is_premium column if table already exists
 DO $$ BEGIN
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- Backfill: add stripe_customer_id column if table already exists
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT UNIQUE;
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
@@ -98,9 +106,21 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
 
         # Create new user
         user_id = str(uuid.uuid4())
+
+        # Create Stripe customer (non-blocking)
+        settings = get_settings()
+        stripe_customer_id = None
+        if settings.STRIPE_SECRET_KEY:
+            try:
+                stripe.api_key = settings.STRIPE_SECRET_KEY
+                customer = stripe.Customer.create(email=email)
+                stripe_customer_id = customer.id
+            except Exception as e:
+                logger.warning("Failed to create Stripe customer for %s: %s", email, e)
+
         conn.execute(
-            "INSERT INTO users (id, email) VALUES (%s, %s)",
-            (user_id, email),
+            "INSERT INTO users (id, email, stripe_customer_id) VALUES (%s, %s, %s)",
+            (user_id, email, stripe_customer_id),
         )
         conn.commit()
         return {
@@ -110,6 +130,19 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
             "free_applications_remaining": 3,
             "is_premium": False,
         }
+    finally:
+        conn.close()
+
+
+def get_stripe_customer_id(user_id: str) -> Optional[str]:
+    """Get the Stripe customer ID for a user."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT stripe_customer_id FROM users WHERE id = %s", (user_id,)
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
     finally:
         conn.close()
 

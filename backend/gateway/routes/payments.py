@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from backend.gateway.deps import get_current_user
 from backend.shared.billing_store import (
     credit_wallet,
+    get_stripe_customer_id,
     get_transactions,
     get_wallet,
 )
@@ -96,9 +97,10 @@ async def checkout_endpoint(body: CheckoutRequest, request: Request):
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
     user = get_current_user(request)
+    stripe_customer_id = get_stripe_customer_id(user["id"])
 
     try:
-        session = stripe.checkout.Session.create(
+        checkout_kwargs = dict(
             mode="payment",
             line_items=[{
                 "price_data": {
@@ -116,6 +118,10 @@ async def checkout_endpoint(body: CheckoutRequest, request: Request):
             success_url=body.success_url or "http://localhost:3000/billing?success=true",
             cancel_url=body.cancel_url or "http://localhost:3000/billing?canceled=true",
         )
+        if stripe_customer_id:
+            checkout_kwargs["customer"] = stripe_customer_id
+
+        session = stripe.checkout.Session.create(**checkout_kwargs)
         return {"url": session.url, "session_id": session.id}
     except Exception as e:
         logger.exception("Stripe checkout creation failed")

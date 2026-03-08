@@ -39,6 +39,7 @@ def _get_search_config(state: Dict[str, Any]) -> SearchConfig:
         locations=state.get("locations", ["Remote"]),
         remote_only=state.get("remote_only", False),
         salary_min=state.get("salary_min"),
+        search_radius=state.get("search_radius", 100),
     )
 
 

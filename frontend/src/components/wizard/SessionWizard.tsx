@@ -63,6 +63,7 @@ export function SessionWizard() {
           locations: locationList,
           remote_only: values.remoteOnly,
           salary_min: values.salaryMin ? parseInt(values.salaryMin) : null,
+          search_radius: values.remoteOnly ? 100 : values.searchRadius,
           resume_text: values.resumeText,
           resume_file_path: values.resumeFilePath || null,
           linkedin_url: values.linkedinUrl || null,
