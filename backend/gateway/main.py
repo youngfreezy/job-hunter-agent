@@ -81,8 +81,20 @@ async def lifespan(app: FastAPI):
     checkpointer = None
     pool = None
     try:
+        from psycopg import AsyncConnection
         from psycopg_pool import AsyncConnectionPool
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+        # Run setup with a dedicated autocommit connection because
+        # CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
+        try:
+            async with await AsyncConnection.connect(
+                settings.DATABASE_URL, autocommit=True
+            ) as setup_conn:
+                setup_saver = AsyncPostgresSaver(setup_conn)
+                await setup_saver.setup()
+        except Exception as setup_exc:
+            logger.warning("Checkpointer setup() failed (%s); tables may already exist", setup_exc)
 
         pool = AsyncConnectionPool(
             conninfo=settings.DATABASE_URL,
@@ -92,7 +104,6 @@ async def lifespan(app: FastAPI):
         )
         await pool.open()
         checkpointer = AsyncPostgresSaver(pool)
-        await checkpointer.setup()
         logger.info("Using AsyncPostgresSaver with connection pool")
 
         # Ensure selector tables exist and seed defaults
