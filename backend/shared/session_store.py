@@ -144,6 +144,49 @@ def get_sessions_for_user(user_id: str) -> List[Dict[str, Any]]:
         conn.close()
 
 
+def get_interrupted_sessions(max_age_hours: int = 2) -> List[Dict[str, Any]]:
+    """Find sessions stuck in running/non-terminal states (orphaned by restart).
+
+    Only returns sessions updated within the last ``max_age_hours`` to avoid
+    resuming ancient stale sessions.
+    """
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            """SELECT id, user_id, status
+               FROM sessions
+               WHERE status IN ('intake', 'coaching', 'discovering', 'scoring',
+                                'tailoring', 'applying', 'running', 'interrupted')
+                 AND updated_at >= NOW() - INTERVAL '%s hours'
+               ORDER BY created_at DESC""",
+            (max_age_hours,),
+        )
+        return [{"session_id": r[0], "user_id": r[1], "status": r[2]} for r in cur.fetchall()]
+    except Exception:
+        logger.debug("Failed to query interrupted sessions", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+
+def mark_sessions_interrupted(session_ids: List[str]) -> None:
+    """Bulk-mark sessions as interrupted (called on SIGTERM)."""
+    if not session_ids:
+        return
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE sessions SET status = 'interrupted', updated_at = NOW() WHERE id = ANY(%s)",
+            (session_ids,),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        logger.debug("Failed to mark sessions interrupted", exc_info=True)
+    finally:
+        conn.close()
+
+
 def delete_sessions_for_user(user_id: str) -> bool:
     """Delete all sessions for a user (GDPR)."""
     conn = _connect()
