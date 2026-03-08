@@ -5,8 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API_BASE, getAuthHeaders } from "@/lib/api";
 
 interface WalletData {
   balance: number;
@@ -48,10 +47,11 @@ export default function BillingPage() {
   useEffect(() => {
     async function load() {
       try {
+        const auth = await getAuthHeaders();
         const [walletRes, packsRes, txnRes] = await Promise.all([
-          fetch(`${API_BASE}/api/billing/wallet`),
+          fetch(`${API_BASE}/api/billing/wallet`, { headers: auth }),
           fetch(`${API_BASE}/api/billing/packs`),
-          fetch(`${API_BASE}/api/billing/transactions`),
+          fetch(`${API_BASE}/api/billing/transactions`, { headers: auth }),
         ]);
         if (walletRes.ok) setWallet(await walletRes.json());
         if (packsRes.ok) {
@@ -75,9 +75,10 @@ export default function BillingPage() {
     setCheckoutLoading(packId);
     window.umami?.track("checkout-initiate", { pack: packId });
     try {
+      const auth = await getAuthHeaders();
       const res = await fetch(`${API_BASE}/api/billing/checkout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify({
           pack_id: packId,
           success_url: `${window.location.origin}/billing?success=true`,
