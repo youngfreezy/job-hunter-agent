@@ -26,6 +26,7 @@ logging.basicConfig(level=logging.INFO, handlers=_handlers)
 for _noisy in (
     "httpcore", "httpx", "neo4j", "urllib3", "watchfiles", "asyncio",
     "browser_use", "cdp_use", "bubus",
+    "langgraph.checkpoint.serde.jsonplus",
 ):
     logging.getLogger(_noisy).setLevel(logging.CRITICAL if _noisy == "bubus" else logging.ERROR)
 
