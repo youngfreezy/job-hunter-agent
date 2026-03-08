@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Isolated apply test -- test the application flow with real job URLs.
 
 Usage:

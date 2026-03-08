@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Selector Memory -- learns which CSS selectors work for each job board.
 
 Stores successful selectors in Postgres and retrieves the best ones for

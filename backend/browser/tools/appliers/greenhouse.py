@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Greenhouse Applier -- handles single-page forms at boards.greenhouse.io.
 
 Greenhouse applications are typically a single page: click Apply, fill the form

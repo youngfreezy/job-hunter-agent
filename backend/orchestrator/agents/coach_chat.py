@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Interactive coach-chat loop for revising coached artifacts before approval."""
 
 from __future__ import annotations

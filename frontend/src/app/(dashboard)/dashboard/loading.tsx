@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 export default function Loading() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">

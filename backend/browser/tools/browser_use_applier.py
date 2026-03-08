@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Browser-Use Applier -- LLM-driven job application via browser-use.
 
 Replaces hardcoded CSS selectors with an AI agent that dynamically

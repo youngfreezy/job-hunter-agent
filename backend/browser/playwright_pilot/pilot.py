@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Pilot -- the main LLM-steered browser automation interface.
 
 Wraps BrowserManager + form_filler into a single high-level API that can be

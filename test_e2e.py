@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """End-to-end test: Sign in, create a session via the wizard, monitor pipeline progress.
 
 Uses Playwright (from the backend venv) in headed mode with screenshots.

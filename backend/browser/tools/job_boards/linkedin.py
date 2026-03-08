@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """LinkedIn job board scraper using Playwright browser automation.
 
 Uses LinkedIn's public jobs search (no authentication required) to discover

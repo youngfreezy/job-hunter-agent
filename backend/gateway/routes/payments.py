@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Billing routes: wallet, transactions, Stripe checkout, webhooks.
 
 Pricing (credit-based):

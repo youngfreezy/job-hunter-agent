@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 export interface TaskBreakdown {
   task: string;
   risk_pct: number;

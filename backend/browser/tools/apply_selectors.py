@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Apply Selectors -- stores and ranks CSS selectors for job application flows.
 
 Stores selectors for apply buttons, next buttons, submit buttons, etc. per

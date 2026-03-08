@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Batch Greenhouse application test.
 
 Discovers 20 Greenhouse jobs via the public API, then applies to each

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Lifetime stats endpoint for time-savings marketing."""
 
 from __future__ import annotations

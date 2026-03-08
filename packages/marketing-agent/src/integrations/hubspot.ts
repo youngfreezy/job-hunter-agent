@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 /**
  * HubSpot integration for pushing marketing copy to campaigns and landing
  * pages, and tracking copy performance.

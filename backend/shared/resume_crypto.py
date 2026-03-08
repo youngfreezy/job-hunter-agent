@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Encrypt / decrypt resume files at rest using Fernet (AES-128-CBC + HMAC).
 
 Key is derived from NEXTAUTH_SECRET via HKDF so we don't need a separate

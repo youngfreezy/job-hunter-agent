@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Session lifecycle and SSE streaming routes.
 
 Handles:

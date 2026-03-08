@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Bright Data Datasets API discovery -- replaces browser scraping for LinkedIn, Indeed, Glassdoor.
 
 Uses Bright Data's pre-built web scrapers via their Datasets API v3.

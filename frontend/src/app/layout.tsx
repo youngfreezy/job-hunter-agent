@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import NextTopLoader from "nextjs-toploader";

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Alembic environment configuration.
 
 Reads DATABASE_URL from the application settings so migrations use the same

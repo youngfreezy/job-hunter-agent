@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Dead letter queue for failed job applications.
 
 Captures failed application attempts so they can be reviewed, debugged,

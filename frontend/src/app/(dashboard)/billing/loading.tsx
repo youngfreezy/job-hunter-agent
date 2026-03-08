@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 export default function BillingLoading() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Screenshot Streamer -- captures periodic screenshots of browser activity.
 
 Publishes base64-encoded screenshots via Redis pub/sub for the frontend

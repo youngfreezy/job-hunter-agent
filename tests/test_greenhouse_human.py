@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test Greenhouse submission with human-like behavior for better reCAPTCHA scores.
 
 Key improvements:

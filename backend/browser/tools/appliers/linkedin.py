@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """LinkedIn Easy Apply applier.
 
 Handles the LinkedIn Easy Apply modal flow: click Apply, fill multi-step

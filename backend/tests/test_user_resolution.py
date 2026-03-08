@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Tests for user resolution from JWT-validated request state."""
 
 from unittest.mock import MagicMock, patch

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """LLM-backed workflow steering judge.
 
 Reads the current workflow state plus recent events and turns a user chat

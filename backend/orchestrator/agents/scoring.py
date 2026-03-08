@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Scoring Agent -- ranks discovered jobs by fit against the coached resume/profile.
 
 Uses the configured chat model to evaluate each job listing against the user's

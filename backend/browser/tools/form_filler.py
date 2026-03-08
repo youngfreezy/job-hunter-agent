@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Form Filler -- uses Claude to analyse and fill application forms via Playwright.
 
 Given a page showing a job application form, this module:

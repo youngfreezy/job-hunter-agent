@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Monitor an active session and handle HITL steps (coach review, shortlist review)."""
 import asyncio
 import sys

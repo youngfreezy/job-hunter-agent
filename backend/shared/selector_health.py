@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Shared selector health-check runner.
 
 Validates both discovery (board_selectors) and apply (apply_selectors) CSS

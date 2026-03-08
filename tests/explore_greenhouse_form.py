@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Explore a real Greenhouse application form to understand submission mechanism."""
 import asyncio
 import json

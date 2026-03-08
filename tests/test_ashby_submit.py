@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test application submission on Ashby ATS (used by PostHog, Linear, etc.).
 Ashby may not have reCAPTCHA.
 """

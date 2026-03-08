@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """LLM-as-judge evaluation functions for each pipeline agent."""
 
 from __future__ import annotations

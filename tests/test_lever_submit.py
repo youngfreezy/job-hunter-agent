@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Test application submission on Lever ATS.
 Lever forms are simpler than Greenhouse/Ashby - standard HTML forms with no React Select.
 """

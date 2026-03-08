@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Monkey-patches for third-party library bugs.
 
 Import this module early (e.g. in gateway/main.py) to apply fixes.

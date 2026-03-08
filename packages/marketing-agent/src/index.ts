@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 export { MarketingAgent } from './agent';
 export { copyGeneratorTool } from './tools/copy-generator';
 export { copyReviewerTool } from './tools/copy-reviewer';

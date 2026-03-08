@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """ZipRecruiter apply flow.
 
 Handles the 1-Click Apply (instant submit) and multi-step form variants.

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 import * as Yup from "yup";
 
 // ---------- Step 1: Job Search ----------

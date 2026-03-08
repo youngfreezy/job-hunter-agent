@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Discovery Agent -- single browser-use agent searches all job boards.
 
 One agent, one browser, all boards sequentially in the same Chrome session.

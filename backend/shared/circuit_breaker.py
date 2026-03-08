@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Circuit breaker pattern for external API calls.
 
 Prevents cascading failures by tracking error rates and temporarily

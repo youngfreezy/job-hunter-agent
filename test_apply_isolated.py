@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Isolated test: Apply to a single job URL with live screenshot streaming.
 
 Runs the same steps as the application agent but with verbose logging

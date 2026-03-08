@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Shared event bus for emitting SSE events from agents.
 
 Agents (career_coach, discovery, etc.) can emit progress events to the

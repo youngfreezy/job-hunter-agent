@@ -2,6 +2,8 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "author": "V2 Software LLC",
+  "license": "SEE LICENSE IN ../LICENSE",
   "engines": {
     "node": ">=18.17.0"
   },

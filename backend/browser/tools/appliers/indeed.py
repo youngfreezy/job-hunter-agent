@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Indeed Apply applier.
 
 Handles Indeed's native apply flow: click Apply, fill multi-page forms,

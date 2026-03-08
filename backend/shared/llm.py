@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Shared LLM utilities with provider-aware model construction and retries."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Graph-authoritative workflow supervisor for steering-aware control."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Glassdoor apply flow.
 
 Handles both the Easy Apply modal and external redirects. If the job

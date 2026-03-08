@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Redis connection manager for pub/sub, caching, and screenshot streaming.
 
 Wraps ``redis.asyncio`` with connection pooling, pub/sub helpers, and

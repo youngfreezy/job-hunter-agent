@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """In-process async signalling for pre-login HITL flow.
 
 The application agent awaits a per-session ``asyncio.Event`` after opening

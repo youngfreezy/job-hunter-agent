@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 import { test, expect } from "@playwright/test";
 import { login } from "./helpers/auth";
 const RESUME_TEXT =

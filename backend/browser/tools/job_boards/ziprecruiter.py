@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """ZipRecruiter job board scraper using Playwright browser automation.
 
 ZipRecruiter frequently shows auth/signup popups and email gates.
