@@ -24,6 +24,7 @@ from backend.browser.tools.appliers import get_applier
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.application_store import (
     check_already_applied,
+    check_company_rate_limit,
     record_result as _db_record_result,
 )
 from backend.shared.config import get_settings
@@ -500,6 +501,33 @@ async def _apply_to_job(
             job_id=job_id,
             status=ApplicationStatus.SKIPPED,
             error_message=f"duplicate: {msg}",
+            duration_seconds=int(time.monotonic() - start_time),
+        )
+
+    # Pre-flight: enforce company application rate limit (max 2 per company per 2 weeks)
+    company_limit = check_company_rate_limit(job.company)
+    if company_limit:
+        msg = f"Already applied to {company_limit['count']} jobs at {job.company} in the last {company_limit['window_days']} days"
+        logger.info("Company rate limit: %s — %s", job.title, msg)
+        await emit_agent_event(session_id, "application_progress", {
+            "job_id": job_id,
+            "step": f"Skipped — {msg}",
+        })
+        _db_record_result(
+            session_id=session_id,
+            job_id=job_id,
+            status="skipped",
+            job_title=job.title,
+            job_company=job.company,
+            job_url=job.url,
+            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+            job_location=job.location or "",
+            error_message=f"company_rate_limit: {msg}",
+        )
+        return ApplicationResult(
+            job_id=job_id,
+            status=ApplicationStatus.SKIPPED,
+            error_message=f"company_rate_limit: {msg}",
             duration_seconds=int(time.monotonic() - start_time),
         )
 
