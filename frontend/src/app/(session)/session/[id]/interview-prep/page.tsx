@@ -356,9 +356,14 @@ export default function InterviewPrepPage() {
                   </ul>
                 </div>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xs text-muted-foreground bg-card/90 px-3 py-1.5 rounded-full border">
-                    Unlock session for full brief
-                  </span>
+                  <button
+                    onClick={handleUnlock}
+                    disabled={unlocking}
+                    className="text-sm font-medium bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-md hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-50"
+                    title="Costs 1 credit — unlocks full company brief, unlimited questions, and AI coaching for this session"
+                  >
+                    {unlocking ? "Unlocking..." : "Unlock Full Brief — 1 Credit"}
+                  </button>
                 </div>
               </div>
             )}
