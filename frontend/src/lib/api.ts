@@ -243,12 +243,16 @@ export async function getApplicationLog(
 export async function sendGmailToken(
   sessionId: string,
   accessToken: string,
+  refreshToken?: string,
 ): Promise<void> {
   try {
     await fetch(`${API_BASE}/api/sessions/${sessionId}/gmail-token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ access_token: accessToken }),
+      body: JSON.stringify({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      }),
     });
   } catch {
     // Non-critical — verification codes will fall back to manual entry

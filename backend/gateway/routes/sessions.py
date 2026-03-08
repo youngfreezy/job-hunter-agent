@@ -1914,7 +1914,7 @@ async def store_gmail_token_endpoint(session_id: str, request: Request):
 
     from backend.shared.gmail_client import store_gmail_token
 
-    store_gmail_token(
+    await store_gmail_token(
         session_id=session_id,
         access_token=access_token,
         refresh_token=body.get("refresh_token"),
