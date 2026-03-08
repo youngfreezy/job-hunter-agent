@@ -972,8 +972,8 @@ export default function Home() {
               <p className="text-xs text-zinc-500">&copy; {new Date().getFullYear()} V2 Software LLC. All rights reserved.</p>
             </div>
             <div className="flex gap-6 text-sm text-zinc-500">
-              <a href="#" className="hover:text-zinc-900 dark:hover:text-white">Terms of Service</a>
-              <a href="#" className="hover:text-zinc-900 dark:hover:text-white">Privacy Policy</a>
+              <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">Terms of Service</Link>
+              <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">Privacy Policy</Link>
               <a href="mailto:support@jobhunteragent.com" className="hover:text-zinc-900 dark:hover:text-white">Contact</a>
               <Link href="/status" className="hover:text-zinc-900 dark:hover:text-white">Status</Link>
             </div>
