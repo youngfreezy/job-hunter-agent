@@ -36,7 +36,9 @@ _ROUTE_RULES: list[Tuple[str, Optional[str], int, int, str]] = [
     # Health check — unlimited (handled by early return, listed for clarity)
     ("/api/health", None, 0, 0, "health"),
     # Start session — tight limit
-    ("/api/sessions", "POST", 5, 60, "session_create"),
+    ("/api/sessions", "POST", 2, 60, "session_create"),
+    # Test apply — tight limit
+    ("/test-apply", "POST", 3, 60, "test_apply"),
     # SSE stream — reconnect-friendly
     ("/stream", "GET", 20, 60, "sse_stream"),
     # Catch-all for other API routes
@@ -72,6 +74,12 @@ def _classify_request(path: str, method: str) -> Optional[Tuple[int, int, str]]:
         # Session create: exact path + POST
         if pattern == "/api/sessions" and method_filter == "POST":
             if path.rstrip("/") == "/api/sessions" and method_upper == "POST":
+                return max_req, window, bucket
+            continue
+
+        # Test apply: path ends with /test-apply + POST
+        if pattern == "/test-apply" and method_filter == "POST":
+            if path.rstrip("/").endswith("/test-apply") and method_upper == "POST":
                 return max_req, window, bucket
             continue
 
