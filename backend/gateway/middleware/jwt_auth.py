@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """JWT authentication middleware — decrypts NextAuth v4 JWE tokens.
 
 NextAuth v4 (JWT strategy) encrypts session tokens as JWE using:

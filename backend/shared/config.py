@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Centralised configuration loaded from environment / .env file."""
 
 from __future__ import annotations
@@ -57,6 +59,11 @@ class Settings(BaseSettings):
 
     # --- Email ---
     RESEND_API_KEY: Optional[str] = None
+
+    # --- Twilio SMS ---
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_PHONE_NUMBER: Optional[str] = None
 
     # --- LangSmith ---
     LANGCHAIN_TRACING_V2: bool = False

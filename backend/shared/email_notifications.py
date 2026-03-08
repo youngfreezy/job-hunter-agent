@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Email notification helpers using the Resend REST API."""
 
 from __future__ import annotations
@@ -199,6 +201,89 @@ async def send_session_complete_email(
         top_companies=companies_str,
         session_id=escape(session_id),
         time_saved=time_saved_str,
+    )
+
+    return await send_email(to_email, subject, html)
+
+
+# ---------------------------------------------------------------------------
+# Autopilot session started notification
+# ---------------------------------------------------------------------------
+
+_AUTOPILOT_STARTED_TEMPLATE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background-color:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#1e40af;padding:28px 32px;">
+              <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">JobHunter Agent — Autopilot</h1>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px;">
+              <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e;">Autopilot Session Started</h2>
+              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">Your scheduled search <strong>{schedule_name}</strong> is running.</p>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
+                <tr>
+                  <td style="padding:12px 16px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#6b7280;">Keywords</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid #e5e7eb;font-size:14px;font-weight:600;color:#1a1a2e;text-align:right;">{keywords}</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 16px;font-size:14px;color:#6b7280;">Session</td>
+                  <td style="padding:12px 16px;font-size:14px;font-weight:600;color:#1a1a2e;text-align:right;">{session_id_short}</td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">You'll receive another email when the session completes with a summary of discovered jobs. If approval is required, you can review and approve directly from that email.</p>
+
+              <!-- CTA -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center">
+                    <a href="/session/{session_id}" style="display:inline-block;padding:12px 28px;background-color:#1a1a2e;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">Watch Live</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">This autopilot session was triggered by your scheduled search on JobHunter Agent.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_autopilot_started_email(
+    to_email: str,
+    session_id: str,
+    schedule_name: str,
+    keywords: list[str],
+) -> bool:
+    """Send a notification when an autopilot session starts."""
+    subject = f"Autopilot running — {schedule_name}"
+    keywords_str = ", ".join(escape(k) for k in keywords) if keywords else "—"
+
+    html = _AUTOPILOT_STARTED_TEMPLATE.format(
+        schedule_name=escape(schedule_name),
+        keywords=keywords_str,
+        session_id=escape(session_id),
+        session_id_short=escape(session_id[:8]),
     )
 
     return await send_email(to_email, subject, html)

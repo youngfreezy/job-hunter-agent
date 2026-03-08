@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """Persistent storage for billing: users, wallets, and transactions.
 
 Uses sync psycopg for table creation (matches application_store.py pattern)
@@ -53,6 +55,20 @@ EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 DO $$ BEGIN
     ALTER TABLE users ADD COLUMN IF NOT EXISTS auto_refill_pack_id TEXT DEFAULT 'top_up_10';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- Phone / SMS notification preferences
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT UNIQUE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_channel TEXT DEFAULT 'email';
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
