@@ -165,7 +165,7 @@ export default function PivotResultPage() {
 
   return (
     <div className="container mx-auto max-w-4xl p-6 space-y-8">
-      <h1 className="text-2xl font-bold">Career Pivot Analysis</h1>
+      <h1 className="text-2xl font-bold">Career Change Analysis</h1>
 
       {/* Status — hide once we have risk data */}
       {status !== "completed" && !error && !risk && (
@@ -179,7 +179,7 @@ export default function PivotResultPage() {
       {risk && pivots.length === 0 && !paywall && status !== "completed" && !error && (
         <div className="bg-card border rounded-lg p-4 flex items-center gap-3">
           <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
-          <p className="text-sm text-muted-foreground">Finding recommended pivot roles...</p>
+          <p className="text-sm text-muted-foreground">Finding recommended career paths...</p>
         </div>
       )}
 
@@ -189,13 +189,13 @@ export default function PivotResultPage() {
           {/* Blurred chart preview */}
           <div className="bg-card border rounded-lg p-6 relative overflow-hidden">
             <div className="blur-sm select-none pointer-events-none opacity-60">
-              <h2 className="text-lg font-medium mb-2">Pivot Role Comparison</h2>
+              <h2 className="text-lg font-medium mb-2">Career Comparison</h2>
               <div className="h-[280px] flex items-end gap-3 px-8">
                 {Array.from({ length: paywall.count }, (_, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center gap-2">
                     <div
                       className="w-full rounded-t bg-primary/40"
-                      style={{ height: `${100 + Math.random() * 160}px` }}
+                      style={{ height: `${120 + i * 40}px` }}
                     />
                     <div className="h-3 w-16 bg-muted rounded" />
                   </div>
@@ -295,7 +295,7 @@ export default function PivotResultPage() {
                 ? `Your role as a ${risk.parsed_role} has low exposure to AI automation. The creative, strategic, and interpersonal aspects of your work are difficult to automate.`
                 : risk.automation_risk_score < 60
                 ? `Your role has moderate automation exposure. Some routine tasks can be automated, but core responsibilities still require human judgment. Consider upskilling in the areas below.`
-                : `Your role has significant automation exposure. Many routine tasks in this field are already being automated. A career pivot could help you move into more resilient territory.`}
+                : `Your role has significant automation exposure. Many routine tasks in this field are already being automated. A career change could help you move into more resilient territory.`}
             </p>
           </div>
 
@@ -345,7 +345,7 @@ export default function PivotResultPage() {
       {pivots.length > 0 && (
         <Tabs defaultValue="pivots" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="pivots">Recommended Pivots</TabsTrigger>
+            <TabsTrigger value="pivots">Recommended Careers</TabsTrigger>
             <TabsTrigger value="bridges" disabled={skillBridges.length === 0}>
               Skills to New Industries
               {skillBridges.length === 0 && status !== "completed" && (
@@ -357,7 +357,7 @@ export default function PivotResultPage() {
           <TabsContent value="pivots" className="space-y-4">
             {/* Comparison Chart */}
             <div className="bg-card border rounded-lg p-6">
-              <h2 className="text-lg font-medium mb-2">Pivot Role Comparison</h2>
+              <h2 className="text-lg font-medium mb-2">Career Comparison</h2>
               <p className="text-sm text-muted-foreground mb-4">
                 Blue = skill match, green = AI safety (100 - risk), amber = relative salary.
               </p>
@@ -413,7 +413,7 @@ export default function PivotResultPage() {
                   {pivot.market_demand.toLocaleString()}/yr
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Time to pivot: </span>
+                  <span className="text-muted-foreground">Transition time:</span>
                   ~{pivot.time_to_pivot_weeks} weeks
                 </div>
                 {pivot.growth_rate && (
