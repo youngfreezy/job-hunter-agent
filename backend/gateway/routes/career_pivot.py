@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.gateway.deps import get_current_user
+from backend.shared.billing_store import debit_wallet, get_wallet
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/career-pivot", tags=["career-pivot"])
@@ -76,9 +77,18 @@ async def _run_pivot_pipeline(session_id: str, graph, config, initial_state):
                 _pivot_registry[session_id]["risk_emitted"] = True
 
             if snapshot.get("recommended_pivots") and not _pivot_registry[session_id].get("pivots_emitted"):
-                _emit_pivot(session_id, "pivot_roles", {
-                    "recommended_pivots": snapshot["recommended_pivots"],
-                })
+                pivots_data = {"recommended_pivots": snapshot["recommended_pivots"]}
+                if _pivot_registry[session_id].get("paid"):
+                    _emit_pivot(session_id, "pivot_roles", pivots_data)
+                else:
+                    # Cache pivots for later unlock, emit paywall event
+                    _pivot_registry[session_id]["cached_pivots"] = pivots_data
+                    _emit_pivot(session_id, "paywall", {
+                        "type": "pivot_roles",
+                        "count": len(snapshot["recommended_pivots"]),
+                        "message": f"We found {len(snapshot['recommended_pivots'])} roles you could pivot into. Unlock for 1 credit.",
+                        "cost": 1.0,
+                    })
                 _pivot_registry[session_id]["pivots_emitted"] = True
 
         _emit_pivot(session_id, "done", {"message": "Career pivot analysis complete"})
@@ -100,6 +110,7 @@ async def start_pivot(request: Request, body: StartPivotRequest):
         "user_email": user["email"],
         "status": "starting",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "paid": False,
     }
     _pivot_events[session_id] = []
 
@@ -163,6 +174,44 @@ async def stream_pivot(request: Request, session_id: str):
     )
 
 
+@router.post("/{session_id}/unlock")
+async def unlock_pivot(request: Request, session_id: str):
+    """Unlock pivot roles for a session by spending 1 credit."""
+    if session_id not in _pivot_registry:
+        raise HTTPException(404, "Pivot session not found")
+
+    user = get_current_user(request)
+    meta = _pivot_registry[session_id]
+
+    if meta["user_id"] != user["id"]:
+        raise HTTPException(403, "Not your session")
+
+    if meta.get("paid"):
+        return {"status": "already_unlocked"}
+
+    try:
+        result = debit_wallet(
+            user["id"], 1.0, "career_pivot", session_id, "Career pivot full report"
+        )
+    except ValueError:
+        wallet = get_wallet(user["id"])
+        raise HTTPException(402, detail={
+            "error": "insufficient_credits",
+            "balance": wallet["balance"],
+            "cost": 1.0,
+        })
+
+    meta["paid"] = True
+
+    # Emit cached pivot roles via SSE
+    cached = meta.get("cached_pivots")
+    if cached:
+        _emit_pivot(session_id, "pivot_roles", cached)
+        del meta["cached_pivots"]
+
+    return {"status": "unlocked", "balance": result["balance"]}
+
+
 @router.get("/{session_id}")
 async def get_pivot(request: Request, session_id: str):
     """Get current state of a career pivot session."""
@@ -170,17 +219,19 @@ async def get_pivot(request: Request, session_id: str):
         raise HTTPException(404, "Pivot session not found")
 
     meta = _pivot_registry[session_id]
-    # Collect latest data from events
     result: Dict[str, Any] = {
         "session_id": session_id,
         "status": meta.get("status", "unknown"),
         "created_at": meta.get("created_at"),
+        "paid": meta.get("paid", False),
     }
 
     for event in _pivot_events.get(session_id, []):
         if event["type"] == "risk_assessment":
             result["risk_assessment"] = event["data"]
-        elif event["type"] == "pivot_roles":
+        elif event["type"] == "pivot_roles" and meta.get("paid"):
             result["pivot_roles"] = event["data"]
+        elif event["type"] == "paywall" and not meta.get("paid"):
+            result["paywall"] = event["data"]
 
     return result
