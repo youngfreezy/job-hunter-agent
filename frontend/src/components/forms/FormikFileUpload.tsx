@@ -7,14 +7,74 @@ import { parseResume } from "@/lib/api";
 
 const STORAGE_KEY = "jh_resume_text";
 const FILENAME_KEY = "jh_resume_filename";
+const FILE_BYTES_KEY = "jh_resume_bytes";
+const FILE_SAVED_AT_KEY = "jh_resume_saved_at";
+const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-function saveResumeToStorage(text: string, fileName: string) {
+function saveResumeToStorage(text: string, fileName: string, fileBytes?: string) {
   try {
     localStorage.setItem(STORAGE_KEY, text);
     localStorage.setItem(FILENAME_KEY, fileName);
+    if (fileBytes) {
+      localStorage.setItem(FILE_BYTES_KEY, fileBytes);
+      localStorage.setItem(FILE_SAVED_AT_KEY, Date.now().toString());
+    }
   } catch {
-    // localStorage full or unavailable
+    // localStorage full — try without bytes
+    try {
+      localStorage.removeItem(FILE_BYTES_KEY);
+      localStorage.removeItem(FILE_SAVED_AT_KEY);
+      localStorage.setItem(STORAGE_KEY, text);
+      localStorage.setItem(FILENAME_KEY, fileName);
+    } catch {
+      // truly full, give up
+    }
   }
+}
+
+function getCachedResumeBytes(): { bytes: string; fileName: string } | null {
+  try {
+    const bytes = localStorage.getItem(FILE_BYTES_KEY);
+    const savedAt = localStorage.getItem(FILE_SAVED_AT_KEY);
+    const fileName = localStorage.getItem(FILENAME_KEY) || "resume.pdf";
+    if (!bytes || !savedAt) return null;
+    if (Date.now() - parseInt(savedAt, 10) > TTL_MS) {
+      // Expired — clean up
+      localStorage.removeItem(FILE_BYTES_KEY);
+      localStorage.removeItem(FILE_SAVED_AT_KEY);
+      return null;
+    }
+    return { bytes, fileName };
+  } catch {
+    return null;
+  }
+}
+
+function base64ToFile(base64: string, fileName: string): File {
+  const byteString = atob(base64);
+  const bytes = new Uint8Array(byteString.length);
+  for (let i = 0; i < byteString.length; i++) {
+    bytes[i] = byteString.charCodeAt(i);
+  }
+  const ext = fileName.split(".").pop()?.toLowerCase() || "pdf";
+  const mime = ext === "pdf" ? "application/pdf"
+    : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    : "text/plain";
+  return new File([bytes], fileName, { type: mime });
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip the data:... prefix to get raw base64
+      const base64 = result.split(",")[1] || result;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 const SECTION_PATTERNS = [
@@ -36,12 +96,30 @@ export function FormikFileUpload() {
     if (restoredRef.current) return;
     restoredRef.current = true;
     if (values.resumeText) return;
+
     try {
       const savedText = localStorage.getItem(STORAGE_KEY) || "";
       const savedName = localStorage.getItem(FILENAME_KEY) || "";
       if (savedText) {
         setFieldValue("resumeText", savedText);
         setFieldValue("resumeFileName", savedName);
+      }
+
+      // If we have cached file bytes, re-upload to get a fresh server path
+      const cached = getCachedResumeBytes();
+      if (cached && savedText) {
+        const file = base64ToFile(cached.bytes, cached.fileName);
+        setParsing(true);
+        parseResume(file)
+          .then((result) => {
+            if (result.file_path) {
+              setFieldValue("resumeFilePath", result.file_path);
+            }
+          })
+          .catch(() => {
+            // Re-upload failed silently — text is still available, just no file for ATS upload
+          })
+          .finally(() => setParsing(false));
       }
     } catch {
       // ignore
@@ -68,15 +146,18 @@ export function FormikFileUpload() {
       return;
     }
 
-    // PDF and DOCX files: send to backend for parsing
+    // PDF and DOCX files: send to backend for parsing + cache bytes
     setParsing(true);
     try {
-      const result = await parseResume(file);
+      const [result, base64] = await Promise.all([
+        parseResume(file),
+        fileToBase64(file),
+      ]);
       setFieldValue("resumeText", result.text);
       if (result.file_path) {
         setFieldValue("resumeFilePath", result.file_path);
       }
-      saveResumeToStorage(result.text, file.name);
+      saveResumeToStorage(result.text, file.name, base64);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to parse file";
       setError(msg);
