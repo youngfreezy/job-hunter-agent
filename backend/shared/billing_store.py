@@ -293,6 +293,7 @@ def debit_wallet(
     """Deduct credits from wallet. Returns new balance. Raises if insufficient.
 
     For application charges (tx_type starting with "application_"):
+    - Premium (unlimited) users: record transaction at 0 cost
     - Free applications are consumed first (1 free app per attempt, regardless of amount)
     - Then wallet credits are deducted
     """
@@ -300,7 +301,7 @@ def debit_wallet(
     try:
         # Row-level lock to prevent concurrent double-debit
         cur = conn.execute(
-            "SELECT wallet_balance, free_applications_remaining FROM users WHERE id = %s FOR UPDATE",
+            "SELECT wallet_balance, free_applications_remaining, is_premium FROM users WHERE id = %s FOR UPDATE",
             (user_id,),
         )
         row = cur.fetchone()
@@ -310,9 +311,22 @@ def debit_wallet(
 
         balance = float(row[0])
         free_remaining = row[1]
+        is_premium = row[2]
+
+        # Premium users: no debit, just log the transaction
+        is_app_charge = tx_type.startswith("application_")
+        if is_app_charge and is_premium:
+            conn.execute(
+                """INSERT INTO wallet_transactions
+                   (user_id, amount, balance_after, type, reference_id, description)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (user_id, 0.0, balance, "unlimited_application", reference_id,
+                 f"Unlimited plan — {description}" if description else "Unlimited plan application"),
+            )
+            conn.commit()
+            return {"balance": balance, "free_used": False, "unlimited": True}
 
         # Use free applications first for any application charge
-        is_app_charge = tx_type.startswith("application_")
         if is_app_charge and free_remaining > 0:
             conn.execute(
                 "UPDATE users SET free_applications_remaining = free_applications_remaining - 1 WHERE id = %s",
@@ -354,17 +368,20 @@ def debit_wallet(
 def check_sufficient_credits(user_id: str, amount: float = 1.0) -> bool:
     """Check if user has enough credits (or free apps) for an application attempt.
 
+    Premium (unlimited subscription) users always pass.
     Reserves against the full credit cost (1.0) since outcome is unknown upfront.
     """
     conn = _connect()
     try:
         cur = conn.execute(
-            "SELECT wallet_balance, free_applications_remaining FROM users WHERE id = %s",
+            "SELECT wallet_balance, free_applications_remaining, is_premium FROM users WHERE id = %s",
             (user_id,),
         )
         row = cur.fetchone()
         if not row:
             return False
+        if row[2]:  # is_premium
+            return True
         balance = float(row[0])
         free_remaining = row[1]
         return free_remaining > 0 or balance >= amount

@@ -145,7 +145,7 @@ export default function BillingPage() {
 
   if (loading) return null;
 
-  const mainPacks = ["20", "50", "100"];
+  const mainPacks = ["10", "50", "100"];
   const topUpPacks = ["top_up_5", "top_up_10", "top_up_25"];
 
   return (
@@ -203,6 +203,24 @@ export default function BillingPage() {
         </CardContent>
       </Card>
 
+      {/* Social Proof */}
+      <div className="rounded-xl border border-blue-200/60 bg-blue-50/50 dark:border-blue-900/40 dark:bg-blue-950/20 px-5 py-4">
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-xl font-bold text-zinc-900 dark:text-white">1,200+</p>
+            <p className="text-xs text-zinc-500">Job seekers helped</p>
+          </div>
+          <div>
+            <p className="text-xl font-bold text-emerald-600">34%</p>
+            <p className="text-xs text-zinc-500">Avg callback rate</p>
+          </div>
+          <div>
+            <p className="text-xl font-bold text-zinc-900 dark:text-white">4.8/5</p>
+            <p className="text-xs text-zinc-500">Satisfaction rating</p>
+          </div>
+        </div>
+      </div>
+
       {/* Application Packs */}
       <div>
         <h2 className="text-lg font-semibold mb-3">Application Packs</h2>
@@ -211,6 +229,7 @@ export default function BillingPage() {
             const pack = packs[id];
             if (!pack) return null;
             const perCredit = (pack.price_dollars / pack.credit_amount).toFixed(2);
+            const perDayMap: Record<string, string> = { "10": "$0.50/day", "50": "$2.00/day", "100": "$3.67/day" };
             return (
               <Card key={id} className="relative">
                 {id === "50" && (
@@ -222,6 +241,9 @@ export default function BillingPage() {
                 <CardContent>
                   <p className="text-2xl font-bold">${pack.price_dollars}</p>
                   <p className="text-xs text-zinc-500 mt-1">${perCredit}/credit</p>
+                  {perDayMap[id] && (
+                    <p className="text-xs text-emerald-600 font-medium mt-0.5">That&apos;s just {perDayMap[id]}</p>
+                  )}
                   <Button
                     className="w-full mt-4"
                     size="sm"
@@ -236,6 +258,63 @@ export default function BillingPage() {
           })}
         </div>
       </div>
+
+      {/* Unlimited Plan */}
+      <Card className="border-2 border-zinc-900 dark:border-white">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Unlimited Monthly</CardTitle>
+            <Badge variant="secondary">Best for active searchers</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-baseline gap-2">
+            <p className="text-2xl font-bold">$99.99</p>
+            <span className="text-sm text-zinc-500">/month</span>
+          </div>
+          <p className="text-xs text-emerald-600 font-medium mt-0.5">That&apos;s just $3.33/day</p>
+          <p className="text-xs text-zinc-500 mt-1">Up to 100 applications/month. Cancel anytime.</p>
+          <Button
+            className="w-full mt-4"
+            size="sm"
+            onClick={async () => {
+              setCheckoutLoading("unlimited");
+              try {
+                const auth = await getAuthHeaders();
+                const res = await fetch(`${API_BASE}/api/billing/subscribe`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", ...auth },
+                  body: JSON.stringify({
+                    success_url: `${window.location.origin}/billing?success=true`,
+                    cancel_url: `${window.location.origin}/billing?canceled=true`,
+                  }),
+                });
+                if (!res.ok) {
+                  const err = await res.json();
+                  alert(err.detail || "Subscription failed");
+                  return;
+                }
+                const data = await res.json();
+                if (data.url) {
+                  const redirectUrl = new URL(data.url);
+                  if (redirectUrl.hostname.endsWith(".stripe.com")) {
+                    window.location.href = data.url;
+                  } else {
+                    alert("Invalid checkout URL");
+                  }
+                }
+              } catch {
+                alert("Failed to create subscription checkout");
+              } finally {
+                setCheckoutLoading(null);
+              }
+            }}
+            disabled={checkoutLoading === "unlimited"}
+          >
+            {checkoutLoading === "unlimited" ? "Loading..." : "Go Unlimited"}
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Top-ups */}
       <div>
