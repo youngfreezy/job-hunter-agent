@@ -1050,6 +1050,10 @@ def _overlay_db_app_counts(session_id: str, result: dict) -> dict:
 @router.get("/{session_id}")
 async def get_session(session_id: str, request: Request):
     """Return session state from checkpointer, falling back to registry."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     checkpointer = request.app.state.checkpointer
     config = {"configurable": {"thread_id": session_id}}
 
@@ -1110,6 +1114,10 @@ async def get_session(session_id: str, request: Request):
 @router.get("/{session_id}/skipped-jobs")
 async def get_skipped_jobs(session_id: str, request: Request):
     """Return skipped jobs with enriched details for manual application."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     checkpointer = request.app.state.checkpointer
     config = {"configurable": {"thread_id": session_id}}
 
@@ -1169,14 +1177,21 @@ async def get_skipped_jobs(session_id: str, request: Request):
 @router.get("/{session_id}/application-log")
 async def get_application_log(session_id: str, request: Request):
     """Return all application attempts from the persistent DB table."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     from backend.shared.application_store import get_results_for_session
     entries = get_results_for_session(session_id)
     return {"entries": entries}
 
 
 @router.get("/{session_id}/screenshot")
-async def get_application_screenshot(session_id: str, path: str):
+async def get_application_screenshot(session_id: str, path: str, request: Request):
     """Serve a confirmation screenshot file from disk."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
     from pathlib import Path
     from fastapi.responses import FileResponse
     import tempfile
@@ -1192,6 +1207,10 @@ async def get_application_screenshot(session_id: str, path: str):
 @router.get("/{session_id}/checkpoints")
 async def list_checkpoints(session_id: str, request: Request):
     """List all checkpoints for a session (for rewind UI)."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     checkpointer = request.app.state.checkpointer
     config = {"configurable": {"thread_id": session_id}}
 
@@ -1229,6 +1248,10 @@ async def list_checkpoints(session_id: str, request: Request):
 @router.get("/{session_id}/stream")
 async def stream_session(session_id: str, request: Request):
     """SSE stream for real-time pipeline updates (with replay on reconnect)."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     if session_id not in session_registry:
         # Try to recover from checkpointer (e.g. after backend restart)
         checkpointer = request.app.state.checkpointer
@@ -1283,6 +1306,10 @@ async def stream_session(session_id: str, request: Request):
 @router.post("/{session_id}/coach-chat")
 async def coach_chat(session_id: str, body: CoachChatRequest, request: Request):
     """Revise coached artifacts interactively while awaiting coach review."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
 
@@ -1356,6 +1383,10 @@ async def coach_chat(session_id: str, body: CoachChatRequest, request: Request):
 @router.post("/{session_id}/coach-review")
 async def submit_coach_review(session_id: str, body: CoachReviewRequest, request: Request):
     """Resume the pipeline after the user reviews the coached resume."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
 
@@ -1399,6 +1430,10 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
 @router.post("/{session_id}/steer")
 async def steer_session(session_id: str, body: SteerRequest, request: Request):
     """Inject a steering message into the running session."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
     graph_state = await graph.aget_state(config)
@@ -1504,6 +1539,10 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
 @router.post("/{session_id}/review")
 async def review_shortlist(session_id: str, body: ReviewRequest, request: Request):
     """Resume the pipeline after HITL shortlist review."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
 
@@ -1548,8 +1587,12 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
 
 
 @router.post("/{session_id}/login-complete")
-async def confirm_login(session_id: str):
+async def confirm_login(session_id: str, request: Request):
     """Signal the application agent that the user has logged in to a job board."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     from backend.orchestrator.agents._login_sync import signal_login_complete
 
     signal_login_complete(session_id)
@@ -1559,8 +1602,11 @@ async def confirm_login(session_id: str):
 
 
 @router.post("/{session_id}/resume-intervention")
-async def resume_intervention(session_id: str):
+async def resume_intervention(session_id: str, request: Request):
     """Signal the application agent to continue after user intervention."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
     try:
         import redis.asyncio as aioredis
         from backend.shared.config import get_settings
@@ -1585,8 +1631,11 @@ class SubmitDecisionRequest(_BaseModel):
 
 
 @router.post("/{session_id}/submit-decision")
-async def submit_decision(session_id: str, body: SubmitDecisionRequest):
+async def submit_decision(session_id: str, body: SubmitDecisionRequest, request: Request):
     """Approve or skip a pending application submission."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
     if body.decision not in ("submit", "skip"):
         raise HTTPException(status_code=400, detail="decision must be 'submit' or 'skip'")
 
@@ -1622,6 +1671,10 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
     This loads the graph state from the given checkpoint_id (which must be
     at an interrupt) and resumes execution from there.
     """
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     graph = request.app.state.graph
     config = {
         "configurable": {
@@ -1709,6 +1762,10 @@ async def resume_session(session_id: str, request: Request):
     2. Pipeline was mid-run when the backend restarted — continues execution
        from the last checkpoint.
     """
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
 
@@ -1784,8 +1841,10 @@ async def resume_session(session_id: str, request: Request):
 # ---------------------------------------------------------------------------
 
 @router.post("/parse-resume")
-async def parse_resume(file: UploadFile = File(...)):
+async def parse_resume(request: Request, file: UploadFile = File(...)):
     """Extract plain text from an uploaded resume file."""
+    from backend.gateway.deps import get_current_user
+    get_current_user(request)  # 401 if not authenticated
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
@@ -1879,12 +1938,15 @@ class LinkedInUpdateRequest(_BaseModel):
 
 
 @router.post("/{session_id}/linkedin-update")
-async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
+async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest, request: Request):
     """Launch a guided LinkedIn profile update in a visible browser.
 
     The browser opens to LinkedIn login, waits for the user to log in
     and confirm, then applies updates one section at a time.
     """
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
     if not body.updates:
         raise HTTPException(status_code=400, detail="No updates provided")
 
@@ -1925,6 +1987,10 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest):
 @router.post("/{session_id}/gmail-token")
 async def store_gmail_token_endpoint(session_id: str, request: Request):
     """Store a Gmail OAuth token so the agent can auto-extract verification codes."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     body = await request.json()
     access_token = body.get("access_token")
     if not access_token:
