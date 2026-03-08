@@ -327,19 +327,39 @@ export default function InterviewPrepPage() {
                 <strong>Culture:</strong> {brief.culture}
               </p>
             )}
-            {brief.recent_news && (
-              <p>
-                <strong>Recent:</strong> {brief.recent_news}
-              </p>
-            )}
-            {brief.things_to_mention.length > 0 && (
-              <div>
-                <strong>Things to mention:</strong>
-                <ul className="list-disc pl-5 mt-1">
-                  {brief.things_to_mention.map((t, i) => (
-                    <li key={i}>{t}</li>
-                  ))}
-                </ul>
+            {paid ? (
+              <>
+                {brief.recent_news && (
+                  <p>
+                    <strong>Recent:</strong> {brief.recent_news}
+                  </p>
+                )}
+                {brief.things_to_mention.length > 0 && (
+                  <div>
+                    <strong>Things to mention:</strong>
+                    <ul className="list-disc pl-5 mt-1">
+                      {brief.things_to_mention.map((t, i) => (
+                        <li key={i}>{t}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="mt-2 relative">
+                <div className="blur-sm select-none pointer-events-none text-muted-foreground">
+                  <p><strong>Recent:</strong> Company news and developments...</p>
+                  <p className="mt-1"><strong>Things to mention:</strong></p>
+                  <ul className="list-disc pl-5 mt-1">
+                    <li>Key talking points tailored to this role...</li>
+                    <li>Specific achievements to highlight...</li>
+                  </ul>
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xs text-muted-foreground bg-card/90 px-3 py-1.5 rounded-full border">
+                    Unlock session for full brief
+                  </span>
+                </div>
               </div>
             )}
           </div>
