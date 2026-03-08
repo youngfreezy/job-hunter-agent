@@ -1,0 +1,127 @@
+name: Uptime Monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # every 5 minutes
+  workflow_dispatch: # manual trigger
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check backend health
+        id: backend
+        run: |
+          HTTP_CODE=$(curl -s -o /tmp/backend.json -w "%{http_code}" \
+            --max-time 10 \
+            https://backend-production-1ea9.up.railway.app/api/health/ready)
+          echo "http_code=$HTTP_CODE" >> "$GITHUB_OUTPUT"
+          echo "Backend HTTP $HTTP_CODE"
+          cat /tmp/backend.json
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "backend_down=true" >> "$GITHUB_OUTPUT"
+          else
+            STATUS=$(cat /tmp/backend.json | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "unknown")
+            echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+            if [ "$STATUS" = "degraded" ]; then
+              echo "backend_degraded=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Check frontend health
+        id: frontend
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 10 \
+            https://frontend-production-96d4b.up.railway.app/)
+          echo "http_code=$HTTP_CODE" >> "$GITHUB_OUTPUT"
+          echo "Frontend HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "frontend_down=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create issue on failure
+        if: steps.backend.outputs.backend_down == 'true' || steps.frontend.outputs.frontend_down == 'true' || steps.backend.outputs.backend_degraded == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const backendCode = '${{ steps.backend.outputs.http_code }}';
+            const frontendCode = '${{ steps.frontend.outputs.http_code }}';
+            const backendStatus = '${{ steps.backend.outputs.status }}';
+            const backendDown = '${{ steps.backend.outputs.backend_down }}' === 'true';
+            const frontendDown = '${{ steps.frontend.outputs.frontend_down }}' === 'true';
+            const backendDegraded = '${{ steps.backend.outputs.backend_degraded }}' === 'true';
+
+            const problems = [];
+            if (backendDown) problems.push(`Backend DOWN (HTTP ${backendCode})`);
+            if (backendDegraded) problems.push(`Backend DEGRADED (${backendStatus}) — a dependency (Postgres/Redis) may be down`);
+            if (frontendDown) problems.push(`Frontend DOWN (HTTP ${frontendCode})`);
+
+            const title = `[Uptime] ${problems.join(', ')}`;
+
+            // Check for existing open issue to avoid duplicates
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'uptime',
+              state: 'open',
+            });
+
+            if (existing.data.length > 0) {
+              // Add a comment to existing issue instead of creating a new one
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `Still down at ${new Date().toISOString()}\n\n${problems.join('\n')}`,
+              });
+              console.log(`Commented on existing issue #${existing.data[0].number}`);
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: [
+                  `## Uptime Alert`,
+                  ``,
+                  `**Time**: ${new Date().toISOString()}`,
+                  `**Backend**: HTTP ${backendCode} (status: ${backendStatus || 'N/A'})`,
+                  `**Frontend**: HTTP ${frontendCode}`,
+                  ``,
+                  `### What to check`,
+                  `- Railway dashboard: https://railway.com/project/d7efcd8b-1a70-480e-abe9-c21d219c1a72`,
+                  `- Backend logs: \`railway logs --service b6feb685-317d-497d-939d-d680760925f5\``,
+                  `- Frontend logs: \`railway logs --service 2364c691-293e-41d8-8652-31c6eabc90ef\``,
+                  `- Health endpoint: \`curl https://backend-production-1ea9.up.railway.app/api/health/ready\``,
+                ].join('\n'),
+                labels: ['uptime'],
+              });
+              console.log('Created new uptime issue');
+            }
+
+      - name: Auto-close issue on recovery
+        if: steps.backend.outputs.backend_down != 'true' && steps.frontend.outputs.frontend_down != 'true' && steps.backend.outputs.backend_degraded != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'uptime',
+              state: 'open',
+            });
+            for (const issue of existing.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Recovered at ${new Date().toISOString()}.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+              console.log(`Closed recovered issue #${issue.number}`);
+            }
