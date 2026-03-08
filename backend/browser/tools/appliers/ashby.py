@@ -138,28 +138,8 @@ class AshbyApplier(BaseApplier):
         # Step 7: Take screenshot
         await self._capture_screenshot(job)
 
-        # Step 8: Detect confirmation
-        if await self._detect_confirmation():
-            await self._emit_step("Application submitted!")
-            return self._make_result(
-                job.id, ApplicationStatus.SUBMITTED,
-                cover_letter_used=cover_letter,
-            )
-
-        failure = await self._detect_failure()
-        if failure:
-            return self._make_result(
-                job.id, ApplicationStatus.FAILED,
-                error_message=f"Ashby detected: {failure}",
-            )
-
-        # Submit was clicked but no confirmation detected — FAILED
-        logger.info("Ashby: submit clicked, no confirmation detected -- FAILED")
-        await self._emit_step("Application submitted (no explicit confirmation).")
-        return self._make_result(
-            job.id, ApplicationStatus.FAILED,
-            error_message="Submit clicked but no confirmation detected",
-        )
+        # Step 8: Post-submit checks (verification, captcha, confirmation, failure)
+        return await self._post_submit_check(job.id, cover_letter)
 
     async def _fill_radio_buttons(self) -> None:
         """Check radio buttons (pick middle option for each group)."""

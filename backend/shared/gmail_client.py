@@ -103,25 +103,49 @@ def _extract_code(text: str) -> Optional[str]:
     return None
 
 
-def _decode_body(payload: dict) -> str:
-    """Decode the plain-text body from a Gmail message payload."""
-    # Single-part message
-    if "body" in payload and payload["body"].get("data"):
-        return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
+def _strip_html(html: str) -> str:
+    """Strip HTML tags to extract readable text."""
+    import re as _re
+    # Remove style/script blocks
+    text = _re.sub(r"<(style|script)[^>]*>.*?</\1>", "", html, flags=_re.I | _re.S)
+    # Replace <br>, <p>, <div> with newlines
+    text = _re.sub(r"<br\s*/?>|</p>|</div>|</tr>", "\n", text, flags=_re.I)
+    # Strip remaining tags
+    text = _re.sub(r"<[^>]+>", " ", text)
+    # Collapse whitespace
+    text = _re.sub(r"[ \t]+", " ", text)
+    text = _re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
-    # Multi-part: find text/plain
+
+def _decode_body(payload: dict) -> str:
+    """Decode the body from a Gmail message payload (text/plain preferred, text/html fallback)."""
+    # Single-part message (check mimeType)
+    mime = payload.get("mimeType", "")
+    if "body" in payload and payload["body"].get("data"):
+        raw = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
+        if "html" in mime:
+            return _strip_html(raw)
+        return raw
+
+    # Multi-part: prefer text/plain, fall back to text/html
+    plain_text = ""
+    html_text = ""
     for part in payload.get("parts", []):
-        mime = part.get("mimeType", "")
-        if mime == "text/plain" and part.get("body", {}).get("data"):
-            return base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
+        part_mime = part.get("mimeType", "")
+        if part_mime == "text/plain" and part.get("body", {}).get("data"):
+            plain_text = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
+        elif part_mime == "text/html" and not html_text and part.get("body", {}).get("data"):
+            raw_html = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
+            html_text = _strip_html(raw_html)
         # Nested multipart
-        if mime.startswith("multipart/"):
+        elif part_mime.startswith("multipart/"):
             nested = _decode_body(part)
             if nested:
-                return nested
+                if not plain_text:
+                    plain_text = nested
 
-    # Fallback: try snippet
-    return ""
+    return plain_text or html_text or ""
 
 
 # ---------------------------------------------------------------------------
@@ -151,10 +175,15 @@ async def poll_for_verification_code(
         logger.warning("No Gmail token for session %s — skipping auto-extraction", session_id)
         return None
 
-    # Build search query — look for very recent verification emails
-    q_parts = ["is:unread", "newer_than:5m"]
-    q_parts.append("(verification OR \"security code\" OR \"one-time\" OR OTP OR \"enter the code\" OR \"confirm your email\")")
+    # Build search query — look for recent verification/confirmation emails
+    q_parts = ["is:unread", "newer_than:15m"]
+    q_parts.append(
+        "(verification OR confirmation OR \"security code\" OR \"one-time\" "
+        "OR OTP OR \"enter the code\" OR \"confirm your email\" "
+        "OR \"confirm email\" OR \"access code\" OR \"verify your\")"
+    )
     query = " ".join(q_parts)
+    logger.info("Gmail: searching with query: %s", query)
 
     # Optional context keywords to prefer the right email
     context_keywords = set()
@@ -172,6 +201,7 @@ async def poll_for_verification_code(
                 ).execute()
             )
             messages = result.get("messages", [])
+            logger.info("Gmail: attempt %d/%d — found %d candidate emails", attempt + 1, attempts, len(messages))
 
             # Score each message: prefer ones mentioning the company/platform
             best_code: Optional[str] = None
@@ -188,8 +218,15 @@ async def poll_for_verification_code(
                 payload = msg.get("payload", {})
                 body_text = _decode_body(payload)
 
+                # Log subject for debugging
+                headers = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
+                subject = headers.get("subject", "(no subject)")
+                logger.info("Gmail: processing email subject=%r, body_len=%d, snippet_len=%d",
+                            subject, len(body_text), len(snippet))
+
                 code = _extract_code(body_text) or _extract_code(snippet)
                 if not code:
+                    logger.info("Gmail: no code pattern matched in email %r", subject)
                     continue
 
                 # Score: +10 for each context keyword found in subject/snippet/body

@@ -124,20 +124,9 @@ class ZipRecruiterApplier(BaseApplier):
                     error_message="Exceeded max steps without submitting",
                 )
 
-            # 5. Detect confirmation
+            # 5. Post-submit checks (verification, captcha, confirmation, failure)
             await self._random_delay(1.0, 2.0)
-            if await self._detect_confirmation():
-                await self._emit_step("Application submitted successfully")
-                return self._make_result(
-                    job_id, ApplicationStatus.SUBMITTED,
-                    cover_letter_used=cover_letter,
-                )
-
-            # Submit clicked but no confirmation — FAILED
-            return self._make_result(
-                job_id, ApplicationStatus.FAILED,
-                error_message="Submit clicked but no confirmation detected",
-            )
+            return await self._post_submit_check(job_id, cover_letter)
 
         except Exception as exc:
             logger.exception("ZipRecruiter apply failed for job %s", job_id)

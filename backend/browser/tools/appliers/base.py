@@ -78,6 +78,9 @@ _VERIFICATION_KEYWORDS = [
     "we sent a code", "check your email", "confirm your email",
     "one-time code", "otp", "2-factor", "two-factor",
     "enter code", "verify your identity", "verification email",
+    "confirmation code", "confirm email", "email verification",
+    "verify email", "access code", "code sent to",
+    "enter the verification", "verify your email",
 ]
 
 
@@ -411,6 +414,46 @@ class BaseApplier(ABC):
 
         logger.warning("Verification timed out after 120s")
         return False
+
+    async def _post_submit_check(
+        self,
+        job_id: str,
+        cover_letter: str = "",
+    ) -> ApplicationResult:
+        """Universal post-submit handler: verification → confirm → fail."""
+
+        # 1. Verification code prompt?
+        if await self._detect_verification_prompt():
+            verified = await self._handle_verification()
+            if not verified:
+                return self._make_result(
+                    job_id, ApplicationStatus.FAILED,
+                    error_message="Verification code required but not provided in time",
+                )
+            await self._random_delay(1.0, 2.0)
+            await self._wait_for_navigation()
+
+        # 2. Confirmation?
+        if await self._detect_confirmation():
+            await self._emit_step("Application submitted!")
+            return self._make_result(
+                job_id, ApplicationStatus.SUBMITTED,
+                cover_letter_used=cover_letter,
+            )
+
+        # 4. Failure?
+        failure = await self._detect_failure()
+        if failure:
+            return self._make_result(
+                job_id, ApplicationStatus.FAILED,
+                error_message=f"{self.PLATFORM} detected: {failure}",
+            )
+
+        # 5. No signal
+        return self._make_result(
+            job_id, ApplicationStatus.FAILED,
+            error_message=f"No confirmation detected on {self.PLATFORM}",
+        )
 
     async def _fill_verification_code(self, code: str) -> bool:
         """Find a verification code input on the page and fill it."""

@@ -172,37 +172,5 @@ class GreenhouseApplier(BaseApplier):
         # Step 6: Take post-submit screenshot for verification
         await self._capture_screenshot(job)
 
-        # Step 7: Check for verification code prompt
-        if await self._detect_verification_prompt():
-            verified = await self._handle_verification()
-            if not verified:
-                return self._make_result(
-                    job.id, ApplicationStatus.FAILED,
-                    error_message="Verification code required but not provided in time",
-                )
-            await self._random_delay(1.0, 2.0)
-            await self._wait_for_navigation()
-
-        # Step 8: Detect confirmation
-        if await self._detect_confirmation():
-            await self._emit_step("Application submitted!")
-            return self._make_result(
-                job.id, ApplicationStatus.SUBMITTED,
-                cover_letter_used=cover_letter,
-            )
-
-        # Check for failure indicators
-        failure = await self._detect_failure()
-        if failure:
-            return self._make_result(
-                job.id, ApplicationStatus.FAILED,
-                error_message=f"Greenhouse detected: {failure}",
-            )
-
-        # Submit was clicked but no confirmation detected — report honestly as FAILED
-        logger.warning("Greenhouse: submit clicked but no confirmation detected — FAILED")
-        await self._emit_step("Submission not confirmed — form may have validation errors.")
-        return self._make_result(
-            job.id, ApplicationStatus.FAILED,
-            error_message="Submit clicked but no confirmation page detected",
-        )
+        # Step 7: Post-submit checks (verification, captcha, confirmation, failure)
+        return await self._post_submit_check(job.id, cover_letter)
