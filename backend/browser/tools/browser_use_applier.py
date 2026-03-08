@@ -93,7 +93,9 @@ async def apply_with_browser_use(
     # Reuse provided browser or create a new one
     owns_browser = browser is None
     if owns_browser:
-        browser = Browser(headless=False, disable_security=True)
+        from backend.shared.config import settings
+
+        browser = Browser(headless=settings.BROWSER_HEADLESS, disable_security=True)
 
     # Custom tool for resume upload
     tools = Tools()

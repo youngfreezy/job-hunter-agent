@@ -316,8 +316,10 @@ async def discover_all_boards(
 
     llm = build_browser_use_llm(max_tokens=8192, temperature=0.0)
 
+    from backend.shared.config import settings
+
     browser = Browser(
-        headless=False,
+        headless=settings.BROWSER_HEADLESS,
         disable_security=True,
         wait_for_network_idle_page_load_time=2.0,
     )
