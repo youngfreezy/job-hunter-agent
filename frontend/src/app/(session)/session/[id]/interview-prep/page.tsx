@@ -234,6 +234,19 @@ export default function InterviewPrepPage() {
     }
   }
 
+  // Show continuous loading from button click through SSE connection
+  if (starting && prepId && questions.length === 0 && !brief && status !== "completed") {
+    return (
+      <div className="container mx-auto max-w-3xl p-6 space-y-6">
+        <h1 className="text-2xl font-bold">Interview Prep</h1>
+        <div className="bg-card border rounded-lg p-6 text-center">
+          <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-muted-foreground">Setting up your mock interview...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Not started yet — show start form
   if (!prepId) {
     const savedResume = typeof window !== "undefined" ? localStorage.getItem("jh_resume_text") || "" : "";
