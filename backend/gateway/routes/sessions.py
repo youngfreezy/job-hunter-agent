@@ -1771,7 +1771,18 @@ async def parse_resume(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="No file provided")
 
     suffix = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    raw = await file.read()
+
+    # Enforce 10 MB file size limit
+    MAX_RESUME_BYTES = 10 * 1024 * 1024
+    raw = await file.read(MAX_RESUME_BYTES + 1)
+    if len(raw) > MAX_RESUME_BYTES:
+        raise HTTPException(status_code=413, detail="Resume file exceeds 10 MB limit")
+
+    # Validate file signatures (magic bytes)
+    if suffix == "pdf" and not raw[:4].startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="File does not appear to be a valid PDF")
+    if suffix == "docx" and not raw[:4].startswith(b"PK\x03\x04"):
+        raise HTTPException(status_code=400, detail="File does not appear to be a valid DOCX")
 
     if suffix == "txt":
         text = raw.decode("utf-8", errors="replace")
@@ -1830,8 +1841,7 @@ async def parse_resume(file: UploadFile = File(...)):
     import uuid
     resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
     os.makedirs(resume_dir, exist_ok=True)
-    safe_name = file.filename.replace("/", "_").replace("\\", "_")
-    resume_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}-{safe_name}")
+    resume_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}.{suffix}")
     with open(resume_path, "wb") as f:
         f.write(raw)
     logger.info("Resume saved to %s", resume_path)

@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Enums ---
@@ -238,6 +238,20 @@ class StartSessionRequest(BaseModel):
     linkedin_url: Optional[str] = None
     preferences: Dict[str, Any] = Field(default_factory=dict)
     config: Optional[SessionConfig] = None
+
+    @field_validator("resume_file_path")
+    @classmethod
+    def validate_resume_path(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        import os, tempfile
+        resume_dir = os.path.realpath(
+            os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
+        )
+        resolved = os.path.realpath(v)
+        if not resolved.startswith(resume_dir + os.sep):
+            raise ValueError("Invalid resume file path")
+        return resolved
 
 
 class SteerRequest(BaseModel):
