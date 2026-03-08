@@ -22,6 +22,7 @@ from backend.shared.billing_store import (
     get_stripe_customer_id,
     get_transactions,
     get_wallet,
+    update_auto_refill_settings,
 )
 from backend.shared.config import get_settings
 
@@ -47,7 +48,7 @@ CREDIT_COST_SKIPPED = 0.0     # No work done (duplicate, rate-limited, auth-requ
 
 @router.get("/wallet")
 async def wallet_endpoint(request: Request):
-    """Return wallet balance and free applications remaining."""
+    """Return wallet balance, free applications remaining, and auto-refill info."""
     user = get_current_user(request)
     wallet = get_wallet(user["id"])
     return {
@@ -55,6 +56,10 @@ async def wallet_endpoint(request: Request):
         "free_remaining": wallet["free_remaining"],
         "credit_cost_submitted": CREDIT_COST_SUBMITTED,
         "credit_cost_partial": CREDIT_COST_PARTIAL,
+        "auto_refill_enabled": wallet["auto_refill_enabled"],
+        "auto_refill_threshold": wallet["auto_refill_threshold"],
+        "auto_refill_pack_id": wallet["auto_refill_pack_id"],
+        "low_balance": wallet["low_balance"],
     }
 
 
@@ -74,6 +79,27 @@ async def packs_endpoint():
         "credit_cost_submitted": CREDIT_COST_SUBMITTED,
         "credit_cost_partial": CREDIT_COST_PARTIAL,
     }
+
+
+@router.put("/auto-refill")
+async def update_auto_refill(request: Request):
+    """Update auto-refill preferences."""
+    body = await request.json()
+    user = get_current_user(request)
+
+    enabled = body.get("enabled", False)
+    threshold = body.get("threshold", 5.0)
+    pack_id = body.get("pack_id", "top_up_10")
+
+    # Validate pack_id
+    if pack_id not in PACKS:
+        raise HTTPException(status_code=400, detail="Invalid pack ID")
+    # Validate threshold
+    if threshold < 1 or threshold > 50:
+        raise HTTPException(status_code=400, detail="Threshold must be between 1 and 50")
+
+    update_auto_refill_settings(user["id"], enabled, threshold, pack_id)
+    return {"ok": True}
 
 
 class CheckoutRequest(BaseModel):

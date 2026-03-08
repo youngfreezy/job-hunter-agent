@@ -5,13 +5,18 @@ import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { API_BASE, getAuthHeaders } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { API_BASE, getAuthHeaders, updateAutoRefill } from "@/lib/api";
 
 interface WalletData {
   balance: number;
   free_remaining: number;
   credit_cost_submitted: number;
   credit_cost_partial: number;
+  auto_refill_enabled: boolean;
+  auto_refill_threshold: number;
+  auto_refill_pack_id: string;
+  low_balance: boolean;
 }
 
 interface Pack {
@@ -36,6 +41,11 @@ export default function BillingPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [autoRefillEnabled, setAutoRefillEnabled] = useState(false);
+  const [autoRefillThreshold, setAutoRefillThreshold] = useState(5);
+  const [autoRefillPackId, setAutoRefillPackId] = useState("top_up_10");
+  const [autoRefillSaving, setAutoRefillSaving] = useState(false);
+  const [autoRefillSaved, setAutoRefillSaved] = useState(false);
 
   const success = searchParams.get("success");
   const canceled = searchParams.get("canceled");
@@ -54,7 +64,13 @@ export default function BillingPage() {
           fetch(`${API_BASE}/api/billing/packs`),
           fetch(`${API_BASE}/api/billing/transactions`, { headers: auth }),
         ]);
-        if (walletRes.ok) setWallet(await walletRes.json());
+        if (walletRes.ok) {
+          const walletData = await walletRes.json();
+          setWallet(walletData);
+          setAutoRefillEnabled(walletData.auto_refill_enabled ?? false);
+          setAutoRefillThreshold(walletData.auto_refill_threshold ?? 5);
+          setAutoRefillPackId(walletData.auto_refill_pack_id ?? "top_up_10");
+        }
         if (packsRes.ok) {
           const data = await packsRes.json();
           setPacks(data.packs || {});
@@ -107,6 +123,24 @@ export default function BillingPage() {
     }
   }
 
+  async function handleSaveAutoRefill() {
+    setAutoRefillSaving(true);
+    setAutoRefillSaved(false);
+    try {
+      await updateAutoRefill({
+        enabled: autoRefillEnabled,
+        threshold: autoRefillThreshold,
+        pack_id: autoRefillPackId,
+      });
+      setAutoRefillSaved(true);
+      setTimeout(() => setAutoRefillSaved(false), 3000);
+    } catch {
+      alert("Failed to save auto-refill settings");
+    } finally {
+      setAutoRefillSaving(false);
+    }
+  }
+
   if (loading) return null;
 
   const mainPacks = ["20", "50", "100"];
@@ -124,6 +158,23 @@ export default function BillingPage() {
       {canceled && (
         <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300 px-4 py-3 rounded text-sm">
           Checkout was canceled.
+        </div>
+      )}
+
+      {/* Low Balance Banner */}
+      {wallet?.low_balance && (
+        <div className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 px-4 py-3 rounded text-sm flex items-center justify-between">
+          <span>
+            Your balance is low ({wallet.balance.toFixed(1)} credits).
+            Refill with {packs[wallet.auto_refill_pack_id]?.label ?? "credits"}?
+          </span>
+          <Button
+            size="sm"
+            onClick={() => handleCheckout(wallet.auto_refill_pack_id)}
+            disabled={checkoutLoading === wallet.auto_refill_pack_id}
+          >
+            {checkoutLoading === wallet.auto_refill_pack_id ? "Loading..." : "Refill Now"}
+          </Button>
         </div>
       )}
 
@@ -205,6 +256,95 @@ export default function BillingPage() {
           })}
         </div>
       </div>
+
+      {/* Auto-Refill Settings */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Auto-Refill</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoRefillEnabled}
+              onClick={() => {
+                const next = !autoRefillEnabled;
+                setAutoRefillEnabled(next);
+                if (!next) {
+                  // Save immediately when disabling
+                  updateAutoRefill({ enabled: false, threshold: autoRefillThreshold, pack_id: autoRefillPackId }).catch(() => {});
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                autoRefillEnabled ? "bg-blue-600" : "bg-zinc-200 dark:bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${
+                  autoRefillEnabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <span className="text-sm font-medium">Auto-refill credits</span>
+          </label>
+
+          {autoRefillEnabled && (
+            <div className="space-y-3 pl-14">
+              <div>
+                <label className="text-xs text-zinc-500 block mb-1">
+                  Refill when balance drops below
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={autoRefillThreshold}
+                    onChange={(e) => setAutoRefillThreshold(Number(e.target.value))}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-zinc-400">credits</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 block mb-1">
+                  Refill pack
+                </label>
+                <select
+                  value={autoRefillPackId}
+                  onChange={(e) => setAutoRefillPackId(e.target.value)}
+                  className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {Object.entries(packs).map(([id, pack]) => (
+                    <option key={id} value={id}>
+                      {pack.label} — ${pack.price_dollars}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleSaveAutoRefill}
+                  disabled={autoRefillSaving}
+                >
+                  {autoRefillSaving ? "Saving..." : "Save"}
+                </Button>
+                {autoRefillSaved && (
+                  <span className="text-xs text-green-600">Saved!</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!autoRefillEnabled && (
+            <p className="text-xs text-zinc-400">
+              Enable to get a one-click refill prompt when your balance is low.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Transaction History */}
       <div>
