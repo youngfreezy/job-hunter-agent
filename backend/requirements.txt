@@ -29,6 +29,7 @@ neo4j>=5.27.0
 
 # Browser automation
 patchright>=1.58.0
+playwright>=1.49.0
 browser-use==0.12.1
 
 # Auth + Security
