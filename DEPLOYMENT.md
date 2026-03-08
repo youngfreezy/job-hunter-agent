@@ -2,8 +2,9 @@
 
 ## Live URLs
 
-- **Frontend**: https://frontend-production-96d4b.up.railway.app/
-- **Backend**: https://backend-production-1ea9.up.railway.app/
+- **Frontend**: https://jobhunteragent.com (Railway: https://frontend-production-96d4b.up.railway.app/)
+- **Backend**: https://api.jobhunteragent.com (Railway: https://backend-production-1ea9.up.railway.app/)
+- **Domain registrar**: Namecheap (BasicDNS)
 
 ## Architecture
 
