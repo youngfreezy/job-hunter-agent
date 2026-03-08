@@ -1,60 +1,60 @@
 # Core
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-python-dotenv==1.0.1
-pydantic==2.10.4
-pydantic-settings==2.7.1
+fastapi>=0.115.6
+uvicorn[standard]>=0.34.0
+python-dotenv>=1.0.1
+pydantic>=2.10.4
+pydantic-settings>=2.7.1
 
 # LangGraph + LangChain
-langgraph==0.2.60
-langchain-core==0.3.83
-langchain-anthropic==0.3.1
-langchain-openai==0.3.35
-openai==2.16.0
+langgraph>=0.2.60
+langchain-core>=0.3.83
+langchain-anthropic>=0.3.1
+langchain-openai>=0.3.35
+openai>=2.16.0
 
 # Database
-sqlalchemy==2.0.36
-alembic==1.14.1
-asyncpg==0.30.0
-psycopg[binary]==3.2.3
-psycopg-pool==3.2.4
-langgraph-checkpoint-postgres==2.0.11
+sqlalchemy>=2.0.36
+alembic>=1.14.1
+asyncpg>=0.30.0
+psycopg[binary]>=3.2.3
+psycopg-pool>=3.2.4
+langgraph-checkpoint-postgres>=2.0.11
 
 # Redis
-redis==5.2.1
-arq==0.26.1
+redis>=5.2.1
+arq>=0.26.1
 
 # Neo4j
-neo4j==5.27.0
+neo4j>=5.27.0
 
 # Browser automation
-patchright==1.58.0
+patchright>=1.58.0
 browser-use==0.12.1
 
 # Auth + Security
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-cryptography==44.0.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+cryptography>=44.0.0
 
 # HTTP
-httpx==0.28.1
+httpx>=0.28.1
 
 # Google Gmail API (verification code extraction)
-google-api-python-client==2.166.0
-google-auth==2.38.0
-google-auth-oauthlib==1.2.1
+google-api-python-client>=2.166.0
+google-auth>=2.38.0
+google-auth-oauthlib>=1.2.1
 
 # Resume parsing
-pypdf==5.1.0
-python-docx==1.1.2
-pymupdf==1.25.1
-pytesseract==0.3.13
-Pillow==11.0.0
+pypdf>=5.1.0
+python-docx>=1.1.2
+pymupdf>=1.25.1
+pytesseract>=0.3.13
+Pillow>=11.0.0
 
 # Testing
-pytest==8.3.4
-pytest-asyncio==0.24.0
+pytest>=8.3.4
+pytest-asyncio>=0.24.0
 
 # Billing
-stripe==14.4.1
-scipy==1.17.1
+stripe>=14.4.1
+scipy>=1.17.1

@@ -8,15 +8,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+import type { ResumeScore } from "@/lib/api";
+
 interface ResumeScoreRadarProps {
-  scores: {
-    keyword_density: number;
-    impact_metrics: number;
-    ats_compatibility: number;
-    readability: number;
-    formatting: number;
-    [key: string]: number;
-  } | null | undefined;
+  scores: ResumeScore | null | undefined;
 }
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -28,17 +23,21 @@ const DIMENSION_LABELS: Record<string, string> = {
   feedback: "Feedback",
 };
 
-const EXCLUDE_KEYS = new Set(["overall"]);
+const NUMERIC_KEYS: (keyof ResumeScore)[] = [
+  "keyword_density",
+  "impact_metrics",
+  "ats_compatibility",
+  "readability",
+  "formatting",
+];
 
 export default function ResumeScoreRadar({ scores }: ResumeScoreRadarProps) {
   if (!scores) return null;
 
-  const data = Object.entries(scores)
-    .filter(([key]) => !EXCLUDE_KEYS.has(key))
-    .map(([key, value]) => ({
-      dimension: DIMENSION_LABELS[key] ?? key,
-      value: Math.min(100, Math.max(0, value)),
-    }));
+  const data = NUMERIC_KEYS.map((key) => ({
+    dimension: DIMENSION_LABELS[key] ?? key,
+    value: Math.min(100, Math.max(0, scores[key] as number)),
+  }));
 
   return (
     <ResponsiveContainer width="100%" height={250}>
