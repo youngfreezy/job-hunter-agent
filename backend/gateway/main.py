@@ -183,10 +183,63 @@ async def lifespan(app: FastAPI):
     app.state.interview_prep_graph = interview_prep_graph
     app.state.freelance_graph = freelance_graph
 
+    # --- Startup recovery: resume sessions interrupted by previous deploys ---
+    from backend.shared.session_store import get_interrupted_sessions
+    from backend.gateway.routes.sessions import (
+        _resume_stalled_pipeline, _spawn_background,
+        session_registry, event_logs,
+    )
+
+    # Mark stale orphaned sessions (>2h old) as failed so they don't sit in limbo
+    import psycopg as _pg
+    try:
+        stale_conn = _pg.connect(settings.DATABASE_URL)
+        stale_conn.execute(
+            """UPDATE sessions SET status = 'failed', updated_at = NOW()
+               WHERE status IN ('intake', 'coaching', 'discovering', 'scoring',
+                                'tailoring', 'applying', 'running', 'interrupted')
+                 AND updated_at < NOW() - INTERVAL '2 hours'""",
+        )
+        stale_conn.commit()
+        stale_conn.close()
+    except Exception:
+        logger.debug("Failed to clean up stale sessions", exc_info=True)
+
+    orphaned = get_interrupted_sessions()
+    if orphaned:
+        logger.info("Found %d interrupted sessions to recover", len(orphaned))
+        for sess in orphaned:
+            sid = sess["session_id"]
+            # Hydrate in-memory registry so SSE reconnects work
+            session_registry[sid] = {
+                "session_id": sid,
+                "user_id": sess["user_id"],
+                "status": "recovering",
+            }
+            event_logs[sid] = []
+            config = {"configurable": {"thread_id": sid}}
+            _spawn_background(_resume_stalled_pipeline(sid, graph, config))
+            logger.info("Resuming interrupted session %s", sid)
+
     yield
 
     # --- Shutdown ---
     logger.info("Shutting down JobHunter gateway")
+
+    # Mark any still-running sessions before exiting
+    from backend.gateway.routes.sessions import session_registry as _reg
+    from backend.shared.session_store import mark_sessions_interrupted as _mark
+    _active = [
+        sid for sid, meta in _reg.items()
+        if meta.get("status") in {
+            "intake", "coaching", "discovering", "scoring",
+            "tailoring", "applying", "running", "recovering",
+        }
+    ]
+    if _active:
+        logger.info("Shutdown — marking %d sessions as interrupted", len(_active))
+        _mark(_active)
+
     from backend.shared.scheduler import cancel_all
     cancel_all()
 
