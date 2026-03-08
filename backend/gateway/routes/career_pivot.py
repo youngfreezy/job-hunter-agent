@@ -54,6 +54,7 @@ async def _run_pivot_pipeline(session_id: str, graph, config, initial_state):
             if status:
                 messages = {
                     "parsing_skills": "Extracting skills from your resume...",
+                    "researching_onet": "Researching your occupation...",
                     "assessing_risk": "Assessing AI automation risk for your role...",
                     "mapping_roles": "Finding adjacent roles you're qualified for...",
                     "completed": "Your pivot report is ready!",
@@ -65,10 +66,12 @@ async def _run_pivot_pipeline(session_id: str, graph, config, initial_state):
                 _emit_pivot(session_id, "risk_assessment", {
                     "automation_risk_score": snapshot["automation_risk_score"],
                     "task_breakdown": snapshot.get("task_breakdown", []),
+                    "resistant_abilities": snapshot.get("resistant_abilities", []),
                     "parsed_role": snapshot.get("parsed_role", ""),
                     "parsed_skills": snapshot.get("parsed_skills", []),
                     "years_experience": snapshot.get("years_experience"),
                     "industry": snapshot.get("industry"),
+                    "soc_code": snapshot.get("soc_code", ""),
                 })
                 _pivot_registry[session_id]["risk_emitted"] = True
 
@@ -111,8 +114,12 @@ async def start_pivot(request: Request, body: StartPivotRequest):
         "status": "starting",
         "errors": [],
         "parsed_skills": [],
+        "knowledge_areas": [],
+        "abilities": [],
         "task_breakdown": [],
+        "resistant_abilities": [],
         "recommended_pivots": [],
+        "onet_research": None,
         "report_generated": False,
     }
 

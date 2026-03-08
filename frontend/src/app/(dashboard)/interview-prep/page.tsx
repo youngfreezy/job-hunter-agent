@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import { API_BASE, getAuthHeaders } from "@/lib/api";
 
-export default function CareerPivotPage() {
+export default function InterviewPrepLandingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasResume, setHasResume] = useState(false);
+  const [company, setCompany] = useState("");
+  const [role, setRole] = useState("");
 
   useEffect(() => {
     setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
@@ -19,7 +21,11 @@ export default function CareerPivotPage() {
   async function handleStart() {
     const resumeText = localStorage.getItem("jh_resume_text") || "";
     if (!resumeText.trim()) {
-      setError("Please upload your resume above first.");
+      setError("Please upload your resume first.");
+      return;
+    }
+    if (!company.trim() || !role.trim()) {
+      setError("Please enter both a company name and role.");
       return;
     }
 
@@ -28,18 +34,19 @@ export default function CareerPivotPage() {
 
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/career-pivot`, {
+      const res = await fetch(`${API_BASE}/api/interview-prep`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
+          company: company.trim(),
+          role: role.trim(),
           resume_text: resumeText,
-          location: "Remote",
         }),
       });
 
       if (!res.ok) throw new Error(`Failed to start: ${res.statusText}`);
       const { session_id } = await res.json();
-      router.push(`/career-pivot/${session_id}`);
+      router.push(`/interview-prep/${session_id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
@@ -49,26 +56,39 @@ export default function CareerPivotPage() {
 
   return (
     <div className="container mx-auto max-w-4xl p-6">
-      <h1 className="text-3xl font-bold mb-2">Career Pivot Advisor</h1>
+      <h1 className="text-3xl font-bold mb-2">Interview Prep</h1>
       <p className="text-muted-foreground mb-8">
-        Is your job safe from AI? Find out in 60 seconds — free.
+        Practice with AI-powered mock interviews tailored to your resume and target role.
       </p>
 
       <div className="bg-card border rounded-lg p-8 space-y-6">
         <div className="text-center space-y-3">
-          <div className="text-6xl">🔍</div>
+          <div className="text-6xl">🎯</div>
           <h2 className="text-xl font-semibold">
-            Analyze your AI automation risk
+            Mock interview with AI coaching
           </h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            We&apos;ll analyze your resume against U.S. Department of Labor data to
-            find your automation risk score, adjacent roles you&apos;re qualified for,
-            and a learning plan to close skill gaps.
+            We&apos;ll research the company, generate personalized interview
+            questions, and coach you through answers using your resume.
+            Get real-time grading on every response.
           </p>
         </div>
 
-        <div className="max-w-lg mx-auto">
+        <div className="max-w-lg mx-auto space-y-4">
           <ResumeUpload onResumeReady={() => setHasResume(true)} />
+
+          <input
+            placeholder="Company name (e.g. Google)"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+            className="w-full border rounded px-3 py-2 bg-background text-sm"
+          />
+          <input
+            placeholder="Role title (e.g. Senior Software Engineer)"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="w-full border rounded px-3 py-2 bg-background text-sm"
+          />
         </div>
 
         {error && (
@@ -76,13 +96,18 @@ export default function CareerPivotPage() {
         )}
 
         <div className="text-center">
-          <Button size="lg" onClick={handleStart} disabled={!hasResume} loading={loading}>
-            Start Free Assessment
+          <Button
+            size="lg"
+            onClick={handleStart}
+            disabled={!hasResume || !company.trim() || !role.trim()}
+            loading={loading}
+          >
+            Start Mock Interview
           </Button>
         </div>
 
         <p className="text-xs text-muted-foreground text-center">
-          Powered by U.S. Department of Labor data. No credit card required.
+          Includes company research, structured answer coaching, and answer grading.
         </p>
       </div>
     </div>

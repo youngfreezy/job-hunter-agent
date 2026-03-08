@@ -37,6 +37,10 @@ class SubmitAnswerRequest(BaseModel):
     answer: str
 
 
+class CoachRequest(BaseModel):
+    question_id: str
+
+
 class PrepResponse(BaseModel):
     session_id: str
 
@@ -99,6 +103,10 @@ async def start_prep(request: Request, body: StartPrepRequest):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "grades": [],
         "questions_answered": 0,
+        "resume_text": body.resume_text,
+        "company": body.company,
+        "role": body.role,
+        "coaching_cache": {},
     }
     _prep_events[session_id] = []
 
@@ -175,11 +183,13 @@ Return as JSON:
     ]
 
     response = await invoke_with_retry(llm, messages)
-    try:
-        grade = json.loads(response.content)
-    except (json.JSONDecodeError, AttributeError):
-        grade = {"relevance": 5, "specificity": 5, "star_structure": 5, "confidence": 5, "overall": 5,
-                 "feedback": "Unable to grade at this time.", "strong_answer_example": ""}
+
+    from backend.orchestrator.career_pivot.graph import _safe_parse_json
+    grade = _safe_parse_json(
+        response.content,
+        {"relevance": 5, "specificity": 5, "star_structure": 5, "confidence": 5, "overall": 5,
+         "feedback": "Unable to grade at this time.", "strong_answer_example": ""},
+    )
 
     grade["question_id"] = body.question_id
     meta.setdefault("grades", []).append(grade)
@@ -192,6 +202,92 @@ Return as JSON:
     })
 
     return {"grade": grade, "questions_answered": meta["questions_answered"]}
+
+
+@router.post("/{session_id}/coach")
+async def get_coaching(request: Request, session_id: str, body: CoachRequest):
+    """Get AI coaching hints for a question based on the user's resume."""
+    if session_id not in _prep_registry:
+        raise HTTPException(404, "Prep session not found")
+
+    meta = _prep_registry[session_id]
+
+    # Return cached coaching if available
+    cached = meta.get("coaching_cache", {}).get(body.question_id)
+    if cached:
+        return cached
+
+    from backend.shared.llm import build_llm, default_model, invoke_with_retry
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    questions = meta.get("questions", [])
+    question = None
+    for q in questions:
+        if q.get("id") == body.question_id:
+            question = q
+            break
+
+    if not question:
+        raise HTTPException(404, "Question not found")
+
+    resume_text = meta.get("resume_text", "")
+    company = meta.get("company", "")
+    role = meta.get("role", "")
+
+    llm = build_llm(model=default_model(), max_tokens=2048, temperature=0.2)
+    messages = [
+        SystemMessage(content=f"""You are an expert interview coach helping a candidate prepare for a {role} interview at {company}.
+
+The candidate has shared their resume. Your job is to help them craft a strong answer to the interview question by:
+
+1. **resume_highlights**: Pull 2-3 specific, relevant experiences from their resume that directly relate to this question. Quote concrete details — project names, technologies, metrics, team sizes.
+
+2. **star_scaffold**: Provide a STAR framework scaffold tailored to this specific question and the candidate's background:
+   - situation: Suggest which resume experience to set the scene with
+   - task: What responsibility or challenge to highlight
+   - action: What specific actions to emphasize (use first person)
+   - result: What metrics or outcomes to mention
+
+3. **key_points**: 3-4 things the interviewer is specifically looking for with this type of question (e.g. "leadership under ambiguity", "quantified impact", "cross-functional collaboration")
+
+4. **pitfalls**: 2-3 common mistakes candidates make when answering this type of question
+
+Return ONLY valid JSON, no markdown fences:
+{{
+  "resume_highlights": ["Led migration of...", "Managed team of 5..."],
+  "star_scaffold": {{
+    "situation": "At [company], you were facing...",
+    "task": "You were responsible for...",
+    "action": "Walk through how you specifically...",
+    "result": "Mention the outcome: X% improvement, $Y saved..."
+  }},
+  "key_points": ["Shows leadership under ambiguity", "Demonstrates technical depth"],
+  "pitfalls": ["Don't be too vague — use specific numbers", "Avoid saying 'we' without clarifying your role"]
+}}"""),
+        HumanMessage(content=f"Interview question ({question['category']}): {question['question']}\n\nCandidate's resume:\n{resume_text[:3000]}"),
+    ]
+
+    response = await invoke_with_retry(llm, messages)
+
+    from backend.orchestrator.career_pivot.graph import _safe_parse_json
+    coaching = _safe_parse_json(
+        response.content,
+        {
+            "resume_highlights": [],
+            "star_scaffold": {
+                "situation": "Think about a relevant experience...",
+                "task": "What was your specific responsibility?",
+                "action": "What steps did you take?",
+                "result": "What was the measurable outcome?",
+            },
+            "key_points": [],
+            "pitfalls": [],
+        },
+    )
+
+    # Cache for this question
+    meta.setdefault("coaching_cache", {})[body.question_id] = coaching
+    return coaching
 
 
 @router.post("/{session_id}/end")

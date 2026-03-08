@@ -206,6 +206,43 @@ export interface SessionListItem {
   created_at: string;
 }
 
+export interface ResumeAnalysis {
+  keywords: string[];
+  locations: string[];
+  experience_level: string | null;
+  suggested_job_boards: string[];
+  remote_likely: boolean;
+}
+
+export async function analyzeResume(resumeText: string): Promise<ResumeAnalysis> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/resume/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({ resume_text: resumeText }),
+  });
+  if (!res.ok) throw new Error(`Failed to analyze resume: ${res.statusText}`);
+  return res.json();
+}
+
+export interface LifetimeStats {
+  total_sessions: number;
+  total_submitted: number;
+  total_failed: number;
+  total_applications: number;
+  manual_estimate_minutes: number;
+  automation_minutes: number;
+  time_saved_minutes: number;
+  time_saved_hours: number;
+}
+
+export async function getLifetimeStats(): Promise<LifetimeStats> {
+  const auth = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/api/stats/lifetime`, { headers: auth });
+  if (!res.ok) throw new Error(`Failed to get lifetime stats: ${res.statusText}`);
+  return res.json();
+}
+
 export async function listSessions(): Promise<SessionListItem[]> {
   const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/sessions`, { headers: auth });

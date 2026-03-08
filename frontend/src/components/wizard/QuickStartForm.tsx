@@ -1,0 +1,265 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Formik, Form, useFormikContext } from "formik";
+import * as Yup from "yup";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { FormikFileUpload } from "@/components/forms/FormikFileUpload";
+import { analyzeResume, startSession } from "@/lib/api";
+import type { SessionFormValues } from "@/lib/schemas/session";
+import { sessionInitialValues } from "@/lib/schemas/session";
+
+const quickStartSchema = Yup.object({
+  resumeText: Yup.string()
+    .required("Upload a resume file (.pdf, .docx, or .txt).")
+    .test(
+      "has-email",
+      "Your resume must include an email address so employers can contact you.",
+      (value) => {
+        if (!value) return false;
+        return /[\w.+-]+@[\w-]+\.[\w.-]+/.test(value);
+      }
+    ),
+  resumeFileName: Yup.string().default(""),
+  resumeFilePath: Yup.string().default(""),
+});
+
+declare global {
+  interface Window {
+    umami?: { track: (event: string, data?: Record<string, unknown>) => void };
+  }
+}
+
+/** Inner component that watches Formik context for resume text changes. */
+function QuickStartInner() {
+  const router = useRouter();
+  const { values, isSubmitting } = useFormikContext<SessionFormValues>();
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [locations, setLocations] = useState<string[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzed, setAnalyzed] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [isNavigating, setIsNavigating] = useState(false);
+  const analyzedTextRef = useRef("");
+
+  // Auto-analyze when resume text appears
+  useEffect(() => {
+    const text = values.resumeText;
+    if (
+      text &&
+      text.length >= 50 &&
+      text !== analyzedTextRef.current &&
+      !analyzing
+    ) {
+      analyzedTextRef.current = text;
+      setAnalyzing(true);
+      setAnalyzeError("");
+      analyzeResume(text)
+        .then((result) => {
+          setKeywords(result.keywords);
+          setLocations(result.locations);
+          setAnalyzed(true);
+          window.umami?.track("quickstart-analyzed");
+        })
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : "Analysis failed";
+          setAnalyzeError(msg);
+        })
+        .finally(() => setAnalyzing(false));
+    }
+  }, [values.resumeText, analyzing]);
+
+  const removeKeyword = (index: number) => {
+    setKeywords((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeLocation = (index: number) => {
+    setLocations((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleRetryAnalysis = useCallback(() => {
+    analyzedTextRef.current = "";
+    setAnalyzed(false);
+  }, []);
+
+  const handleLaunch = async () => {
+    setSubmitError("");
+    if (keywords.length === 0) {
+      setSubmitError(
+        "Upload your resume first so we can extract search keywords."
+      );
+      return;
+    }
+    setIsNavigating(true);
+    try {
+      const session = await startSession({
+        keywords,
+        locations,
+        remote_only:
+          locations.length === 0 ||
+          locations.every((l) => l.toLowerCase() === "remote"),
+        salary_min: null,
+        resume_text: values.resumeText,
+        resume_file_path: values.resumeFilePath || null,
+        linkedin_url: null,
+        preferences: {},
+      });
+      window.umami?.track("quickstart-complete");
+      router.push(`/session/${session.session_id}`);
+    } catch (err) {
+      setIsNavigating(false);
+      const msg =
+        err instanceof Error ? err.message : "Failed to start session";
+      if (
+        msg === "Failed to fetch" ||
+        msg.includes("NetworkError") ||
+        msg === "Load failed"
+      ) {
+        setSubmitError(
+          "Unable to connect to the server. Make sure the backend is running (npm start)."
+        );
+      } else {
+        setSubmitError(msg);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Upload Your Resume</h2>
+            <p className="text-sm text-zinc-500 mt-1">
+              We&apos;ll extract your target roles and locations automatically.
+            </p>
+          </div>
+          <FormikFileUpload />
+        </CardContent>
+      </Card>
+
+      {analyzing && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-600 dark:border-t-zinc-100" />
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                Analyzing your resume for job search keywords...
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {analyzeError && (
+        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
+          {analyzeError}
+          <button
+            type="button"
+            onClick={handleRetryAnalysis}
+            className="ml-2 underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {analyzed && keywords.length > 0 && (
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div>
+              <p className="text-sm font-medium mb-2">
+                Search Keywords
+                <span className="text-zinc-500 font-normal ml-1">
+                  (click to remove)
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {keywords.map((kw, i) => (
+                  <Badge
+                    key={i}
+                    variant="secondary"
+                    className="cursor-pointer hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-900 dark:hover:text-red-300 transition-colors"
+                    onClick={() => removeKeyword(i)}
+                  >
+                    {kw} &times;
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-medium mb-2">
+                Locations
+                <span className="text-zinc-500 font-normal ml-1">
+                  (click to remove)
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {locations.map((loc, i) => (
+                  <Badge
+                    key={i}
+                    variant="outline"
+                    className="cursor-pointer hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-900 dark:hover:text-red-300 transition-colors"
+                    onClick={() => removeLocation(i)}
+                  >
+                    {loc} &times;
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-500 dark:bg-zinc-900/60">
+              Defaults: 20 jobs, auto-apply, all job boards, standard tailoring.
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {submitError && (
+        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
+          {submitError}
+        </div>
+      )}
+
+      {analyzed && keywords.length > 0 && (
+        <Button
+          type="button"
+          size="lg"
+          className="w-full"
+          disabled={isSubmitting || isNavigating || keywords.length === 0}
+          onClick={handleLaunch}
+        >
+          {isNavigating ? (
+            <span className="flex items-center gap-2">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              Launching...
+            </span>
+          ) : (
+            "Launch Search"
+          )}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+export function QuickStartForm() {
+  return (
+    <Formik<SessionFormValues>
+      initialValues={sessionInitialValues}
+      validationSchema={quickStartSchema}
+      onSubmit={() => {
+        /* submission handled by handleLaunch in QuickStartInner */
+      }}
+    >
+      <Form>
+        <QuickStartInner />
+      </Form>
+    </Formik>
+  );
+}

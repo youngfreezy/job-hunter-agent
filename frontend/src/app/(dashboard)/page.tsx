@@ -225,7 +225,7 @@ export default function Home() {
               <div className="mt-10 grid gap-6 sm:grid-cols-3">
                 {[
                   { value: "5 job boards", label: "Searched simultaneously" },
-                  { value: "$1.20/credit", label: "As low as, with 3 free" },
+                  { value: "3 free credits", label: "Then from $1.20/app" },
                   { value: "2 approval steps", label: "You control everything" },
                 ].map((s) => (
                   <div key={s.value}>

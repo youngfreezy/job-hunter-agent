@@ -12,8 +12,8 @@ import {
   type ApplicationLogEntry,
 } from "@/lib/api";
 
-// Industry average: finding a listing, tailoring resume/cover letter, filling forms, submitting
-const MANUAL_MINUTES_PER_APP = 15;
+// Industry average: finding a listing, writing custom cover letter & resume, filling forms, submitting
+const MANUAL_MINUTES_PER_APP = 60;
 
 type SessionWithApps = {
   session: SessionListItem;
@@ -248,9 +248,28 @@ export default function HistoryPage() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground/70 text-center mt-4">
-                  We estimate each manual application takes about 15 minutes
-                  including research, resume tailoring, and form filling. Your
-                  actual time saved is based on real session data.
+                  Based on data from{" "}
+                  <a
+                    href="https://www.hrdive.com/news/job-application-process-should-take-less-than-30-minutes/747352/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-muted-foreground"
+                  >
+                    HR Dive
+                  </a>{" "}
+                  and the{" "}
+                  <a
+                    href="https://www.bls.gov/opub/btn/volume-9/how-do-jobseekers-search-for-jobs.htm"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-muted-foreground"
+                  >
+                    U.S. Bureau of Labor Statistics
+                  </a>
+                  , we estimate each manual application takes about an hour
+                  including research, writing a custom resume and cover letter,
+                  and form filling. Your actual time saved is based on real
+                  session data.
                 </p>
               </CardContent>
             </Card>
