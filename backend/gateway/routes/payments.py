@@ -138,7 +138,13 @@ async def webhook_endpoint(request: Request):
         metadata = session_obj.get("metadata", {})
         user_id = metadata.get("user_id")
         pack_id = metadata.get("pack_id", "")
-        credit_amount = float(metadata.get("credit_amount", 0))
+
+        # Validate credit_amount against PACKS definition server-side
+        pack = PACKS.get(pack_id)
+        if not pack:
+            logger.warning("Webhook: unknown pack_id=%s, ignoring", pack_id)
+            return {"received": True}
+        credit_amount = pack["credit_amount"]
 
         if user_id and credit_amount > 0:
             credit_wallet(
