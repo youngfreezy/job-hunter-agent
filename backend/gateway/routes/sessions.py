@@ -1156,17 +1156,16 @@ async def get_application_log(session_id: str, request: Request):
 @router.get("/{session_id}/screenshot")
 async def get_application_screenshot(session_id: str, path: str):
     """Serve a confirmation screenshot file from disk."""
-    import os
+    from pathlib import Path
     from fastapi.responses import FileResponse
-    # Validate the path is within the expected screenshots directory
     import tempfile
-    allowed_dir = os.path.join(tempfile.gettempdir(), "jobhunter_screenshots")
-    real_path = os.path.realpath(path)
-    if not real_path.startswith(os.path.realpath(allowed_dir)):
+    allowed_dir = Path(tempfile.gettempdir(), "jobhunter_screenshots").resolve()
+    real_path = Path(path).resolve()
+    if not real_path.is_relative_to(allowed_dir):
         raise HTTPException(status_code=403, detail="Access denied")
-    if not os.path.isfile(real_path):
+    if not real_path.is_file():
         raise HTTPException(status_code=404, detail="Screenshot not found")
-    return FileResponse(real_path, media_type="image/png")
+    return FileResponse(str(real_path), media_type="image/png")
 
 
 @router.get("/{session_id}/checkpoints")

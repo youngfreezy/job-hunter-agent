@@ -209,8 +209,8 @@ async def apply_with_browser_use(
                 duration_seconds=duration,
             )
         else:
-            error_msg = f"No success confirmation: {final_text[:200]}"
-            logger.warning("browser-use did not confirm success for %s: %s", job.id, error_msg)
+            error_msg = "No success confirmation detected"
+            logger.warning("browser-use did not confirm success for %s", job.id)
             return ApplicationResult(
                 job_id=job.id,
                 status=ApplicationStatus.FAILED,

@@ -97,7 +97,7 @@ class LinkedInApplier(BaseApplier):
                         const bodySnippet = document.body.innerText.substring(0, 500);
                         return { buttons, title, url, bodySnippet };
                     }""")
-                    logger.info("LinkedIn: page debug - title='%s' url='%s' buttons=%s body='%s'", debug.get('title', '?'), debug.get('url', '?'), debug.get('buttons', []), debug.get('bodySnippet', '?')[:300])
+                    logger.info("LinkedIn: page debug - title='%s' url='%s' buttons=%s", debug.get('title', '?'), debug.get('url', '?'), debug.get('buttons', []))
                 except Exception:
                     pass
                 return self._make_result(
