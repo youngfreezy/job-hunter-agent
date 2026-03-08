@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 /**
  * API client for the JobHunter Agent backend.
  * Handles REST calls, SSE streaming, and WebSocket connections.

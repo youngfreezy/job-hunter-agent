@@ -62,3 +62,9 @@ sentry-sdk[fastapi]>=2.19.0
 # Billing
 stripe>=14.4.1
 scipy>=1.17.1
+
+# Autopilot scheduling
+croniter>=2.0.1
+
+# SMS notifications
+twilio>=9.0.0

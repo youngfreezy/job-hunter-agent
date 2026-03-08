@@ -1,3 +1,5 @@
+# Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 """FastAPI gateway for the JobHunter Agent platform.
 
 Provides the REST + SSE API that the Next.js frontend consumes.
@@ -128,10 +130,17 @@ async def lifespan(app: FastAPI):
         from backend.shared.billing_store import ensure_billing_tables
         await ensure_billing_tables()
 
+        from backend.shared.autopilot_store import ensure_autopilot_tables
+        await ensure_autopilot_tables()
+
         # Schedule daily selector health-check
-        from backend.shared.scheduler import schedule
+        from backend.shared.scheduler import schedule, schedule_seconds
         from backend.shared.selector_health import run_selector_health_check
         schedule("selector-health-check", run_selector_health_check, interval_hours=24.0)
+
+        # Schedule autopilot checker (every 60s)
+        from backend.shared.autopilot_runner import check_and_run_due_schedules
+        schedule_seconds("autopilot-checker", check_and_run_due_schedules, interval_seconds=60)
     except Exception as exc:
         logger.warning(
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
@@ -192,6 +201,9 @@ async def lifespan(app: FastAPI):
         await checkpointer.close()
 
 
+_app_ref: FastAPI | None = None
+
+
 def create_app() -> FastAPI:
     """Application factory."""
     app = FastAPI(
@@ -245,6 +257,8 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.sessions import router as sessions_router
     from backend.gateway.routes.stats import router as stats_router
     from backend.gateway.routes.resume import router as resume_router
+    from backend.gateway.routes.autopilot import router as autopilot_router
+    from backend.gateway.routes.sms import router as sms_router
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
@@ -255,8 +269,11 @@ def create_app() -> FastAPI:
     app.include_router(freelance_router)
     app.include_router(stats_router)
     app.include_router(resume_router)
+    app.include_router(autopilot_router)
+    app.include_router(sms_router)
 
     return app
 
 
 app = create_app()
+_app_ref = app

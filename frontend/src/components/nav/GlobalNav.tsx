@@ -1,3 +1,5 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
 "use client";
 
 import Link from "next/link";
@@ -11,7 +13,9 @@ const NAV_LINKS = [
   { href: "/interview-prep", label: "Interview Prep" },
   { href: "/career-pivot", label: "Career Change" },
   { href: "/freelance", label: "Freelance" },
+  { href: "/autopilot", label: "Autopilot" },
   { href: "/history", label: "History" },
+  { href: "/settings", label: "Settings" },
 ];
 
 function handleSignOut() {
