@@ -1,11 +1,19 @@
 "use client";
 
+import { useFormikContext } from "formik";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormikKeywordInput } from "@/components/forms/FormikKeywordInput";
 import { FormikInput } from "@/components/forms/FormikInput";
 import { FormikCheckbox } from "@/components/forms/FormikCheckbox";
 
+const RADIUS_OPTIONS = [10, 25, 50, 100, 150, 200];
+
 export function JobSearchStep() {
+  const { values, setFieldValue } = useFormikContext<{
+    remoteOnly: boolean;
+    searchRadius: number;
+  }>();
+
   return (
     <>
       <Card>
@@ -39,7 +47,7 @@ export function JobSearchStep() {
             placeholder="e.g. San Francisco, New York, Austin"
           />
           <p className="text-xs text-zinc-500">
-            Comma-separated cities. Leave blank for any location.
+            Comma-separated US cities. Currently available in the United States only.
           </p>
           <div className="flex items-center gap-4">
             <FormikCheckbox name="remoteOnly" label="Remote only" />
@@ -55,6 +63,26 @@ export function JobSearchStep() {
               />
             </div>
           </div>
+          {!values.remoteOnly && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                Search radius:
+              </span>
+              <select
+                value={values.searchRadius}
+                onChange={(e) =>
+                  setFieldValue("searchRadius", Number(e.target.value))
+                }
+                className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+              >
+                {RADIUS_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r} miles
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
             <p className="font-medium text-zinc-900 dark:text-white">
               Why this matters

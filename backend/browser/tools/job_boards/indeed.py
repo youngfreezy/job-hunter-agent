@@ -93,7 +93,7 @@ async def scrape_indeed(
             base_params["remotejob"] = "032b3046-06a3-4876-8dfd-474eb5e7ed11"
         elif location and location.lower() != "remote":
             base_params["l"] = location
-            base_params["radius"] = "100"
+            base_params["radius"] = str(search_config.search_radius)
         if search_config.salary_min:
             base_params["salary"] = str(search_config.salary_min)
 

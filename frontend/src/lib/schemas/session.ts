@@ -14,6 +14,7 @@ export const jobSearchSchema = Yup.object({
     }),
   locations: Yup.string().default(""),
   remoteOnly: Yup.boolean().default(false),
+  searchRadius: Yup.number().oneOf([10, 25, 50, 100, 150, 200]).default(100),
   salaryMin: Yup.string()
     .default("")
     .test("positive-salary", "Salary must be a positive number.", (value) => {
@@ -86,6 +87,7 @@ export const sessionInitialValues: SessionFormValues = {
   keywords: "",
   locations: "",
   remoteOnly: false,
+  searchRadius: 100,
   salaryMin: "",
   resumeText: "",
   resumeFileName: "",

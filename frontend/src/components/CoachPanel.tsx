@@ -5,10 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CoachOutput } from "@/lib/api";
-import {
-  LinkedInUpdateButton,
-  type LinkedInProgress,
-} from "@/components/LinkedInUpdateButton";
 
 const SCORE_FIELDS: Array<{
   key: keyof CoachOutput["resume_score"];
@@ -23,16 +19,10 @@ const SCORE_FIELDS: Array<{
 
 interface CoachPanelProps {
   coach: CoachOutput;
-  sessionId?: string;
-  linkedinUrl?: string;
-  linkedinProgress?: LinkedInProgress | null;
 }
 
 export function CoachPanel({
   coach,
-  sessionId,
-  linkedinUrl,
-  linkedinProgress,
 }: CoachPanelProps) {
   const scoreColor = (score: number) => {
     if (score >= 80) return "text-green-700 dark:text-green-400";
@@ -174,17 +164,6 @@ export function CoachPanel({
                   ))}
                 </ul>
 
-                {sessionId && (
-                  <div className="pt-3 border-t border-border/50">
-                    <LinkedInUpdateButton
-                      sessionId={sessionId}
-                      linkedinAdvice={coach.linkedin_advice}
-                      linkedinUrl={linkedinUrl}
-                      linkedinProgress={linkedinProgress}
-                      disabled
-                    />
-                  </div>
-                )}
               </>
             )}
           </TabsContent>

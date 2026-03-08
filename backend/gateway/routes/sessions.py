@@ -337,6 +337,7 @@ async def _run_pipeline(
             "locations": request_body.locations,
             "remote_only": request_body.remote_only,
             "salary_min": request_body.salary_min,
+            "search_radius": request_body.search_radius,
             "resume_text": request_body.resume_text or "",
             "resume_file_path": request_body.resume_file_path,
             "linkedin_url": request_body.linkedin_url,

@@ -211,7 +211,7 @@ async def scrape_ziprecruiter(
             base_params["refine_by_location_type"] = "only_remote"
         elif location and location.lower() != "remote":
             base_params["location"] = location
-            base_params["radius"] = "100"
+            base_params["radius"] = str(search_config.search_radius)
 
         for query in queries:
             if len(listings) >= max_results:

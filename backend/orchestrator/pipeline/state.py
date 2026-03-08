@@ -50,6 +50,7 @@ class JobHunterState(TypedDict):
     locations: List[str]
     remote_only: bool
     salary_min: Optional[int]
+    search_radius: int
     resume_text: str
     resume_file_path: Optional[str]
     linkedin_url: Optional[str]

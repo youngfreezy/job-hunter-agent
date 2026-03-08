@@ -148,7 +148,7 @@ async def scrape_linkedin(
             base_params["f_WT"] = "2"
         elif location:
             base_params["location"] = location
-            base_params["distance"] = "100"
+            base_params["distance"] = str(search_config.search_radius)
 
         for query in queries:
             params = {**base_params, "keywords": query}

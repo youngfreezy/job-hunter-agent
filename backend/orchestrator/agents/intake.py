@@ -93,6 +93,10 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
 
         search_config: SearchConfig = await invoke_with_retry(structured_llm, messages)
 
+        # Override search_radius with user's explicit preference (LLM doesn't decide this)
+        user_radius = state.get("search_radius", 100)
+        search_config.search_radius = user_radius
+
         logger.info(
             "Intake agent produced SearchConfig with %d keywords for %s",
             len(search_config.keywords),

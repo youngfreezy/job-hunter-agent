@@ -22,6 +22,7 @@ export interface SearchConfig {
   locations: string[];
   remote_only: boolean;
   salary_min: number | null;
+  search_radius: number;
   experience_level: string | null;
   job_type: string | null;
 }
@@ -108,11 +109,6 @@ export type SSEEventType =
   | "reporting_progress"
   | "needs_intervention"
   | "ready_to_submit"
-  | "linkedin_update_progress"
-  | "linkedin_login_required"
-  | "linkedin_browser_action"
-  | "linkedin_update_complete"
-  | "linkedin_update_failed"
   | "login_required"
   | "login_complete"
   | "captcha_detected"
@@ -170,6 +166,7 @@ export async function startSession(params: {
   locations: string[];
   remote_only: boolean;
   salary_min: number | null;
+  search_radius?: number;
   resume_text: string | null;
   resume_file_path: string | null;
   linkedin_url: string | null;
@@ -511,11 +508,6 @@ export function connectSSE(
     "reporting_progress",
     "needs_intervention",
     "ready_to_submit",
-    "linkedin_update_progress",
-    "linkedin_login_required",
-    "linkedin_browser_action",
-    "linkedin_update_complete",
-    "linkedin_update_failed",
     "login_required",
     "login_complete",
     "captcha_detected",

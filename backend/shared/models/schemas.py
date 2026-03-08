@@ -113,6 +113,7 @@ class SearchConfig(BaseModel):
     job_type: Optional[str] = None  # "full-time", "contract", "part-time"
     company_size: Optional[str] = None  # "startup", "mid", "enterprise"
     exclude_companies: List[str] = Field(default_factory=list)
+    search_radius: int = 100  # miles, US only
 
 
 class JobListing(BaseModel):
@@ -233,6 +234,15 @@ class StartSessionRequest(BaseModel):
     locations: List[str] = Field(default_factory=lambda: ["Remote"])
     remote_only: bool = False
     salary_min: Optional[int] = None
+    search_radius: int = 100  # miles
+    country: str = "US"  # Currently US-only
+
+    @field_validator("country")
+    @classmethod
+    def validate_country(cls, v: str) -> str:
+        if v.upper() != "US":
+            raise ValueError("JobHunter is currently available in the United States only")
+        return v.upper()
     resume_text: Optional[str] = None
     resume_file_path: Optional[str] = None
     linkedin_url: Optional[str] = None
