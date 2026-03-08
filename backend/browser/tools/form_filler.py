@@ -634,7 +634,12 @@ async def fill_form(
 
             elif action == "upload":
                 if resume_file_path:
-                    await el.set_input_files(resume_file_path)
+                    if resume_file_path.endswith(".enc"):
+                        from backend.shared.resume_crypto import decrypted_tempfile
+                        with decrypted_tempfile(resume_file_path) as tmp:
+                            await el.set_input_files(tmp)
+                    else:
+                        await el.set_input_files(resume_file_path)
                     filled += 1
                 else:
                     skipped += 1

@@ -105,9 +105,20 @@ async def apply_with_browser_use(
             try:
                 page = await browser_session.must_get_current_page()
                 file_inputs = await page.query_selector_all('input[type="file"]')
-                for fi in file_inputs:
-                    await fi.set_input_files(resume_file_path)
-                    return ActionResult(extracted_content="Resume uploaded successfully")
+                if not file_inputs:
+                    return ActionResult(error="No file input found on the page")
+
+                if resume_file_path.endswith(".enc"):
+                    from backend.shared.resume_crypto import decrypted_tempfile
+                    with decrypted_tempfile(resume_file_path) as tmp:
+                        for fi in file_inputs:
+                            await fi.set_input_files(tmp)
+                            return ActionResult(extracted_content="Resume uploaded successfully")
+                else:
+                    for fi in file_inputs:
+                        await fi.set_input_files(resume_file_path)
+                        return ActionResult(extracted_content="Resume uploaded successfully")
+
                 return ActionResult(error="No file input found on the page")
             except Exception as e:
                 return ActionResult(error=f"Resume upload failed: {e}")

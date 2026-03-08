@@ -492,13 +492,21 @@ class BaseApplier(ABC):
         return False
 
     async def _upload_resume(self, file_path: str) -> bool:
-        """Find a file input and upload the resume."""
+        """Find a file input and upload the resume (decrypt if encrypted)."""
         try:
             file_input = await self.page.query_selector('input[type="file"]')
-            if file_input:
+            if not file_input:
+                return False
+
+            if file_path.endswith(".enc"):
+                from backend.shared.resume_crypto import decrypted_tempfile
+                with decrypted_tempfile(file_path) as tmp_path:
+                    await file_input.set_input_files(tmp_path)
+            else:
                 await file_input.set_input_files(file_path)
-                logger.info("Resume uploaded via file input")
-                return True
+
+            logger.info("Resume uploaded via file input")
+            return True
         except Exception as exc:
             logger.warning("Resume upload failed: %s", exc)
         return False

@@ -1854,18 +1854,19 @@ async def parse_resume(file: UploadFile = File(...)):
     if not text:
         raise HTTPException(status_code=422, detail="Could not extract any text from the file")
 
-    # Save the resume file to a temp path so it can be uploaded to ATS forms later
+    # Save the resume file encrypted at rest
     import tempfile
     import os
     import uuid
+    from backend.shared.resume_crypto import encrypt_and_save
+
     resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
     os.makedirs(resume_dir, exist_ok=True)
-    resume_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}.{suffix}")
-    with open(resume_path, "wb") as f:
-        f.write(raw)
-    logger.info("Resume saved to %s", resume_path)
+    plaintext_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}.{suffix}")
+    enc_path = encrypt_and_save(raw, plaintext_path)
+    logger.info("Resume encrypted and saved to %s", enc_path)
 
-    return {"text": text, "filename": file.filename, "file_path": resume_path}
+    return {"text": text, "filename": file.filename, "file_path": enc_path}
 
 
 # ---------------------------------------------------------------------------
