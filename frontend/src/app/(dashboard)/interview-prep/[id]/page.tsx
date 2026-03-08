@@ -289,7 +289,7 @@ export default function InterviewPrepSessionPage() {
             <span>Q{currentQ + 1} of {questions.length}</span>
             <div className="flex items-center gap-3">
               {!paid && currentQ < maxFreeQuestions && (
-                <span className="text-xs text-yellow-400">{maxFreeQuestions - currentQ} free question{maxFreeQuestions - currentQ !== 1 ? "s" : ""} left</span>
+                <span className="text-xs text-yellow-400">{maxFreeQuestions - currentQ - 1} free question{maxFreeQuestions - currentQ - 1 !== 1 ? "s" : ""} left</span>
               )}
               <span className="capitalize">{q.category.replace("_", " ")}</span>
             </div>
