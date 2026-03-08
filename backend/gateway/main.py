@@ -155,7 +155,7 @@ def create_app() -> FastAPI:
             "http://localhost:3000",
             "https://localhost:3000",
         ],
-        allow_origin_regex=r"https://.*\.vercel\.app",
+        allow_origin_regex=r"https://job-hunter-agent(-[a-z0-9]+)?\.vercel\.app",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
