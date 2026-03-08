@@ -739,22 +739,31 @@ export default function Home() {
                 <CardHeader className="pb-4">
                   <CardTitle className="text-2xl">{plan.name}</CardTitle>
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">{plan.summary}</p>
-                  <div className="pt-2">
-                    <span className="text-4xl font-bold">{plan.priceLabel}</span>
-                    {plan.apps === -1 ? (
-                      <span className="ml-2 text-sm text-zinc-500">/month</span>
-                    ) : plan.price > 0 ? (
-                      <span className="ml-2 text-sm text-zinc-500">{plan.perApp}/application</span>
-                    ) : null}
-                  </div>
-                  {"perDay" in plan && plan.perDay && (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                      That&apos;s just {(plan as { perDay: string }).perDay}
-                    </p>
+                  {"perDay" in plan && plan.perDay ? (
+                    <div className="pt-2">
+                      <span className="text-4xl font-bold text-emerald-600 dark:text-emerald-400">{(plan as { perDay: string }).perDay.replace("/day", "")}</span>
+                      <span className="ml-1 text-lg font-semibold text-emerald-600 dark:text-emerald-400">/day</span>
+                      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                        {plan.apps === -1 ? `${plan.priceLabel}/mo billed monthly` : `${plan.priceLabel} one-time`}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="pt-2">
+                      <span className="text-4xl font-bold">{plan.priceLabel}</span>
+                    </div>
                   )}
                   <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    {plan.apps === -1 ? "Up to 100 applications/month" : `${plan.apps} ${plan.apps === 3 ? "free applications" : "credits"}`}
+                    {plan.apps === -1
+                      ? "Up to 100 applications/month"
+                      : plan.apps === 3
+                        ? "3 free applications"
+                        : `${plan.apps} credits`}
                   </p>
+                  {plan.price > 0 && (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Saves ~{plan.apps === -1 ? "60" : plan.apps <= 10 ? "5" : plan.apps <= 50 ? "25" : "50"}+ hours of manual applications
+                    </p>
+                  )}
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col">
                   <ul className="mb-6 space-y-3">
