@@ -139,6 +139,46 @@ def check_already_applied(job_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def check_company_rate_limit(
+    company: str,
+    max_applications: int = 2,
+    window_days: int = 14,
+) -> Optional[Dict[str, Any]]:
+    """Check if company application rate limit has been reached.
+
+    Returns the most recent application record if limit is exceeded, None if OK.
+    Only ``submitted`` status counts.
+    """
+    try:
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                """
+                SELECT COUNT(*), MAX(created_at)
+                FROM application_results
+                WHERE LOWER(job_company) = LOWER(%s)
+                  AND status = 'submitted'
+                  AND created_at > NOW() - INTERVAL '%s days'
+                """,
+                (company, window_days),
+            )
+            row = cur.fetchone()
+            if row and row[0] >= max_applications:
+                return {
+                    "company": company,
+                    "count": row[0],
+                    "last_applied_at": row[1].isoformat() if row[1] else None,
+                    "window_days": window_days,
+                    "max_applications": max_applications,
+                }
+            return None
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to check company rate limit for %s", company)
+        return None
+
+
 def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
     """Return all application results for a session, ordered by creation time."""
     try:
