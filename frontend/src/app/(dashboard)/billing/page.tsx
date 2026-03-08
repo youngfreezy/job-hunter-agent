@@ -90,7 +90,14 @@ export default function BillingPage() {
         return;
       }
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) {
+        const redirectUrl = new URL(data.url);
+        if (redirectUrl.hostname.endsWith(".stripe.com")) {
+          window.location.href = data.url;
+        } else {
+          alert("Invalid checkout URL");
+        }
+      }
     } catch {
       alert("Failed to create checkout session");
     } finally {
