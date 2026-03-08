@@ -1,9 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFormikContext } from "formik";
 import type { SessionFormValues } from "@/lib/schemas/session";
 import { parseResume } from "@/lib/api";
+
+const STORAGE_KEY = "jh_resume_text";
+const FILENAME_KEY = "jh_resume_filename";
+
+function saveResumeToStorage(text: string, fileName: string) {
+  try {
+    localStorage.setItem(STORAGE_KEY, text);
+    localStorage.setItem(FILENAME_KEY, fileName);
+  } catch {
+    // localStorage full or unavailable
+  }
+}
 
 const SECTION_PATTERNS = [
   { label: "Summary", pattern: /\b(summary|profile|about)\b/i },
@@ -17,6 +29,25 @@ export function FormikFileUpload() {
   const { values, setFieldValue } = useFormikContext<SessionFormValues>();
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const restoredRef = useRef(false);
+
+  // Restore resume from localStorage on mount if form is empty
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    if (values.resumeText) return;
+    try {
+      const savedText = localStorage.getItem(STORAGE_KEY) || "";
+      const savedName = localStorage.getItem(FILENAME_KEY) || "";
+      if (savedText) {
+        setFieldValue("resumeText", savedText);
+        setFieldValue("resumeFileName", savedName);
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const detectedSections = SECTION_PATTERNS.filter((section) =>
     section.pattern.test(values.resumeText || "")
@@ -31,7 +62,9 @@ export function FormikFileUpload() {
 
     // Plain text files can be read directly
     if (file.type === "text/plain" || file.name.endsWith(".txt")) {
-      setFieldValue("resumeText", await file.text());
+      const text = await file.text();
+      setFieldValue("resumeText", text);
+      saveResumeToStorage(text, file.name);
       return;
     }
 
@@ -43,6 +76,7 @@ export function FormikFileUpload() {
       if (result.file_path) {
         setFieldValue("resumeFilePath", result.file_path);
       }
+      saveResumeToStorage(result.text, file.name);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to parse file";
       setError(msg);

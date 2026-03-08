@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # --- Auth ---
     NEXTAUTH_SECRET: Optional[str] = None
 
+    # --- Premium / paywall bypass ---
+    PREMIUM_EMAILS: str = ""  # comma-separated emails that skip interview prep paywall
+
     # --- Stripe ---
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None

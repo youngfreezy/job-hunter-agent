@@ -52,19 +52,24 @@ def _safe_parse_json(text, fallback: dict) -> dict:
             logger.warning("Empty LLM response (raw type=%s), using fallback", type(text).__name__)
             return fallback
         cleaned = _strip_json_fences(extracted)
-        if not cleaned.startswith("{"):
-            start = cleaned.find("{")
-            if start >= 0:
-                depth = 0
-                for i, c in enumerate(cleaned[start:], start):
-                    if c == "{":
-                        depth += 1
-                    elif c == "}":
-                        depth -= 1
-                        if depth == 0:
-                            cleaned = cleaned[start : i + 1]
-                            break
-        return json.loads(cleaned)
+        # Try direct parse first (fast path for clean JSON)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+        # Bracket-match to extract the outermost JSON object,
+        # handling leading/trailing text or incomplete responses.
+        start = cleaned.find("{")
+        if start >= 0:
+            depth = 0
+            for i, c in enumerate(cleaned[start:], start):
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return json.loads(cleaned[start : i + 1])
+        raise json.JSONDecodeError("No complete JSON object found", cleaned, 0)
     except (json.JSONDecodeError, AttributeError, TypeError) as exc:
         logger.warning("Failed to parse LLM JSON (%s): %.300s", type(exc).__name__, repr(text))
         return fallback
