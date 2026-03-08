@@ -9,56 +9,8 @@ import PivotComparisonBars from "@/components/charts/PivotComparisonBars";
 import SkillGapRadar from "@/components/charts/SkillGapRadar";
 import SkillBridgeViz from "@/components/charts/SkillBridgeViz";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-
-interface TaskBreakdown {
-  task: string;
-  risk_pct: number;
-  onet_activity_id?: string;
-}
-
-interface LearningResource {
-  name: string;
-  hours: number;
-  cost: string;
-}
-
-interface LearningWeek {
-  week: string | number;
-  topic: string;
-  resources?: LearningResource[];
-}
-
-interface SkillComparison {
-  categories: string[];
-  user_scores: number[];
-  target_scores: number[];
-}
-
-interface PivotRole {
-  role: string;
-  soc_code?: string;
-  skill_overlap_pct: number;
-  salary_range: { min: number; max: number; median: number };
-  market_demand: number;
-  growth_rate?: string;
-  entry_education?: string;
-  ai_risk_pct: number;
-  missing_skills: string[];
-  skill_comparison?: SkillComparison;
-  learning_plan: LearningWeek[];
-  time_to_pivot_weeks: number;
-}
-
-interface RiskAssessment {
-  automation_risk_score: number;
-  task_breakdown: TaskBreakdown[];
-  resistant_abilities?: string[];
-  parsed_role: string;
-  parsed_skills: string[];
-  years_experience: number;
-  industry: string;
-  soc_code?: string;
-}
+import type { LearningResource, LearningWeek, PivotRole, RiskAssessment, SkillBridge } from "@/lib/types/career-pivot";
+import { riskColor, riskLabel } from "@/lib/utils";
 
 export default function PivotResultPage() {
   const { id } = useParams<{ id: string }>();
@@ -68,7 +20,7 @@ export default function PivotResultPage() {
   const [pivots, setPivots] = useState<PivotRole[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expandedRadar, setExpandedRadar] = useState<number | null>(null);
-  const [skillBridges, setSkillBridges] = useState<Array<{ your_skill: string; skill_category: string; transfers_to: Array<{ industry: string; role: string; why: string; salary_range: { min: number; max: number; median: number }; demand: string; growth_rate: string; collar: string; ai_resistant: boolean }> }>>([]);
+  const [skillBridges, setSkillBridges] = useState<SkillBridge[]>([]);
   const [paywall, setPaywall] = useState<{ count: number; message: string; cost: number } | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
@@ -129,18 +81,6 @@ export default function PivotResultPage() {
     connect();
     return () => es?.close();
   }, [id]);
-
-  function riskColor(score: number) {
-    if (score >= 70) return "text-red-500";
-    if (score >= 40) return "text-yellow-500";
-    return "text-green-500";
-  }
-
-  function riskLabel(score: number) {
-    if (score >= 70) return "HIGH RISK";
-    if (score >= 40) return "MODERATE RISK";
-    return "LOW RISK";
-  }
 
   async function handleUnlock() {
     setUnlocking(true);
