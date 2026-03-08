@@ -1,0 +1,14 @@
+node_modules/
+backend/venv/
+__pycache__/
+*.pyc
+.git/
+*.log
+.env
+.env.*
+.next/
+.runtime/
+screenshots/
+test_screenshots/
+.pytest_cache/
+.playwright/

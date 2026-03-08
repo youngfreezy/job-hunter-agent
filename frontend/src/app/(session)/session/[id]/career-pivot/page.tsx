@@ -153,13 +153,21 @@ export default function SessionCareerPivotPage() {
         </p>
 
         {starting ? (
-          <div className="bg-card border rounded-lg p-8 space-y-4">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-              <p className="text-muted-foreground">
-                {statusMessage || "Starting your career analysis..."}
-              </p>
-              <div className="w-full max-w-xs bg-muted rounded-full h-1.5">
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-card border rounded-lg p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+                <p className="text-sm text-muted-foreground">
+                  {status === "parsing_resume" || status === "parsing"
+                    ? "Parsing your resume..."
+                    : status === "researching" || status === "researching_onet"
+                      ? "Researching labor market data..."
+                      : status === "assessing_risk"
+                        ? "Calculating your automation risk..."
+                        : statusMessage || "Starting your career analysis..."}
+                </p>
+              </div>
+              <div className="w-full bg-muted rounded-full h-1.5">
                 <div
                   className="bg-primary h-1.5 rounded-full animate-pulse transition-all duration-500"
                   style={{
@@ -174,6 +182,32 @@ export default function SessionCareerPivotPage() {
                             : "15%",
                   }}
                 />
+              </div>
+            </div>
+
+            {/* Risk score skeleton */}
+            <div className="bg-card border rounded-lg p-8 space-y-4">
+              <div className="flex flex-col items-center space-y-3">
+                <div className="h-4 w-40 bg-muted animate-pulse rounded" />
+                <div className="h-14 w-20 bg-muted animate-pulse rounded" />
+                <div className="h-3 w-24 bg-muted animate-pulse rounded" />
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <div className="h-4 w-48 bg-muted animate-pulse rounded" />
+                <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+              </div>
+            </div>
+
+            {/* Task breakdown skeleton */}
+            <div className="bg-card border rounded-lg p-6 space-y-3">
+              <div className="h-4 w-52 bg-muted animate-pulse rounded" />
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="h-3 w-2/5 bg-muted animate-pulse rounded" />
+                    <div className="h-2 flex-1 bg-muted animate-pulse rounded-full" />
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -229,11 +263,60 @@ export default function SessionCareerPivotPage() {
         !paywall &&
         status !== "completed" &&
         !error && (
-          <div className="bg-card border rounded-lg p-4 flex items-center gap-3">
-            <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
-            <p className="text-sm text-muted-foreground">
-              Finding recommended career paths...
-            </p>
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="bg-card border rounded-lg p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+                <p className="text-sm text-muted-foreground">
+                  {statusMessage || "Finding recommended career paths..."}
+                </p>
+              </div>
+              <div className="w-full bg-muted rounded-full h-1.5">
+                <div
+                  className="bg-primary h-1.5 rounded-full animate-pulse transition-all duration-500"
+                  style={{ width: "60%" }}
+                />
+              </div>
+            </div>
+
+            {/* Career comparison skeleton */}
+            <div className="bg-card border rounded-lg p-6 space-y-3">
+              <div className="h-5 w-40 bg-muted animate-pulse rounded" />
+              <div className="h-3 w-64 bg-muted animate-pulse rounded" />
+              <div className="h-[200px] flex items-end gap-3 pt-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                    <div
+                      className="w-full rounded-t bg-muted animate-pulse"
+                      style={{ height: `${80 + i * 30}px` }}
+                    />
+                    <div className="h-3 w-16 bg-muted animate-pulse rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Role card skeletons */}
+            {[1, 2].map((i) => (
+              <div key={i} className="bg-card border rounded-lg p-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="h-5 w-48 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                </div>
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div
+                    className="bg-muted animate-pulse h-2 rounded-full"
+                    style={{ width: `${50 + i * 15}%` }}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-28 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-36 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

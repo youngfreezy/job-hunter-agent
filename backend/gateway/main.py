@@ -7,6 +7,7 @@ Manages the LangGraph pipeline lifecycle, SSE streaming, and HITL flow.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,9 +17,12 @@ from fastapi.middleware.cors import CORSMiddleware
 _log_fmt = logging.Formatter("%(levelname)s %(name)s: %(message)s")
 _console = logging.StreamHandler()
 _console.setFormatter(_log_fmt)
-_file = logging.FileHandler("backend.log", mode="a")
-_file.setFormatter(_log_fmt)
-logging.basicConfig(level=logging.INFO, handlers=[_console, _file])
+_handlers: list[logging.Handler] = [_console]
+if os.environ.get("LOG_TO_FILE", "true").lower() == "true":
+    _file = logging.FileHandler("backend.log", mode="a")
+    _file.setFormatter(_log_fmt)
+    _handlers.append(_file)
+logging.basicConfig(level=logging.INFO, handlers=_handlers)
 for _noisy in (
     "httpcore", "httpx", "neo4j", "urllib3", "watchfiles", "asyncio",
     "browser_use", "cdp_use", "bubus",
@@ -185,14 +189,19 @@ def create_app() -> FastAPI:
     )
 
     # --- CORS ---
+    _origins = [
+        "http://localhost:3000",
+        "https://localhost:3000",
+        "http://localhost:3001",
+        "https://localhost:3001",
+    ]
+    _extra_origins = os.environ.get("CORS_ORIGINS", "")
+    if _extra_origins:
+        _origins.extend(o.strip() for o in _extra_origins.split(",") if o.strip())
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "https://localhost:3000",
-            "http://localhost:3001",
-            "https://localhost:3001",
-        ],
+        allow_origins=_origins,
         allow_origin_regex=r"https://job-hunter-agent(-[a-z0-9]+)?\.vercel\.app",
         allow_credentials=True,
         allow_methods=["*"],
