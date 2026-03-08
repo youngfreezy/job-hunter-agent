@@ -114,7 +114,6 @@ async def _send_completion_email(session_id: str) -> None:
     """Send a session-complete email notification (best-effort, non-blocking)."""
     try:
         from backend.shared.email_notifications import send_session_complete_email
-        # TODO: resolve user email from auth — for now skip if not available
         meta = session_registry.get(session_id, {})
         user_email = meta.get("user_email")
         if not user_email:
