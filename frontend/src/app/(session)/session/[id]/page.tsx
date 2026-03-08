@@ -1447,7 +1447,7 @@ export default function SessionPage() {
           </Card>
         </div>
 
-        <div className="space-y-4 overflow-y-auto border-l border-border/50 bg-card/30 px-5 pb-5 pt-0">
+        <div className="space-y-4 overflow-y-auto overflow-x-hidden min-w-0 border-l border-border/50 bg-card/30 px-5 pb-5 pt-0">
           <Card className="border-blue-100 bg-gradient-to-br from-blue-50 to-sky-50 dark:border-blue-900 dark:from-blue-950/50 dark:to-sky-950/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
