@@ -10,7 +10,8 @@ import { API_BASE, getAuthHeaders } from "@/lib/api";
 interface WalletData {
   balance: number;
   free_remaining: number;
-  application_cost: number;
+  credit_cost_submitted: number;
+  credit_cost_partial: number;
 }
 
 interface Pack {
@@ -109,7 +110,7 @@ export default function BillingPage() {
   if (loading) return null;
 
   const mainPacks = ["20", "50", "100"];
-  const topUpPacks = ["top_up_10", "top_up_25", "top_up_50"];
+  const topUpPacks = ["top_up_5", "top_up_10", "top_up_25"];
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 space-y-8">
@@ -131,9 +132,9 @@ export default function BillingPage() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-zinc-500">Wallet Balance</p>
+              <p className="text-sm font-medium text-zinc-500">Credit Balance</p>
               <p className="text-3xl font-bold mt-1">
-                ${wallet?.balance.toFixed(2) ?? "0.00"}
+                {wallet?.balance.toFixed(1) ?? "0"} <span className="text-base font-normal text-zinc-400">credits</span>
               </p>
             </div>
             <div className="text-right">
@@ -144,7 +145,7 @@ export default function BillingPage() {
             </div>
           </div>
           <p className="text-xs text-zinc-400 mt-3">
-            Each application costs ${wallet?.application_cost ?? "1.99"}. Free applications are used first.
+            Successful applications use 1 credit. Partial attempts use 0.5 credits. Skipped jobs are free. Free applications are used first.
           </p>
         </CardContent>
       </Card>
@@ -156,7 +157,7 @@ export default function BillingPage() {
           {mainPacks.map((id) => {
             const pack = packs[id];
             if (!pack) return null;
-            const perApp = (pack.price_dollars / parseInt(id)).toFixed(2);
+            const perCredit = (pack.price_dollars / pack.credit_amount).toFixed(2);
             return (
               <Card key={id} className="relative">
                 {id === "50" && (
@@ -167,7 +168,7 @@ export default function BillingPage() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-2xl font-bold">${pack.price_dollars}</p>
-                  <p className="text-xs text-zinc-500 mt-1">${perApp}/application</p>
+                  <p className="text-xs text-zinc-500 mt-1">${perCredit}/credit</p>
                   <Button
                     className="w-full mt-4"
                     size="sm"
@@ -228,15 +229,28 @@ export default function BillingPage() {
                 <div className="text-right">
                   <p
                     className={`text-sm font-bold ${
-                      tx.amount >= 0
-                        ? "text-green-600"
-                        : "text-red-500"
+                      tx.type === "free_application"
+                        ? "text-blue-500"
+                        : tx.amount > 0
+                          ? "text-green-600"
+                          : tx.type === "application_partial"
+                            ? "text-amber-500"
+                            : "text-red-500"
                     }`}
                   >
-                    {tx.amount >= 0 ? "+" : ""}${Math.abs(tx.amount).toFixed(2)}
+                    {tx.type === "free_application" ? (
+                      <span className="text-[10px] font-medium border border-blue-300 rounded px-1.5 py-0.5">FREE</span>
+                    ) : (
+                      <>
+                        {tx.amount > 0 ? "+" : ""}{Math.abs(tx.amount).toFixed(1)} cr
+                        {tx.type === "application_partial" && (
+                          <span className="ml-1.5 text-[10px] font-normal text-amber-500 border border-amber-300 rounded px-1 py-0.5">partial</span>
+                        )}
+                      </>
+                    )}
                   </p>
                   <p className="text-xs text-zinc-400">
-                    Balance: ${tx.balance_after.toFixed(2)}
+                    Balance: {tx.balance_after.toFixed(1)} cr
                   </p>
                 </div>
               </div>

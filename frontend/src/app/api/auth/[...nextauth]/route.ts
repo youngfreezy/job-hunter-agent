@@ -46,8 +46,8 @@ const authOptions: NextAuthOptions = {
       if (session.user) {
         const u = session.user as Record<string, unknown>;
         u.id = token.userId;
-        u.googleAccessToken = token.googleAccessToken;
-        u.googleRefreshToken = token.googleRefreshToken;
+        // Google OAuth tokens are intentionally NOT exposed to the client.
+        // Server-side code uses getToken() to access them (see /api/auth/gmail-token).
       }
       return session;
     },

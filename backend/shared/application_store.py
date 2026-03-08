@@ -179,6 +179,33 @@ def check_company_rate_limit(
         return None
 
 
+def delete_application_results_for_sessions(session_ids: List[str]) -> bool:
+    """Delete all application_results for the given session IDs (GDPR deletion).
+
+    Returns True on success, False on error.
+    """
+    if not session_ids:
+        return True
+    conn = _connect()
+    try:
+        # Use ANY(%s) with a list parameter for safe IN-clause
+        conn.execute(
+            "DELETE FROM application_results WHERE session_id = ANY(%s)",
+            (session_ids,),
+        )
+        conn.commit()
+        logger.info(
+            "Deleted application results for %d sessions", len(session_ids)
+        )
+        return True
+    except Exception:
+        conn.rollback()
+        logger.exception("Failed to delete application results for sessions")
+        return False
+    finally:
+        conn.close()
+
+
 def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
     """Return all application results for a session, ordered by creation time."""
     try:

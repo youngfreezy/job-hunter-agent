@@ -32,7 +32,34 @@ from backend.shared.models.schemas import (
     JobListing,
 )
 
+from playwright.async_api import TimeoutError as PlaywrightTimeout
+
 logger = logging.getLogger(__name__)
+
+
+async def goto_with_retry(page: Any, url: str, *, max_retries: int = 2, **kwargs) -> None:
+    """Navigate to *url* with retries on playwright timeout.
+
+    Only retries the page.goto() call itself -- callers should use this
+    instead of raw ``page.goto()`` for the initial navigation, NOT for
+    wrapping entire form-fill flows.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            await page.goto(url, **kwargs)
+            return
+        except PlaywrightTimeout:
+            if attempt == max_retries:
+                raise
+            wait = 2 ** attempt + random.uniform(0, 1)
+            logger.warning(
+                "Navigation timeout (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1,
+                max_retries,
+                wait,
+                url[:120],
+            )
+            await asyncio.sleep(wait)
 
 _CONFIRM_KEYWORDS = [
     "submitted", "success", "thank you", "thanks for applying",

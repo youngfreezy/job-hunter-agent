@@ -22,10 +22,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: jobhunter_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-jobhunter_redis_dev}
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-jobhunter_redis_dev}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5

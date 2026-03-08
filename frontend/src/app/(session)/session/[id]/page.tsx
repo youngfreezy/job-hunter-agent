@@ -27,6 +27,9 @@ import {
   LinkedInUpdateButton,
   type LinkedInProgress,
 } from "@/components/LinkedInUpdateButton";
+import ResumeScoreRadar from "@/components/charts/ResumeScoreRadar";
+import ScoreDistribution from "@/components/charts/ScoreDistribution";
+import JobComparisonChart from "@/components/charts/JobComparisonChart";
 import {
   getSession,
   connectSSE,
@@ -39,7 +42,6 @@ import {
   listCheckpoints,
   rewindSession,
   confirmLogin,
-  sendGmailToken,
 } from "@/lib/api";
 import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
@@ -314,21 +316,19 @@ function checkpointLabel(status: string): string {
 export default function SessionPage() {
   const params = useParams();
   const sessionId = params.id as string;
-  // Send Gmail token to backend so the agent can auto-extract verification codes
+  // Send Gmail token to backend via server-side proxy (tokens never touch the browser)
   const gmailTokenSent = useRef(false);
   useEffect(() => {
     if (gmailTokenSent.current) return;
-    fetch("/api/auth/session")
-      .then((r) => r.json())
-      .then((s) => {
-        const token = s?.user?.googleAccessToken as string | undefined;
-        const refreshToken = s?.user?.googleRefreshToken as string | undefined;
-        if (token) {
-          gmailTokenSent.current = true;
-          sendGmailToken(sessionId, token, refreshToken);
-        }
-      })
-      .catch(() => {});
+    gmailTokenSent.current = true;
+    fetch("/api/auth/gmail-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    }).catch(() => {
+      // Non-critical — verification codes will fall back to manual entry
+      gmailTokenSent.current = false;
+    });
   }, [sessionId]);
 
   const eventsStorageKey = `jh_sse_events_${sessionId}`;
@@ -1607,6 +1607,7 @@ export default function SessionPage() {
                     showValue
                   />
                 </div>
+                <ResumeScoreRadar scores={session.coach_output.resume_score} />
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1685,6 +1686,32 @@ export default function SessionPage() {
                     Review Shortlist
                   </Button>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {shortlistJobs.length > 0 && activePane !== "summary" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Score Distribution</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScoreDistribution scores={shortlistJobs.map(j => j.score)} />
+              </CardContent>
+            </Card>
+          )}
+
+          {shortlistJobs.length > 0 && activePane !== "summary" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Job Comparison</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <JobComparisonChart jobs={shortlistJobs.slice(0, 5).map(j => ({
+                  title: j.job.title,
+                  company: j.job.company,
+                  score_breakdown: j.score_breakdown,
+                }))} />
               </CardContent>
             </Card>
           )}

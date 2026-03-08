@@ -152,22 +152,30 @@ def debit_wallet(
     reference_id: str = "",
     description: str = "",
 ) -> Dict[str, Any]:
-    """Deduct funds from wallet. Returns new balance. Raises if insufficient."""
+    """Deduct credits from wallet. Returns new balance. Raises if insufficient.
+
+    For application charges (tx_type starting with "application_"):
+    - Free applications are consumed first (1 free app per attempt, regardless of amount)
+    - Then wallet credits are deducted
+    """
     conn = _connect()
     try:
+        # Row-level lock to prevent concurrent double-debit
         cur = conn.execute(
-            "SELECT wallet_balance, free_applications_remaining FROM users WHERE id = %s",
+            "SELECT wallet_balance, free_applications_remaining FROM users WHERE id = %s FOR UPDATE",
             (user_id,),
         )
         row = cur.fetchone()
         if not row:
+            conn.rollback()
             raise ValueError(f"User {user_id} not found")
 
         balance = float(row[0])
         free_remaining = row[1]
 
-        # Use free applications first
-        if tx_type == "application_charge" and free_remaining > 0:
+        # Use free applications first for any application charge
+        is_app_charge = tx_type.startswith("application_")
+        if is_app_charge and free_remaining > 0:
             conn.execute(
                 "UPDATE users SET free_applications_remaining = free_applications_remaining - 1 WHERE id = %s",
                 (user_id,),
@@ -176,19 +184,22 @@ def debit_wallet(
                 """INSERT INTO wallet_transactions
                    (user_id, amount, balance_after, type, reference_id, description)
                    VALUES (%s, %s, %s, %s, %s, %s)""",
-                (user_id, 0.0, balance, "free_application", reference_id, "Free application used"),
+                (user_id, 0.0, balance, "free_application", reference_id,
+                 f"Free application used — {description}" if description else "Free application used"),
             )
             conn.commit()
             return {"balance": balance, "free_used": True}
 
         if balance < amount:
-            raise ValueError(f"Insufficient balance: {balance} < {amount}")
+            conn.rollback()
+            raise ValueError(f"Insufficient credits: {balance} < {amount}")
 
-        conn.execute(
-            "UPDATE users SET wallet_balance = wallet_balance - %s WHERE id = %s",
+        # Atomic debit with RETURNING for accurate balance
+        cur = conn.execute(
+            "UPDATE users SET wallet_balance = wallet_balance - %s WHERE id = %s RETURNING wallet_balance",
             (amount, user_id),
         )
-        new_balance = balance - amount
+        new_balance = float(cur.fetchone()[0])
 
         conn.execute(
             """INSERT INTO wallet_transactions
@@ -198,6 +209,54 @@ def debit_wallet(
         )
         conn.commit()
         return {"balance": new_balance, "free_used": False}
+    finally:
+        conn.close()
+
+
+def check_sufficient_credits(user_id: str, amount: float = 1.0) -> bool:
+    """Check if user has enough credits (or free apps) for an application attempt.
+
+    Reserves against the full credit cost (1.0) since outcome is unknown upfront.
+    """
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT wallet_balance, free_applications_remaining FROM users WHERE id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        balance = float(row[0])
+        free_remaining = row[1]
+        return free_remaining > 0 or balance >= amount
+    finally:
+        conn.close()
+
+
+def delete_user_data(user_id: str) -> bool:
+    """Delete all billing data for a user (GDPR deletion).
+
+    Removes all wallet_transactions, then the users row itself.
+    Returns True on success, False on error.
+    """
+    conn = _connect()
+    try:
+        conn.execute(
+            "DELETE FROM wallet_transactions WHERE user_id = %s",
+            (user_id,),
+        )
+        conn.execute(
+            "DELETE FROM users WHERE id = %s",
+            (user_id,),
+        )
+        conn.commit()
+        logger.info("Deleted billing data for user %s", user_id)
+        return True
+    except Exception:
+        conn.rollback()
+        logger.exception("Failed to delete billing data for user %s", user_id)
+        return False
     finally:
         conn.close()
 

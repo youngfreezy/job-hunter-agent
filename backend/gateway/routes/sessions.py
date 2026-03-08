@@ -31,6 +31,12 @@ from backend.orchestrator.agents.coach_chat import revise_coach_output
 from backend.orchestrator.agents.workflow_supervisor import preview_steering_message
 from backend.shared.config import MAX_APPLICATION_JOBS
 from backend.shared.event_bus import register_emitter, unregister_emitter
+from backend.shared.session_store import (
+    upsert_session,
+    update_session_status,
+    update_session_counts,
+    get_sessions_for_user,
+)
 from backend.shared.models.schemas import (
     CoachReviewRequest,
     CoachOutput,
@@ -91,6 +97,23 @@ async def _emit(session_id: str, event_type: str, data: dict) -> None:
     # Push to all connected SSE clients
     for queue in sse_subscribers.get(session_id, []):
         await queue.put(event)
+
+
+def _set_session_status(session_id: str, status: str) -> None:
+    """Update session status in both in-memory registry and Postgres."""
+    if session_id in session_registry:
+        session_registry[session_id]["status"] = status
+    update_session_status(session_id, status)
+
+
+def _set_session_counts(
+    session_id: str, submitted: int, failed: int
+) -> None:
+    """Update application counts in both in-memory registry and Postgres."""
+    if session_id in session_registry:
+        session_registry[session_id]["applications_submitted"] = submitted
+        session_registry[session_id]["applications_failed"] = failed
+    update_session_counts(session_id, submitted, failed)
 
 
 def _spawn_background(coro: Any) -> asyncio.Task[Any]:
@@ -179,8 +202,7 @@ async def _stream_graph(
         last_status = status
 
         # Update registry status
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = status
+        _set_session_status(session_id, status)
 
         # Emit agent-specific events based on current pipeline status
         if status == "coaching" and state_snapshot.get("coach_output"):
@@ -231,14 +253,12 @@ async def _stream_graph(
                     "status": "done",
                 })
 
-        # Track application counts in registry
-        if session_id in session_registry:
-            session_registry[session_id]["applications_submitted"] = len(
-                state_snapshot.get("applications_submitted", [])
-            )
-            session_registry[session_id]["applications_failed"] = len(
-                state_snapshot.get("applications_failed", [])
-            )
+        # Track application counts in registry + Postgres
+        _set_session_counts(
+            session_id,
+            len(state_snapshot.get("applications_submitted", [])),
+            len(state_snapshot.get("applications_failed", [])),
+        )
 
         if status in ("completed", "failed"):
             summary = _serialize(state_snapshot.get("session_summary"))
@@ -275,8 +295,7 @@ async def _stream_graph(
 
 async def _handle_shortlist_interrupt(session_id: str, graph: Any, config: dict) -> None:
     """Emit the shortlist_review SSE event when the pipeline pauses for review."""
-    if session_id in session_registry:
-        session_registry[session_id]["status"] = "awaiting_review"
+    _set_session_status(session_id, "awaiting_review")
     try:
         graph_state = await graph.aget_state(config)
         channel_values = graph_state.values if hasattr(graph_state, "values") else {}
@@ -374,8 +393,7 @@ async def _run_pipeline(
                 channel_values = graph_state.values if hasattr(graph_state, "values") else {}
                 coach_output = channel_values.get("coach_output")
 
-                if session_id in session_registry:
-                    session_registry[session_id]["status"] = "awaiting_coach_review"
+                _set_session_status(session_id, "awaiting_coach_review")
 
                 await _emit(session_id, "coach_review", {
                     "status": "awaiting_coach_review",
@@ -404,8 +422,7 @@ async def _run_pipeline(
 
     except Exception as exc:
         logger.exception("Pipeline error for session %s", session_id)
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = "failed"
+        _set_session_status(session_id, "failed")
         await _emit(session_id, "error", {
             "message": "An internal error occurred",
             "session_id": session_id,
@@ -460,8 +477,7 @@ async def _resume_pipeline(
 
     except Exception as exc:
         logger.exception("Pipeline resume error for session %s", session_id)
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = "failed"
+        _set_session_status(session_id, "failed")
         await _emit(session_id, "error", {
             "message": "An internal error occurred",
             "session_id": session_id,
@@ -487,8 +503,7 @@ async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) ->
 
         if interrupt_stage == "coach_review":
             vals = (await graph.aget_state(config)).values
-            if session_id in session_registry:
-                session_registry[session_id]["status"] = "awaiting_coach_review"
+            _set_session_status(session_id, "awaiting_coach_review")
             await _emit(session_id, "coach_review", {
                 "status": "awaiting_coach_review",
                 "coach_output": _serialize(vals.get("coach_output")),
@@ -504,8 +519,7 @@ async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) ->
 
     except Exception as exc:
         logger.exception("Stalled pipeline resume failed for session %s", session_id)
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = "failed"
+        _set_session_status(session_id, "failed")
         await _emit(session_id, "error", {"message": "An internal error occurred", "session_id": session_id})
         await _emit(session_id, "done", {"status": "failed", "error": "An internal error occurred"})
         unregister_emitter(session_id)
@@ -552,8 +566,7 @@ async def _synthesise_snapshot(session_id: str, checkpointer, graph=None):
                 logger.debug("Could not check interrupt status for %s", session_id)
 
         # Update registry with correct status
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = status
+        _set_session_status(session_id, status)
 
         # Emit status event
         status_data = {
@@ -762,15 +775,13 @@ async def _load_sessions_from_db(checkpointer) -> Dict[str, dict]:
 
 @router.get("")
 async def list_sessions(request: Request):
-    """Return all sessions, merging in-memory registry with durable DB state."""
+    """Return all sessions, merging persisted DB state with in-memory registry."""
     from backend.gateway.deps import get_current_user
     user = get_current_user(request)
     user_id = user["id"]
 
-    checkpointer = request.app.state.checkpointer
-
-    # Load persisted sessions from Postgres
-    db_sessions = await _load_sessions_from_db(checkpointer)
+    # Load persisted sessions from the sessions table
+    db_sessions = {s["session_id"]: s for s in get_sessions_for_user(user_id)}
 
     # Merge: in-memory registry takes precedence (has live status updates)
     merged = {**db_sessions, **session_registry}
@@ -814,7 +825,7 @@ async def start_session(body: StartSessionRequest, request: Request):
     sse_subscribers[session_id] = []
 
     # Register session metadata immediately (before pipeline starts)
-    session_registry[session_id] = {
+    session_meta = {
         "session_id": session_id,
         "user_id": user_id,
         "status": "intake",
@@ -828,6 +839,8 @@ async def start_session(body: StartSessionRequest, request: Request):
         "applications_failed": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    session_registry[session_id] = session_meta
+    upsert_session(session_id, session_meta)
 
     # Launch the pipeline as a background coroutine
     _spawn_background(_run_pipeline(session_id, body, graph, user_id=user_id))
@@ -1006,8 +1019,7 @@ async def _test_apply_single(
         await _emit(session_id, "done", {"status": "failed", "error": "An internal error occurred"})
         terminal_status = "failed"
     finally:
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = terminal_status
+        _set_session_status(session_id, terminal_status)
         unregister_emitter(session_id)
 
 
@@ -1363,16 +1375,14 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
                 "status": "paused",
             },
         )
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = "paused"
+        _set_session_status(session_id, "paused")
         await _emit(session_id, "status", {
             "status": "paused",
             "message": "Coach review saved. Workflow is paused until you resume it.",
         })
         return {"status": "ok", "message": "Coach review saved while paused"}
 
-    if session_id in session_registry:
-        session_registry[session_id]["status"] = "discovering"
+    _set_session_status(session_id, "discovering")
 
     await _emit(session_id, "status", {
         "status": "discovering",
@@ -1449,8 +1459,7 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
     elif should_resume and "coach_review" in next_nodes and values.get("pending_coach_review_input"):
         await graph.aupdate_state(config, {"pending_coach_review_input": None})
         resumed_status = RESUME_STATUS_BY_NODE.get("discovery", "discovering")
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = resumed_status
+        _set_session_status(session_id, resumed_status)
         await _emit(session_id, "status", {
             "status": resumed_status,
             "message": "Resuming after the saved coach review...",
@@ -1465,8 +1474,7 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
     elif should_resume and "shortlist_review" in next_nodes and values.get("pending_shortlist_review_input"):
         await graph.aupdate_state(config, {"pending_shortlist_review_input": None})
         resumed_status = RESUME_STATUS_BY_NODE.get("application", "applying")
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = resumed_status
+        _set_session_status(session_id, resumed_status)
         await _emit(session_id, "status", {
             "status": resumed_status,
             "message": "Resuming after the saved shortlist decision...",
@@ -1514,16 +1522,14 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
                 "status": "paused",
             },
         )
-        if session_id in session_registry:
-            session_registry[session_id]["status"] = "paused"
+        _set_session_status(session_id, "paused")
         await _emit(session_id, "status", {
             "status": "paused",
             "message": "Shortlist decision saved. Workflow is paused until you resume it.",
         })
         return {"status": "ok", "approved_count": len(body.approved_job_ids)}
 
-    if session_id in session_registry:
-        session_registry[session_id]["status"] = "applying"
+    _set_session_status(session_id, "applying")
 
     await _emit(session_id, "status", {
         "status": "applying",
@@ -1672,7 +1678,7 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
             "applications_failed": 0,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-    session_registry[session_id]["status"] = "applying"
+    _set_session_status(session_id, "applying")
 
     await _emit(session_id, "status", {
         "status": "applying",
@@ -1743,7 +1749,7 @@ async def resume_session(session_id: str, request: Request):
 
     # Case 1: At an interrupt — re-emit the HITL event
     if "coach_review" in next_nodes:
-        session_registry[session_id]["status"] = "awaiting_coach_review"
+        _set_session_status(session_id, "awaiting_coach_review")
         await _emit(session_id, "coach_review", {
             "status": "awaiting_coach_review",
             "coach_output": _serialize(vals.get("coach_output")),
@@ -1759,7 +1765,7 @@ async def resume_session(session_id: str, request: Request):
 
     # Case 2: Not at an interrupt — continue the pipeline
     next_label = next_nodes[0] if next_nodes else "unknown"
-    session_registry[session_id]["status"] = vals.get("status", next_label)
+    _set_session_status(session_id, vals.get("status", next_label))
 
     await _emit(session_id, "status", {
         "status": session_registry[session_id]["status"],

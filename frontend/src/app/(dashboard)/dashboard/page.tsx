@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listSessions, type SessionListItem } from "@/lib/api";
+import FunnelChart from "@/components/charts/FunnelChart";
+import ApplicationsTimeline from "@/components/charts/ApplicationsTimeline";
 
 const STATUS_LABELS: Record<string, string> = {
   intake: "Starting",
@@ -202,6 +204,7 @@ export default function Dashboard() {
                   </p>
                 </div>
               </div>
+              <FunnelChart sessions={sessions} />
             </CardContent>
           </Card>
 
@@ -289,6 +292,8 @@ export default function Dashboard() {
               </div>
             )}
           </section>
+
+          <ApplicationsTimeline sessions={completedSessions} />
 
           <section>
             <div className="mb-4">

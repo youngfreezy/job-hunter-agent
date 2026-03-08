@@ -1,4 +1,4 @@
-"""Tests for user resolution from X-User-Email header."""
+"""Tests for user resolution from JWT-validated request state."""
 
 from unittest.mock import MagicMock, patch
 
@@ -7,11 +7,11 @@ from fastapi import HTTPException
 
 
 class TestGetCurrentUser:
-    """get_current_user should extract email from header and resolve user."""
+    """get_current_user should extract email from request.state and resolve user."""
 
     def _make_request(self, email: str | None = None) -> MagicMock:
         req = MagicMock()
-        req.headers = {"X-User-Email": email} if email else {}
+        req.state.user_email = email
         return req
 
     def test_valid_email_returns_user(self):

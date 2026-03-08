@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from typing import Any, Optional
 
 from langchain_anthropic import ChatAnthropic
@@ -146,24 +147,43 @@ def build_browser_use_llm(
     )
 
 
+_RETRYABLE_STATUS_CODES = {"429", "500", "502", "503", "529"}
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Return True if the exception represents a transient failure worth retrying."""
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError, ConnectionError)):
+        return True
+    err_str = str(exc).lower()
+    if "rate_limit" in err_str:
+        return True
+    for code in _RETRYABLE_STATUS_CODES:
+        if code in err_str:
+            return True
+    return False
+
+
 async def invoke_with_retry(llm: Any, messages: Any, *, max_retries: int = MAX_RETRIES):
-    """Invoke an LLM with manual retry+backoff for rate limits."""
-    backoff = INITIAL_BACKOFF
-    for attempt in range(max_retries + 1):
-        try:
-            return await llm.ainvoke(messages)
-        except Exception as exc:
-            err_str = str(exc)
-            is_rate_limit = "429" in err_str or "rate_limit" in err_str.lower()
-            if not is_rate_limit or attempt == max_retries:
-                raise
-            wait = min(backoff * (2 ** attempt), MAX_BACKOFF)
-            logger.warning(
-                "Rate limited (attempt %d/%d), retrying in %.0fs: %s",
-                attempt + 1,
-                max_retries,
-                wait,
-                err_str[:120],
-            )
-            await asyncio.sleep(wait)
-    raise RuntimeError("Exhausted retries")
+    """Invoke an LLM with manual retry+backoff and circuit breaker protection."""
+    from backend.shared.circuit_breaker import llm_breaker, CircuitBreakerOpen
+
+    try:
+        async with llm_breaker:
+            for attempt in range(max_retries + 1):
+                try:
+                    return await llm.ainvoke(messages)
+                except Exception as exc:
+                    if not _is_retryable(exc) or attempt == max_retries:
+                        raise
+                    wait = min(MAX_BACKOFF, INITIAL_BACKOFF * (2 ** attempt)) + random.uniform(0, 1)
+                    logger.warning(
+                        "Transient failure (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1,
+                        max_retries,
+                        wait,
+                        str(exc)[:120],
+                    )
+                    await asyncio.sleep(wait)
+            raise RuntimeError("Exhausted retries")
+    except CircuitBreakerOpen:
+        raise  # Let callers handle circuit-open state
