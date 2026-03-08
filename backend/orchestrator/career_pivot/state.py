@@ -24,6 +24,25 @@ class PivotRole(TypedDict):
     time_to_pivot_weeks: int
 
 
+class SkillBridgeTarget(TypedDict):
+    """A target role reachable via a transferable skill."""
+    industry: str
+    role: str
+    why: str
+    salary_range: Dict[str, Any]
+    demand: str
+    growth_rate: str
+    collar: str  # "white" / "blue" / "pink"
+    ai_resistant: bool
+
+
+class SkillBridge(TypedDict):
+    """A transferable skill mapped to diverse cross-industry roles."""
+    your_skill: str
+    skill_category: str  # "Technical" / "Interpersonal" / "Cognitive" / "Physical"
+    transfers_to: List[SkillBridgeTarget]
+
+
 class CareerPivotState(TypedDict):
     """Full state for the Career Pivot Advisor pipeline."""
 
@@ -57,6 +76,9 @@ class CareerPivotState(TypedDict):
 
     # --- Role Mapping output ---
     recommended_pivots: List[PivotRole]
+
+    # --- Cross-Industry Skill Bridges ---
+    skill_bridges: List[SkillBridge]
 
     # --- HITL ---
     selected_pivot_indices: Optional[List[int]]  # user picks which pivots to explore

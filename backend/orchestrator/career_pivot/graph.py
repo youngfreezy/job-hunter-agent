@@ -76,7 +76,7 @@ async def skill_parser_node(state: CareerPivotState) -> Dict[str, Any]:
     from langchain_core.messages import HumanMessage, SystemMessage
 
     resume_text = state.get("resume_text", "")
-    llm = build_llm(model=default_model(), max_tokens=2048, temperature=0.0)
+    llm = build_llm(model=default_model(), max_tokens=8192, temperature=0.0)
 
     messages = [
         SystemMessage(content="""You are a career analyst specializing in O*NET occupational classification.
@@ -262,7 +262,7 @@ async def role_mapper_node(state: CareerPivotState) -> Dict[str, Any]:
     location = state.get("location", "Remote")
     onet_research = state.get("onet_research", "")
 
-    llm = build_llm(model=default_model(), max_tokens=16384, temperature=0.0)
+    llm = build_llm(model=default_model(), max_tokens=32768, temperature=0.0)
 
     onet_context = ""
     if onet_research:
@@ -336,6 +336,112 @@ async def role_mapper_node(state: CareerPivotState) -> Dict[str, Any]:
     }
 
 
+async def cross_industry_mapper_node(state: CareerPivotState) -> Dict[str, Any]:
+    """Map transferable skills to creative cross-industry, cross-collar roles."""
+    from backend.shared.llm import build_llm, premium_model, invoke_with_retry
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    role = state.get("parsed_role", "Unknown")
+    soc_code = state.get("soc_code", "")
+    skills = state.get("parsed_skills", [])
+    knowledge_areas = state.get("knowledge_areas", [])
+    abilities = state.get("abilities", [])
+    resistant_abilities = state.get("resistant_abilities", [])
+    years = state.get("years_experience", 0)
+    industry = state.get("industry", "Unknown")
+    onet_research = state.get("onet_research", "")
+
+    llm = build_llm(model=premium_model(), max_tokens=32768, temperature=0.7)
+
+    onet_context = ""
+    if onet_research:
+        onet_context = (
+            "\n\nREFERENCE DATA from O*NET for the user's current occupation:\n"
+            + onet_research[:4000]
+        )
+
+    system_prompt = (
+        "You are a creative career strategist who finds UNEXPECTED career paths by mapping "
+        "transferable skills across industries and collar types (white/blue/pink collar).\n"
+        + onet_context
+        + "\n\n## YOUR TASK\n"
+        "Identify 4-6 of the user's strongest transferable skills and map each to 2-4 "
+        "diverse target roles in DIFFERENT industries.\n\n"
+        "## MANDATORY RULES\n"
+        "1. **CROSS-COLLAR DIVERSITY**: If the user is white-collar, at least 30% of target "
+        "roles MUST be blue-collar or pink-collar (and vice versa). A carpenter should see "
+        "UX Researcher. A software engineer should see Wind Turbine Technician.\n"
+        "2. **NO ADJACENT ROLES**: Do NOT suggest roles in the same industry or obvious lateral "
+        "moves. 'Software Developer → Data Scientist' is too obvious. Think bigger.\n"
+        "3. **CREATIVE TRANSFERS**: Find unexpected contexts where skills genuinely apply. "
+        "Spatial reasoning → UX design. Project management → Film production. Debugging → "
+        "Medical diagnostics. Problem decomposition → Culinary arts.\n"
+        "4. **AI-RESISTANT BIAS**: Prefer roles that are hard to automate. Flag each role.\n"
+        "5. **REAL DATA**: Use BLS salary ranges and demand levels. Don't invent numbers.\n"
+        "6. **EXPLAIN WHY**: Each bridge must have a 2-3 sentence 'why' explaining the "
+        "skill transfer in plain language a non-expert would understand.\n\n"
+        "## OUTPUT FORMAT\n"
+        "Return ONLY valid JSON, no markdown:\n"
+        "{\n"
+        '  "skill_bridges": [\n'
+        "    {\n"
+        '      "your_skill": "Spatial Reasoning",\n'
+        '      "skill_category": "Cognitive",\n'
+        '      "transfers_to": [\n'
+        "        {\n"
+        '          "industry": "Design",\n'
+        '          "role": "UX Researcher",\n'
+        '          "why": "Your ability to mentally rotate and manipulate objects translates directly to understanding how users navigate digital spaces. UX research relies on spatial thinking to design intuitive interfaces.",\n'
+        '          "salary_range": {"min": 65000, "max": 130000, "median": 95000},\n'
+        '          "demand": "High",\n'
+        '          "growth_rate": "16% much faster than average",\n'
+        '          "collar": "white",\n'
+        '          "ai_resistant": true\n'
+        "        }\n"
+        "      ]\n"
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "Skill categories: Technical, Interpersonal, Cognitive, Physical\n"
+        "Collar types: white, blue, pink\n"
+        "Demand levels: High, Medium, Low"
+    )
+
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=(
+            f"Current SOC: {soc_code}\n"
+            f"Current role: {role}\n"
+            f"Industry: {industry}\n"
+            f"Years experience: {years}\n"
+            f"Skills: {', '.join(skills[:15])}\n"
+            f"Knowledge areas: {', '.join(knowledge_areas[:10])}\n"
+            f"Abilities: {', '.join(abilities[:10])}\n"
+            f"AI-resistant abilities: {', '.join(resistant_abilities[:8])}"
+        )),
+    ]
+
+    logger.info("cross_industry_mapper: calling LLM for %s (%s)", role, soc_code)
+    try:
+        response = await invoke_with_retry(llm, messages)
+        content = response.content
+        logger.info("cross_industry_mapper: got %d chars response", len(content) if content else 0)
+    except Exception as exc:
+        logger.warning("cross_industry_mapper LLM call failed: %s", str(exc)[:200])
+        content = ""
+    parsed = _safe_parse_json(
+        content,
+        {"skill_bridges": []},
+    )
+
+    bridges = parsed.get("skill_bridges", [])
+    logger.info("cross_industry_mapper: parsed %d skill bridges", len(bridges))
+    return {
+        "skill_bridges": bridges,
+        "status": "mapping_cross_industry",
+    }
+
+
 async def report_generator_node(state: CareerPivotState) -> Dict[str, Any]:
     """Generate final pivot report."""
     return {
@@ -352,13 +458,15 @@ def build_career_pivot_graph(checkpointer=None):
     g.add_node("onet_researcher", onet_researcher_node)
     g.add_node("risk_assessor", risk_assessor_node)
     g.add_node("role_mapper", role_mapper_node)
+    g.add_node("cross_industry_mapper", cross_industry_mapper_node)
     g.add_node("report_generator", report_generator_node)
 
     g.add_edge(START, "skill_parser")
     g.add_edge("skill_parser", "onet_researcher")
     g.add_edge("onet_researcher", "risk_assessor")
     g.add_edge("risk_assessor", "role_mapper")
-    g.add_edge("role_mapper", "report_generator")
+    g.add_edge("role_mapper", "cross_industry_mapper")
+    g.add_edge("cross_industry_mapper", "report_generator")
     g.add_edge("report_generator", END)
 
     return g.compile(checkpointer=checkpointer)

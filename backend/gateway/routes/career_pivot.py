@@ -58,6 +58,7 @@ async def _run_pivot_pipeline(session_id: str, graph, config, initial_state):
                     "researching_onet": "Researching your occupation...",
                     "assessing_risk": "Assessing AI automation risk for your role...",
                     "mapping_roles": "Finding adjacent roles you're qualified for...",
+                    "mapping_cross_industry": "Mapping your skills to unexpected industries...",
                     "completed": "Your pivot report is ready!",
                 }
                 _emit_pivot(session_id, "status", {"status": status, "message": messages.get(status, status)})
@@ -86,10 +87,31 @@ async def _run_pivot_pipeline(session_id: str, graph, config, initial_state):
                     _emit_pivot(session_id, "paywall", {
                         "type": "pivot_roles",
                         "count": len(snapshot["recommended_pivots"]),
-                        "message": f"We found {len(snapshot['recommended_pivots'])} roles you could pivot into. Unlock for 1 credit.",
+                        "message": f"We found {len(snapshot['recommended_pivots'])} pivot roles and mapped your skills to new industries. Unlock for 1 credit.",
                         "cost": 1.0,
                     })
+                    _pivot_registry[session_id]["paywall_emitted"] = True
                 _pivot_registry[session_id]["pivots_emitted"] = True
+
+            if snapshot.get("skill_bridges") and not _pivot_registry[session_id].get("bridges_emitted"):
+                bridges_data = {"skill_bridges": snapshot["skill_bridges"]}
+                if _pivot_registry[session_id].get("paid"):
+                    _emit_pivot(session_id, "transferable_skills", bridges_data)
+                else:
+                    # Cache bridges for later unlock (same paywall as pivots)
+                    _pivot_registry[session_id]["cached_bridges"] = bridges_data
+                    # Emit paywall if not already emitted (e.g. pivots were empty)
+                    if not _pivot_registry[session_id].get("paywall_emitted"):
+                        pivot_count = len(snapshot.get("recommended_pivots", []))
+                        bridge_count = len(snapshot["skill_bridges"])
+                        _emit_pivot(session_id, "paywall", {
+                            "type": "transferable_skills",
+                            "count": bridge_count,
+                            "message": f"We mapped your skills to {bridge_count} new career paths. Unlock for 1 credit.",
+                            "cost": 1.0,
+                        })
+                        _pivot_registry[session_id]["paywall_emitted"] = True
+                _pivot_registry[session_id]["bridges_emitted"] = True
 
         _emit_pivot(session_id, "done", {"message": "Career pivot analysis complete"})
         _pivot_registry[session_id]["status"] = "completed"
@@ -130,6 +152,7 @@ async def start_pivot(request: Request, body: StartPivotRequest):
         "task_breakdown": [],
         "resistant_abilities": [],
         "recommended_pivots": [],
+        "skill_bridges": [],
         "onet_research": None,
         "report_generated": False,
     }
@@ -203,11 +226,16 @@ async def unlock_pivot(request: Request, session_id: str):
 
     meta["paid"] = True
 
-    # Emit cached pivot roles via SSE
+    # Emit cached pivot roles + skill bridges via SSE
     cached = meta.get("cached_pivots")
     if cached:
         _emit_pivot(session_id, "pivot_roles", cached)
         del meta["cached_pivots"]
+
+    cached_bridges = meta.get("cached_bridges")
+    if cached_bridges:
+        _emit_pivot(session_id, "transferable_skills", cached_bridges)
+        del meta["cached_bridges"]
 
     return {"status": "unlocked", "balance": result["balance"]}
 
@@ -231,6 +259,8 @@ async def get_pivot(request: Request, session_id: str):
             result["risk_assessment"] = event["data"]
         elif event["type"] == "pivot_roles" and meta.get("paid"):
             result["pivot_roles"] = event["data"]
+        elif event["type"] == "transferable_skills" and meta.get("paid"):
+            result["transferable_skills"] = event["data"]
         elif event["type"] == "paywall" and not meta.get("paid"):
             result["paywall"] = event["data"]
 

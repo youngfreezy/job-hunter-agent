@@ -70,7 +70,6 @@ export default function InterviewPrepSessionPage() {
   const [paid, setPaid] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [freeRemaining, setFreeRemaining] = useState<number | null>(null);
   const maxFreeQuestions = 2;
   const router = useRouter();
 
@@ -133,7 +132,6 @@ export default function InterviewPrepSessionPage() {
       setLastGrade(data.grade);
       setGrades((prev) => [...prev, data.grade]);
       setAnswer("");
-      if (!paid) setFreeRemaining(Math.max(0, maxFreeQuestions - data.questions_answered));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
@@ -202,7 +200,7 @@ export default function InterviewPrepSessionPage() {
       if (!res.ok) throw new Error("Unlock failed");
       setPaid(true);
       setShowPaywall(false);
-      setFreeRemaining(null);
+      // freeRemaining no longer tracked — gating uses currentQ
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to unlock");
     } finally {

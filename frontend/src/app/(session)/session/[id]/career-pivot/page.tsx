@@ -6,8 +6,10 @@ import { API_BASE, getAuthHeaders, getWallet } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import TaskRiskBars from "@/components/charts/TaskRiskBars";
-import PivotComparisonScatter from "@/components/charts/PivotComparisonScatter";
+import PivotComparisonBars from "@/components/charts/PivotComparisonBars";
 import SkillGapRadar from "@/components/charts/SkillGapRadar";
+import SkillBridgeViz from "@/components/charts/SkillBridgeViz";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface TaskBreakdown {
   task: string;
@@ -60,7 +62,7 @@ interface RiskAssessment {
 }
 
 export default function SessionCareerPivotPage() {
-  const { id: sessionId } = useParams<{ id: string }>();
+  useParams<{ id: string }>();
   const router = useRouter();
   const [pivotId, setPivotId] = useState<string | null>(null);
   const [status, setStatus] = useState("idle");
@@ -69,6 +71,7 @@ export default function SessionCareerPivotPage() {
   const [pivots, setPivots] = useState<PivotRole[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expandedRadar, setExpandedRadar] = useState<number | null>(null);
+  const [skillBridges, setSkillBridges] = useState<Array<{ your_skill: string; skill_category: string; transfers_to: Array<{ industry: string; role: string; why: string; salary_range: { min: number; max: number; median: number }; demand: string; growth_rate: string; collar: string; ai_resistant: boolean }> }>>([]);
   const [paywall, setPaywall] = useState<{ count: number; message: string; cost: number } | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
@@ -124,6 +127,11 @@ export default function SessionCareerPivotPage() {
       const data = JSON.parse(e.data);
       setPivots(data.recommended_pivots || []);
       setPaywall(null);
+    });
+
+    es.addEventListener("transferable_skills", (e) => {
+      const data = JSON.parse(e.data);
+      setSkillBridges(data.skill_bridges || []);
     });
 
     es.addEventListener("paywall", (e) => {
@@ -400,21 +408,30 @@ export default function SessionCareerPivotPage() {
         </div>
       )}
 
-      {/* Pivot Comparison Chart */}
+      {/* Pivot Results — Tabs */}
       {pivots.length > 0 && (
-        <div className="bg-card border rounded-lg p-6">
-          <h2 className="text-lg font-medium mb-4">Pivot Role Comparison</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Bubble size = projected annual job openings. Color = AI risk (green=low, red=high).
-          </p>
-          <PivotComparisonScatter pivots={pivots} />
-        </div>
-      )}
+        <Tabs defaultValue="pivots" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="pivots">Recommended Pivots</TabsTrigger>
+            <TabsTrigger value="bridges" disabled={skillBridges.length === 0}>
+              Skills to New Industries
+              {skillBridges.length === 0 && status !== "completed" && (
+                <span className="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+              )}
+            </TabsTrigger>
+          </TabsList>
 
-      {/* Pivot Roles */}
-      {pivots.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Recommended Pivot Roles</h2>
+          <TabsContent value="pivots" className="space-y-4">
+            {/* Comparison Chart */}
+            <div className="bg-card border rounded-lg p-6">
+              <h2 className="text-lg font-medium mb-2">Pivot Role Comparison</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Blue = skill match, green = AI safety (100 - risk), amber = relative salary.
+              </p>
+              <PivotComparisonBars pivots={pivots} />
+            </div>
+
+            {/* Role Cards */}
           {pivots.map((pivot, i) => (
             <div key={i} className="bg-card border rounded-lg p-6 space-y-3">
               <div className="flex items-center justify-between">
@@ -526,7 +543,25 @@ export default function SessionCareerPivotPage() {
               )}
             </div>
           ))}
-        </div>
+          </TabsContent>
+
+          <TabsContent value="bridges" className="space-y-4">
+            <div className="bg-card border rounded-lg p-6">
+              <h2 className="text-lg font-medium mb-2">Your Skills in New Industries</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Select a skill to see unexpected career paths where it transfers — across industries and collar types.
+              </p>
+              {skillBridges.length > 0 ? (
+                <SkillBridgeViz bridges={skillBridges} />
+              ) : (
+                <div className="flex items-center gap-3 py-8 justify-center">
+                  <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+                  <p className="text-sm text-muted-foreground">Mapping transferable skills...</p>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
