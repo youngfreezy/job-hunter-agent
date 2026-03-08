@@ -5,16 +5,16 @@ services:
     image: postgres:16-alpine
     container_name: jobhunter_db
     environment:
-      POSTGRES_USER: jobhunter
-      POSTGRES_PASSWORD: jobhunter
-      POSTGRES_DB: jobhunter
+      POSTGRES_USER: ${POSTGRES_USER:-jobhunter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobhunter_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-jobhunter}
     ports:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jobhunter -d jobhunter"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobhunter} -d ${POSTGRES_DB:-jobhunter}"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -34,9 +34,9 @@ services:
     image: ghcr.io/umami-software/umami:postgresql-latest
     container_name: jobhunter_umami
     environment:
-      DATABASE_URL: postgresql://jobhunter:jobhunter@postgres:5432/umami
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jobhunter}:${POSTGRES_PASSWORD:-jobhunter_dev}@postgres:5432/umami
       DATABASE_TYPE: postgresql
-      APP_SECRET: umami-secret-change-me
+      APP_SECRET: ${UMAMI_APP_SECRET:-umami-dev-secret}
     ports:
       - "3001:3000"
     depends_on:
