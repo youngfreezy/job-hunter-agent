@@ -3,9 +3,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { NavShell } from "./NavShell";
+import { API_BASE, getAuthHeaders } from "@/lib/api";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -15,6 +17,7 @@ const NAV_LINKS = [
   { href: "/freelance", label: "Freelance" },
   { href: "/autopilot", label: "Autopilot" },
   { href: "/history", label: "History" },
+  { href: "/billing", label: "Billing" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -32,6 +35,30 @@ function handleSignOut() {
 
 export function GlobalNav() {
   const pathname = usePathname();
+  const [credits, setCredits] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function fetchCredits() {
+      try {
+        const auth = await getAuthHeaders();
+        const res = await fetch(`${API_BASE}/api/billing/wallet`, { headers: auth });
+        if (res.ok) {
+          const data = await res.json();
+          setCredits(data.balance);
+        }
+      } catch {}
+    }
+    fetchCredits();
+  }, []);
+
+  const creditColor =
+    credits === null
+      ? "text-muted-foreground"
+      : credits > 5
+        ? "text-emerald-600"
+        : credits > 0
+          ? "text-amber-500"
+          : "text-red-500";
 
   return (
     <NavShell>
@@ -52,6 +79,16 @@ export function GlobalNav() {
             </Link>
           );
         })}
+        {credits !== null && (
+          <Link
+            href="/billing"
+            className={`px-2.5 py-1 text-xs font-bold rounded-full border ${creditColor} ${
+              credits <= 5 ? "border-current animate-pulse" : "border-transparent bg-muted/50"
+            }`}
+          >
+            {credits.toFixed(0)} cr
+          </Link>
+        )}
         <Link href="/session/new">
           <Button size="sm">New Session</Button>
         </Link>

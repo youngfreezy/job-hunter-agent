@@ -74,9 +74,10 @@ const pricingPacks = [
   {
     name: "10 Credits",
     apps: 10,
-    price: 12.99,
-    priceLabel: "$12.99",
-    perApp: "$1.30",
+    price: 14.99,
+    priceLabel: "$14.99",
+    perApp: "$1.50",
+    perDay: "$0.50/day",
     summary: "Perfect first purchase after free trial.",
     features: [
       "10 application credits",
@@ -91,16 +92,17 @@ const pricingPacks = [
   {
     name: "50 Credits",
     apps: 50,
-    price: 49.99,
-    priceLabel: "$49.99",
-    perApp: "$1.00",
+    price: 59.99,
+    priceLabel: "$59.99",
+    perApp: "$1.20",
+    perDay: "$2.00/day",
     summary: "Best value for serious job searches.",
     features: [
       "50 application credits",
       "Everything in 10 Credits pack",
       "Priority application processing",
       "Direct browser control for complex sites",
-      "Save 23% vs 10-credit packs",
+      "Save 20% vs 10-credit packs",
     ],
     cta: "Get 50 Credits",
     popular: true,
@@ -108,12 +110,13 @@ const pricingPacks = [
   {
     name: "Unlimited Monthly",
     apps: -1,
-    price: 79.99,
-    priceLabel: "$79.99",
+    price: 99.99,
+    priceLabel: "$99.99",
     perApp: "unlimited",
+    perDay: "$3.33/day",
     summary: "Unlimited applications for active searchers.",
     features: [
-      "Unlimited application credits",
+      "Up to 100 applications/month",
       "Everything in 50 Credits pack",
       "Cancel or pause anytime",
       "Priority support",
@@ -188,9 +191,9 @@ const jsonLd = {
     "AI-powered job application automation. Searches 5 job boards, tailors resumes per role, and submits applications automatically with human approval checkpoints.",
   offers: [
     { "@type": "Offer", price: "0", priceCurrency: "USD", description: "3 free application credits" },
-    { "@type": "Offer", price: "12.99", priceCurrency: "USD", description: "10 credit pack" },
-    { "@type": "Offer", price: "49.99", priceCurrency: "USD", description: "50 credit pack" },
-    { "@type": "Offer", price: "79.99", priceCurrency: "USD", description: "Unlimited monthly subscription" },
+    { "@type": "Offer", price: "14.99", priceCurrency: "USD", description: "10 credit pack" },
+    { "@type": "Offer", price: "59.99", priceCurrency: "USD", description: "50 credit pack" },
+    { "@type": "Offer", price: "99.99", priceCurrency: "USD", description: "Unlimited monthly subscription" },
   ],
   aggregateRating: {
     "@type": "AggregateRating",
@@ -221,7 +224,7 @@ function ROICalculator() {
 
   const weeklyHoursSaved = appsPerWeek * hoursPerApp;
   const weeklyCostManual = weeklyHoursSaved * hourlyRate;
-  const creditCost = appsPerWeek <= 10 ? 12.99 : appsPerWeek <= 50 ? 49.99 : 79.99;
+  const creditCost = appsPerWeek <= 10 ? 14.99 : appsPerWeek <= 50 ? 59.99 : 99.99;
   const savings = weeklyCostManual - creditCost;
   const roi = Math.round((savings / creditCost) * 100);
 
@@ -321,7 +324,7 @@ export default function Home() {
               <div className="mt-10 grid gap-6 sm:grid-cols-3">
                 {[
                   { value: "5 job boards", label: "Searched simultaneously" },
-                  { value: "3 free credits", label: "Then from $1.20/app" },
+                  { value: "3 free credits", label: "Then from $1.50/app" },
                   { value: "2 approval steps", label: "You control everything" },
                 ].map((s) => (
                   <div key={s.value}>
@@ -744,8 +747,13 @@ export default function Home() {
                       <span className="ml-2 text-sm text-zinc-500">{plan.perApp}/application</span>
                     ) : null}
                   </div>
+                  {"perDay" in plan && plan.perDay && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                      That&apos;s just {(plan as { perDay: string }).perDay}
+                    </p>
+                  )}
                   <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    {plan.apps === -1 ? "Unlimited applications" : `${plan.apps} ${plan.apps === 3 ? "free applications" : "credits"}`}
+                    {plan.apps === -1 ? "Up to 100 applications/month" : `${plan.apps} ${plan.apps === 3 ? "free applications" : "credits"}`}
                   </p>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col">
@@ -769,7 +777,7 @@ export default function Home() {
           </div>
 
           <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            Also available: 100 credits for $89.99 ($0.90/credit). Need more?{" "}
+            Also available: 100 credits for $109.99 ($1.10/credit). Need more?{" "}
             <a href="mailto:support@jobhunteragent.com" className="underline hover:text-zinc-900 dark:hover:text-white">Contact us</a> for volume pricing.
           </p>
         </div>

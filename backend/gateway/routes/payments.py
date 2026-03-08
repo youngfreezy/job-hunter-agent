@@ -7,7 +7,8 @@ Pricing (credit-based):
   - Partial attempt (work done, form didn't complete): 0.5 credits
   - Skipped (duplicate, rate-limited, no work done): 0 credits
   - 3 free applications for new users
-  - Packs: 20 credits ($29.99), 50 credits ($64.99), 100 credits ($119.99)
+  - Packs: 10 credits ($14.99), 50 credits ($59.99), 100 credits ($109.99)
+  - Unlimited: $99.99/month (100 apps/month cap)
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from backend.shared.billing_store import (
     get_stripe_customer_id,
     get_transactions,
     get_wallet,
+    set_premium,
     update_auto_refill_settings,
 )
 from backend.shared.config import get_settings
@@ -34,12 +36,19 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 # Pack definitions (credit-based)
 PACKS = {
-    "20": {"label": "20 Credits", "price_dollars": 29.99, "credit_amount": 20},
-    "50": {"label": "50 Credits", "price_dollars": 64.99, "credit_amount": 50},
-    "100": {"label": "100 Credits", "price_dollars": 119.99, "credit_amount": 100},
+    "10": {"label": "10 Credits", "price_dollars": 14.99, "credit_amount": 10},
+    "50": {"label": "50 Credits", "price_dollars": 59.99, "credit_amount": 50},
+    "100": {"label": "100 Credits", "price_dollars": 109.99, "credit_amount": 100},
     "top_up_5": {"label": "5 Credits", "price_dollars": 7.99, "credit_amount": 5},
     "top_up_10": {"label": "10 Credits", "price_dollars": 14.99, "credit_amount": 10},
     "top_up_25": {"label": "25 Credits", "price_dollars": 34.99, "credit_amount": 25},
+}
+
+# Unlimited subscription plan
+UNLIMITED_PLAN = {
+    "price_dollars": 99.99,
+    "monthly_cap": 100,
+    "label": "Unlimited Monthly",
 }
 
 # Credit costs per application outcome
@@ -156,6 +165,58 @@ async def checkout_endpoint(body: CheckoutRequest, request: Request):
         raise HTTPException(status_code=500, detail="Failed to create checkout session")
 
 
+@router.post("/subscribe")
+async def subscribe_endpoint(request: Request):
+    """Create a Stripe Checkout session for the unlimited monthly subscription."""
+    settings = get_settings()
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    import stripe
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    user = get_current_user(request)
+    stripe_customer_id = get_stripe_customer_id(user["id"])
+
+    body = await request.json()
+    success_url = body.get("success_url", "http://localhost:3000/billing?success=true")
+    cancel_url = body.get("cancel_url", "http://localhost:3000/billing?canceled=true")
+
+    try:
+        checkout_kwargs = dict(
+            mode="subscription",
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {"name": UNLIMITED_PLAN["label"]},
+                    "unit_amount": int(UNLIMITED_PLAN["price_dollars"] * 100),
+                    "recurring": {"interval": "month"},
+                },
+                "quantity": 1,
+            }],
+            metadata={
+                "user_id": user["id"],
+                "plan": "unlimited",
+            },
+            subscription_data={
+                "metadata": {
+                    "user_id": user["id"],
+                    "plan": "unlimited",
+                },
+            },
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+        if stripe_customer_id:
+            checkout_kwargs["customer"] = stripe_customer_id
+
+        session = stripe.checkout.Session.create(**checkout_kwargs)
+        return {"url": session.url, "session_id": session.id}
+    except Exception as e:
+        logger.exception("Stripe subscription checkout creation failed")
+        raise HTTPException(status_code=500, detail="Failed to create subscription checkout")
+
+
 @router.post("/webhook")
 async def webhook_endpoint(request: Request):
     """Handle Stripe webhook events."""
@@ -202,5 +263,21 @@ async def webhook_endpoint(request: Request):
                 "Credited %d credits to user %s (pack=%s)",
                 credit_amount, user_id, pack_id,
             )
+
+    elif event["type"] == "customer.subscription.created":
+        sub = event["data"]["object"]
+        metadata = sub.get("metadata", {})
+        user_id = metadata.get("user_id")
+        if user_id:
+            set_premium(user_id, True)
+            logger.info("Set premium for user %s (subscription created)", user_id)
+
+    elif event["type"] == "customer.subscription.deleted":
+        sub = event["data"]["object"]
+        metadata = sub.get("metadata", {})
+        user_id = metadata.get("user_id")
+        if user_id:
+            set_premium(user_id, False)
+            logger.info("Removed premium for user %s (subscription canceled)", user_id)
 
     return {"received": True}
