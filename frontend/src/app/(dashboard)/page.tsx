@@ -32,27 +32,21 @@ const steps = [
   },
 ];
 
-const testimonials = [
+const platformHighlights = [
   {
-    quote: "I went from spending 3 hours a day on applications to 20 minutes of review. Landed 4 interviews in my first week.",
-    name: "Sarah K.",
-    role: "Software Engineer",
-    company: "Previously at Series B startup",
-    stat: "4 interviews in week 1",
+    stat: "15+ hrs/week saved",
+    title: "Reclaim your time",
+    desc: "Stop copy-pasting the same info into 50 different forms. Your AI handles the repetitive parts while you focus on networking and interview prep.",
   },
   {
-    quote: "The resume optimization alone was worth it. My callback rate doubled after the AI rewrote my resume for each role.",
-    name: "Marcus T.",
-    role: "Product Manager",
-    company: "Transitioned from consulting",
-    stat: "2x callback rate",
+    stat: "Every app is tailored",
+    title: "No more generic resumes",
+    desc: "Each application gets a resume and cover letter customized to the specific role, company, and job description. No two submissions are the same.",
   },
   {
-    quote: "Finally, a tool that applies to jobs without sending embarrassing generic applications. Every submission is tailored.",
-    name: "Priya R.",
-    role: "Data Analyst",
-    company: "Recent grad, now at Fortune 500",
-    stat: "Hired in 3 weeks",
+    stat: "You approve everything",
+    title: "Full control, zero surprises",
+    desc: "Review your optimized resume before anything goes out. Choose exactly which jobs to apply to. Watch applications submit in real time.",
   },
 ];
 
@@ -261,20 +255,17 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Social Proof */}
+      {/* Platform Highlights */}
       <section className="px-6 pb-16">
         <div className="mx-auto max-w-6xl">
-          <h2 className="mb-8 text-center text-2xl font-bold">Job seekers are landing interviews faster</h2>
+          <h2 className="mb-8 text-center text-2xl font-bold">Why job seekers choose JobHunter Agent</h2>
           <div className="grid gap-6 md:grid-cols-3">
-            {testimonials.map((t) => (
-              <Card key={t.name} className="rounded-3xl border-zinc-200/80 bg-white/90 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            {platformHighlights.map((h) => (
+              <Card key={h.title} className="rounded-3xl border-zinc-200/80 bg-white/90 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
                 <CardContent className="p-6">
-                  <Badge variant="secondary" className="mb-3 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{t.stat}</Badge>
-                  <p className="text-sm leading-6 text-zinc-600 dark:text-zinc-400">&ldquo;{t.quote}&rdquo;</p>
-                  <div className="mt-4">
-                    <p className="text-sm font-semibold text-zinc-900 dark:text-white">{t.name}</p>
-                    <p className="text-xs text-zinc-500">{t.role} &middot; {t.company}</p>
-                  </div>
+                  <Badge variant="secondary" className="mb-3 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{h.stat}</Badge>
+                  <p className="text-sm font-semibold text-zinc-900 dark:text-white">{h.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">{h.desc}</p>
                 </CardContent>
               </Card>
             ))}
