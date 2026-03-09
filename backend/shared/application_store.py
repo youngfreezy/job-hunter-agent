@@ -125,7 +125,7 @@ def check_already_applied(job_id: str) -> Optional[Dict[str, Any]]:
                 }
             return None
     except Exception:
-        logger.exception("Failed to check duplicate for %s", job_id)
+        logger.warning("Failed to check duplicate for %s", job_id, exc_info=True)
         return None
 
 
@@ -162,7 +162,7 @@ def check_company_rate_limit(
                 }
             return None
     except Exception:
-        logger.exception("Failed to check company rate limit for %s", company)
+        logger.warning("Failed to check company rate limit for %s", company, exc_info=True)
         return None
 
 
@@ -229,5 +229,5 @@ def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
                 for r in rows
             ]
     except Exception:
-        logger.exception("Failed to get application results for session %s", session_id)
+        logger.warning("Failed to get application results for session %s", session_id, exc_info=True)
         return []

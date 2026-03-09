@@ -1,38 +1,48 @@
 # Database Architecture
 
-## Overview
+## Plain English Summary
 
-The backend uses PostgreSQL (hosted on Railway) for all persistent state: users, sessions, applications, autopilot schedules, billing/wallets, selector memory, and LangGraph checkpoints.
+JobHunter uses two databases: **PostgreSQL** for permanent data and **Redis** for temporary, fast-access data.
 
-Redis (also Railway) handles ephemeral state: rate limiting, task queues, and autopilot run coordination.
+**PostgreSQL** is where everything important lives — user accounts, job search sessions, application results, billing/wallet info, autopilot schedules, and the AI pipeline's internal checkpoints. If the server restarts, all of this survives. It's hosted on Railway alongside the rest of the app.
 
-## Connection Pooling
+**Redis** handles short-lived stuff that doesn't need to survive a restart: rate limiting (so users can't spam the API), task queues, and coordination between autopilot runs.
 
-All synchronous database access goes through a **shared connection pool** defined in `backend/shared/db.py`. This pool is powered by `psycopg_pool.ConnectionPool` (part of the psycopg3 ecosystem).
+### What is connection pooling and why does it matter?
 
-### Why pooling matters
+Every time the app talks to Postgres, it needs a "connection" — think of it like a phone call. Without pooling, the app was dialing a brand new call for every single database query, then hanging up immediately after. With autopilot checking every 60 seconds and each job search making 50+ queries, this meant hundreds of rapid-fire dial-and-hangup cycles. That caused three problems:
 
-Before this pool existed, every database call created a brand new TCP connection to Postgres — full TCP handshake, TLS negotiation, and Postgres authentication on every single query. With the autopilot scheduler running every 60 seconds and each job search session making 50+ DB calls, this caused:
+1. **Slowness** — each new connection takes 50-200ms just to set up (handshake, security, authentication) before any actual work happens.
+2. **Connection limits** — Postgres only allows ~100 simultaneous connections. Rapid-fire new connections can hit that ceiling and start failing.
+3. **Socket exhaustion** — closed connections linger in the OS for ~60 seconds before fully cleaning up, clogging the network layer.
 
-- **Connection storms** during pipeline execution (multiple concurrent queries all opening fresh connections)
-- **Intermittent failures** when Postgres hit `max_connections` (default 100 on Railway)
-- **TIME_WAIT socket exhaustion** from rapid open/close cycles (each closed socket lingers for ~60s)
-- **Latency overhead** of 50-200ms per query just for connection setup
+**The fix: a connection pool.** Instead of dialing a new call every time, the app keeps a small set of open connections ready to go. When code needs the database, it borrows a connection from the pool, does its work, and returns it — no setup cost, no teardown waste. The app maintains two pools: one for regular operations (max 20 connections) and one for the AI pipeline's checkpoint system (max 10 connections). That's 30 total out of Postgres's 100 limit, leaving plenty of room.
 
-### How it works now
+---
+
+## Technical Implementation
+
+### Connection Pool Architecture
+
+Two separate pools serve different access patterns:
+
+| Pool | Location | Type | Max Size | Used By |
+|------|----------|------|----------|---------|
+| Sync pool | `backend/shared/db.py` | `psycopg_pool.ConnectionPool` | 20 | All store modules, route handlers |
+| Async pool | `gateway/main.py` | `psycopg_pool.AsyncConnectionPool` | 10 | LangGraph `AsyncPostgresSaver` checkpointer |
+
+**Sync pool config:** `min_size=2` (2 warm connections always ready), `max_size=20`.
 
 ```
 backend/shared/db.py
 ├── get_pool()        → returns the shared ConnectionPool (lazy-initialized)
-├── get_connection()  → context manager that checks out a connection, returns it on exit
+├── get_connection()  → context manager: checks out a connection, returns it on exit
 └── close_pool()      → called during FastAPI shutdown
 ```
 
-Configuration:
-- `min_size=2` — always keep 2 warm connections ready
-- `max_size=20` — never exceed 20 simultaneous connections from the sync pool
+### Connection Pattern
 
-Every store file (`billing_store.py`, `session_store.py`, `application_store.py`, `autopilot_store.py`, `selector_memory.py`, `dead_letter_queue.py`) and route file (`stats.py`, `health.py`, `sms.py`) uses this pool through a local `_connect()` wrapper:
+Every file that needs Postgres uses the pool through a local `_connect()` wrapper:
 
 ```python
 from backend.shared.db import get_connection
@@ -46,25 +56,16 @@ with _connect() as conn:
     conn.commit()
 ```
 
-When the `with` block exits, the connection goes back to the pool — not destroyed, just returned for reuse.
+When the `with` block exits, the connection returns to the pool — not destroyed, just available for reuse.
 
-### Two separate pools
+### Pool Lifecycle
 
-There are actually two connection pools:
-
-1. **Sync pool** (`backend/shared/db.py`) — `ConnectionPool`, max 20 connections. Used by all store modules and route handlers for regular CRUD.
-2. **Async pool** (`gateway/main.py`) — `AsyncConnectionPool`, max 10 connections. Used exclusively by the LangGraph `AsyncPostgresSaver` checkpointer for checkpoint reads/writes during pipeline execution.
-
-Total max connections: 30 out of Railway's default 100 limit, leaving plenty of headroom.
-
-### Lifecycle
-
-- **Startup**: The sync pool is lazy-initialized on first use (typically during `ensure_*_tables()` calls in the FastAPI lifespan). The async pool is explicitly opened in the lifespan.
+- **Startup**: Sync pool is lazy-initialized on first use (typically during `ensure_*_tables()` calls in the FastAPI lifespan). Async pool is explicitly opened in the lifespan.
 - **Shutdown**: Both pools are closed in the FastAPI shutdown handler (`close_pool()` for sync, `pool.close()` for async).
 
-## Store Modules
+### Store Modules
 
-Each store module owns one domain's tables and provides async CRUD helpers (via `asyncio.to_thread` wrapping sync psycopg calls):
+Each store module owns one domain's tables and provides CRUD helpers (sync psycopg calls wrapped with `asyncio.to_thread` where needed):
 
 | Module | Tables | Purpose |
 |--------|--------|---------|
@@ -76,9 +77,7 @@ Each store module owns one domain's tables and provides async CRUD helpers (via 
 | `apply_selectors.py` | `apply_selectors` | CSS selector learning for ATS forms |
 | `dead_letter_queue.py` | `dead_letter_queue` | Failed operations for retry |
 
-## Adding New Database Code
-
-When writing new code that needs Postgres access:
+### Rules for New Database Code
 
 1. Import `get_connection` from `backend.shared.db`
 2. Always use the `with` context manager pattern
