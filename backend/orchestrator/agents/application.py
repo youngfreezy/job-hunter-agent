@@ -761,20 +761,28 @@ async def _apply_to_job(
                     duration_seconds=int(time.monotonic() - start_time),
                 )
 
-            # --- Step 2: Generate cover letter (only if we'll actually apply) ---
-            await emit_agent_event(session_id, "application_progress", {
-                "job_id": job_id,
-                "step": f"Generating cover letter for {job.title} at {job.company}...",
-                "current": _app_idx + 1,
-                "total": _total_q,
-                "progress": _pct,
-            })
-            cover_letter = await generate_cover_letter(
-                job=job,
-                resume_text=resume_text,
-                template=cover_letter_template,
-            )
-            cover_letter_text = cover_letter.text
+            # --- Step 2: Generate cover letter (only if enabled in config) ---
+            session_config = state.get("session_config")
+            should_generate_cl = True  # default
+            if session_config:
+                _cfg = session_config if isinstance(session_config, dict) else (session_config.model_dump() if hasattr(session_config, "model_dump") else {})
+                should_generate_cl = _cfg.get("generate_cover_letters", True)
+
+            cover_letter_text = ""
+            if should_generate_cl:
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": f"Generating cover letter for {job.title} at {job.company}...",
+                    "current": _app_idx + 1,
+                    "total": _total_q,
+                    "progress": _pct,
+                })
+                cover_letter = await generate_cover_letter(
+                    job=job,
+                    resume_text=resume_text,
+                    template=cover_letter_template,
+                )
+                cover_letter_text = cover_letter.text
 
             # --- Step 3: Extract user profile ---
             user_profile = await _extract_user_profile(state)

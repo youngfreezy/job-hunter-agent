@@ -70,7 +70,23 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         from backend.browser.tools.direct_discovery import discover_all_boards
         _BOARD_ORDER = ["linkedin", "indeed", "glassdoor", "greenhouse_lever"]
 
-    boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS]
+    # Respect job_boards from session config if provided
+    session_config = state.get("session_config")
+    configured_boards: list | None = None
+    if session_config:
+        cfg = session_config if isinstance(session_config, dict) else (session_config.model_dump() if hasattr(session_config, "model_dump") else {})
+        configured_boards = cfg.get("job_boards")
+
+    if configured_boards:
+        # Map frontend board names to internal names
+        _BOARD_NAME_MAP = {"linkedin": "linkedin", "indeed": "indeed", "glassdoor": "glassdoor", "ziprecruiter": "ziprecruiter", "greenhouse_lever": "greenhouse_lever"}
+        allowed = {_BOARD_NAME_MAP.get(b, b) for b in configured_boards}
+        boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS and b in allowed]
+        if not boards:
+            # Fallback to all boards if user config results in empty list
+            boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS]
+    else:
+        boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS]
 
     logger.info(
         "Discovery agent starting -- keywords=%s, locations=%s, boards=%s",
