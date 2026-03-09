@@ -69,14 +69,40 @@ export default function SignupPage() {
             validationSchema={signupSchema}
             onSubmit={async (values, { setSubmitting }) => {
               setError("");
-              // User record created automatically on first API call via get_or_create_user
+              const apiUrl =
+                process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+              // 1. Register with the backend
+              const regRes = await fetch(`${apiUrl}/api/auth/register`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: values.name,
+                  email: values.email,
+                  password: values.password,
+                }),
+              });
+
+              if (!regRes.ok) {
+                const data = await regRes.json().catch(() => ({}));
+                setError(
+                  data.detail || "Failed to create account. Please try again."
+                );
+                setSubmitting(false);
+                return;
+              }
+
+              // 2. Sign in via NextAuth credentials
               const result = await signIn("credentials", {
                 email: values.email,
                 password: values.password,
                 redirect: false,
               });
+
               if (result?.error) {
-                setError("Failed to create account. Please try again.");
+                setError(
+                  "Account created but sign-in failed. Please try logging in."
+                );
                 setSubmitting(false);
               } else {
                 window.location.href = "/session/new";

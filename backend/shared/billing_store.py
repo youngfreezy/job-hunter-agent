@@ -72,6 +72,20 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+-- Email/password auth columns
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'google';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
@@ -121,7 +135,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
     conn = _connect()
     try:
         cur = conn.execute(
-            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium FROM users WHERE email = %s",
+            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider FROM users WHERE email = %s",
             (email,),
         )
         row = cur.fetchone()
@@ -132,6 +146,8 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
                 "wallet_balance": float(row[2]),
                 "free_applications_remaining": row[3],
                 "is_premium": row[4],
+                "name": row[5],
+                "auth_provider": row[6] or "google",
             }
 
         # Create new user
@@ -429,6 +445,110 @@ def delete_user_data(user_id: str) -> bool:
     except Exception:
         conn.rollback()
         logger.exception("Failed to delete billing data for user %s", user_id)
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_auth_info(email: str) -> Optional[Dict[str, Any]]:
+    """Get auth-relevant fields for a user by email. Returns None if not found."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT id, email, password_hash, auth_provider, name FROM users WHERE email = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "id": str(row[0]),
+            "email": row[1],
+            "password_hash": row[2],
+            "auth_provider": row[3] or "google",
+            "name": row[4],
+        }
+    finally:
+        conn.close()
+
+
+def create_user_with_password(email: str, password_hash: str, name: str) -> Dict[str, Any]:
+    """Create a new user with email/password auth. Returns user dict."""
+    conn = _connect()
+    try:
+        user_id = str(uuid.uuid4())
+
+        # Create Stripe customer
+        settings = get_settings()
+        stripe_customer_id = None
+        if settings.STRIPE_SECRET_KEY:
+            try:
+                stripe.api_key = settings.STRIPE_SECRET_KEY
+                customer = stripe.Customer.create(email=email, name=name)
+                stripe_customer_id = customer.id
+            except Exception as e:
+                logger.warning("Failed to create Stripe customer for %s: %s", email, e)
+
+        conn.execute(
+            """INSERT INTO users (id, email, password_hash, name, auth_provider, stripe_customer_id)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (user_id, email, password_hash, name, "email", stripe_customer_id),
+        )
+        conn.commit()
+        return {
+            "id": user_id,
+            "email": email,
+            "name": name,
+            "auth_provider": "email",
+        }
+    finally:
+        conn.close()
+
+
+def set_user_password(email: str, password_hash: str, name: Optional[str] = None) -> Dict[str, Any]:
+    """Set password on an existing user (e.g. Google-only user adding email auth)."""
+    conn = _connect()
+    try:
+        if name:
+            conn.execute(
+                "UPDATE users SET password_hash = %s, name = COALESCE(name, %s), auth_provider = 'both' WHERE email = %s",
+                (password_hash, name, email),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET password_hash = %s, auth_provider = 'both' WHERE email = %s",
+                (password_hash, email),
+            )
+        conn.commit()
+
+        cur = conn.execute(
+            "SELECT id, email, name, auth_provider FROM users WHERE email = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+        return {
+            "id": str(row[0]),
+            "email": row[1],
+            "name": row[2],
+            "auth_provider": row[3],
+        }
+    finally:
+        conn.close()
+
+
+def link_google_provider(email: str) -> bool:
+    """Mark an email-only user as having linked Google auth."""
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE users SET auth_provider = 'both' WHERE email = %s AND auth_provider = 'email'",
+            (email,),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        logger.exception("Failed to link Google for %s", email)
         return False
     finally:
         conn.close()

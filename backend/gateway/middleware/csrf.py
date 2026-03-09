@@ -26,6 +26,9 @@ _EXEMPT_PATHS = {
     "/api/health",
     "/api/health/ready",
     "/api/stripe/webhook",
+    "/api/auth/register",
+    "/api/auth/login",
+    "/api/auth/link-google",
 }
 _EXEMPT_PREFIXES = (
     "/api/sessions/",  # SSE stream endpoints use GET

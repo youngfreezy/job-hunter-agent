@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 _ROUTE_RULES: list[Tuple[str, Optional[str], int, int, str]] = [
     # Health check — unlimited (handled by early return, listed for clarity)
     ("/api/health", None, 0, 0, "health"),
+    # Auth endpoints — tight limits to prevent brute force
+    ("/api/auth/login", "POST", 5, 60, "auth_login"),
+    ("/api/auth/register", "POST", 3, 60, "auth_register"),
     # Start session — tight limit
     ("/api/sessions", "POST", 2, 60, "session_create"),
     # Test apply — tight limit
@@ -73,6 +76,12 @@ def _classify_request(path: str, method: str) -> Optional[Tuple[int, int, str]]:
                 return max_req, window, bucket
             continue
 
+        # Auth endpoints: exact path + POST
+        if pattern in ("/api/auth/login", "/api/auth/register") and method_filter == "POST":
+            if path.rstrip("/") == pattern and method_upper == "POST":
+                return max_req, window, bucket
+            continue
+
         # Session create: exact path + POST
         if pattern == "/api/sessions" and method_filter == "POST":
             if path.rstrip("/") == "/api/sessions" and method_upper == "POST":
@@ -96,12 +105,14 @@ def _classify_request(path: str, method: str) -> Optional[Tuple[int, int, str]]:
 def _get_identifier(request: Request) -> str:
     """Determine the rate-limit identity for the request.
 
-    Prefers the ``X-User-Id`` header (authenticated routes), falling back to
-    the client's IP address.
+    Uses the authenticated user email (set by JWT middleware) when available,
+    falling back to the client's IP address. Never trusts client-supplied
+    headers for identity to prevent rate-limit bypass.
     """
-    user_id = request.headers.get("x-user-id")
-    if user_id:
-        return f"user:{user_id}"
+    # Use authenticated identity from JWT middleware (not spoofable)
+    user_email = getattr(request.state, "user_email", None)
+    if user_email:
+        return f"user:{user_email}"
 
     # Use X-Forwarded-For if behind a reverse proxy, otherwise use client host.
     forwarded = request.headers.get("x-forwarded-for")
