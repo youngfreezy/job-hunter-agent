@@ -569,6 +569,19 @@ export default function InterviewPrepSessionPage() {
         </div>
       )}
 
+      {/* Next Steps */}
+      {status === "completed" && report && (
+        <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30 p-4">
+          <h3 className="font-semibold text-green-900 dark:text-green-300 mb-2">Next Steps</h3>
+          <ul className="text-sm text-green-800 dark:text-green-400 space-y-1">
+            <li>Review your weakest areas and practice those questions again</li>
+            <li>Research the company&apos;s recent news and projects</li>
+            <li>Prepare 2-3 questions to ask your interviewer</li>
+            <li>Schedule a follow-up practice session to track improvement</li>
+          </ul>
+        </div>
+      )}
+
       {error && (
         <div className="bg-destructive/10 border border-destructive rounded-lg p-4">
           <p className="text-destructive">{error}</p>

@@ -78,6 +78,11 @@ export default function FreelancePage() {
       </p>
 
       <div className="bg-card border rounded-lg p-6 space-y-6">
+        <p className="text-muted-foreground text-sm">
+          Upload your resume and we&apos;ll scan top freelance platforms for gigs matching your skills,
+          generate tailored proposals, and help you apply — all in one session.
+        </p>
+
         <ResumeUpload onResumeReady={() => setHasResume(true)} />
 
         <div>
