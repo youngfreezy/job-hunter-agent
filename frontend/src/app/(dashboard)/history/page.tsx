@@ -284,7 +284,7 @@ export default function HistoryPage() {
                                 {STATUS_LABELS[session.status] || session.status}
                               </Badge>
                               <span className="text-sm font-semibold truncate">
-                                {session.keywords.join(", ") || "Untitled"}
+                                {(session.keywords || []).join(", ") || "Untitled"}
                               </span>
                               {session.remote_only && (
                                 <Badge variant="secondary" className="text-[10px] py-0">
@@ -292,9 +292,9 @@ export default function HistoryPage() {
                                 </Badge>
                               )}
                             </div>
-                            {session.locations.length > 0 && (
+                            {(session.locations || []).length > 0 && (
                               <p className="text-xs text-muted-foreground mt-0.5">
-                                {session.locations.join(", ")}
+                                {(session.locations || []).join(", ")}
                               </p>
                             )}
                           </div>
