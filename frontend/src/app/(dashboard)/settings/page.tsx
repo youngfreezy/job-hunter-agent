@@ -43,9 +43,7 @@ export default function SettingsPage() {
         }
       } catch {
         console.error("Failed to load user settings");
-      } finally {
-        setLoading(false);
-      }
+      } 
     }
     load();
   }, []);
