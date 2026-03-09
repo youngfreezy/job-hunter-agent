@@ -355,7 +355,7 @@ export default function Home() {
       </nav>
 
       {/* Hero */}
-      <section className="px-6 py-20">
+      <section className="px-6 py-10">
         <div className="mx-auto max-w-7xl">
           <div className="relative overflow-hidden rounded-[36px] border border-zinc-200/80 bg-white px-8 py-10 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.35)] dark:border-zinc-800 dark:bg-zinc-950 lg:px-12 lg:py-12">
             <div className="absolute -left-24 top-10 h-64 w-64 rounded-full bg-blue-200/40 blur-3xl dark:bg-blue-500/10" />
