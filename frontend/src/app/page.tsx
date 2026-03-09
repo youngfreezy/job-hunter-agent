@@ -785,7 +785,11 @@ export default function Home() {
             ))}
           </div>
 
-          <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-4 text-center text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            30-day money-back guarantee on all paid plans. No questions asked.
+          </p>
+
+          <p className="mt-3 text-center text-sm text-zinc-500 dark:text-zinc-400">
             Also available: 100 credits for $109.99 ($1.10/credit). Need more?{" "}
             <a href="mailto:support@jobhunteragent.com" className="underline hover:text-zinc-900 dark:hover:text-white">Contact us</a> for volume pricing.
           </p>

@@ -41,11 +41,14 @@ function QuickStartInner() {
   const { values, isSubmitting } = useFormikContext<SessionFormValues>();
   const [keywords, setKeywords] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
+  const [remoteOnly, setRemoteOnly] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isNavigating, setIsNavigating] = useState(false);
+  const [newKeyword, setNewKeyword] = useState("");
+  const [newLocation, setNewLocation] = useState("");
   const analyzedTextRef = useRef("");
 
   // Auto-analyze when resume text appears
@@ -83,6 +86,22 @@ function QuickStartInner() {
     setLocations((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const addKeyword = () => {
+    const val = newKeyword.trim();
+    if (val && !keywords.includes(val)) {
+      setKeywords((prev) => [...prev, val]);
+      setNewKeyword("");
+    }
+  };
+
+  const addLocation = () => {
+    const val = newLocation.trim();
+    if (val && !locations.includes(val)) {
+      setLocations((prev) => [...prev, val]);
+      setNewLocation("");
+    }
+  };
+
   const handleRetryAnalysis = useCallback(() => {
     analyzedTextRef.current = "";
     setAnalyzed(false);
@@ -101,9 +120,7 @@ function QuickStartInner() {
       const session = await startSession({
         keywords,
         locations,
-        remote_only:
-          locations.length === 0 ||
-          locations.every((l) => l.toLowerCase() === "remote"),
+        remote_only: remoteOnly,
         salary_min: null,
         resume_text: values.resumeText,
         resume_file_path: values.resumeFilePath || null,
@@ -174,13 +191,8 @@ function QuickStartInner() {
         <Card>
           <CardContent className="p-6 space-y-4">
             <div>
-              <p className="text-sm font-medium mb-2">
-                Search Keywords
-                <span className="text-zinc-500 font-normal ml-1">
-                  (click to remove)
-                </span>
-              </p>
-              <div className="flex flex-wrap gap-2">
+              <p className="text-sm font-medium mb-2">Search Keywords</p>
+              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500">
                 {keywords.map((kw, i) => (
                   <Badge
                     key={i}
@@ -191,17 +203,25 @@ function QuickStartInner() {
                     {kw} &times;
                   </Badge>
                 ))}
+                <input
+                  type="text"
+                  value={newKeyword}
+                  onChange={(e) => setNewKeyword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); addKeyword(); }
+                    if (e.key === "Backspace" && !newKeyword && keywords.length > 0) {
+                      removeKeyword(keywords.length - 1);
+                    }
+                  }}
+                  placeholder={keywords.length === 0 ? "Type a keyword and press Enter…" : "Add more…"}
+                  className="flex-1 min-w-[120px] bg-transparent text-sm outline-none placeholder:text-zinc-400"
+                />
               </div>
             </div>
 
             <div>
-              <p className="text-sm font-medium mb-2">
-                Locations
-                <span className="text-zinc-500 font-normal ml-1">
-                  (click to remove)
-                </span>
-              </p>
-              <div className="flex flex-wrap gap-2">
+              <p className="text-sm font-medium mb-2">Locations</p>
+              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500">
                 {locations.map((loc, i) => (
                   <Badge
                     key={i}
@@ -212,6 +232,30 @@ function QuickStartInner() {
                     {loc} &times;
                   </Badge>
                 ))}
+                <Badge
+                  variant={remoteOnly ? "default" : "outline"}
+                  className={`cursor-pointer transition-colors ${
+                    remoteOnly
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-900 dark:hover:text-blue-300"
+                  }`}
+                  onClick={() => setRemoteOnly((prev) => !prev)}
+                >
+                  {remoteOnly ? "Remote" : "Remote"}
+                </Badge>
+                <input
+                  type="text"
+                  value={newLocation}
+                  onChange={(e) => setNewLocation(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); addLocation(); }
+                    if (e.key === "Backspace" && !newLocation && locations.length > 0) {
+                      removeLocation(locations.length - 1);
+                    }
+                  }}
+                  placeholder={locations.length === 0 && !remoteOnly ? "Type a city and press Enter…" : "Add more…"}
+                  className="flex-1 min-w-[120px] bg-transparent text-sm outline-none placeholder:text-zinc-400"
+                />
               </div>
             </div>
 
