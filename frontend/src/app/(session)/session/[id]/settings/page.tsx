@@ -3,9 +3,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { getWallet } from "@/lib/api";
 
 const STORAGE_KEY = "jh_session_settings";
 
@@ -46,9 +48,13 @@ function loadSettings(): SessionSettings {
 
 export default function SessionSettingsPage() {
   const [settings, setSettings] = useState<SessionSettings | null>(null);
+  const [availableCredits, setAvailableCredits] = useState<number | null>(null);
 
   useEffect(() => {
     setSettings(loadSettings());
+    getWallet()
+      .then((w) => setAvailableCredits(w.free_remaining + Math.floor(w.balance)))
+      .catch(() => {});
   }, []);
 
   if (!settings) return null;
@@ -247,6 +253,22 @@ export default function SessionSettingsPage() {
               <span>5</span>
               <span>50</span>
             </div>
+            {availableCredits !== null &&
+              settings.application_mode === "auto_apply" &&
+              settings.max_jobs > availableCredits && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 text-sm">
+                  <p className="font-medium text-amber-800 dark:text-amber-300">
+                    You have {availableCredits} credit{availableCredits !== 1 ? "s" : ""} available
+                  </p>
+                  <p className="text-amber-700 dark:text-amber-400 text-xs mt-1">
+                    With max jobs set to {settings.max_jobs}, some applications may be
+                    skipped if you run out of credits.{" "}
+                    <Link href="/billing" className="underline font-medium hover:text-amber-900 dark:hover:text-amber-200">
+                      Buy Credits
+                    </Link>
+                  </p>
+                </div>
+              )}
           </div>
         </CardContent>
       </Card>
