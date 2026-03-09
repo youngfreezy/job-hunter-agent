@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { NotificationBanner } from "@/components/NotificationBanner";
 import { NavShell } from "./NavShell";
 import { API_BASE, getAuthHeaders } from "@/lib/api";
 
@@ -127,33 +128,18 @@ export function GlobalNav() {
       </div>
     </NavShell>
     {showGoogleBanner && (
-      <div className="border-b border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 px-4 py-2.5">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-          <p className="text-xs text-blue-800 dark:text-blue-300">
-            <span className="font-semibold">Connect Google</span> to auto-enter verification codes from job sites during applications.
-          </p>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => signIn("google", { callbackUrl: window.location.href })}
-              className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
-            >
-              Connect Google
-            </button>
-            <button
-              onClick={() => {
-                setShowGoogleBanner(false);
-                sessionStorage.setItem("jh_google_banner_dismissed", "1");
-              }}
-              className="text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300"
-              aria-label="Dismiss"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
+      <NotificationBanner
+        label="Connect Google"
+        message="to auto-enter verification codes from job sites during applications."
+        action={{
+          text: "Connect Google",
+          onClick: () => signIn("google", { callbackUrl: window.location.href }),
+        }}
+        onDismiss={() => {
+          setShowGoogleBanner(false);
+          sessionStorage.setItem("jh_google_banner_dismissed", "1");
+        }}
+      />
     )}
     </>
   );
