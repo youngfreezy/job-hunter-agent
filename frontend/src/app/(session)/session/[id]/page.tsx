@@ -1039,7 +1039,7 @@ export default function SessionPage() {
             <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground shrink-0">
               <span>
                 Feel free to step away — we&apos;ll email you when done. Tip: run{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono">caffeinate -d</code>{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">caffeinate -d</code>{" "} In terminal on Mac
                 to keep your screen awake.
               </span>
               <button
