@@ -357,7 +357,8 @@ export type ApplicationLogEntry = {
 export async function getApplicationLog(
   sessionId: string
 ): Promise<{ entries: ApplicationLogEntry[] }> {
-  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/application-log`);
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/application-log`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to get application log: ${res.statusText}`);
   return res.json();
 }
