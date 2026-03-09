@@ -13,6 +13,7 @@ Webhook endpoints are exempt (they use signature verification instead).
 
 from __future__ import annotations
 
+import hmac
 import logging
 import secrets
 
@@ -75,7 +76,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         # Validate CSRF token for state-changing requests without JWT
         header_token = request.headers.get(_HEADER_NAME)
-        if not header_token or header_token != csrf_cookie:
+        if not header_token or not hmac.compare_digest(header_token, csrf_cookie):
             logger.warning(
                 "CSRF validation failed for %s %s (cookie=%s, header=%s)",
                 request.method,

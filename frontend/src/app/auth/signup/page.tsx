@@ -100,10 +100,11 @@ export default function SignupPage() {
               });
 
               if (result?.error) {
-                setError(
-                  "Account created but sign-in failed. Please try logging in."
-                );
-                setSubmitting(false);
+                // Register returns 200 for anti-enumeration even if
+                // account already exists. If signIn fails, the account
+                // likely already existed — redirect to login.
+                window.location.href = "/auth/login?existing=1";
+                return;
               } else {
                 window.location.href = "/session/new";
               }

@@ -64,54 +64,64 @@ export function GlobalNav() {
     fetchData();
   }, []);
 
-  const creditColor =
+  const creditsBg =
     credits === null
-      ? "text-muted-foreground"
+      ? ""
       : credits > 5
-        ? "text-emerald-600"
+        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
         : credits > 0
-          ? "text-amber-500"
-          : "text-red-500";
+          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+          : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400";
 
   return (
     <>
     <NavShell>
-      <div className="flex items-center gap-3">
+      {/* Row 1: Branding + Actions */}
+      <div className="flex items-center justify-between py-2.5">
+        <Link
+          href="/"
+          className="text-lg font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent"
+        >
+          JobHunter Agent
+        </Link>
+        <div className="flex items-center gap-3">
+          {credits !== null && (
+            <Link
+              href="/billing"
+              className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${creditsBg}`}
+            >
+              {credits.toFixed(0)} {credits === 1 ? "credit" : "credits"}
+            </Link>
+          )}
+          <Link href="/session/new">
+            <Button size="sm">New Session</Button>
+          </Link>
+          <button
+            onClick={handleSignOut}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+      {/* Row 2: Page Links */}
+      <div className="flex items-center gap-1 -mb-px">
         {NAV_LINKS.map(({ href, label }) => {
           const isActive = pathname === href;
           return (
             <Link
               key={href}
               href={href}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
                 isActive
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  ? "border-primary text-foreground font-semibold"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
               }`}
             >
               {label}
             </Link>
           );
         })}
-        {credits !== null && (
-          <Link
-            href="/billing"
-            className={`px-2.5 py-1 text-xs font-bold rounded-full border ${creditColor} ${
-              credits <= 5 ? "border-current animate-pulse" : "border-transparent bg-muted/50"
-            }`}
-          >
-            {credits.toFixed(0)} cr
-          </Link>
-        )}
-        <Link href="/session/new">
-          <Button size="sm">New Session</Button>
-        </Link>
-        <button
-          onClick={handleSignOut}
-          className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Sign Out
-        </button>
       </div>
     </NavShell>
     {showGoogleBanner && (
