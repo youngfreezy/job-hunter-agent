@@ -2,7 +2,6 @@
 
 "use client";
 
-import { useEffect, useRef } from "react";
 export type StatusEvent = {
   event: string;
   agent: string;
@@ -24,12 +23,6 @@ const AGENT_COLORS: Record<string, string> = {
 };
 
 export function StatusFeed({ events }: { events: StatusEvent[] }) {
-  const endRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events.length]);
-
   return (
     <div className="space-y-1.5 font-mono text-sm">
       {events.length === 0 && (
@@ -54,7 +47,6 @@ export function StatusFeed({ events }: { events: StatusEvent[] }) {
           </span>
         </div>
       ))}
-      <div ref={endRef} />
     </div>
   );
 }

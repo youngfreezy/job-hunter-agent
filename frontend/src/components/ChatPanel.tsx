@@ -21,10 +21,13 @@ interface ChatPanelProps {
 
 export function ChatPanel({ messages, onSend, disabled, placeholder }: ChatPanelProps) {
   const [input, setInput] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages.length]);
 
   const handleSend = () => {
@@ -35,7 +38,7 @@ export function ChatPanel({ messages, onSend, disabled, placeholder }: ChatPanel
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto space-y-2 p-3 min-h-0">
+      <div ref={containerRef} className="flex-1 overflow-y-auto space-y-2 p-3 min-h-0">
         {messages.length === 0 && (
           <p className="text-zinc-400 text-sm text-center py-4">
             Chat with the agent to steer it in real-time.
@@ -60,7 +63,7 @@ export function ChatPanel({ messages, onSend, disabled, placeholder }: ChatPanel
             {msg.text}
           </div>
         ))}
-        <div ref={endRef} />
+        <div />
       </div>
       <div className="border-t border-zinc-200 dark:border-zinc-800 p-3 flex gap-2">
         <Input
