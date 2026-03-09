@@ -126,6 +126,7 @@ type SSEEvent = {
   progress?: number;
   board?: string;
   count?: number;
+  error?: boolean;
   submitted?: number;
   failed?: number;
   skipped?: number;
