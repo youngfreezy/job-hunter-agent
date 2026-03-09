@@ -814,6 +814,47 @@ async def _apply_to_job(
                 resume_file_path=resume_file,
             )
 
+            # --- Step 6b: Handle external redirect from LinkedIn applier ---
+            # When LinkedIn applier finds an external ATS link instead of
+            # Easy Apply, it returns a special error_message starting with
+            # "external_redirect:" followed by the URL.
+            if (
+                result.status == ApplicationStatus.SKIPPED
+                and result.error_message
+                and result.error_message.startswith("external_redirect:")
+            ):
+                external_url = result.error_message.split("external_redirect:", 1)[1]
+                logger.info(
+                    "Following external redirect for %s: %s",
+                    job.title, external_url,
+                )
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": f"Following external apply link...",
+                })
+                await page.goto(external_url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(1)
+
+                # Re-detect ATS and use appropriate applier
+                ats_type = await detect_ats_type(page)
+                logger.info("External ATS detected: %s for %s", ats_type.value, page.url)
+                applier = get_applier(job.board.value, ats_type, page, session_id)
+                logger.info("Using %s applier (external) for %s", applier.PLATFORM, job.title)
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": f"Filling application form ({applier.PLATFORM}) for {job.title}...",
+                    "current": _app_idx + 1,
+                    "total": _total_q,
+                    "progress": _pct,
+                })
+                result = await applier.run(
+                    job=job,
+                    user_profile=user_profile,
+                    resume_text=resume_text,
+                    cover_letter=cover_letter_text,
+                    resume_file_path=resume_file,
+                )
+
             # --- Step 7: Fallback to browser-use if SKIPPED ---
             # Only fall back for non-auth skips (e.g., complex form).
             # Auth-related skips are hopeless — browser-use can't log in either.

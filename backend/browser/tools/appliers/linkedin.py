@@ -5,6 +5,9 @@
 Handles the LinkedIn Easy Apply modal flow: click Apply, fill multi-step
 forms, and submit. The heavy lifting (field extraction + Claude-powered
 filling) is delegated to _fill_current_form / form_filler.py.
+
+When Easy Apply is not available, attempts to find and return the external
+apply URL so the caller can redirect to the appropriate ATS applier.
 """
 
 from __future__ import annotations
@@ -83,6 +86,17 @@ class LinkedInApplier(BaseApplier):
                 pass
             clicked = await self._click_selector(APPLY_BUTTON, "apply_button", timeout=10000)
             if not clicked:
+                # Easy Apply not found — try to find external apply link
+                external_url = await self._find_external_url()
+                if external_url:
+                    logger.info(
+                        "LinkedIn: no Easy Apply, found external URL: %s",
+                        external_url,
+                    )
+                    return self._make_result(
+                        job_id, ApplicationStatus.SKIPPED,
+                        error_message=f"external_redirect:{external_url}",
+                    )
                 # Log what buttons are visible for debugging
                 try:
                     debug = await self.page.evaluate("""() => {
@@ -202,3 +216,64 @@ class LinkedInApplier(BaseApplier):
             await self._click_selector(CLOSE_MODAL, "close_modal", timeout=2000)
         except Exception:
             pass
+
+    async def _find_external_url(self) -> str | None:
+        """Scan the page for an external apply link (non-Easy-Apply).
+
+        LinkedIn non-Easy-Apply jobs have an "Apply" button that links out
+        to the company's ATS (Greenhouse, Lever, Workday, etc.).
+        """
+        from urllib.parse import urlparse, parse_qs, unquote
+
+        _ATS_DOMAINS = [
+            "greenhouse.io", "lever.co", "myworkdayjobs.com",
+            "smartrecruiters.com", "icims.com", "jobvite.com",
+            "ashbyhq.com", "bamboohr.com", "workable.com",
+        ]
+
+        try:
+            links = await self.page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('a[href]'))
+                    .map(a => a.href)
+            }""")
+            for href in (links or []):
+                href_lower = href.lower()
+                # LinkedIn externalApply redirect pattern
+                if "externalapply" in href_lower:
+                    try:
+                        parsed = urlparse(href)
+                        params = parse_qs(parsed.query)
+                        if "url" in params:
+                            decoded = unquote(params["url"][0])
+                            if any(d in decoded.lower() for d in _ATS_DOMAINS):
+                                return decoded
+                    except Exception:
+                        pass
+                # Direct ATS link
+                if any(d in href_lower for d in _ATS_DOMAINS):
+                    return href
+        except Exception:
+            pass
+
+        # Try clicking the non-Easy-Apply "Apply" button to reveal external link
+        try:
+            apply_btn = await self.page.query_selector(
+                'a.apply-button, '
+                'a[data-tracking-control-name*="apply"], '
+                'a:has-text("Apply")'
+            )
+            if apply_btn:
+                href = await apply_btn.get_attribute("href")
+                if href:
+                    href_lower = href.lower()
+                    if "externalapply" in href_lower:
+                        parsed = urlparse(href)
+                        params = parse_qs(parsed.query)
+                        if "url" in params:
+                            return unquote(params["url"][0])
+                    if any(d in href_lower for d in _ATS_DOMAINS):
+                        return href
+        except Exception:
+            pass
+
+        return None

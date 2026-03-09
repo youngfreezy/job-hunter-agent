@@ -95,7 +95,12 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         boards,
     )
 
-    max_per_board = max(PER_BOARD_MAX // len(boards), 5) if boards else PER_BOARD_MAX
+    # Use max_jobs from session config if set, otherwise PER_BOARD_MAX
+    total_max = PER_BOARD_MAX
+    if session_config:
+        cfg = session_config if isinstance(session_config, dict) else (session_config.model_dump() if hasattr(session_config, "model_dump") else {})
+        total_max = cfg.get("max_jobs", PER_BOARD_MAX) or PER_BOARD_MAX
+    max_per_board = max(total_max // len(boards), 5) if boards else total_max
 
     errors: List[str] = []
     try:
