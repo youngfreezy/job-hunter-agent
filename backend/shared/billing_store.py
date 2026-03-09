@@ -135,7 +135,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
     conn = _connect()
     try:
         cur = conn.execute(
-            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider FROM users WHERE email = %s",
+            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider, created_at FROM users WHERE email = %s",
             (email,),
         )
         row = cur.fetchone()
@@ -148,6 +148,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
                 "is_premium": row[4],
                 "name": row[5],
                 "auth_provider": row[6] or "google",
+                "created_at": row[7].isoformat() if row[7] else None,
             }
 
         # Create new user

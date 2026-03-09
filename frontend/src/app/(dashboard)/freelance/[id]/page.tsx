@@ -4,8 +4,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
+import { ExternalLink, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { API_BASE, getSSEToken } from "@/lib/api";
+import { API_BASE, getSSEToken, getAuthHeaders } from "@/lib/api";
 import GigScatterChart from "@/components/charts/GigScatterChart";
 
 interface Gig {
@@ -41,6 +43,22 @@ export default function FreelanceResultPage() {
   const [proposals, setProposals] = useState<Record<string, string>>({});
   const [expandedGig, setExpandedGig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hasCredits, setHasCredits] = useState<boolean | null>(null);
+
+  // Fetch wallet to determine paywall status
+  useEffect(() => {
+    async function checkWallet() {
+      try {
+        const auth = await getAuthHeaders();
+        const res = await fetch(`${API_BASE}/api/billing/wallet`, { headers: auth });
+        if (res.ok) {
+          const data = await res.json();
+          setHasCredits(data.balance > 0 || data.free_remaining > 0);
+        }
+      } catch {}
+    }
+    checkWallet();
+  }, []);
 
   useEffect(() => {
     let es: EventSource | null = null;
@@ -93,6 +111,17 @@ export default function FreelanceResultPage() {
     if (score >= 85) return "text-green-500";
     if (score >= 70) return "text-yellow-500";
     return "text-muted-foreground";
+  }
+
+  function downloadCoverLetter(gig: Gig, proposalText: string) {
+    const content = `Cover Letter\n\nRe: ${gig.title}\nPlatform: ${gig.platform}\nClient: ${gig.client_name}\n\n---\n\n${proposalText}\n`;
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cover-letter-${gig.title.toLowerCase().replace(/\s+/g, "-")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -182,9 +211,20 @@ export default function FreelanceResultPage() {
                 </p>
               )}
 
-              {/* Proposal */}
-              {proposals[gig.id] && (
-                <>
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 pt-1">
+                {gig.url && (
+                  <a
+                    href={gig.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                  >
+                    View Posting <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+
+                {proposals[gig.id] && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -194,12 +234,49 @@ export default function FreelanceResultPage() {
                   >
                     {expandedGig === gig.id ? "Hide Proposal" : "View Proposal"}
                   </Button>
-                  {expandedGig === gig.id && (
-                    <div className="bg-muted/50 border rounded p-4 text-sm whitespace-pre-wrap">
+                )}
+
+                {proposals[gig.id] && (
+                  hasCredits ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => downloadCoverLetter(gig, proposals[gig.id])}
+                    >
+                      Download Cover Letter
+                    </Button>
+                  ) : (
+                    <Link href="/billing">
+                      <Button variant="outline" size="sm" className="text-muted-foreground">
+                        <Lock className="h-3.5 w-3.5 mr-1.5" />
+                        Cover Letter
+                      </Button>
+                    </Link>
+                  )
+                )}
+              </div>
+
+              {/* Expanded proposal */}
+              {expandedGig === gig.id && proposals[gig.id] && (
+                hasCredits ? (
+                  <div className="bg-muted/50 border rounded p-4 text-sm whitespace-pre-wrap">
+                    {proposals[gig.id]}
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <div className="bg-muted/50 border rounded p-4 text-sm whitespace-pre-wrap blur-sm select-none" aria-hidden>
                       {proposals[gig.id]}
                     </div>
-                  )}
-                </>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Link href="/billing">
+                        <Button>
+                          <Lock className="h-4 w-4 mr-2" />
+                          Unlock with Credits
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )
               )}
             </div>
           ))}

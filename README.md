@@ -526,7 +526,7 @@ job-hunter-agent/
 │   │   │   ├── session/[id]/page.tsx  # Live session viewer
 │   │   │   └── session/[id]/manual-apply/page.tsx
 │   │   ├── components/
-│   │   │   ├── StatusFeed, ChatPanel, CoachPanel, JobCard, ScreenshotViewer
+│   │   │   ├── StatusFeed, ChatPanel, CoachPanel, JobCard
 │   │   │   ├── forms/                # Formik form components
 │   │   │   ├── wizard/               # Session wizard steps
 │   │   │   └── ui/                   # shadcn/ui
