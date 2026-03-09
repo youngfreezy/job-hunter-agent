@@ -31,7 +31,10 @@ export default function LoginPage() {
           <Button
             variant="outline"
             className="w-full h-11 text-base"
-            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+            onClick={() => {
+              window.umami?.track("login-google-clicked");
+              signIn("google", { callbackUrl: "/dashboard" });
+            }}
           >
             <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
               <path
@@ -76,9 +79,11 @@ export default function LoginPage() {
                 redirect: false,
               });
               if (result?.error) {
+                window.umami?.track("login-error");
                 setError("Invalid email or password.");
                 setSubmitting(false);
               } else {
+                window.umami?.track("login-complete", { method: "email" });
                 window.location.href = "/dashboard";
               }
             }}

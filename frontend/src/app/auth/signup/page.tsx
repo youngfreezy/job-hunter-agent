@@ -27,7 +27,10 @@ export default function SignupPage() {
           <Button
             variant="outline"
             className="w-full"
-            onClick={() => signIn("google", { callbackUrl: "/session/new" })}
+            onClick={() => {
+              window.umami?.track("signup-google-clicked");
+              signIn("google", { callbackUrl: "/session/new" });
+            }}
           >
             <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
               <path
@@ -79,7 +82,9 @@ export default function SignupPage() {
 
               if (!regRes.ok) {
                 const data = await regRes.json().catch(() => ({}));
-                setError(data.detail || "Failed to create account. Please try again.");
+                const msg = data.detail || "Failed to create account. Please try again.";
+                window.umami?.track("signup-error", { error: msg });
+                setError(msg);
                 setSubmitting(false);
                 return;
               }
@@ -95,9 +100,11 @@ export default function SignupPage() {
                 // Register returns 200 for anti-enumeration even if
                 // account already exists. If signIn fails, the account
                 // likely already existed — redirect to login.
+                window.umami?.track("signup-existing-redirect");
                 window.location.href = "/auth/login?existing=1";
                 return;
               } else {
+                window.umami?.track("signup-complete", { method: "email" });
                 window.location.href = "/session/new";
               }
             }}
