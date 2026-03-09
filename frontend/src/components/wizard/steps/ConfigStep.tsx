@@ -43,7 +43,8 @@ export function ConfigStep() {
           {/* Max Jobs */}
           <div>
             <label className="text-sm font-medium">
-              Maximum jobs to process: <span className="text-blue-600 font-bold">{values.maxJobs ?? 20}</span>
+              Maximum jobs to process:{" "}
+              <span className="text-blue-600 font-bold">{values.maxJobs ?? 20}</span>
             </label>
             <input
               type="range"
@@ -65,10 +66,12 @@ export function ConfigStep() {
           <div>
             <label className="text-sm font-medium mb-2 block">Resume tailoring quality</label>
             <div className="grid grid-cols-2 gap-3">
-              {([
-                { value: "standard", label: "Standard", desc: "Fast and cost-effective" },
-                { value: "premium", label: "Premium", desc: "Top-tier model for best 20%" },
-              ] as const).map((opt) => (
+              {(
+                [
+                  { value: "standard", label: "Standard", desc: "Fast and cost-effective" },
+                  { value: "premium", label: "Premium", desc: "Top-tier model for best 20%" },
+                ] as const
+              ).map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
@@ -90,10 +93,20 @@ export function ConfigStep() {
           <div>
             <label className="text-sm font-medium mb-2 block">Application mode</label>
             <div className="grid grid-cols-2 gap-3">
-              {([
-                { value: "auto_apply", label: "Auto Apply", desc: "Browser automation submits forms" },
-                { value: "materials_only", label: "Materials Only", desc: "Generate resumes & cover letters only" },
-              ] as const).map((opt) => (
+              {(
+                [
+                  {
+                    value: "auto_apply",
+                    label: "Auto Apply",
+                    desc: "Browser automation submits forms",
+                  },
+                  {
+                    value: "materials_only",
+                    label: "Materials Only",
+                    desc: "Generate resumes & cover letters only",
+                  },
+                ] as const
+              ).map((opt) => (
                 <button
                   key={opt.value}
                   type="button"

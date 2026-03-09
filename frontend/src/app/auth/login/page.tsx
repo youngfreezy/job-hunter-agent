@@ -22,10 +22,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <Link
-            href="/"
-            className="text-2xl font-bold tracking-tight mb-2 block"
-          >
+          <Link href="/" className="text-2xl font-bold tracking-tight mb-2 block">
             JobHunter Agent
           </Link>
           <CardTitle className="text-lg">Welcome back</CardTitle>
@@ -89,17 +86,9 @@ export default function LoginPage() {
             {({ isSubmitting }) => (
               <Form className="space-y-3">
                 <FormikInput name="email" type="email" placeholder="Email" />
-                <FormikInput
-                  name="password"
-                  type="password"
-                  placeholder="Password"
-                />
+                <FormikInput name="password" type="password" placeholder="Password" />
                 {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isSubmitting}
-                >
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting ? "Signing in..." : "Sign In"}
                 </Button>
               </Form>
@@ -108,20 +97,16 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-zinc-500">
             Don&apos;t have an account?{" "}
-            <Link
-              href="/auth/signup"
-              className="text-blue-600 hover:underline"
-            >
+            <Link href="/auth/signup" className="text-blue-600 hover:underline">
               Sign up
             </Link>
           </p>
 
           <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 px-4 py-3">
             <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-              <span className="font-semibold">Tip:</span> Sign in with Google
-              to enable automatic verification code entry. Some job sites send
-              email codes during applications — we can read and enter them
-              automatically with Gmail access.
+              <span className="font-semibold">Tip:</span> Sign in with Google to enable automatic
+              verification code entry. Some job sites send email codes during applications — we can
+              read and enter them automatically with Gmail access.
             </p>
           </div>
         </CardContent>

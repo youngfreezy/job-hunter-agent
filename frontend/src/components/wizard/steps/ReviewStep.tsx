@@ -33,18 +33,14 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
           <div className="rounded-xl bg-white/90 p-4 dark:bg-zinc-950/60">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-              First
-            </p>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">First</p>
             <p className="mt-2 text-sm font-medium">Resume review</p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
               We&apos;ll pause so you can review and approve your improved resume.
             </p>
           </div>
           <div className="rounded-xl bg-white/90 p-4 dark:bg-zinc-950/60">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-              Next
-            </p>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Next</p>
             <p className="mt-2 text-sm font-medium">Job shortlist review</p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
               You pick which matched jobs you want to apply to.
@@ -65,12 +61,7 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Job Search</CardTitle>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onEditStep(0)}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={() => onEditStep(0)}>
             <Pencil className="w-4 h-4 mr-1" /> Edit
           </Button>
         </CardHeader>
@@ -104,12 +95,7 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Resume & Profile</CardTitle>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onEditStep(1)}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={() => onEditStep(1)}>
             <Pencil className="w-4 h-4 mr-1" /> Edit
           </Button>
         </CardHeader>
@@ -119,9 +105,7 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
             {values.resumeFileName ? (
               <div className="space-y-2">
                 <p className="text-sm text-green-600">{values.resumeFileName}</p>
-                <p className="text-xs text-zinc-500">
-                  Ready for coaching and tailoring.
-                </p>
+                <p className="text-xs text-zinc-500">Ready for coaching and tailoring.</p>
               </div>
             ) : (
               <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-3">
@@ -155,12 +139,7 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Configuration</CardTitle>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onEditStep(2)}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={() => onEditStep(2)}>
             <Pencil className="w-4 h-4 mr-1" /> Edit
           </Button>
         </CardHeader>
@@ -186,11 +165,13 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
           <div>
             <p className="text-sm font-medium text-zinc-500">Job boards</p>
             <div className="flex flex-wrap gap-2 mt-1">
-              {(values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"]).map((b: string) => (
-                <Badge key={b} variant="secondary" className="capitalize">
-                  {b}
-                </Badge>
-              ))}
+              {(values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"]).map(
+                (b: string) => (
+                  <Badge key={b} variant="secondary" className="capitalize">
+                    {b}
+                  </Badge>
+                )
+              )}
             </div>
           </div>
         </CardContent>

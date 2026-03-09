@@ -24,20 +24,13 @@ const RESUME_TEXT =
   "- PostgreSQL, Redis\n- CI/CD pipelines\n\nEducation:\nBS Computer Science, UC Berkeley";
 
 // Helper: create a resume file and fill wizard to create a session
-async function createSessionViaWizard(
-  page: Page,
-  resumeFilePath: string
-): Promise<string> {
+async function createSessionViaWizard(page: Page, resumeFilePath: string): Promise<string> {
   await page.goto("/session/new");
-  await expect(
-    page.getByRole("heading", { name: "New Session" })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "New Session" })).toBeVisible();
 
   // Step 1: Keywords
   await page
-    .getByPlaceholder(
-      "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-    )
+    .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
     .fill("Python, Backend Engineer");
   await page.getByText("Remote only").click();
   await page.getByRole("button", { name: "Next" }).click();
@@ -50,9 +43,7 @@ async function createSessionViaWizard(
   await page.waitForTimeout(500);
 
   // Step 3: Review & Launch
-  await expect(
-    page.getByText("Review & Launch", { exact: true }).first()
-  ).toBeVisible();
+  await expect(page.getByText("Review & Launch", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Start Job Hunt Session" }).click();
 
   // Wait for redirect to session page
@@ -82,22 +73,14 @@ async function waitForStatus(
     }
     await page.waitForTimeout(5_000);
   }
-  throw new Error(
-    `Timed out waiting for status ${targetStatuses.join(
-      "|"
-    )} after ${timeoutMs}ms`
-  );
+  throw new Error(`Timed out waiting for status ${targetStatuses.join("|")} after ${timeoutMs}ms`);
 }
 
 test.describe("Full Pipeline E2E", () => {
   let resumeFilePath: string;
 
   test.beforeAll(() => {
-    resumeFilePath = path.join(
-      __dirname,
-      "fixtures",
-      "test-resume-pipeline.txt"
-    );
+    resumeFilePath = path.join(__dirname, "fixtures", "test-resume-pipeline.txt");
     fs.mkdirSync(path.dirname(resumeFilePath), { recursive: true });
     fs.writeFileSync(resumeFilePath, RESUME_TEXT);
   });
@@ -116,9 +99,7 @@ test.describe("Full Pipeline E2E", () => {
     await login(page);
   });
 
-  test("wizard creates session and coaching events stream", async ({
-    page,
-  }) => {
+  test("wizard creates session and coaching events stream", async ({ page }) => {
     test.setTimeout(120_000);
 
     const sessionId = await createSessionViaWizard(page, resumeFilePath);
@@ -130,9 +111,7 @@ test.describe("Full Pipeline E2E", () => {
     });
 
     // Verify SSE events start streaming (message from backend status event)
-    await expect(
-      page.getByText("Starting your job hunt session...")
-    ).toBeVisible({
+    await expect(page.getByText("Starting your job hunt session...")).toBeVisible({
       timeout: 10_000,
     });
 
@@ -188,9 +167,7 @@ test.describe("Full Pipeline E2E", () => {
     await expect(dialog).not.toBeVisible({ timeout: 10_000 });
 
     // Status should advance past coaching
-    await expect(
-      page.getByText(/discover|search|finding/i).first()
-    ).toBeVisible({
+    await expect(page.getByText(/discover|search|finding/i).first()).toBeVisible({
       timeout: 30_000,
     });
 
@@ -199,9 +176,7 @@ test.describe("Full Pipeline E2E", () => {
     });
   });
 
-  test("shortlist review shows max 20 jobs and approval works", async ({
-    page,
-  }) => {
+  test("shortlist review shows max 20 jobs and approval works", async ({ page }) => {
     test.setTimeout(600_000);
 
     // Create session via API
@@ -247,9 +222,7 @@ test.describe("Full Pipeline E2E", () => {
     });
 
     // COUNT the job items — must be <= 20
-    const jobItems = dialog.locator(
-      '[data-testid="job-item"], tr, [class*="job"], [class*="Job"]'
-    );
+    const jobItems = dialog.locator('[data-testid="job-item"], tr, [class*="job"], [class*="Job"]');
     const jobCount = await jobItems.count();
 
     let actualCount = jobCount;
@@ -281,9 +254,9 @@ test.describe("Full Pipeline E2E", () => {
     expect(healthRes.status()).toBe(200);
 
     // Status should advance to applying
-    await expect(
-      page.getByText(/apply|tailoring|applying/i).first()
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/apply|tailoring|applying/i).first()).toBeVisible({
+      timeout: 30_000,
+    });
 
     await page.screenshot({
       path: "test-results/pipeline-post-shortlist-approve.png",
@@ -347,8 +320,7 @@ test.describe("Full Pipeline E2E", () => {
         locations: [],
         remote_only: true,
         salary_min: null,
-        resume_text:
-          "Data Person\nData Engineer\ndata@test.com\n5 years Python, Spark, SQL, AWS",
+        resume_text: "Data Person\nData Engineer\ndata@test.com\n5 years Python, Spark, SQL, AWS",
         linkedin_url: null,
         preferences: {},
       },
@@ -361,18 +333,15 @@ test.describe("Full Pipeline E2E", () => {
       const start = Date.now();
       let coachApproved = false;
       while (Date.now() - start < 540_000) {
-        const res = await page.request.get(
-          `${API_BASE}/api/sessions/${sessionId}`
-        );
+        const res = await page.request.get(`${API_BASE}/api/sessions/${sessionId}`);
         const data = await res.json();
 
         if (data.status === "awaiting_review") break;
 
         if (data.status === "awaiting_coach_review" && !coachApproved) {
-          await page.request.post(
-            `${API_BASE}/api/sessions/${sessionId}/coach-review`,
-            { data: { approved: true } }
-          );
+          await page.request.post(`${API_BASE}/api/sessions/${sessionId}/coach-review`, {
+            data: { approved: true },
+          });
           coachApproved = true;
         }
 
@@ -385,9 +354,7 @@ test.describe("Full Pipeline E2E", () => {
     }
 
     // Verify the API response caps scored_jobs at 20
-    const sessionRes = await page.request.get(
-      `${API_BASE}/api/sessions/${sessionId}`
-    );
+    const sessionRes = await page.request.get(`${API_BASE}/api/sessions/${sessionId}`);
     expect(sessionRes.ok()).toBeTruthy();
     const sessionJson = await sessionRes.json();
 

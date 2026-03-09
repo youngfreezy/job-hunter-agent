@@ -34,10 +34,7 @@ export function FormikKeywordInput({
   return (
     <div className="space-y-3">
       {label && (
-        <label
-          htmlFor={name}
-          className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
-        >
+        <label htmlFor={name} className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
           {label}
         </label>
       )}

@@ -156,10 +156,7 @@ export default function FreelanceResultPage() {
                 <p className="text-sm">${p.hourly_rate}/hr</p>
                 <div className="flex flex-wrap gap-1 mt-1">
                   {p.skills_tags.slice(0, 6).map((tag, j) => (
-                    <span
-                      key={j}
-                      className="text-xs bg-muted px-2 py-0.5 rounded"
-                    >
+                    <span key={j} className="text-xs bg-muted px-2 py-0.5 rounded">
                       {tag}
                     </span>
                   ))}
@@ -176,9 +173,7 @@ export default function FreelanceResultPage() {
       {/* Gigs */}
       {gigs.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold">
-            {gigs.length} Matching Gigs Found
-          </h2>
+          <h2 className="text-xl font-semibold">{gigs.length} Matching Gigs Found</h2>
           {gigs.map((gig) => (
             <div key={gig.id} className="bg-card border rounded-lg p-5 space-y-3">
               <div className="flex items-start justify-between">
@@ -200,15 +195,11 @@ export default function FreelanceResultPage() {
                   {gig.budget_max ? ` - $${gig.budget_max.toLocaleString()}` : ""}
                 </span>
                 {gig.duration && <span>· {gig.duration}</span>}
-                {gig.proposals_count != null && (
-                  <span>· {gig.proposals_count} proposals</span>
-                )}
+                {gig.proposals_count != null && <span>· {gig.proposals_count} proposals</span>}
               </div>
 
               {gig.description_snippet && (
-                <p className="text-sm text-muted-foreground">
-                  {gig.description_snippet}
-                </p>
+                <p className="text-sm text-muted-foreground">{gig.description_snippet}</p>
               )}
 
               {/* Action buttons */}
@@ -228,16 +219,14 @@ export default function FreelanceResultPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setExpandedGig(expandedGig === gig.id ? null : gig.id)
-                    }
+                    onClick={() => setExpandedGig(expandedGig === gig.id ? null : gig.id)}
                   >
                     {expandedGig === gig.id ? "Hide Proposal" : "View Proposal"}
                   </Button>
                 )}
 
-                {proposals[gig.id] && (
-                  hasCredits ? (
+                {proposals[gig.id] &&
+                  (hasCredits ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -252,19 +241,22 @@ export default function FreelanceResultPage() {
                         Cover Letter
                       </Button>
                     </Link>
-                  )
-                )}
+                  ))}
               </div>
 
               {/* Expanded proposal */}
-              {expandedGig === gig.id && proposals[gig.id] && (
-                hasCredits ? (
+              {expandedGig === gig.id &&
+                proposals[gig.id] &&
+                (hasCredits ? (
                   <div className="bg-muted/50 border rounded p-4 text-sm whitespace-pre-wrap">
                     {proposals[gig.id]}
                   </div>
                 ) : (
                   <div className="relative">
-                    <div className="bg-muted/50 border rounded p-4 text-sm whitespace-pre-wrap blur-sm select-none" aria-hidden>
+                    <div
+                      className="bg-muted/50 border rounded p-4 text-sm whitespace-pre-wrap blur-sm select-none"
+                      aria-hidden
+                    >
                       {proposals[gig.id]}
                     </div>
                     <div className="absolute inset-0 flex items-center justify-center">
@@ -276,8 +268,7 @@ export default function FreelanceResultPage() {
                       </Link>
                     </div>
                   </div>
-                )
-              )}
+                ))}
             </div>
           ))}
         </div>

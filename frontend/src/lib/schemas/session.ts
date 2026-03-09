@@ -61,12 +61,8 @@ export const resumeProfileSchema = Yup.object({
 // ---------- Step 3: Configuration ----------
 export const configSchema = Yup.object({
   maxJobs: Yup.number().min(5).max(50).default(20),
-  tailoringQuality: Yup.string()
-    .oneOf(["standard", "premium"])
-    .default("standard"),
-  applicationMode: Yup.string()
-    .oneOf(["auto_apply", "materials_only"])
-    .default("auto_apply"),
+  tailoringQuality: Yup.string().oneOf(["standard", "premium"]).default("standard"),
+  applicationMode: Yup.string().oneOf(["auto_apply", "materials_only"]).default("auto_apply"),
   generateCoverLetters: Yup.boolean().default(true),
   jobBoards: Yup.array()
     .of(Yup.string().required())
@@ -77,9 +73,7 @@ export const configSchema = Yup.object({
 export const reviewSchema = Yup.object({});
 
 // ---------- Combined schema (for type inference) ----------
-export const sessionFormSchema = jobSearchSchema
-  .concat(resumeProfileSchema)
-  .concat(configSchema);
+export const sessionFormSchema = jobSearchSchema.concat(resumeProfileSchema).concat(configSchema);
 
 // ---------- Type inference ----------
 export type SessionFormValues = Yup.InferType<typeof sessionFormSchema>;
@@ -103,9 +97,4 @@ export const sessionInitialValues: SessionFormValues = {
 };
 
 // ---------- Step schema map (indexed by step number) ----------
-export const stepSchemas = [
-  jobSearchSchema,
-  resumeProfileSchema,
-  configSchema,
-  reviewSchema,
-];
+export const stepSchemas = [jobSearchSchema, resumeProfileSchema, configSchema, reviewSchema];

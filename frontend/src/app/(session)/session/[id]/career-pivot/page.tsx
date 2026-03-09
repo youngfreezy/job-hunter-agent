@@ -12,7 +12,13 @@ import PivotComparisonBars from "@/components/charts/PivotComparisonBars";
 import SkillGapRadar from "@/components/charts/SkillGapRadar";
 import SkillBridgeViz from "@/components/charts/SkillBridgeViz";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import type { LearningResource, LearningWeek, PivotRole, RiskAssessment, SkillBridge } from "@/lib/types/career-pivot";
+import type {
+  LearningResource,
+  LearningWeek,
+  PivotRole,
+  RiskAssessment,
+  SkillBridge,
+} from "@/lib/types/career-pivot";
 import { riskColor, riskLabel } from "@/lib/utils";
 
 export default function SessionCareerPivotPage() {
@@ -61,9 +67,7 @@ export default function SessionCareerPivotPage() {
       setPivotId(session_id);
       setStatus("connecting");
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "An unknown error occurred",
-      );
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
       setStarting(false);
     }
   }
@@ -124,7 +128,10 @@ export default function SessionCareerPivotPage() {
       es.onerror = () => es?.close();
     });
 
-    return () => { cancelled = true; es?.close(); };
+    return () => {
+      cancelled = true;
+      es?.close();
+    };
   }, [pivotId]);
 
   async function handleUnlock() {
@@ -132,13 +139,10 @@ export default function SessionCareerPivotPage() {
     setUnlocking(true);
     try {
       const auth = await getAuthHeaders();
-      const res = await fetch(
-        `${API_BASE}/api/career-pivot/${pivotId}/unlock`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...auth },
-        },
-      );
+      const res = await fetch(`${API_BASE}/api/career-pivot/${pivotId}/unlock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...auth },
+      });
       if (res.status === 402) {
         router.push("/billing");
         return;
@@ -163,14 +167,11 @@ export default function SessionCareerPivotPage() {
         </p>
         <div className="bg-card border rounded-lg p-8 space-y-6">
           <div className="text-center space-y-3">
-            <h2 className="text-xl font-semibold">
-              Analyze your AI automation risk
-            </h2>
+            <h2 className="text-xl font-semibold">Analyze your AI automation risk</h2>
             <p className="text-muted-foreground max-w-lg mx-auto">
-              We&apos;ll analyze your resume against U.S. Department of Labor
-              data to find your automation risk score, adjacent roles
-              you&apos;re qualified for, and a learning plan to close skill
-              gaps.
+              We&apos;ll analyze your resume against U.S. Department of Labor data to find your
+              automation risk score, adjacent roles you&apos;re qualified for, and a learning plan
+              to close skill gaps.
             </p>
           </div>
 
@@ -178,17 +179,10 @@ export default function SessionCareerPivotPage() {
             <ResumeUpload onResumeReady={() => setHasResume(true)} />
           </div>
 
-          {error && (
-            <p className="text-destructive text-sm text-center">{error}</p>
-          )}
+          {error && <p className="text-destructive text-sm text-center">{error}</p>}
 
           <div className="text-center">
-            <Button
-              size="lg"
-              onClick={handleStart}
-              disabled={!hasResume}
-              loading={starting}
-            >
+            <Button size="lg" onClick={handleStart} disabled={!hasResume} loading={starting}>
               Start Free Assessment
             </Button>
           </div>
@@ -206,27 +200,27 @@ export default function SessionCareerPivotPage() {
       status === "parsing_skills"
         ? "Parsing your resume..."
         : status === "researching_onet"
-          ? "Researching your occupation..."
-          : status === "assessing_risk"
-            ? "Calculating your automation risk..."
-            : status === "mapping_roles"
-              ? "Finding adjacent roles you're qualified for..."
-              : status === "mapping_cross_industry"
-                ? "Mapping your skills to unexpected industries..."
-                : "Starting your career analysis...";
+        ? "Researching your occupation..."
+        : status === "assessing_risk"
+        ? "Calculating your automation risk..."
+        : status === "mapping_roles"
+        ? "Finding adjacent roles you're qualified for..."
+        : status === "mapping_cross_industry"
+        ? "Mapping your skills to unexpected industries..."
+        : "Starting your career analysis...";
 
     const progressWidth =
       status === "parsing_skills"
         ? "20%"
         : status === "researching_onet"
-          ? "35%"
-          : status === "assessing_risk"
-            ? "50%"
-            : status === "mapping_roles"
-              ? "70%"
-              : status === "mapping_cross_industry"
-                ? "85%"
-                : "10%";
+        ? "35%"
+        : status === "assessing_risk"
+        ? "50%"
+        : status === "mapping_roles"
+        ? "70%"
+        : status === "mapping_cross_industry"
+        ? "85%"
+        : "10%";
 
     return (
       <div className="container mx-auto max-w-4xl p-6 space-y-6">
@@ -343,10 +337,7 @@ export default function SessionCareerPivotPage() {
               <h2 className="text-lg font-medium mb-2">Career Comparison</h2>
               <div className="h-[280px] flex items-end gap-3 px-8">
                 {Array.from({ length: paywall.count }, (_, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 flex flex-col items-center gap-2"
-                  >
+                  <div key={i} className="flex-1 flex flex-col items-center gap-2">
                     <div
                       className="w-full rounded-t bg-primary/40"
                       style={{ height: `${120 + i * 40}px` }}
@@ -364,18 +355,14 @@ export default function SessionCareerPivotPage() {
               <div className="text-4xl mb-3">&#128274;</div>
               <h3 className="text-lg font-semibold">{paywall.message}</h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-md text-center">
-                See salary data, skill comparisons, learning plans, and
-                personalized charts for each role.
+                See salary data, skill comparisons, learning plans, and personalized charts for each
+                role.
               </p>
               <div className="flex items-center gap-3 mt-4">
                 <Button onClick={handleUnlock} loading={unlocking} size="lg">
                   Unlock for {paywall.cost} Credit
                 </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => router.push("/billing")}
-                >
+                <Button variant="outline" size="lg" onClick={() => router.push("/billing")}>
                   Buy Credits
                 </Button>
               </div>
@@ -389,10 +376,7 @@ export default function SessionCareerPivotPage() {
           </div>
 
           {Array.from({ length: Math.min(paywall.count, 3) }, (_, i) => (
-            <div
-              key={i}
-              className="bg-card border rounded-lg p-6 relative overflow-hidden"
-            >
+            <div key={i} className="bg-card border rounded-lg p-6 relative overflow-hidden">
               <div className="blur-sm select-none pointer-events-none opacity-50 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="h-5 w-48 bg-muted rounded" />
@@ -426,17 +410,11 @@ export default function SessionCareerPivotPage() {
       {risk && (
         <div className="bg-card border rounded-lg p-8 space-y-6">
           <div className="text-center space-y-3">
-            <h2 className="text-lg font-medium text-muted-foreground">
-              Your AI Automation Risk
-            </h2>
-            <div
-              className={`text-6xl font-bold ${riskColor(risk.automation_risk_score)}`}
-            >
+            <h2 className="text-lg font-medium text-muted-foreground">Your AI Automation Risk</h2>
+            <div className={`text-6xl font-bold ${riskColor(risk.automation_risk_score)}`}>
               {Math.round(risk.automation_risk_score)}%
             </div>
-            <p
-              className={`text-sm font-semibold ${riskColor(risk.automation_risk_score)}`}
-            >
+            <p className={`text-sm font-semibold ${riskColor(risk.automation_risk_score)}`}>
               {riskLabel(risk.automation_risk_score)}
             </p>
           </div>
@@ -456,19 +434,16 @@ export default function SessionCareerPivotPage() {
               {risk.automation_risk_score < 30
                 ? `Your role as a ${risk.parsed_role} has low exposure to AI automation. The creative, strategic, and interpersonal aspects of your work are difficult to automate.`
                 : risk.automation_risk_score < 60
-                  ? `Your role has moderate automation exposure. Some routine tasks can be automated, but core responsibilities still require human judgment. Consider upskilling in the areas below.`
-                  : `Your role has significant automation exposure. Many routine tasks in this field are already being automated. A career change could help you move into more resilient territory.`}
+                ? `Your role has moderate automation exposure. Some routine tasks can be automated, but core responsibilities still require human judgment. Consider upskilling in the areas below.`
+                : `Your role has significant automation exposure. Many routine tasks in this field are already being automated. A career change could help you move into more resilient territory.`}
             </p>
           </div>
 
           {risk.resistant_abilities && risk.resistant_abilities.length > 0 && (
             <div>
-              <h3 className="text-sm font-medium mb-2">
-                Your automation-resistant strengths
-              </h3>
+              <h3 className="text-sm font-medium mb-2">Your automation-resistant strengths</h3>
               <p className="text-xs text-muted-foreground mb-2">
-                These abilities are hard for AI to replicate and help protect
-                your career:
+                These abilities are hard for AI to replicate and help protect your career:
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {risk.resistant_abilities.map((ability, i) => (
@@ -485,12 +460,10 @@ export default function SessionCareerPivotPage() {
 
           {risk.task_breakdown.length > 0 && (
             <div>
-              <h3 className="text-sm font-medium mb-1">
-                Task-by-task automation risk
-              </h3>
+              <h3 className="text-sm font-medium mb-1">Task-by-task automation risk</h3>
               <p className="text-xs text-muted-foreground mb-3">
-                How likely each part of your daily work is to be automated,
-                based on federal labor data.
+                How likely each part of your daily work is to be automated, based on federal labor
+                data.
                 <span className="text-green-400 ml-1">Green = safe</span>,{" "}
                 <span className="text-yellow-400">yellow = at risk</span>,{" "}
                 <span className="text-red-400">red = high risk</span>.
@@ -500,8 +473,7 @@ export default function SessionCareerPivotPage() {
           )}
 
           <p className="text-xs text-muted-foreground text-center pt-2 border-t border-muted">
-            Based on U.S. Department of Labor occupational data and academic
-            automation research
+            Based on U.S. Department of Labor occupational data and academic automation research
           </p>
         </div>
       )}
@@ -524,8 +496,7 @@ export default function SessionCareerPivotPage() {
             <div className="bg-card border rounded-lg p-6">
               <h2 className="text-lg font-medium mb-2">Career Comparison</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Blue = skill match, green = AI safety (100 - risk), amber =
-                relative salary.
+                Blue = skill match, green = AI safety (100 - risk), amber = relative salary.
               </p>
               <PivotComparisonBars pivots={pivots} />
             </div>
@@ -580,10 +551,8 @@ export default function SessionCareerPivotPage() {
                     {pivot.market_demand.toLocaleString()}/yr
                   </div>
                   <div>
-                    <span className="text-muted-foreground">
-                      Transition time:
-                    </span>
-                    ~{pivot.time_to_pivot_weeks} weeks
+                    <span className="text-muted-foreground">Transition time:</span>~
+                    {pivot.time_to_pivot_weeks} weeks
                   </div>
                   {pivot.growth_rate && (
                     <div>
@@ -609,21 +578,14 @@ export default function SessionCareerPivotPage() {
                 {pivot.skill_comparison && (
                   <div className="mt-2">
                     <button
-                      onClick={() =>
-                        setExpandedRadar(expandedRadar === i ? null : i)
-                      }
+                      onClick={() => setExpandedRadar(expandedRadar === i ? null : i)}
                       className="text-sm text-primary hover:underline cursor-pointer"
                     >
-                      {expandedRadar === i
-                        ? "Hide Skill Comparison"
-                        : "View Skill Comparison"}
+                      {expandedRadar === i ? "Hide Skill Comparison" : "View Skill Comparison"}
                     </button>
                     {expandedRadar === i && (
                       <div className="mt-3 flex justify-center">
-                        <SkillGapRadar
-                          comparison={pivot.skill_comparison}
-                          roleName={pivot.role}
-                        />
+                        <SkillGapRadar comparison={pivot.skill_comparison} roleName={pivot.role} />
                       </div>
                     )}
                   </div>
@@ -635,22 +597,18 @@ export default function SessionCareerPivotPage() {
                       View Learning Plan
                     </summary>
                     <div className="mt-2 space-y-2 pl-4">
-                      {pivot.learning_plan.map(
-                        (week: LearningWeek, j: number) => (
-                          <div key={j} className="border-l-2 border-muted pl-3">
-                            <p className="font-medium">
-                              Week {week.week}: {week.topic}
+                      {pivot.learning_plan.map((week: LearningWeek, j: number) => (
+                        <div key={j} className="border-l-2 border-muted pl-3">
+                          <p className="font-medium">
+                            Week {week.week}: {week.topic}
+                          </p>
+                          {week.resources?.map((r: LearningResource, k: number) => (
+                            <p key={k} className="text-muted-foreground">
+                              {r.name} · {r.hours}hrs · {r.cost}
                             </p>
-                            {week.resources?.map(
-                              (r: LearningResource, k: number) => (
-                                <p key={k} className="text-muted-foreground">
-                                  {r.name} · {r.hours}hrs · {r.cost}
-                                </p>
-                              ),
-                            )}
-                          </div>
-                        ),
-                      )}
+                          ))}
+                        </div>
+                      ))}
                     </div>
                   </details>
                 )}
@@ -660,21 +618,17 @@ export default function SessionCareerPivotPage() {
 
           <TabsContent value="bridges" className="space-y-4">
             <div className="bg-card border rounded-lg p-6">
-              <h2 className="text-lg font-medium mb-2">
-                Your Skills in New Industries
-              </h2>
+              <h2 className="text-lg font-medium mb-2">Your Skills in New Industries</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Select a skill to see unexpected career paths where it transfers
-                — across industries and collar types.
+                Select a skill to see unexpected career paths where it transfers — across industries
+                and collar types.
               </p>
               {skillBridges.length > 0 ? (
                 <SkillBridgeViz bridges={skillBridges} />
               ) : (
                 <div className="flex items-center gap-3 py-8 justify-center">
                   <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
-                  <p className="text-sm text-muted-foreground">
-                    Mapping transferable skills...
-                  </p>
+                  <p className="text-sm text-muted-foreground">Mapping transferable skills...</p>
                 </div>
               )}
             </div>

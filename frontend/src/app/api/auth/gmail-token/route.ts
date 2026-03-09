@@ -26,10 +26,7 @@ export async function POST(req: NextRequest) {
 
   const googleAccessToken = token.googleAccessToken as string | undefined;
   if (!googleAccessToken) {
-    return Response.json(
-      { error: "No Google access token in session" },
-      { status: 400 }
-    );
+    return Response.json({ error: "No Google access token in session" }, { status: 400 });
   }
 
   // Read the raw session cookie to forward as Authorization to the backend
@@ -45,24 +42,18 @@ export async function POST(req: NextRequest) {
     headers["Authorization"] = `Bearer ${sessionToken}`;
   }
 
-  const res = await fetch(
-    `${API_URL}/api/sessions/${session_id}/gmail-token`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        access_token: googleAccessToken,
-        refresh_token: (token.googleRefreshToken as string) || undefined,
-      }),
-    }
-  );
+  const res = await fetch(`${API_URL}/api/sessions/${session_id}/gmail-token`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      access_token: googleAccessToken,
+      refresh_token: (token.googleRefreshToken as string) || undefined,
+    }),
+  });
 
   if (!res.ok) {
     const detail = await res.text();
-    return Response.json(
-      { error: "Backend rejected token", detail },
-      { status: res.status }
-    );
+    return Response.json({ error: "Backend rejected token", detail }, { status: res.status });
   }
 
   return Response.json({ status: "ok" });

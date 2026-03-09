@@ -2,14 +2,7 @@
 
 "use client";
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  ResponsiveContainer,
-  LabelList,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, LabelList } from "recharts";
 
 interface FunnelChartProps {
   sessions: Array<{
@@ -21,14 +14,8 @@ interface FunnelChartProps {
 export default function FunnelChart({ sessions }: FunnelChartProps) {
   if (!sessions || sessions.length === 0) return null;
 
-  const totalSubmitted = sessions.reduce(
-    (sum, s) => sum + (s.applications_submitted ?? 0),
-    0
-  );
-  const totalFailed = sessions.reduce(
-    (sum, s) => sum + (s.applications_failed ?? 0),
-    0
-  );
+  const totalSubmitted = sessions.reduce((sum, s) => sum + (s.applications_submitted ?? 0), 0);
+  const totalFailed = sessions.reduce((sum, s) => sum + (s.applications_failed ?? 0), 0);
 
   if (totalSubmitted + totalFailed === 0) return null;
 

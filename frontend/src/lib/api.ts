@@ -271,18 +271,14 @@ export async function listSessions(): Promise<SessionListItem[]> {
   return res.json();
 }
 
-export async function getSession(
-  sessionId: string
-): Promise<Record<string, unknown>> {
+export async function getSession(sessionId: string): Promise<Record<string, unknown>> {
   const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to get session: ${res.statusText}`);
   return res.json();
 }
 
-export async function getSkippedJobs(
-  sessionId: string
-): Promise<{ skipped_jobs: SkippedJob[] }> {
+export async function getSkippedJobs(sessionId: string): Promise<{ skipped_jobs: SkippedJob[] }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/skipped-jobs`);
   if (!res.ok) throw new Error(`Failed to get skipped jobs: ${res.statusText}`);
   return res.json();
@@ -331,11 +327,8 @@ export type ApplicationLogEntry = {
 export async function getApplicationLog(
   sessionId: string
 ): Promise<{ entries: ApplicationLogEntry[] }> {
-  const res = await fetch(
-    `${API_BASE}/api/sessions/${sessionId}/application-log`
-  );
-  if (!res.ok)
-    throw new Error(`Failed to get application log: ${res.statusText}`);
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/application-log`);
+  if (!res.ok) throw new Error(`Failed to get application log: ${res.statusText}`);
   return res.json();
 }
 
@@ -381,16 +374,12 @@ export async function submitCoachReview(
   data: { approved: boolean; edited_resume?: string; feedback?: string }
 ): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(
-    `${API_BASE}/api/sessions/${sessionId}/coach-review`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...auth },
-      body: JSON.stringify(data),
-    }
-  );
-  if (!res.ok)
-    throw new Error(`Failed to submit coach review: ${res.statusText}`);
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/coach-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Failed to submit coach review: ${res.statusText}`);
 }
 
 export async function submitReview(
@@ -411,26 +400,20 @@ export async function submitDecision(
   decision: "submit" | "skip"
 ): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(
-    `${API_BASE}/api/sessions/${sessionId}/submit-decision`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...auth },
-      body: JSON.stringify({ decision }),
-    }
-  );
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/submit-decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({ decision }),
+  });
   if (!res.ok) throw new Error(`Failed to submit decision: ${res.status}`);
 }
 
 export async function resumeIntervention(sessionId: string): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(
-    `${API_BASE}/api/sessions/${sessionId}/resume-intervention`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...auth },
-    }
-  );
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/resume-intervention`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+  });
   if (!res.ok) throw new Error(`Failed to resume intervention: ${res.status}`);
 }
 
@@ -438,10 +421,10 @@ export async function resumeIntervention(sessionId: string): Promise<void> {
 
 export async function confirmLogin(sessionId: string): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(
-    `${API_BASE}/api/sessions/${sessionId}/login-complete`,
-    { method: "POST", headers: auth }
-  );
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/login-complete`, {
+    method: "POST",
+    headers: auth,
+  });
   if (!res.ok) throw new Error(`Failed to confirm login: ${res.status}`);
 }
 
@@ -469,9 +452,7 @@ export interface Checkpoint {
   application_queue: number;
 }
 
-export async function listCheckpoints(
-  sessionId: string
-): Promise<Checkpoint[]> {
+export async function listCheckpoints(sessionId: string): Promise<Checkpoint[]> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/checkpoints`);
   if (!res.ok) throw new Error(`Failed to list checkpoints: ${res.statusText}`);
   const data = await res.json();
@@ -543,7 +524,10 @@ export function connectSSE(
   ];
 
   createSSEConnection(sessionId).then((source) => {
-    if (cancelled) { source.close(); return; }
+    if (cancelled) {
+      source.close();
+      return;
+    }
     es = source;
 
     for (const eventType of EVENT_TYPES) {
@@ -579,7 +563,10 @@ export function connectSSE(
     };
   });
 
-  return () => { cancelled = true; es?.close(); };
+  return () => {
+    cancelled = true;
+    es?.close();
+  };
 }
 
 // ---------- Resume Parsing ----------
@@ -597,9 +584,7 @@ export async function parseResume(
   });
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
-    throw new Error(
-      detail?.detail || `Failed to parse resume: ${res.statusText}`
-    );
+    throw new Error(detail?.detail || `Failed to parse resume: ${res.statusText}`);
   }
   return res.json();
 }
@@ -617,14 +602,11 @@ export async function startLinkedInUpdate(
   linkedinUrl?: string
 ): Promise<{ status: string; message: string }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(
-    `${API_BASE}/api/sessions/${sessionId}/linkedin-update`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...auth },
-      body: JSON.stringify({ updates, linkedin_url: linkedinUrl }),
-    }
-  );
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/linkedin-update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({ updates, linkedin_url: linkedinUrl }),
+  });
   if (!res.ok) throw new Error(`LinkedIn update failed: ${res.statusText}`);
   return res.json();
 }
@@ -738,7 +720,7 @@ export async function createAutopilotSchedule(params: {
 
 export async function updateAutopilotSchedule(
   id: string,
-  updates: Partial<AutopilotSchedule>,
+  updates: Partial<AutopilotSchedule>
 ): Promise<AutopilotSchedule> {
   const auth = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}`, {

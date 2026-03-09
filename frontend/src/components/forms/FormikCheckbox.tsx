@@ -14,12 +14,7 @@ export function FormikCheckbox({ name, label }: FormikCheckboxProps) {
 
   return (
     <label className="flex items-center gap-2 text-sm cursor-pointer">
-      <input
-        type="checkbox"
-        {...field}
-        checked={field.value}
-        className="rounded"
-      />
+      <input type="checkbox" {...field} checked={field.value} className="rounded" />
       {label}
     </label>
   );

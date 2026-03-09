@@ -29,10 +29,7 @@ export default function Loading() {
 
         {/* Card skeletons */}
         {[1, 2].map((i) => (
-          <div
-            key={i}
-            className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 mb-6"
-          >
+          <div key={i} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
             <div className="h-5 w-36 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-4" />
             <div className="h-10 w-full bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse mb-3" />
             <div className="h-3 w-64 bg-zinc-100 dark:bg-zinc-900 rounded animate-pulse" />

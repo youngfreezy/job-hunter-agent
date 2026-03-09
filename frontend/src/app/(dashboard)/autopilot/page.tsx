@@ -94,8 +94,14 @@ export default function AutopilotPage() {
     try {
       await createAutopilotSchedule({
         name,
-        keywords: keywords.split(",").map((k) => k.trim()).filter(Boolean),
-        locations: locations.split(",").map((l) => l.trim()).filter(Boolean),
+        keywords: keywords
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean),
+        locations: locations
+          .split(",")
+          .map((l) => l.trim())
+          .filter(Boolean),
         cron_expression: cronExpression,
         auto_approve: autoApprove,
       });
@@ -175,9 +181,7 @@ export default function AutopilotPage() {
                 ) : (
                   <Badge variant="secondary">Paused</Badge>
                 )}
-                {sched.auto_approve && (
-                  <Badge variant="outline">Auto-approve</Badge>
-                )}
+                {sched.auto_approve && <Badge variant="outline">Auto-approve</Badge>}
               </div>
             </div>
             <CardDescription>{cronToLabel(sched.cron_expression)}</CardDescription>
@@ -215,27 +219,15 @@ export default function AutopilotPage() {
             )}
           </CardContent>
           <CardFooter className="gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleTogglePause(sched.id)}
-            >
+            <Button size="sm" variant="outline" onClick={() => handleTogglePause(sched.id)}>
               {sched.is_active ? "Pause" : "Resume"}
             </Button>
             {sched.is_active && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleRunNow(sched.id)}
-              >
+              <Button size="sm" variant="outline" onClick={() => handleRunNow(sched.id)}>
                 Run Now
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => handleDelete(sched.id)}
-            >
+            <Button size="sm" variant="destructive" onClick={() => handleDelete(sched.id)}>
               Delete
             </Button>
           </CardFooter>
@@ -248,8 +240,8 @@ export default function AutopilotPage() {
           <CardHeader>
             <CardTitle>New Autopilot Schedule</CardTitle>
             <CardDescription>
-              Configure your recurring job search. The system will discover and
-              score jobs, then email you for approval before applying.
+              Configure your recurring job search. The system will discover and score jobs, then
+              email you for approval before applying.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

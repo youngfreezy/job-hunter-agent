@@ -7,8 +7,7 @@ import { FormikConfig, FormikValues, useFormik } from "formik";
 
 const STORAGE_PREFIX = "jh_form_";
 
-interface UsePersistedFormikOptions<T extends FormikValues>
-  extends FormikConfig<T> {
+interface UsePersistedFormikOptions<T extends FormikValues> extends FormikConfig<T> {
   persistKey: string;
   debounceMs?: number;
 }

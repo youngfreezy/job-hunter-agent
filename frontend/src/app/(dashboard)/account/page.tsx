@@ -49,7 +49,8 @@ export default function AccountPage() {
           const data = await res.json();
           setUser(data.user);
         }
-      } catch {} finally {
+      } catch {
+      } finally {
         setLoading(false);
       }
     }
@@ -57,8 +58,14 @@ export default function AccountPage() {
   }, []);
 
   async function handleDeleteAccount() {
-    if (!confirm("This will permanently delete all your data. This cannot be undone. Are you sure?")) return;
-    if (!confirm("Last chance — all sessions, applications, and billing data will be erased forever.")) return;
+    if (
+      !confirm("This will permanently delete all your data. This cannot be undone. Are you sure?")
+    )
+      return;
+    if (
+      !confirm("Last chance — all sessions, applications, and billing data will be erased forever.")
+    )
+      return;
     setDeleting(true);
     try {
       const auth = await getAuthHeaders();
@@ -123,7 +130,9 @@ export default function AccountPage() {
               <p className="font-medium">{user.email}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Sign-in Method</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                Sign-in Method
+              </p>
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-muted">
                   {providerLabel(user.auth_provider)}
@@ -206,12 +215,7 @@ export default function AccountPage() {
           <p className="text-sm text-muted-foreground mb-3">
             Permanently delete your account and all associated data. This action cannot be undone.
           </p>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleDeleteAccount}
-            disabled={deleting}
-          >
+          <Button variant="destructive" size="sm" onClick={handleDeleteAccount} disabled={deleting}>
             {deleting ? "Deleting..." : "Delete Account"}
           </Button>
         </CardContent>

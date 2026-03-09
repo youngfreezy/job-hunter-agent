@@ -2,15 +2,7 @@
 
 "use client";
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 interface JobComparisonChartProps {
   jobs: Array<{
@@ -37,9 +29,7 @@ export default function JobComparisonChart({ jobs }: JobComparisonChartProps) {
   // Build data: one entry per breakdown dimension, with each job as a field
   const data = allKeys.map((key) => {
     const entry: Record<string, string | number> = {
-      dimension: key
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase()),
+      dimension: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
     };
     withBreakdown.forEach((job) => {
       entry[job.company] = job.score_breakdown?.[key] ?? 0;
@@ -73,9 +63,7 @@ export default function JobComparisonChart({ jobs }: JobComparisonChartProps) {
             color: "#e5e7eb",
           }}
         />
-        <Legend
-          wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }}
-        />
+        <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />
         {withBreakdown.map((job, i) => (
           <Bar
             key={job.company}

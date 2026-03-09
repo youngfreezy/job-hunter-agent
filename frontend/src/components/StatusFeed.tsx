@@ -33,9 +33,7 @@ export function StatusFeed({ events }: { events: StatusEvent[] }) {
   return (
     <div className="space-y-1.5 font-mono text-sm">
       {events.length === 0 && (
-        <p className="text-zinc-400 text-center py-8">
-          Waiting for agent activity...
-        </p>
+        <p className="text-zinc-400 text-center py-8">Waiting for agent activity...</p>
       )}
       {events.map((evt, i) => (
         <div key={i} className="flex items-start gap-2 py-0.5">
@@ -50,11 +48,7 @@ export function StatusFeed({ events }: { events: StatusEvent[] }) {
             {evt.agent}
           </span>
           <span
-            className={
-              evt.event === "error"
-                ? "text-red-500"
-                : "text-zinc-700 dark:text-zinc-300"
-            }
+            className={evt.event === "error" ? "text-red-500" : "text-zinc-700 dark:text-zinc-300"}
           >
             {evt.message}
           </span>

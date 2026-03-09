@@ -45,11 +45,7 @@ export default function TaskRiskBars({ tasks }: TaskRiskBarsProps) {
     const width = containerWidth;
     const height = tasks.length * (barHeight + barGap) + margin.top + margin.bottom;
 
-    const svg = d3
-      .select(container)
-      .append("svg")
-      .attr("width", width)
-      .attr("height", height);
+    const svg = d3.select(container).append("svg").attr("width", width).attr("height", height);
 
     const data = tasks.map((t) => ({
       name: truncate(t.task, 42),
@@ -57,7 +53,10 @@ export default function TaskRiskBars({ tasks }: TaskRiskBarsProps) {
       risk: Math.min(100, Math.max(0, t.risk_pct)),
     }));
 
-    const x = d3.scaleLinear().domain([0, 100]).range([margin.left, width - margin.right]);
+    const x = d3
+      .scaleLinear()
+      .domain([0, 100])
+      .range([margin.left, width - margin.right]);
     const y = d3
       .scaleBand()
       .domain(data.map((d) => d.name))
@@ -114,10 +113,10 @@ export default function TaskRiskBars({ tasks }: TaskRiskBarsProps) {
       .attr("dominant-baseline", "central")
       .attr("fill", "#a1a1aa")
       .attr("font-size", "12px")
-      .style("cursor", (d) => d.name !== d.fullName ? "help" : "default")
+      .style("cursor", (d) => (d.name !== d.fullName ? "help" : "default"))
       .text((d) => d.name)
       .on("mouseenter", function (event, d) {
-        const datum = d as (typeof data)[number];
+        const datum = d as typeof data[number];
         if (datum.name !== datum.fullName) {
           tooltip
             .style("opacity", "1")
@@ -172,7 +171,7 @@ export default function TaskRiskBars({ tasks }: TaskRiskBarsProps) {
     svg
       .selectAll(".bar")
       .on("mouseenter", function (event, d) {
-        const datum = d as (typeof data)[number];
+        const datum = d as typeof data[number];
         tooltip
           .style("opacity", "1")
           .html(`<strong>${datum.fullName}</strong><br/>Risk: ${datum.risk}%`);
@@ -186,7 +185,6 @@ export default function TaskRiskBars({ tasks }: TaskRiskBarsProps) {
         tooltip.style("opacity", "0");
         d3.select(this).attr("opacity", 0.9);
       });
-
   }, [tasks, containerWidth]);
 
   if (!tasks || tasks.length === 0) return null;

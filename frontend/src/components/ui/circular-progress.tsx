@@ -16,20 +16,9 @@ interface CircularProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   pulse?: boolean;
 }
 
-const CircularProgress = React.forwardRef<
-  HTMLDivElement,
-  CircularProgressProps
->(
+const CircularProgress = React.forwardRef<HTMLDivElement, CircularProgressProps>(
   (
-    {
-      value,
-      size = 40,
-      strokeWidth = 4,
-      showValue = false,
-      pulse = false,
-      className,
-      ...props
-    },
+    { value, size = 40, strokeWidth = 4, showValue = false, pulse = false, className, ...props },
     ref
   ) => {
     const clamped = Math.max(0, Math.min(100, value));
@@ -86,10 +75,7 @@ const CircularProgress = React.forwardRef<
             strokeDashoffset={offset}
             className="transition-[stroke-dashoffset] duration-500 ease-out"
             style={{
-              filter:
-                clamped > 0
-                  ? `drop-shadow(0 0 3px ${colors.from}40)`
-                  : undefined,
+              filter: clamped > 0 ? `drop-shadow(0 0 3px ${colors.from}40)` : undefined,
             }}
           />
         </svg>

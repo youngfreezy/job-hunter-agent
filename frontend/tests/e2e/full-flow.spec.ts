@@ -27,7 +27,6 @@ const RESUME_FILE = {
 };
 
 test.describe("Full Wizard → Session Flow (Integration)", () => {
-
   test.beforeEach(async ({ page }) => {
     await login(page);
   });
@@ -39,16 +38,12 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
 
     // Step 1: Navigate to wizard
     await page.goto("/session/new");
-    await expect(
-      page.getByRole("heading", { name: "New Session" })
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "New Session" })).toBeVisible();
     await expect(page.getByText("Job Search", { exact: true })).toBeVisible();
 
     // Step 1: Fill keywords
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React, Python, LangGraph");
     await page.waitForTimeout(500);
 
@@ -66,9 +61,7 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.waitForTimeout(500);
 
     // Step 2: Should be on Resume & Profile
-    await expect(
-      page.getByText("Your Resume", { exact: true }).first()
-    ).toBeVisible();
+    await expect(page.getByText("Your Resume", { exact: true }).first()).toBeVisible();
 
     // Upload resume file
     await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
@@ -80,9 +73,7 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     await page.waitForTimeout(500);
 
     // Step 3: Should be on Review & Launch
-    await expect(
-      page.getByText("Review & Launch", { exact: true }).first()
-    ).toBeVisible();
+    await expect(page.getByText("Review & Launch", { exact: true }).first()).toBeVisible();
 
     // Verify review shows our data
     await expect(page.getByText("React").first()).toBeVisible();
@@ -106,9 +97,7 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     });
 
     // Verify SSE events are streaming
-    await expect(
-      page.getByText("Starting your job hunt session...")
-    ).toBeVisible({
+    await expect(page.getByText("Starting your job hunt session...")).toBeVisible({
       timeout: 10_000,
     });
 
@@ -118,9 +107,7 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     });
   });
 
-  test("session page refresh preserves keywords and replays events", async ({
-    page,
-  }) => {
+  test("session page refresh preserves keywords and replays events", async ({ page }) => {
     test.setTimeout(60_000);
 
     // Create a session via the API directly
@@ -151,9 +138,7 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     });
 
     // Verify replayed SSE events
-    await expect(
-      page.getByText("Starting your job hunt session...")
-    ).toBeVisible({
+    await expect(page.getByText("Starting your job hunt session...")).toBeVisible({
       timeout: 10_000,
     });
 
@@ -167,9 +152,7 @@ test.describe("Full Wizard → Session Flow (Integration)", () => {
     });
 
     // Events should be replayed
-    await expect(
-      page.getByText("Starting your job hunt session...")
-    ).toBeVisible({
+    await expect(page.getByText("Starting your job hunt session...")).toBeVisible({
       timeout: 10_000,
     });
   });

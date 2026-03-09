@@ -10,12 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CircularProgress } from "@/components/ui/circular-progress";
 import { ChatPanel, type ChatMessage } from "@/components/ChatPanel";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -233,7 +228,7 @@ const AGENT_COLORS: Record<string, string> = {
 
 function getStepIndexForStatus(
   status: string,
-  session?: Pick<SessionData, "pause_resume_node" | "status_before_pause">,
+  session?: Pick<SessionData, "pause_resume_node" | "status_before_pause">
 ): number {
   const directIndex = PIPELINE_STEPS.indexOf(status);
   if (directIndex >= 0) return directIndex;
@@ -242,8 +237,7 @@ function getStepIndexForStatus(
     return PIPELINE_STEPS.indexOf("applying");
   }
   if (status === "paused") {
-    const resumeTarget =
-      session?.pause_resume_node || session?.status_before_pause;
+    const resumeTarget = session?.pause_resume_node || session?.status_before_pause;
     if (resumeTarget) {
       const resumeIndex = PIPELINE_STEPS.indexOf(resumeTarget);
       if (resumeIndex >= 0) return resumeIndex;
@@ -257,21 +251,11 @@ function compressEvents(events: SSEEvent[]): SSEEvent[] {
   const compressed: SSEEvent[] = [];
 
   for (const event of events) {
-    const summary = String(
-      event.step || event.message || event.status || event.event || "",
-    );
-    const signature = [event.event, event.agent || "", summary.trim()].join(
-      "|",
-    );
+    const summary = String(event.step || event.message || event.status || event.event || "");
+    const signature = [event.event, event.agent || "", summary.trim()].join("|");
     const previous = compressed[compressed.length - 1];
     const previousSummary = previous
-      ? String(
-          previous.step ||
-            previous.message ||
-            previous.status ||
-            previous.event ||
-            "",
-        )
+      ? String(previous.step || previous.message || previous.status || previous.event || "")
       : "";
     const previousSignature = previous
       ? [previous.event, previous.agent || "", previousSummary.trim()].join("|")
@@ -351,17 +335,14 @@ export default function SessionPage() {
     }
   });
   const [coachReviewOpen, setCoachReviewOpen] = useState(false);
-  const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(
-    null,
-  );
+  const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(null);
   const [coachReviewSubmitting, setCoachReviewSubmitting] = useState(false);
   const [shortlistReviewOpen, setShortlistReviewOpen] = useState(false);
   const [shortlistJobs, setShortlistJobs] = useState<ScoredJobData[]>([]);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [shortlistSubmitting, setShortlistSubmitting] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
-  const [sessionSummary, setSessionSummary] =
-    useState<SessionSummaryData | null>(null);
+  const [sessionSummary, setSessionSummary] = useState<SessionSummaryData | null>(null);
   const [interventionData, setInterventionData] = useState<{
     job_id: string;
     job_title: string;
@@ -397,9 +378,11 @@ export default function SessionPage() {
           const s = JSON.parse(stored) as SessionData;
           return s.status || "intake";
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       return "intake";
-    })(),
+    })()
   );
   const coachApprovedRef = useRef(false);
   const shortlistApprovedRef = useRef(false);
@@ -408,20 +391,22 @@ export default function SessionPage() {
   useEffect(() => {
     try {
       sessionStorage.setItem(eventsStorageKey, JSON.stringify(events));
-    } catch { /* quota exceeded – non-critical */ }
+    } catch {
+      /* quota exceeded – non-critical */
+    }
   }, [events, eventsStorageKey]);
 
   useEffect(() => {
     if (!session) return;
     try {
       sessionStorage.setItem(sessionStorageKey, JSON.stringify(session));
-    } catch { /* quota exceeded – non-critical */ }
+    } catch {
+      /* quota exceeded – non-critical */
+    }
   }, [session, sessionStorageKey]);
 
   // Elapsed timer — driven by the session's created_at timestamp from the DB
-  const sessionStartTime = session?.created_at
-    ? new Date(session.created_at).getTime()
-    : null;
+  const sessionStartTime = session?.created_at ? new Date(session.created_at).getTime() : null;
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   useEffect(() => {
     if (!sessionStartTime) return;
@@ -451,41 +436,24 @@ export default function SessionPage() {
           "completed",
           "failed",
         ];
-        const pastShortlist = [
-          "applying",
-          "verifying",
-          "reporting",
-          "completed",
-          "failed",
-        ];
+        const pastShortlist = ["applying", "verifying", "reporting", "completed", "failed"];
         if (pastCoach.includes(s.status)) coachApprovedRef.current = true;
-        if (pastShortlist.includes(s.status))
-          shortlistApprovedRef.current = true;
+        if (pastShortlist.includes(s.status)) shortlistApprovedRef.current = true;
 
         // Restore modals from persisted state on page reload
         if (s.status === "awaiting_coach_review" && s.coach_output) {
           setCoachReviewData(s.coach_output as unknown as CoachOutput);
           setCoachReviewOpen(true);
-          if (
-            Array.isArray(s.coach_chat_history) &&
-            s.coach_chat_history.length > 0
-          ) {
+          if (Array.isArray(s.coach_chat_history) && s.coach_chat_history.length > 0) {
             setChatMessages(
               s.coach_chat_history.map((entry) => ({
-                role:
-                  entry.role === "assistant"
-                    ? "agent"
-                    : (entry.role as ChatMessage["role"]),
+                role: entry.role === "assistant" ? "agent" : (entry.role as ChatMessage["role"]),
                 text: entry.text,
-              })),
+              }))
             );
           }
         }
-        if (
-          s.status === "awaiting_review" &&
-          s.scored_jobs &&
-          s.scored_jobs.length > 0
-        ) {
+        if (s.status === "awaiting_review" && s.scored_jobs && s.scored_jobs.length > 0) {
           const jobs = s.scored_jobs as ScoredJobData[];
           setShortlistJobs(jobs);
           setSelectedJobIds(new Set(jobs.map((sj) => sj.job.id)));
@@ -524,10 +492,7 @@ export default function SessionPage() {
         return [...prev, evt];
       });
 
-      if (
-        evt.event?.endsWith("_progress") &&
-        typeof evt.progress === "number"
-      ) {
+      if (evt.event?.endsWith("_progress") && typeof evt.progress === "number") {
         setStepProgress(evt.progress);
       }
 
@@ -560,10 +525,8 @@ export default function SessionPage() {
           }
         }
         if (evt.coach_output)
-          updates.coach_output =
-            evt.coach_output as unknown as SessionData["coach_output"];
-        if (Array.isArray(evt.keywords) && evt.keywords.length > 0)
-          updates.keywords = evt.keywords;
+          updates.coach_output = evt.coach_output as unknown as SessionData["coach_output"];
+        if (Array.isArray(evt.keywords) && evt.keywords.length > 0) updates.keywords = evt.keywords;
         // Show browser notification for verification code requests
         if (evt.event === "verification_required") {
           if (typeof window !== "undefined" && "Notification" in window) {
@@ -614,12 +577,7 @@ export default function SessionPage() {
         evt.event === "done" ||
         (evt.status &&
           evt.event === "status" &&
-          [
-            "completed",
-            "failed",
-            "awaiting_review",
-            "awaiting_coach_review",
-          ].includes(evt.status))
+          ["completed", "failed", "awaiting_review", "awaiting_coach_review"].includes(evt.status))
       ) {
         getSession(sessionId)
           .then((data) => {
@@ -646,18 +604,13 @@ export default function SessionPage() {
             evt as unknown as {
               coach_chat_history?: Array<{ role: string; text: string }>;
             }
-          ).coach_chat_history) as
-          | Array<{ role: string; text: string }>
-          | undefined;
+          ).coach_chat_history) as Array<{ role: string; text: string }> | undefined;
         if (Array.isArray(history) && history.length > 0) {
           setChatMessages(
             history.map((entry) => ({
-              role:
-                entry.role === "assistant"
-                  ? "agent"
-                  : (entry.role as ChatMessage["role"]),
+              role: entry.role === "assistant" ? "agent" : (entry.role as ChatMessage["role"]),
               text: entry.text,
-            })),
+            }))
           );
         }
         if (
@@ -668,11 +621,7 @@ export default function SessionPage() {
           setCoachReviewOpen(true);
         }
       }
-      if (
-        evt.status &&
-        evt.status !== "coaching" &&
-        evt.status !== "awaiting_coach_review"
-      ) {
+      if (evt.status && evt.status !== "coaching" && evt.status !== "awaiting_coach_review") {
         setCoachReviewOpen(false);
       }
 
@@ -682,17 +631,12 @@ export default function SessionPage() {
         setSelectedJobIds(new Set(jobs.map((sj) => sj.job.id)));
         if (
           !shortlistApprovedRef.current &&
-          (latestStatusRef.current === "tailoring" ||
-            latestStatusRef.current === "awaiting_review")
+          (latestStatusRef.current === "tailoring" || latestStatusRef.current === "awaiting_review")
         ) {
           setShortlistReviewOpen(true);
         }
       }
-      if (
-        evt.status &&
-        evt.status !== "tailoring" &&
-        evt.status !== "awaiting_review"
-      ) {
+      if (evt.status && evt.status !== "tailoring" && evt.status !== "awaiting_review") {
         setShortlistReviewOpen(false);
       }
 
@@ -750,8 +694,7 @@ export default function SessionPage() {
       }
       if (
         evt.status === "applying" &&
-        (evt.message?.includes("Submitting") ||
-          evt.message?.includes("Skipping"))
+        (evt.message?.includes("Submitting") || evt.message?.includes("Skipping"))
       ) {
         setSubmitConfirmData(null);
       }
@@ -768,7 +711,6 @@ export default function SessionPage() {
         setLoginPrompt(null);
       }
 
-
       setTimeout(() => {
         const el = eventsEndRef.current;
         if (el?.parentElement) {
@@ -782,8 +724,7 @@ export default function SessionPage() {
   const handleSendChat = async (message: string) => {
     const msg = message.trim();
     if (!msg) return;
-    const isCoachChatMode =
-      coachReviewOpen || latestStatusRef.current === "awaiting_coach_review";
+    const isCoachChatMode = coachReviewOpen || latestStatusRef.current === "awaiting_coach_review";
 
     setChatMessages((prev) => [...prev, { role: "user", text: msg }]);
 
@@ -799,15 +740,12 @@ export default function SessionPage() {
                   coach_output: response.coach_output,
                   coach_chat_history: response.coach_chat_history,
                 }
-              : prev,
+              : prev
           );
           setCoachReviewOpen(true);
         }
         if (response.message) {
-          setChatMessages((prev) => [
-            ...prev,
-            { role: "agent", text: response.message },
-          ]);
+          setChatMessages((prev) => [...prev, { role: "agent", text: response.message }]);
         }
         return;
       }
@@ -976,12 +914,7 @@ export default function SessionPage() {
         "Skip lower-signal frontend matches",
       ];
     }
-    if (
-      interventionData ||
-      submitConfirmData ||
-      loginPrompt ||
-      session.status === "applying"
-    ) {
+    if (interventionData || submitConfirmData || loginPrompt || session.status === "applying") {
       return [
         "Explain what the apply agent is doing now",
         "Pause after this job",
@@ -1012,58 +945,55 @@ export default function SessionPage() {
     coachReviewOpen || latestStatusRef.current === "awaiting_coach_review"
       ? "Coach"
       : activePane === "apply"
-        ? "Apply"
-        : "Workflow";
+      ? "Apply"
+      : "Workflow";
 
-  const rawStepIndex = session
-    ? getStepIndexForStatus(session.status, session)
-    : 0;
+  const rawStepIndex = session ? getStepIndexForStatus(session.status, session) : 0;
   const currentStepIndex = Math.max(0, rawStepIndex);
-  const isActive =
-    session && session.status !== "completed" && session.status !== "failed";
+  const isActive = session && session.status !== "completed" && session.status !== "failed";
 
   if (!session) {
     return (
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          {/* Pipeline skeleton */}
-          <div className="flex items-center gap-1 mb-8 px-4">
-            {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-              <div key={i} className="flex items-center flex-1">
-                <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
-                {i < 7 && <div className="flex-1 h-0.5 mx-1 bg-muted" />}
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-6">
-            <div className="flex-1 space-y-4">
-              <div className="h-10 w-72 bg-muted rounded-xl animate-pulse" />
-              <div className="rounded-xl border border-border/50 p-6 space-y-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="flex gap-3 items-center animate-fade-in-up"
-                    style={{ animationDelay: `${i * 100}ms` }}
-                  >
-                    <div className="h-4 w-16 bg-muted rounded animate-pulse" />
-                    <div className="h-6 w-20 bg-muted rounded-full animate-pulse" />
-                    <div className="h-4 flex-1 bg-muted/50 rounded animate-pulse" />
-                  </div>
-                ))}
-              </div>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Pipeline skeleton */}
+        <div className="flex items-center gap-1 mb-8 px-4">
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <div key={i} className="flex items-center flex-1">
+              <div className="w-8 h-8 rounded-full bg-muted animate-pulse" />
+              {i < 7 && <div className="flex-1 h-0.5 mx-1 bg-muted" />}
             </div>
-            <div className="w-80 space-y-4">
-              <div className="rounded-xl border border-border/50 p-5 space-y-4">
-                <div className="h-5 w-24 bg-muted rounded animate-pulse" />
-                {[1, 2, 3].map((i) => (
-                  <div key={i}>
-                    <div className="h-3 w-16 bg-muted/50 rounded animate-pulse mb-1.5" />
-                    <div className="h-4 w-40 bg-muted rounded animate-pulse" />
-                  </div>
-                ))}
-              </div>
+          ))}
+        </div>
+        <div className="flex gap-6">
+          <div className="flex-1 space-y-4">
+            <div className="h-10 w-72 bg-muted rounded-xl animate-pulse" />
+            <div className="rounded-xl border border-border/50 p-6 space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="flex gap-3 items-center animate-fade-in-up"
+                  style={{ animationDelay: `${i * 100}ms` }}
+                >
+                  <div className="h-4 w-16 bg-muted rounded animate-pulse" />
+                  <div className="h-6 w-20 bg-muted rounded-full animate-pulse" />
+                  <div className="h-4 flex-1 bg-muted/50 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="w-80 space-y-4">
+            <div className="rounded-xl border border-border/50 p-5 space-y-4">
+              <div className="h-5 w-24 bg-muted rounded animate-pulse" />
+              {[1, 2, 3].map((i) => (
+                <div key={i}>
+                  <div className="h-3 w-16 bg-muted/50 rounded animate-pulse mb-1.5" />
+                  <div className="h-4 w-40 bg-muted rounded animate-pulse" />
+                </div>
+              ))}
             </div>
           </div>
         </div>
+      </div>
     );
   }
 
@@ -1077,8 +1007,8 @@ export default function SessionPage() {
             isActive
               ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800 animate-pulse"
               : session.status === "completed"
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
-                : ""
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+              : ""
           }
         >
           {isActive && (
@@ -1097,10 +1027,8 @@ export default function SessionPage() {
               const isCurrent = i === currentStepIndex;
               const isFailed = session.status === "failed" && isCurrent;
               const isBlocked =
-                (session.status === "awaiting_coach_review" &&
-                  step === "awaiting_coach_review") ||
-                (session.status === "awaiting_review" &&
-                  step === "awaiting_review") ||
+                (session.status === "awaiting_coach_review" && step === "awaiting_coach_review") ||
+                (session.status === "awaiting_review" && step === "awaiting_review") ||
                 ((session.status === "needs_intervention" ||
                   session.status === "paused" ||
                   interventionData ||
@@ -1108,10 +1036,7 @@ export default function SessionPage() {
                   loginPrompt) &&
                   step === "applying");
               return (
-                <div
-                  key={step}
-                  className="flex items-center flex-1 last:flex-none"
-                >
+                <div key={step} className="flex items-center flex-1 last:flex-none">
                   {/* Step pill */}
                   <div
                     className={`
@@ -1120,12 +1045,12 @@ export default function SessionPage() {
                         isCompleted
                           ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
                           : isFailed
-                            ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
-                            : isBlocked
-                              ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-                              : isCurrent
-                                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
-                                : "text-muted-foreground/60"
+                          ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                          : isBlocked
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                          : isCurrent
+                          ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
+                          : "text-muted-foreground/60"
                       }
                     `}
                   >
@@ -1141,11 +1066,7 @@ export default function SessionPage() {
                         stroke="currentColor"
                         strokeWidth={3}
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M5 13l4 4L19 7"
-                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     ) : isFailed ? (
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
@@ -1170,17 +1091,17 @@ export default function SessionPage() {
                             isFailed
                               ? "bg-red-400 dark:bg-red-500"
                               : isBlocked
-                                ? "bg-amber-400 dark:bg-amber-500"
-                                : isCurrent && isActive
-                                  ? "bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
-                                  : "bg-blue-400 dark:bg-blue-500"
+                              ? "bg-amber-400 dark:bg-amber-500"
+                              : isCurrent && isActive
+                              ? "bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
+                              : "bg-blue-400 dark:bg-blue-500"
                           }`}
                           style={{
                             width: isCompleted
                               ? "100%"
                               : isCurrent
-                                ? `${Math.max(stepProgress, 5)}%`
-                                : "0%",
+                              ? `${Math.max(stepProgress, 5)}%`
+                              : "0%",
                           }}
                         />
                       </div>
@@ -1217,17 +1138,15 @@ export default function SessionPage() {
                 Agent Paused — Needs Your Help
               </h3>
               <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                <span className="font-medium">
-                  {interventionData.job_title}
-                </span>{" "}
-                at {interventionData.company}
+                <span className="font-medium">{interventionData.job_title}</span> at{" "}
+                {interventionData.company}
               </p>
               <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">
                 {interventionData.reason}
               </p>
               <p className="text-xs text-amber-500 mt-2">
-                Use Browser Takeover below to interact with the live page, or
-                fix it directly on the desktop browser, then click Resume.
+                Use Browser Takeover below to interact with the live page, or fix it directly on the
+                desktop browser, then click Resume.
               </p>
             </div>
             <Button
@@ -1264,18 +1183,16 @@ export default function SessionPage() {
                 Ready to Submit — Review & Approve
               </h3>
               <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                <span className="font-medium">
-                  {submitConfirmData.job_title}
-                </span>{" "}
-                at {submitConfirmData.company}
+                <span className="font-medium">{submitConfirmData.job_title}</span> at{" "}
+                {submitConfirmData.company}
               </p>
               <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
-                {submitConfirmData.fields_filled} fields filled. Review the form
-                in the browser window before submitting.
+                {submitConfirmData.fields_filled} fields filled. Review the form in the browser
+                window before submitting.
               </p>
               <p className="text-xs text-blue-500 mt-2">
-                Review the live page below in Browser Takeover, then submit or
-                skip this application.
+                Review the live page below in Browser Takeover, then submit or skip this
+                application.
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -1332,14 +1249,11 @@ export default function SessionPage() {
                 </div>
               )}
               {surfacedEvents.map((evt, i) => {
-                const time = evt.timestamp
-                  ? new Date(evt.timestamp).toLocaleTimeString()
-                  : "";
+                const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : "";
 
                 if (evt.event?.endsWith("_progress")) {
                   const label = evt.event.replace("_progress", "");
-                  const pct =
-                    typeof evt.progress === "number" ? evt.progress : undefined;
+                  const pct = typeof evt.progress === "number" ? evt.progress : undefined;
                   return (
                     <div
                       key={`${evt.event}-${i}`}
@@ -1357,8 +1271,7 @@ export default function SessionPage() {
                       </span>
                       <span
                         className={`min-w-0 flex-1 break-words text-sm ${
-                          typeof evt.step === "string" &&
-                          evt.step.startsWith("Skipped")
+                          typeof evt.step === "string" && evt.step.startsWith("Skipped")
                             ? "text-amber-600 dark:text-amber-400"
                             : "text-foreground/80"
                         }`}
@@ -1382,12 +1295,8 @@ export default function SessionPage() {
                         (evt.jobs_found ?? 0) === 1 ? "job" : "jobs"
                       }`
                     : "") ||
-                  (evt.event === "scoring"
-                    ? `Ranked ${evt.scored_count ?? 0} jobs by fit`
-                    : "") ||
-                  (evt.event === "agent_complete"
-                    ? `${agent.replace(/_/g, " ")} finished`
-                    : "") ||
+                  (evt.event === "scoring" ? `Ranked ${evt.scored_count ?? 0} jobs by fit` : "") ||
+                  (evt.event === "agent_complete" ? `${agent.replace(/_/g, " ")} finished` : "") ||
                   evt.status ||
                   evt.event;
 
@@ -1408,9 +1317,7 @@ export default function SessionPage() {
                     </span>
                     <span
                       className={`min-w-0 flex-1 break-words text-sm ${
-                        evt.event === "error"
-                          ? "font-medium text-red-500"
-                          : "text-foreground/80"
+                        evt.event === "error" ? "font-medium text-red-500" : "text-foreground/80"
                       }`}
                     >
                       {msg}
@@ -1490,7 +1397,7 @@ export default function SessionPage() {
                   {
                     value: Array.isArray(session.applications_skipped)
                       ? session.applications_skipped.length
-                      : (session.applications_skipped ?? 0),
+                      : session.applications_skipped ?? 0,
                     label: "Skipped",
                     color: "text-amber-600 dark:text-amber-400",
                   },
@@ -1511,9 +1418,7 @@ export default function SessionPage() {
           <Card className="overflow-hidden">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-sm font-semibold">
-                  Guide the Agent
-                </CardTitle>
+                <CardTitle className="text-sm font-semibold">Guide the Agent</CardTitle>
                 <Badge variant="outline">{chatModeLabel}</Badge>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -1541,8 +1446,7 @@ export default function SessionPage() {
                   onSend={handleSendChat}
                   disabled={!isActive}
                   placeholder={
-                    coachReviewOpen ||
-                    latestStatusRef.current === "awaiting_coach_review"
+                    coachReviewOpen || latestStatusRef.current === "awaiting_coach_review"
                       ? "Ask the coach to revise your resume or strategy..."
                       : "Ask the agent to adjust..."
                   }
@@ -1573,9 +1477,7 @@ export default function SessionPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    Resume Score
-                  </span>
+                  <span className="text-xs text-muted-foreground">Resume Score</span>
                   <CircularProgress
                     value={session.coach_output.resume_score.overall}
                     size={42}
@@ -1591,10 +1493,7 @@ export default function SessionPage() {
                         {session.coach_output.confidence_message}
                       </p>
                     </TooltipTrigger>
-                    <TooltipContent
-                      side="left"
-                      className="max-w-sm text-xs leading-relaxed"
-                    >
+                    <TooltipContent side="left" className="max-w-sm text-xs leading-relaxed">
                       {session.coach_output.confidence_message}
                     </TooltipContent>
                   </Tooltip>
@@ -1602,7 +1501,6 @@ export default function SessionPage() {
               </CardContent>
             </Card>
           )}
-
 
           {shortlistJobs.length > 0 && activePane !== "summary" && (
             <Card className="border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 dark:border-amber-900 dark:from-amber-950/50 dark:to-orange-950/50">
@@ -1626,15 +1524,11 @@ export default function SessionPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
-                    Jobs scored
-                  </span>
+                  <span className="text-xs text-muted-foreground">Jobs scored</span>
                   <span className="font-semibold">{shortlistJobs.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
-                    Top score
-                  </span>
+                  <span className="text-xs text-muted-foreground">Top score</span>
                   <CircularProgress
                     value={shortlistJobs[0]?.score || 0}
                     size={28}
@@ -1661,7 +1555,7 @@ export default function SessionPage() {
                 <CardTitle className="text-sm font-semibold">Score Distribution</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScoreDistribution scores={shortlistJobs.map(j => j.score)} />
+                <ScoreDistribution scores={shortlistJobs.map((j) => j.score)} />
               </CardContent>
             </Card>
           )}
@@ -1672,11 +1566,13 @@ export default function SessionPage() {
                 <CardTitle className="text-sm font-semibold">Job Comparison</CardTitle>
               </CardHeader>
               <CardContent>
-                <JobComparisonChart jobs={shortlistJobs.slice(0, 5).map(j => ({
-                  title: j.job.title,
-                  company: j.job.company,
-                  score_breakdown: j.score_breakdown,
-                }))} />
+                <JobComparisonChart
+                  jobs={shortlistJobs.slice(0, 5).map((j) => ({
+                    title: j.job.title,
+                    company: j.job.company,
+                    score_breakdown: j.score_breakdown,
+                  }))}
+                />
               </CardContent>
             </Card>
           )}
@@ -1735,31 +1631,25 @@ export default function SessionPage() {
                       color: "",
                     },
                   ].map(({ label, value, color }) => (
-                    <div
-                      key={label}
-                      className="flex items-center justify-between py-1"
-                    >
-                      <span className="text-xs text-muted-foreground">
-                        {label}
-                      </span>
+                    <div key={label} className="flex items-center justify-between py-1">
+                      <span className="text-xs text-muted-foreground">{label}</span>
                       <span className={`font-semibold ${color}`}>{value}</span>
                     </div>
                   ))}
                 </div>
                 <div className="flex items-center justify-between border-t border-emerald-200/50 py-1 dark:border-emerald-800/50">
-                  <span className="text-xs text-muted-foreground">
-                    Duration
-                  </span>
-                  <span className="font-semibold">
-                    {sessionSummary.duration_minutes}m
-                  </span>
+                  <span className="text-xs text-muted-foreground">Duration</span>
+                  <span className="font-semibold">{sessionSummary.duration_minutes}m</span>
                 </div>
                 {sessionSummary.total_applied > 0 && (
                   <div className="rounded-xl bg-emerald-100/80 dark:bg-emerald-900/40 p-3 text-center border border-emerald-200 dark:border-emerald-700">
                     <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                       {(() => {
-                        const saved = Math.max(0, sessionSummary.total_applied * 60 - sessionSummary.duration_minutes);
-                        if (saved >= 60) return `${Math.round(saved / 60 * 10) / 10}h`;
+                        const saved = Math.max(
+                          0,
+                          sessionSummary.total_applied * 60 - sessionSummary.duration_minutes
+                        );
+                        if (saved >= 60) return `${Math.round((saved / 60) * 10) / 10}h`;
                         return `${Math.round(saved)}m`;
                       })()}
                     </p>
@@ -1770,38 +1660,27 @@ export default function SessionPage() {
                 )}
                 {sessionSummary.top_companies.length > 0 && (
                   <div>
-                    <p className="mb-1.5 text-xs text-muted-foreground">
-                      Top Companies
-                    </p>
+                    <p className="mb-1.5 text-xs text-muted-foreground">Top Companies</p>
                     <div className="flex flex-wrap gap-1">
-                      {sessionSummary.top_companies
-                        .slice(0, 5)
-                        .map((company, i) => (
-                          <Badge
-                            key={i}
-                            variant="secondary"
-                            className="bg-white/80 text-xs dark:bg-white/10"
-                          >
-                            {company}
-                          </Badge>
-                        ))}
+                      {sessionSummary.top_companies.slice(0, 5).map((company, i) => (
+                        <Badge
+                          key={i}
+                          variant="secondary"
+                          className="bg-white/80 text-xs dark:bg-white/10"
+                        >
+                          {company}
+                        </Badge>
+                      ))}
                     </div>
                   </div>
                 )}
                 {sessionSummary.next_steps.length > 0 && (
                   <div>
-                    <p className="mb-1.5 text-xs text-muted-foreground">
-                      Next Steps
-                    </p>
+                    <p className="mb-1.5 text-xs text-muted-foreground">Next Steps</p>
                     <ul className="space-y-1.5">
                       {sessionSummary.next_steps.map((step, i) => (
-                        <li
-                          key={i}
-                          className="flex items-start gap-1.5 text-xs text-foreground/70"
-                        >
-                          <span className="mt-0.5 shrink-0 text-emerald-500">
-                            {i + 1}.
-                          </span>
+                        <li key={i} className="flex items-start gap-1.5 text-xs text-foreground/70">
+                          <span className="mt-0.5 shrink-0 text-emerald-500">{i + 1}.</span>
                           {step}
                         </li>
                       ))}
@@ -1845,16 +1724,11 @@ export default function SessionPage() {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground">
-                      Resume from a meaningful checkpoint instead of restarting
-                      the whole run.
+                      Resume from a meaningful checkpoint instead of restarting the whole run.
                     </p>
                     {checkpoints
                       .filter((cp) =>
-                        [
-                          "paused",
-                          "awaiting_review",
-                          "awaiting_coach_review",
-                        ].includes(cp.status),
+                        ["paused", "awaiting_review", "awaiting_coach_review"].includes(cp.status)
                       )
                       .map((cp) => (
                         <button
@@ -1876,11 +1750,7 @@ export default function SessionPage() {
                         </button>
                       ))}
                     {checkpoints.filter((cp) =>
-                      [
-                        "paused",
-                        "awaiting_review",
-                        "awaiting_coach_review",
-                      ].includes(cp.status),
+                      ["paused", "awaiting_review", "awaiting_coach_review"].includes(cp.status)
                     ).length === 0 && (
                       <p className="text-xs text-muted-foreground">
                         No rewindable checkpoints found.
@@ -1892,61 +1762,56 @@ export default function SessionPage() {
             </Card>
           )}
 
-          {session.applications_submitted &&
-            session.applications_submitted.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <svg
-                      className="w-4 h-4 text-emerald-500"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    Applications
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="max-h-64 space-y-1 overflow-y-auto">
-                  {session.applications_submitted.map((app, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-muted/50"
-                    >
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950">
-                        <svg
-                          className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={3}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </span>
-                      <span className="flex-1 truncate text-foreground/70">
-                        {app.job?.title && app.job?.company
-                          ? `${app.job.title} @ ${app.job.company}`
-                          : (app.job_id?.slice(0, 12) ?? "unknown")}
-                      </span>
-                      <Badge variant="secondary" className="text-[10px]">
-                        {app.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
+          {session.applications_submitted && session.applications_submitted.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <svg
+                    className="w-4 h-4 text-emerald-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Applications
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-64 space-y-1 overflow-y-auto">
+                {session.applications_submitted.map((app, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-muted/50"
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950">
+                      <svg
+                        className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                    <span className="flex-1 truncate text-foreground/70">
+                      {app.job?.title && app.job?.company
+                        ? `${app.job.title} @ ${app.job.company}`
+                        : app.job_id?.slice(0, 12) ?? "unknown"}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {app.status}
+                    </Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 
@@ -1973,20 +1838,16 @@ export default function SessionPage() {
               Review Your Coached Resume
             </DialogTitle>
             <DialogDescription>
-              The Career Coach has analyzed and rewritten your resume. Review
-              the results below, then approve to continue to job discovery.
+              The Career Coach has analyzed and rewritten your resume. Review the results below,
+              then approve to continue to job discovery.
             </DialogDescription>
           </DialogHeader>
           {coachReviewData && (
             <div className="space-y-4">
-              <CoachPanel
-                coach={coachReviewData}
-              />
+              <CoachPanel coach={coachReviewData} />
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold">
-                    Coach Chat
-                  </CardTitle>
+                  <CardTitle className="text-sm font-semibold">Coach Chat</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0 h-56">
                   <ChatPanel
@@ -2007,10 +1868,7 @@ export default function SessionPage() {
             >
               Review Later
             </Button>
-            <Button
-              onClick={handleApproveCoachReview}
-              loading={coachReviewSubmitting}
-            >
+            <Button onClick={handleApproveCoachReview} loading={coachReviewSubmitting}>
               Approve & Start Job Discovery
             </Button>
           </DialogFooter>
@@ -2040,8 +1898,7 @@ export default function SessionPage() {
               Review Job Shortlist
             </DialogTitle>
             <DialogDescription>
-              Select the jobs you want to apply to. Deselect any you want to
-              skip.
+              Select the jobs you want to apply to. Deselect any you want to skip.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 max-h-[55vh] overflow-y-auto">
@@ -2070,8 +1927,7 @@ export default function SessionPage() {
                               key={ri}
                               className="text-xs text-muted-foreground flex items-start gap-1.5"
                             >
-                              <span className="text-blue-400 mt-0.5">-</span>{" "}
-                              {r}
+                              <span className="text-blue-400 mt-0.5">-</span> {r}
                             </li>
                           ))}
                         </ul>
@@ -2083,12 +1939,7 @@ export default function SessionPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-3 ml-4">
-                      <CircularProgress
-                        value={sj.score}
-                        size={40}
-                        strokeWidth={3.5}
-                        showValue
-                      />
+                      <CircularProgress value={sj.score} size={40} strokeWidth={3.5} showValue />
                       <Badge variant="secondary" className="text-xs">
                         {sj.job.board}
                       </Badge>
@@ -2107,11 +1958,7 @@ export default function SessionPage() {
                             stroke="currentColor"
                             strokeWidth={3}
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M5 13l4 4L19 7"
-                            />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                           </svg>
                         )}
                       </div>
@@ -2147,20 +1994,16 @@ export default function SessionPage() {
 
       {/* Pre-login modal */}
       <Dialog open={!!loginPrompt} onOpenChange={() => {}}>
-        <DialogContent
-          className="sm:max-w-md"
-          onInteractOutside={(e) => e.preventDefault()}
-        >
+        <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>
-              Log in to{" "}
-              {loginPrompt?.board?.replace(/^\w/, (c) => c.toUpperCase())}
+              Log in to {loginPrompt?.board?.replace(/^\w/, (c) => c.toUpperCase())}
             </DialogTitle>
             <DialogDescription>{loginPrompt?.message}</DialogDescription>
           </DialogHeader>
           <div className="bg-muted/50 rounded p-3 text-sm text-muted-foreground">
-            A browser window has opened with the login page. Log in with your
-            account, then click the button below to continue.
+            A browser window has opened with the login page. Log in with your account, then click
+            the button below to continue.
           </div>
           <DialogFooter>
             <Button

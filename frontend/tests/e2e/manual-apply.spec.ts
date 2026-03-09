@@ -66,16 +66,13 @@ test.describe("Manual Apply / Application Log", () => {
     await login(page);
 
     // Mock the application log API (correct endpoint)
-    await page.route(
-      `**/api/sessions/${sessionId}/application-log`,
-      async (route) => {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ entries: mockEntries }),
-        });
-      }
-    );
+    await page.route(`**/api/sessions/${sessionId}/application-log`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ entries: mockEntries }),
+      });
+    });
   });
 
   test("loads and shows all application entries", async ({ page }) => {
@@ -120,15 +117,9 @@ test.describe("Manual Apply / Application Log", () => {
     await expect(page.getByText("Application Log")).toBeVisible();
     await expect(page.getByText("Senior React Engineer")).toBeVisible();
 
-    await expect(
-      page.getByText("submitted", { exact: true }).first()
-    ).toBeVisible();
-    await expect(
-      page.getByText("failed", { exact: true }).first()
-    ).toBeVisible();
-    await expect(
-      page.getByText("skipped", { exact: true }).first()
-    ).toBeVisible();
+    await expect(page.getByText("submitted", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("failed", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("skipped", { exact: true }).first()).toBeVisible();
   });
 
   test("expands details to show cover letter", async ({ page }) => {
@@ -141,9 +132,7 @@ test.describe("Manual Apply / Application Log", () => {
     await page.getByText("Details").first().click();
 
     // Cover letter should be visible
-    await expect(
-      page.getByRole("heading", { name: "Cover Letter" })
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Cover Letter" })).toBeVisible();
     await expect(page.getByText("Dear Hiring Manager,")).toBeVisible();
   });
 
@@ -168,23 +157,18 @@ test.describe("Manual Apply / Application Log", () => {
     // Wait for entries to load
     await expect(page.getByText("Full Stack Developer")).toBeVisible();
 
-    await expect(
-      page.getByText("Submit clicked but no confirmation page detected")
-    ).toBeVisible();
+    await expect(page.getByText("Submit clicked but no confirmation page detected")).toBeVisible();
   });
 
   test("shows empty state when no applications", async ({ page }) => {
     // Override the route mock for this specific test
-    await page.route(
-      `**/api/sessions/${sessionId}/application-log`,
-      async (route) => {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ entries: [] }),
-        });
-      }
-    );
+    await page.route(`**/api/sessions/${sessionId}/application-log`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ entries: [] }),
+      });
+    });
 
     await page.goto(`/session/${sessionId}/manual-apply`);
 
@@ -196,9 +180,7 @@ test.describe("Manual Apply / Application Log", () => {
 
     await expect(page.getByText("JobHunter Agent").first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Activity" })).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Manual Apply" })
-    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Manual Apply" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
   });
 });

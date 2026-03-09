@@ -65,13 +65,10 @@ export default function InterviewPrepLandingPage() {
       <div className="bg-card border rounded-lg p-8 space-y-6">
         <div className="text-center space-y-3">
           <div className="text-6xl">🎯</div>
-          <h2 className="text-xl font-semibold">
-            Mock interview with AI coaching
-          </h2>
+          <h2 className="text-xl font-semibold">Mock interview with AI coaching</h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            We&apos;ll research the company, generate personalized interview
-            questions, and coach you through answers using your resume.
-            Get real-time grading on every response.
+            We&apos;ll research the company, generate personalized interview questions, and coach
+            you through answers using your resume. Get real-time grading on every response.
           </p>
         </div>
 
@@ -92,9 +89,7 @@ export default function InterviewPrepLandingPage() {
           />
         </div>
 
-        {error && (
-          <p className="text-destructive text-sm text-center">{error}</p>
-        )}
+        {error && <p className="text-destructive text-sm text-center">{error}</p>}
 
         <div className="text-center">
           <Button

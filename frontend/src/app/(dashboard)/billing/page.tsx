@@ -167,8 +167,8 @@ export default function BillingPage() {
       {wallet?.low_balance && (
         <div className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 px-4 py-3 rounded text-sm flex items-center justify-between">
           <span>
-            Your balance is low ({wallet.balance.toFixed(1)} credits).
-            Refill with {packs[wallet.auto_refill_pack_id]?.label ?? "credits"}?
+            Your balance is low ({wallet.balance.toFixed(1)} credits). Refill with{" "}
+            {packs[wallet.auto_refill_pack_id]?.label ?? "credits"}?
           </span>
           <Button
             size="sm"
@@ -187,18 +187,18 @@ export default function BillingPage() {
             <div>
               <p className="text-sm font-medium text-zinc-500">Credit Balance</p>
               <p className="text-3xl font-bold mt-1">
-                {wallet?.balance.toFixed(1) ?? "0"} <span className="text-base font-normal text-zinc-400">credits</span>
+                {wallet?.balance.toFixed(1) ?? "0"}{" "}
+                <span className="text-base font-normal text-zinc-400">credits</span>
               </p>
             </div>
             <div className="text-right">
               <p className="text-sm text-zinc-500">Free applications</p>
-              <p className="text-2xl font-bold text-green-600">
-                {wallet?.free_remaining ?? 0}
-              </p>
+              <p className="text-2xl font-bold text-green-600">{wallet?.free_remaining ?? 0}</p>
             </div>
           </div>
           <p className="text-xs text-zinc-400 mt-3">
-            Successful applications use 1 credit. Partial attempts use 0.5 credits. Skipped jobs are free. Free applications are used first.
+            Successful applications use 1 credit. Partial attempts use 0.5 credits. Skipped jobs are
+            free. Free applications are used first.
           </p>
         </CardContent>
       </Card>
@@ -229,7 +229,11 @@ export default function BillingPage() {
             const pack = packs[id];
             if (!pack) return null;
             const perCredit = (pack.price_dollars / pack.credit_amount).toFixed(2);
-            const perDayMap: Record<string, string> = { "10": "$0.50/day", "50": "$2.00/day", "100": "$3.67/day" };
+            const perDayMap: Record<string, string> = {
+              "10": "$0.50/day",
+              "50": "$2.00/day",
+              "100": "$3.67/day",
+            };
             return (
               <Card key={id} className="relative">
                 {id === "50" && (
@@ -242,7 +246,9 @@ export default function BillingPage() {
                   <p className="text-2xl font-bold">${pack.price_dollars}</p>
                   <p className="text-xs text-zinc-500 mt-1">${perCredit}/credit</p>
                   {perDayMap[id] && (
-                    <p className="text-xs text-emerald-600 font-medium mt-0.5">That&apos;s just {perDayMap[id]}</p>
+                    <p className="text-xs text-emerald-600 font-medium mt-0.5">
+                      That&apos;s just {perDayMap[id]}
+                    </p>
                   )}
                   <Button
                     className="w-full mt-4"
@@ -276,7 +282,9 @@ export default function BillingPage() {
             <span className="text-sm text-zinc-500">/month</span>
           </div>
           <p className="text-xs text-emerald-600 font-medium mt-0.5">That&apos;s just $3.33/day</p>
-          <p className="text-xs text-zinc-500 mt-1">Up to 100 applications/month. Cancel anytime.</p>
+          <p className="text-xs text-zinc-500 mt-1">
+            Up to 100 applications/month. Cancel anytime.
+          </p>
           <Button
             className="w-full mt-4"
             size="sm"
@@ -357,7 +365,11 @@ export default function BillingPage() {
                 setAutoRefillEnabled(next);
                 if (!next) {
                   // Save immediately when disabling
-                  updateAutoRefill({ enabled: false, threshold: autoRefillThreshold, pack_id: autoRefillPackId }).catch(() => {});
+                  updateAutoRefill({
+                    enabled: false,
+                    threshold: autoRefillThreshold,
+                    pack_id: autoRefillPackId,
+                  }).catch(() => {});
                 }
               }}
               className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
@@ -392,9 +404,7 @@ export default function BillingPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-zinc-500 block mb-1">
-                  Refill pack
-                </label>
+                <label className="text-xs text-zinc-500 block mb-1">Refill pack</label>
                 <select
                   value={autoRefillPackId}
                   onChange={(e) => setAutoRefillPackId(e.target.value)}
@@ -408,16 +418,10 @@ export default function BillingPage() {
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleSaveAutoRefill}
-                  disabled={autoRefillSaving}
-                >
+                <Button size="sm" onClick={handleSaveAutoRefill} disabled={autoRefillSaving}>
                   {autoRefillSaving ? "Saving..." : "Save"}
                 </Button>
-                {autoRefillSaved && (
-                  <span className="text-xs text-green-600">Saved!</span>
-                )}
+                {autoRefillSaved && <span className="text-xs text-green-600">Saved!</span>}
               </div>
             </div>
           )}
@@ -445,9 +449,7 @@ export default function BillingPage() {
                 <div>
                   <p className="text-sm font-medium">{tx.description || tx.type}</p>
                   <p className="text-xs text-zinc-400">
-                    {tx.created_at
-                      ? new Date(tx.created_at).toLocaleDateString()
-                      : ""}
+                    {tx.created_at ? new Date(tx.created_at).toLocaleDateString() : ""}
                   </p>
                 </div>
                 <div className="text-right">
@@ -456,26 +458,29 @@ export default function BillingPage() {
                       tx.type === "free_application"
                         ? "text-blue-500"
                         : tx.amount > 0
-                          ? "text-green-600"
-                          : tx.type === "application_partial"
-                            ? "text-amber-500"
-                            : "text-red-500"
+                        ? "text-green-600"
+                        : tx.type === "application_partial"
+                        ? "text-amber-500"
+                        : "text-red-500"
                     }`}
                   >
                     {tx.type === "free_application" ? (
-                      <span className="text-[10px] font-medium border border-blue-300 rounded px-1.5 py-0.5">FREE</span>
+                      <span className="text-[10px] font-medium border border-blue-300 rounded px-1.5 py-0.5">
+                        FREE
+                      </span>
                     ) : (
                       <>
-                        {tx.amount > 0 ? "+" : ""}{Math.abs(tx.amount).toFixed(1)} cr
+                        {tx.amount > 0 ? "+" : ""}
+                        {Math.abs(tx.amount).toFixed(1)} cr
                         {tx.type === "application_partial" && (
-                          <span className="ml-1.5 text-[10px] font-normal text-amber-500 border border-amber-300 rounded px-1 py-0.5">partial</span>
+                          <span className="ml-1.5 text-[10px] font-normal text-amber-500 border border-amber-300 rounded px-1 py-0.5">
+                            partial
+                          </span>
                         )}
                       </>
                     )}
                   </p>
-                  <p className="text-xs text-zinc-400">
-                    Balance: {tx.balance_after.toFixed(1)} cr
-                  </p>
+                  <p className="text-xs text-zinc-400">Balance: {tx.balance_after.toFixed(1)} cr</p>
                 </div>
               </div>
             ))}

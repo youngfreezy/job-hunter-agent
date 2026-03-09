@@ -13,7 +13,7 @@ export default function CareerPivotPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasResume, setHasResume] = useState(false);
-  
+
   useEffect(() => {
     setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
   }, []);
@@ -58,13 +58,11 @@ export default function CareerPivotPage() {
       <div className="bg-card border rounded-lg p-8 space-y-6">
         <div className="text-center space-y-3">
           <div className="text-6xl">🔍</div>
-          <h2 className="text-xl font-semibold">
-            Analyze your AI automation risk
-          </h2>
+          <h2 className="text-xl font-semibold">Analyze your AI automation risk</h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            We&apos;ll analyze your resume against U.S. Department of Labor data to
-            find your automation risk score, adjacent roles you&apos;re qualified for,
-            and a learning plan to close skill gaps.
+            We&apos;ll analyze your resume against U.S. Department of Labor data to find your
+            automation risk score, adjacent roles you&apos;re qualified for, and a learning plan to
+            close skill gaps.
           </p>
         </div>
 
@@ -72,9 +70,7 @@ export default function CareerPivotPage() {
           <ResumeUpload onResumeReady={() => setHasResume(true)} />
         </div>
 
-        {error && (
-          <p className="text-destructive text-sm text-center">{error}</p>
-        )}
+        {error && <p className="text-destructive text-sm text-center">{error}</p>}
 
         <div className="text-center">
           <Button size="lg" onClick={handleStart} disabled={!hasResume} loading={loading}>

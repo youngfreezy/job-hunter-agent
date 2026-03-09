@@ -2,15 +2,7 @@
 
 "use client";
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Cell,
-  LabelList,
-  ResponsiveContainer,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Cell, LabelList, ResponsiveContainer } from "recharts";
 
 interface ReadinessScoreBarsProps {
   categoryScores: Record<string, number> | null | undefined;
@@ -23,9 +15,7 @@ function getBarColor(score: number): string {
 }
 
 function formatLabel(key: string): string {
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export default function ReadinessScoreBars({ categoryScores }: ReadinessScoreBarsProps) {
@@ -40,11 +30,7 @@ export default function ReadinessScoreBars({ categoryScores }: ReadinessScoreBar
 
   return (
     <ResponsiveContainer width="100%" height={chartHeight}>
-      <BarChart
-        data={data}
-        layout="vertical"
-        margin={{ top: 5, right: 40, bottom: 5, left: 10 }}
-      >
+      <BarChart data={data} layout="vertical" margin={{ top: 5, right: 40, bottom: 5, left: 10 }}>
         <XAxis
           type="number"
           domain={[0, 10]}

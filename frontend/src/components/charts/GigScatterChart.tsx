@@ -72,8 +72,7 @@ function CustomTooltip({
       <div>Platform: {d.platform}</div>
       <div>Match Score: {d.matchScore}%</div>
       <div>
-        Budget: ${d.budgetMin.toLocaleString()} &ndash; $
-        {d.budgetMax.toLocaleString()}
+        Budget: ${d.budgetMin.toLocaleString()} &ndash; ${d.budgetMax.toLocaleString()}
       </div>
       <div>Proposals: {d.proposals}</div>
     </div>
@@ -131,20 +130,11 @@ export default function GigScatterChart({ gigs }: GigScatterChartProps) {
             fontSize: 12,
           }}
         />
-        <ZAxis
-          type="number"
-          dataKey="competitionSize"
-          domain={[pMin, pMax]}
-          range={[400, 60]}
-        />
+        <ZAxis type="number" dataKey="competitionSize" domain={[pMin, pMax]} range={[400, 60]} />
         <Tooltip content={<CustomTooltip />} />
         <Scatter data={data}>
           {data.map((entry, idx) => (
-            <Cell
-              key={entry.id ?? idx}
-              fill={platformColor(entry.platform)}
-              fillOpacity={0.85}
-            />
+            <Cell key={entry.id ?? idx} fill={platformColor(entry.platform)} fillOpacity={0.85} />
           ))}
         </Scatter>
       </ScatterChart>
