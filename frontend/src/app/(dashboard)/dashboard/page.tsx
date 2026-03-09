@@ -13,7 +13,6 @@ import {
   type SessionListItem,
   type LifetimeStats,
 } from "@/lib/api";
-import FunnelChart from "@/components/charts/FunnelChart";
 import ApplicationsTimeline from "@/components/charts/ApplicationsTimeline";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -53,8 +52,10 @@ const ACTION_REQUIRED = new Set([
   "paused",
 ]);
 
-function formatRelativeDate(value: string) {
+function formatRelativeDate(value: string | null | undefined) {
+  if (!value) return "";
   const date = new Date(value);
+  if (isNaN(date.getTime())) return "";
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -264,15 +265,14 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <FunnelChart sessions={sessions} />
           </CardContent>
         </Card>
 
-        <Card className="border-zinc-200 dark:border-zinc-800">
-          <CardHeader>
+        <Card className="border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
+          <CardHeader className="shrink-0">
             <CardTitle className="text-lg">Needs Your Attention</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 overflow-y-auto min-h-0">
             {loading ? (
               [1, 2, 3].map((item) => (
                 <div
