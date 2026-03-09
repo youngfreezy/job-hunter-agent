@@ -157,8 +157,8 @@ export default function FreelancePage() {
 
         {error && <p className="text-destructive text-sm">{error}</p>}
 
-        <Button size="lg" className="w-full" onClick={handleStart} disabled={loading || !hasResume}>
-          {loading ? "Searching..." : "Start Searching"}
+        <Button size="lg" className="w-full" onClick={handleStart} disabled={!hasResume} loading={loading}>
+          Start Searching
         </Button>
       </div>
     </div>
