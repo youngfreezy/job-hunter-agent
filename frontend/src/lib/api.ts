@@ -201,6 +201,8 @@ export async function startSession(params: {
     application_mode: string;
     generate_cover_letters: boolean;
     job_boards: string[];
+    ai_temperature?: number;
+    scoring_strictness?: number;
   };
 }): Promise<{ session_id: string }> {
   const auth = await getAuthHeaders();
