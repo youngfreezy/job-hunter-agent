@@ -139,14 +139,14 @@ EXTRACTION STRATEGY (use this for every board):
 5. Move to the next keyword or next board. Do NOT call find_elements repeatedly.
 
 RULES:
-- CRITICAL: ONLY visit the boards listed above. NEVER navigate to any other job site. If a board fails, return empty results for that board — do NOT substitute a different site.
 - Do NOT click into individual listings -- extract from search result cards only
 - Do NOT use the extract action or find_elements in a loop -- use evaluate() with JS to grab all data at once
 - Do NOT click filters (salary, date, etc.) -- just extract whatever is on the search results page
 - If a login wall or popup appears, close it (click X, dismiss, or press Escape) and continue extracting. Only skip the board if you literally cannot see any job listings after dismissing.
-- If a board shows a CAPTCHA or hard block, skip it IMMEDIATELY and move to the next board in the list above. Do NOT retry failed navigations. Do NOT visit boards not listed above.
+- If a board shows a CAPTCHA or hard block, skip it IMMEDIATELY and go to the next board. Do NOT retry failed navigations.
 - STRICT STEP BUDGET: You have at most 8 steps per board. If you haven't extracted jobs in 8 steps, SKIP and move to the next board immediately. Do NOT waste steps waiting or retrying.
 - If you find yourself waiting (wait action) more than twice in a row on a board, SKIP it and move to the next board.
+- If all assigned boards fail, you may proactively try other major job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter) to find results. Label each job with the correct board it came from.
 - For each keyword, search and extract, then move to the next keyword. Do NOT search every keyword -- pick the top 2 most relevant.
 - Maximum {max_per_board} listings per board
 - Include the "board" field (indeed/linkedin/glassdoor/ziprecruiter) for each job
@@ -414,8 +414,8 @@ async def discover_all_boards(
                 for board_name, board_url in _BOARD_URLS.items():
                     if board_name in url or board_url.split("//")[-1].split("/")[0] in url:
                         if board_name not in boards:
-                            logger.warning(
-                                "Agent navigated to unauthorized board %s (allowed: %s) — will be filtered",
+                            logger.info(
+                                "Agent proactively navigated to %s (assigned: %s)",
                                 board_name, boards,
                             )
                         current_board = board_name
@@ -497,16 +497,6 @@ async def discover_all_boards(
             )
 
         listings = _raw_to_listings(raw_jobs)
-
-        # Filter out jobs from boards the agent wasn't assigned to
-        allowed_boards_set = set(boards)
-        before_filter = len(listings)
-        listings = [j for j in listings if j.board.value in allowed_boards_set]
-        if len(listings) < before_filter:
-            logger.warning(
-                "Filtered %d jobs from unauthorized boards (allowed: %s)",
-                before_filter - len(listings), boards,
-            )
 
         logger.info("browser-use discovered %d total jobs (steps=%d)", len(listings), step_count)
         for j in listings:
