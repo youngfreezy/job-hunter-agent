@@ -172,6 +172,32 @@ def mark_sessions_interrupted(session_ids: List[str]) -> None:
             logger.error("Failed to mark sessions interrupted", exc_info=True)
 
 
+def cleanup_old_data(days: int = 90) -> int:
+    """Delete application results and sessions older than N days. Returns count deleted."""
+    with _connect() as conn:
+        try:
+            # Delete old application results (keep sessions table for reference)
+            cur = conn.execute(
+                "DELETE FROM application_results WHERE created_at < NOW() - INTERVAL '%s days'",
+                (days,),
+            )
+            app_count = cur.rowcount
+
+            # Delete resolved DLQ items older than 30 days
+            cur = conn.execute(
+                "DELETE FROM dead_letter_queue WHERE status != 'pending' AND created_at < NOW() - INTERVAL '30 days'"
+            )
+            dlq_count = cur.rowcount
+
+            conn.commit()
+            logger.info("Cleanup: deleted %d old app results, %d old DLQ items", app_count, dlq_count)
+            return app_count + dlq_count
+        except Exception:
+            conn.rollback()
+            logger.error("Cleanup failed", exc_info=True)
+            return 0
+
+
 def delete_sessions_for_user(user_id: str) -> bool:
     """Delete all sessions for a user (GDPR)."""
     with _connect() as conn:

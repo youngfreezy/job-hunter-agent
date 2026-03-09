@@ -130,7 +130,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
     """Get or create a user by email. Returns dict with id, email, balance, free_remaining."""
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider, created_at FROM users WHERE email = %s",
+            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider, created_at, notification_channel, phone_number FROM users WHERE email = %s",
             (email,),
         )
         row = cur.fetchone()
@@ -144,6 +144,8 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
                 "name": row[5],
                 "auth_provider": row[6] or "google",
                 "created_at": row[7].isoformat() if row[7] else None,
+                "notification_channel": row[8] or "email",
+                "phone_number": row[9],
             }
 
         # Create new user
@@ -510,6 +512,36 @@ def link_google_provider(email: str) -> bool:
             conn.rollback()
             logger.exception("Failed to link Google for %s", email)
             return False
+
+
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Get a user by their ID. Returns dict with notification prefs, or None."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT id, email, notification_channel, phone_number, phone_verified, name FROM users WHERE id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "id": str(row[0]),
+            "email": row[1],
+            "notification_channel": row[2] or "email",
+            "phone_number": row[3],
+            "phone_verified": bool(row[4]) if row[4] is not None else False,
+            "name": row[5],
+        }
+
+
+def update_notification_channel(user_id: str, channel: str) -> None:
+    """Update the notification channel preference for a user."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE users SET notification_channel = %s WHERE id = %s",
+            (channel, user_id),
+        )
+        conn.commit()
 
 
 def get_transactions(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:

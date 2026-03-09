@@ -22,6 +22,7 @@ import {
   toggleAutopilotPause,
   triggerAutopilotNow,
 } from "@/lib/api";
+import { toast } from "sonner";
 
 const CRON_PRESETS = [
   { label: "Weekdays at 8 AM", value: "0 8 * * 1-5" },
@@ -112,19 +113,24 @@ export default function AutopilotPage() {
       setCronExpression("0 8 * * 1-5");
       setAutoApprove(false);
       await load();
+      toast.success("Schedule created");
     } catch (err) {
       console.error("Failed to create schedule", err);
+      toast.error("Failed to create schedule");
     } finally {
       setCreating(false);
     }
   }
 
   async function handleTogglePause(id: string) {
+    const schedule = schedules.find((s) => s.id === id);
     try {
       await toggleAutopilotPause(id);
       await load();
+      toast.success(schedule?.is_active ? "Schedule paused" : "Schedule resumed");
     } catch (err) {
       console.error("Failed to toggle pause", err);
+      toast.error("Failed to update schedule");
     }
   }
 
@@ -132,8 +138,10 @@ export default function AutopilotPage() {
     try {
       await triggerAutopilotNow(id);
       await load();
+      toast.success("Schedule triggered — check your dashboard");
     } catch (err) {
       console.error("Failed to trigger run", err);
+      toast.error("Failed to trigger schedule");
     }
   }
 
@@ -142,8 +150,10 @@ export default function AutopilotPage() {
     try {
       await deleteAutopilotSchedule(id);
       await load();
+      toast.success("Schedule deleted");
     } catch (err) {
       console.error("Failed to delete schedule", err);
+      toast.error("Failed to delete schedule");
     }
   }
 

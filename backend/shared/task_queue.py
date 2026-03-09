@@ -135,6 +135,10 @@ async def mark_active(session_id: str) -> None:
     await r.sadd(_active_set_key(user_id), session_id)
     await r.incr(_active_count_key(user_id))
 
+    # TTL = 24 hours — prevents zombie keys if mark_complete never runs
+    await r.expire(_active_set_key(user_id), TASK_META_TTL)
+    await r.expire(_active_count_key(user_id), TASK_META_TTL)
+
     logger.info("Session %s marked active (user %s)", session_id, user_id)
 
 

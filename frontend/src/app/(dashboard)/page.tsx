@@ -566,10 +566,10 @@ export default function Home() {
             </p>
           </div>
           <div className="flex gap-6 text-sm text-zinc-500">
-            <a href="#" className="hover:text-zinc-900 dark:hover:text-white">
+            <a href="/terms" className="hover:text-zinc-900 dark:hover:text-white">
               Terms of Service
             </a>
-            <a href="#" className="hover:text-zinc-900 dark:hover:text-white">
+            <a href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">
               Privacy Policy
             </a>
             <a

@@ -290,6 +290,84 @@ async def send_autopilot_started_email(
 
 
 # ---------------------------------------------------------------------------
+# Autopilot approval notification
+# ---------------------------------------------------------------------------
+
+_AUTOPILOT_APPROVAL_TEMPLATE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background-color:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#1e40af;padding:28px 32px;">
+              <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">JobHunter Agent — Autopilot</h1>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px;">
+              <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e;">Shortlist Ready for Approval</h2>
+              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">Your autopilot session found <strong>{jobs_found}</strong> jobs matching your criteria. Review and approve to start applying.</p>
+
+              <!-- CTA buttons -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+                <tr>
+                  <td align="center" style="padding:8px;">
+                    <a href="{approve_url}" style="display:inline-block;padding:14px 32px;background-color:#16a34a;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">Approve &amp; Apply</a>
+                  </td>
+                  <td align="center" style="padding:8px;">
+                    <a href="{review_url}" style="display:inline-block;padding:14px 32px;background-color:#1a1a2e;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">Review Shortlist</a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">This link expires in 24 hours. If you don't approve, no applications will be sent.</p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 32px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">This approval request was triggered by your autopilot schedule on JobHunter Agent.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_autopilot_approval_email(
+    to_email: str,
+    session_id: str,
+    schedule_id: str,
+    jobs_found: int,
+    approval_token: str,
+) -> bool:
+    """Send an email asking the user to approve an autopilot shortlist."""
+    subject = f"Autopilot: {jobs_found} jobs ready — approve to apply"
+
+    base_url = "https://jobhunteragent.com"
+    approve_url = f"{base_url}/api/autopilot/approve?schedule={escape(schedule_id)}&session={escape(session_id)}&token={escape(approval_token)}&action=approve"
+    review_url = f"{base_url}/session/{escape(session_id)}"
+
+    html = _AUTOPILOT_APPROVAL_TEMPLATE.format(
+        jobs_found=jobs_found,
+        approve_url=approve_url,
+        review_url=review_url,
+    )
+
+    return await send_email(to_email, subject, html)
+
+
+# ---------------------------------------------------------------------------
 # Failed-application notification
 # ---------------------------------------------------------------------------
 

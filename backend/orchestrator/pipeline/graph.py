@@ -138,8 +138,8 @@ def _continue_after_scoring(state: JobHunterState) -> str:
     return route_after_scoring(state)
 
 
-def _continue_to_shortlist_review(state: JobHunterState) -> str:
-    return "shortlist_review"
+def _continue_to_auto_approve_gate(state: JobHunterState) -> str:
+    return "auto_approve_gate"
 
 
 def _continue_to_application(state: JobHunterState) -> str:
@@ -254,6 +254,29 @@ def route_after_supervise_after_scoring(state: JobHunterState) -> str:
 # ---------------------------------------------------------------------------
 # HITL checkpoint 2 -- user reviews the shortlist
 # ---------------------------------------------------------------------------
+
+
+async def auto_approve_gate(state: JobHunterState) -> dict:
+    """If autopilot auto-approve is set, populate application_queue and skip shortlist review."""
+    prefs = state.get("preferences") or {}
+    if isinstance(prefs, dict) and prefs.get("_autopilot_auto_approve"):
+        all_scored = state.get("scored_jobs") or []
+        top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
+        approved_ids = [sj.job_id for sj in top_scored]
+        logger.info(
+            "Auto-approve gate: approving %d jobs for autopilot session",
+            len(approved_ids),
+        )
+        return {"application_queue": approved_ids, "consecutive_failures": 0}
+    return {}
+
+
+def _route_after_auto_approve_gate(state: JobHunterState) -> str:
+    """Route to application (via supervise) if auto-approved, otherwise to shortlist_review."""
+    prefs = state.get("preferences") or {}
+    if isinstance(prefs, dict) and prefs.get("_autopilot_auto_approve"):
+        return "supervise_after_shortlist"
+    return "shortlist_review"
 
 
 async def shortlist_review_gate(state: JobHunterState) -> dict:
@@ -436,7 +459,8 @@ def build_graph(checkpointer=None):
     g.add_node("scoring", scoring_node)
     g.add_node("supervise_after_scoring", make_workflow_supervisor_node(_continue_after_scoring))
     g.add_node("resume_tailor", resume_tailor_node)
-    g.add_node("supervise_after_tailor", make_workflow_supervisor_node(_continue_to_shortlist_review))
+    g.add_node("auto_approve_gate", auto_approve_gate)
+    g.add_node("supervise_after_tailor", make_workflow_supervisor_node(_continue_to_auto_approve_gate))
     g.add_node("shortlist_review", shortlist_review_gate)
     g.add_node("supervise_after_shortlist", make_workflow_supervisor_node(_continue_to_application))
     g.add_node("application", application_node)
@@ -492,12 +516,17 @@ def build_graph(checkpointer=None):
     )
     g.add_edge("scoring", "supervise_after_scoring")
 
-    # 7. resume_tailor -> HITL gate (shortlist review)
+    # 7. resume_tailor -> auto_approve_gate -> shortlist_review or application
     g.add_edge("resume_tailor", "supervise_after_tailor")
     g.add_conditional_edges(
         "supervise_after_tailor",
-        lambda state: route_after_supervise_after_simple_stage(state, default_next="shortlist_review"),
-        {"shortlist_review": "shortlist_review", "pause_gate": "pause_gate"},
+        lambda state: route_after_supervise_after_simple_stage(state, default_next="auto_approve_gate"),
+        {"auto_approve_gate": "auto_approve_gate", "pause_gate": "pause_gate"},
+    )
+    g.add_conditional_edges(
+        "auto_approve_gate",
+        _route_after_auto_approve_gate,
+        {"supervise_after_shortlist": "supervise_after_shortlist", "shortlist_review": "shortlist_review"},
     )
 
     # 8. shortlist_review -> first application
