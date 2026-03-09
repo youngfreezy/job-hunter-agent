@@ -105,13 +105,6 @@ async def create_schedule(
 ) -> Dict[str, Any]:
     import asyncio
 
-    # Enforce per-user schedule quota
-    existing = await list_schedules(user_id)
-    if len(existing) >= MAX_SCHEDULES_PER_USER:
-        raise ValueError(
-            f"Maximum {MAX_SCHEDULES_PER_USER} autopilot schedules per user"
-        )
-
     schedule_id = str(uuid.uuid4())
 
     def _insert():
@@ -275,25 +268,6 @@ async def mark_run(schedule_id: str, session_id: str, next_run_at: datetime) -> 
             conn.commit()
 
     await asyncio.to_thread(_mark)
-
-
-MAX_SCHEDULES_PER_USER: int = 5
-
-
-def delete_all_user_schedules(user_id: str) -> bool:
-    """Delete all autopilot schedules for a user (GDPR)."""
-    with _connect() as conn:
-        try:
-            conn.execute(
-                "DELETE FROM autopilot_schedules WHERE user_id = %s",
-                (user_id,),
-            )
-            conn.commit()
-            return True
-        except Exception:
-            conn.rollback()
-            logger.error("Failed to delete autopilot schedules for user %s", user_id, exc_info=True)
-            return False
 
 
 # ---------------------------------------------------------------------------

@@ -423,10 +423,6 @@ async def _run_pipeline(
             # Send session-complete email notification (best-effort)
             await _send_completion_email(session_id)
 
-            # Clean up event logs and subscribers to prevent memory leak
-            event_logs.pop(session_id, None)
-            sse_subscribers.pop(session_id, None)
-
     except Exception as exc:
         logger.exception("Pipeline error for session %s", session_id)
         _set_session_status(session_id, "failed")
@@ -440,8 +436,6 @@ async def _run_pipeline(
         })
         unregister_emitter(session_id)
         await _release_task_slot(session_id)
-        event_logs.pop(session_id, None)
-        sse_subscribers.pop(session_id, None)
 
 
 async def _resume_pipeline(
@@ -1278,7 +1272,6 @@ async def stream_session(session_id: str, request: Request):
             cv = state.get("channel_values", state)
         session_registry[session_id] = {
             "session_id": session_id,
-            "user_id": user["id"],
             "status": cv.get("status", "unknown"),
             "keywords": cv.get("keywords", []),
             "locations": cv.get("locations", []),
