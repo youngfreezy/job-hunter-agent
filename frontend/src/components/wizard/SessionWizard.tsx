@@ -56,6 +56,12 @@ export function SessionWizard() {
               .map((l) => l.trim())
               .filter(Boolean);
 
+        // Merge saved AI settings from the session settings page
+        let savedSettings: Record<string, unknown> = {};
+        try {
+          savedSettings = JSON.parse(localStorage.getItem("jh_session_settings") || "{}");
+        } catch {}
+
         const session = await startSession({
           keywords: keywordList,
           locations: locationList,
@@ -72,6 +78,8 @@ export function SessionWizard() {
             application_mode: values.applicationMode ?? "auto_apply",
             generate_cover_letters: values.generateCoverLetters ?? true,
             job_boards: values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"],
+            ai_temperature: (savedSettings.ai_temperature as number) ?? 0.0,
+            scoring_strictness: (savedSettings.scoring_strictness as number) ?? 0.5,
           },
         });
 

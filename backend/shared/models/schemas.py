@@ -229,6 +229,9 @@ class SessionConfig(BaseModel):
     job_boards: List[str] = Field(
         default_factory=lambda: ["indeed", "linkedin", "glassdoor", "ziprecruiter"]
     )
+    # AI settings
+    ai_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    scoring_strictness: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class StartSessionRequest(BaseModel):

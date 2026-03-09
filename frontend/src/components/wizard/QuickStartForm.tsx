@@ -110,6 +110,12 @@ function QuickStartInner() {
     }
     setIsNavigating(true);
     try {
+      // Merge saved AI settings from the session settings page
+      let savedSettings: Record<string, unknown> = {};
+      try {
+        savedSettings = JSON.parse(localStorage.getItem("jh_session_settings") || "{}");
+      } catch {}
+
       const session = await startSession({
         keywords,
         locations,
@@ -119,6 +125,15 @@ function QuickStartInner() {
         resume_file_path: values.resumeFilePath || null,
         linkedin_url: null,
         preferences: {},
+        config: {
+          max_jobs: (savedSettings.max_jobs as number) ?? 20,
+          tailoring_quality: "standard",
+          application_mode: (savedSettings.application_mode as string) ?? "auto_apply",
+          generate_cover_letters: (savedSettings.generate_cover_letters as boolean) ?? true,
+          job_boards: (savedSettings.job_boards as string[]) ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"],
+          ai_temperature: (savedSettings.ai_temperature as number) ?? 0.0,
+          scoring_strictness: (savedSettings.scoring_strictness as number) ?? 0.5,
+        },
       });
       window.umami?.track("quickstart-complete");
       router.push(`/session/${session.session_id}`);
@@ -137,6 +152,20 @@ function QuickStartInner() {
 
   return (
     <div className="space-y-6">
+      {/* Sticky analyzing banner */}
+      {analyzing && (
+        <div className="sticky top-[105px] z-30 -mx-6 mb-2">
+          <div className="border-b border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 px-6 py-2">
+            <div className="flex items-center gap-3 max-w-7xl mx-auto">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700 dark:border-blue-600 dark:border-t-blue-200 shrink-0" />
+              <p className="text-xs text-blue-800 dark:text-blue-300">
+                Analyzing your resume for job search keywords...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-6 space-y-4">
           <div>
@@ -148,17 +177,6 @@ function QuickStartInner() {
           <FormikFileUpload />
         </CardContent>
       </Card>
-
-      {analyzing && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 px-4 py-2.5">
-          <div className="flex items-center gap-3">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700 dark:border-blue-600 dark:border-t-blue-200 shrink-0" />
-            <p className="text-xs text-blue-800 dark:text-blue-300">
-              Analyzing your resume for job search keywords...
-            </p>
-          </div>
-        </div>
-      )}
 
       {analyzeError && (
         <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">

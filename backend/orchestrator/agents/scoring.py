@@ -179,10 +179,14 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         total_batches = len(batches)
 
         # Pre-create LLM + structured wrapper once (shared across all batches)
+        config = state.get("session_config")
+        ai_temp = 0.0
+        if config:
+            ai_temp = config.ai_temperature if hasattr(config, "ai_temperature") else (config.get("ai_temperature", 0.0) if isinstance(config, dict) else 0.0)
         llm = build_llm(
             model=DEFAULT_MODEL,
             max_tokens=MAX_SCORING_TOKENS,
-            temperature=0.0,
+            temperature=ai_temp,
             timeout=120,
         )
         structured_llm = llm.with_structured_output(ScoringBatchResult)
