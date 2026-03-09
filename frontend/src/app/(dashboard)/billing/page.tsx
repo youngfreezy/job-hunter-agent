@@ -83,7 +83,9 @@ export default function BillingPage() {
         }
       } catch {
         console.error("Failed to load billing data");
-      } 
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);
@@ -255,6 +257,9 @@ export default function BillingPage() {
             );
           })}
         </div>
+        <p className="mt-3 text-center text-sm font-medium text-emerald-600 dark:text-emerald-400">
+          30-day money-back guarantee on all packs. No questions asked.
+        </p>
       </div>
 
       {/* Unlimited Plan */}

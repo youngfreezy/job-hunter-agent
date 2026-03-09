@@ -49,7 +49,9 @@ export default function AccountPage() {
           const data = await res.json();
           setUser(data.user);
         }
-      } catch {} 
+      } catch {} finally {
+        setLoading(false);
+      }
     }
     fetchUser();
   }, []);
