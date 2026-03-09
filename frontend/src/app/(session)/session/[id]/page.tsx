@@ -1302,7 +1302,7 @@ export default function SessionPage() {
                       </span>
                       <span
                         className={`min-w-0 flex-1 break-words text-sm ${
-                          typeof evt.step === "string" && evt.step.startsWith("Skipped")
+                          (evt.error || (typeof evt.step === "string" && evt.step.startsWith("Skipped")))
                             ? "text-amber-600 dark:text-amber-400"
                             : "text-foreground/80"
                         }`}

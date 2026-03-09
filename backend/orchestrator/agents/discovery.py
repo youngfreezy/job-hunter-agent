@@ -97,12 +97,18 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
     max_per_board = max(PER_BOARD_MAX // len(boards), 5) if boards else PER_BOARD_MAX
 
-    all_jobs = await discover_all_boards(
-        boards=boards,
-        search_config=search_config,
-        session_id=session_id,
-        max_per_board=max_per_board,
-    )
+    errors: List[str] = []
+    try:
+        all_jobs = await discover_all_boards(
+            boards=boards,
+            search_config=search_config,
+            session_id=session_id,
+            max_per_board=max_per_board,
+        )
+    except Exception as exc:
+        logger.exception("Discovery failed entirely: %s", exc)
+        errors.append(f"Discovery failed: {exc}")
+        all_jobs = []
 
     # Deduplicate
     seen_keys: set[str] = set()
@@ -113,9 +119,18 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             seen_keys.add(key)
             deduped.append(job)
 
+    # Check which boards returned results
+    boards_with_results = {
+        (job.board.value if hasattr(job.board, "value") else job.board)
+        for job in deduped
+    }
+    for board in boards:
+        if board not in boards_with_results:
+            errors.append(f"{board.title()} returned no results")
+
     logger.info(
-        "Discovery complete -- %d total jobs (%d after dedup)",
-        len(all_jobs), len(deduped),
+        "Discovery complete -- %d total jobs (%d after dedup), errors=%s",
+        len(all_jobs), len(deduped), errors,
     )
     for job in deduped:
         logger.info(
@@ -124,9 +139,16 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             job.title, job.company, job.url[:120],
         )
 
+    if not deduped:
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": "all",
+            "step": "No jobs found across any board",
+            "error": True,
+        })
+
     return {
         "discovered_jobs": deduped,
-        "errors": [],
+        "errors": errors,
         "agent_statuses": {"discovery": f"done ({len(deduped)} listings)"},
         "status": "scoring",
     }
