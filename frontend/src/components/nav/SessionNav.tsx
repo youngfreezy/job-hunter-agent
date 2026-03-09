@@ -20,7 +20,7 @@ export function SessionNav({ sessionId }: { sessionId: string }) {
 
   return (
     <NavShell>
-      <div className="flex items-center justify-between py-2">
+      <div className="relative flex items-center justify-center py-2">
         <div className="hidden sm:flex items-center gap-1">
           {tabs.map(({ href, label }) => {
             const isActive = pathname === href;
@@ -39,7 +39,7 @@ export function SessionNav({ sessionId }: { sessionId: string }) {
             );
           })}
         </div>
-        <Link href="/dashboard">
+        <Link href="/dashboard" className="absolute right-0">
           <Button variant="outline" size="sm">
             Dashboard
           </Button>
