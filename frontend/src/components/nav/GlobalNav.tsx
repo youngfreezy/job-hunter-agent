@@ -23,7 +23,7 @@ const NAV_LINKS = [
   { href: "/settings", label: "Settings" },
 ];
 
-function handleSignOut() {
+async function handleSignOut() {
   // Clear persisted form data from localStorage
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
@@ -31,8 +31,9 @@ function handleSignOut() {
   }
   // Clear sessionStorage
   sessionStorage.clear();
-  // Redirect to NextAuth sign-out
-  window.location.href = "/api/auth/signout";
+  // Sign out immediately via NextAuth (no confirmation page)
+  const { signOut } = await import("next-auth/react");
+  signOut({ callbackUrl: "/" });
 }
 
 export function GlobalNav() {
@@ -106,7 +107,7 @@ export function GlobalNav() {
         </div>
       </div>
       {/* Row 2: Page Links */}
-      <div className="flex items-center gap-1 -mb-px">
+      <div className="flex items-center justify-center gap-1 -mb-px">
         {NAV_LINKS.map(({ href, label }) => {
           const isActive = pathname === href;
           return (
@@ -115,8 +116,8 @@ export function GlobalNav() {
               href={href}
               className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
                 isActive
-                  ? "border-primary text-foreground font-semibold"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                  ? "border-blue-500 text-foreground font-semibold"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-blue-200 dark:hover:border-blue-800"
               }`}
             >
               {label}
