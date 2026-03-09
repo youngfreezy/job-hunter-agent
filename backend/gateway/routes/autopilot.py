@@ -85,27 +85,24 @@ async def create_autopilot_schedule(body: CreateScheduleRequest, request: Reques
 
     next_run = compute_next_run(body.cron_expression, body.timezone)
 
-    try:
-        schedule = await create_schedule(
-            user_id=user_id,
-            name=body.name,
-            keywords=body.keywords,
-            locations=body.locations,
-            remote_only=body.remote_only,
-            salary_min=body.salary_min,
-            search_radius=body.search_radius,
-            resume_text=body.resume_text,
-            linkedin_url=body.linkedin_url,
-            preferences=body.preferences,
-            session_config=body.session_config,
-            cron_expression=body.cron_expression,
-            tz=body.timezone,
-            auto_approve=body.auto_approve,
-            notification_email=body.notification_email,
-            next_run_at=next_run,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    schedule = await create_schedule(
+        user_id=user_id,
+        name=body.name,
+        keywords=body.keywords,
+        locations=body.locations,
+        remote_only=body.remote_only,
+        salary_min=body.salary_min,
+        search_radius=body.search_radius,
+        resume_text=body.resume_text,
+        linkedin_url=body.linkedin_url,
+        preferences=body.preferences,
+        session_config=body.session_config,
+        cron_expression=body.cron_expression,
+        tz=body.timezone,
+        auto_approve=body.auto_approve,
+        notification_email=body.notification_email,
+        next_run_at=next_run,
+    )
 
     return schedule
 

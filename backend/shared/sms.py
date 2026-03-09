@@ -91,27 +91,6 @@ def verify_twilio_signature(url: str, params: dict, signature: str) -> bool:
 # SMS notification helpers
 # ---------------------------------------------------------------------------
 
-def _verify_user_phone(user_id: str, phone: str) -> bool:
-    """Check that the phone number belongs to the user."""
-    from backend.shared.db import get_connection
-    try:
-        with get_connection() as conn:
-            cur = conn.execute(
-                "SELECT phone FROM users WHERE id = %s",
-                (user_id,),
-            )
-            row = cur.fetchone()
-            if not row or not row[0]:
-                return False
-            # Normalize: strip spaces/dashes for comparison
-            stored = row[0].replace(" ", "").replace("-", "")
-            given = phone.replace(" ", "").replace("-", "")
-            return stored == given
-    except Exception:
-        logger.warning("Failed to verify phone for user %s", user_id, exc_info=True)
-        return False
-
-
 async def send_session_complete_sms(
     to_phone: str,
     session_id: str,
@@ -132,18 +111,8 @@ async def send_autopilot_approval_sms(
     schedule_name: str,
     jobs_found: int,
     session_id: str,
-    user_id: Optional[str] = None,
 ) -> bool:
-    """Send an autopilot approval request via SMS.
-
-    When *user_id* is provided, validates that *to_phone* matches the user's
-    stored phone number to prevent sending SMS to arbitrary numbers.
-    """
-    if user_id:
-        verified = _verify_user_phone(user_id, to_phone)
-        if not verified:
-            logger.warning("SMS blocked: phone %s not verified for user %s", to_phone, user_id)
-            return False
+    """Send an autopilot approval request via SMS."""
     body = (
         f"JobHunter Autopilot: \"{schedule_name}\" found {jobs_found} jobs. "
         f"Reply APPROVE to apply or REJECT to skip. "
