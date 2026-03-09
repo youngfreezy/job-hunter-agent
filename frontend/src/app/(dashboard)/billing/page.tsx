@@ -83,9 +83,7 @@ export default function BillingPage() {
         }
       } catch {
         console.error("Failed to load billing data");
-      } finally {
-        setLoading(false);
-      }
+      } 
     }
     load();
   }, []);

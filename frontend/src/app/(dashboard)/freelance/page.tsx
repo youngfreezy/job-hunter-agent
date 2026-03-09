@@ -69,9 +69,7 @@ export default function FreelancePage() {
       router.push(`/freelance/${session_id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
-    } finally {
-      setLoading(false);
-    }
+    } 
   }
 
   return (
