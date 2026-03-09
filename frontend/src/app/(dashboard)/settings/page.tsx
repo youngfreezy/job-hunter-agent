@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,6 +81,7 @@ export default function SettingsPage() {
         setVerifyStep("done");
         setPhoneVerified(true);
         setSavedPhone(phone);
+        toast.success("Phone number verified");
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.detail || "Invalid verification code");

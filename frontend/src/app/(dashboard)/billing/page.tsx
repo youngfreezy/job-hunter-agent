@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +48,6 @@ export default function BillingPage() {
   const [autoRefillThreshold, setAutoRefillThreshold] = useState(5);
   const [autoRefillPackId, setAutoRefillPackId] = useState("top_up_10");
   const [autoRefillSaving, setAutoRefillSaving] = useState(false);
-  const [autoRefillSaved, setAutoRefillSaved] = useState(false);
 
   const success = searchParams.get("success");
   const canceled = searchParams.get("canceled");
@@ -128,15 +128,13 @@ export default function BillingPage() {
 
   async function handleSaveAutoRefill() {
     setAutoRefillSaving(true);
-    setAutoRefillSaved(false);
     try {
       await updateAutoRefill({
         enabled: autoRefillEnabled,
         threshold: autoRefillThreshold,
         pack_id: autoRefillPackId,
       });
-      setAutoRefillSaved(true);
-      setTimeout(() => setAutoRefillSaved(false), 3000);
+      toast.success("Auto-refill settings saved");
     } catch {
       alert("Failed to save auto-refill settings");
     } finally {
@@ -422,7 +420,6 @@ export default function BillingPage() {
                 <Button size="sm" onClick={handleSaveAutoRefill} disabled={autoRefillSaving}>
                   {autoRefillSaving ? "Saving..." : "Save"}
                 </Button>
-                {autoRefillSaved && <span className="text-xs text-green-600">Saved!</span>}
               </div>
             </div>
           )}

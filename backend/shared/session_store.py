@@ -189,9 +189,39 @@ def cleanup_old_data(days: int = 90) -> int:
             )
             dlq_count = cur.rowcount
 
+            # Clean up old LangGraph checkpoints for completed sessions older than 7 days
+            checkpoint_count = 0
+            try:
+                cur = conn.execute(
+                    """DELETE FROM checkpoints WHERE thread_id IN (
+                        SELECT id::text FROM sessions WHERE status IN ('completed', 'failed')
+                        AND updated_at < NOW() - INTERVAL '7 days'
+                    )"""
+                )
+                checkpoint_count = cur.rowcount
+
+                conn.execute(
+                    """DELETE FROM checkpoint_blobs WHERE thread_id IN (
+                        SELECT id::text FROM sessions WHERE status IN ('completed', 'failed')
+                        AND updated_at < NOW() - INTERVAL '7 days'
+                    )"""
+                )
+
+                conn.execute(
+                    """DELETE FROM checkpoint_writes WHERE thread_id IN (
+                        SELECT id::text FROM sessions WHERE status IN ('completed', 'failed')
+                        AND updated_at < NOW() - INTERVAL '7 days'
+                    )"""
+                )
+            except Exception:
+                logger.debug("Checkpoint cleanup skipped (tables may not exist)", exc_info=True)
+
             conn.commit()
-            logger.info("Cleanup: deleted %d old app results, %d old DLQ items", app_count, dlq_count)
-            return app_count + dlq_count
+            logger.info(
+                "Cleanup: deleted %d old app results, %d old DLQ items, %d old checkpoints",
+                app_count, dlq_count, checkpoint_count,
+            )
+            return app_count + dlq_count + checkpoint_count
         except Exception:
             conn.rollback()
             logger.error("Cleanup failed", exc_info=True)

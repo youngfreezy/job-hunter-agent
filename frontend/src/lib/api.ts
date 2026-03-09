@@ -491,7 +491,8 @@ export async function createSSEConnection(sessionId: string): Promise<EventSourc
  */
 export function connectSSE(
   sessionId: string,
-  onEvent: (event: Record<string, unknown>) => void
+  onEvent: (event: Record<string, unknown>) => void,
+  onConnectionChange?: (connected: boolean) => void
 ): () => void {
   let es: EventSource | null = null;
   let cancelled = false;
@@ -529,6 +530,19 @@ export function connectSSE(
       return;
     }
     es = source;
+
+    es.onopen = () => {
+      onConnectionChange?.(true);
+    };
+
+    es.onerror = () => {
+      // EventSource auto-reconnects; signal disconnected state
+      if (es?.readyState === EventSource.CLOSED) {
+        onConnectionChange?.(false);
+      } else if (es?.readyState === EventSource.CONNECTING) {
+        onConnectionChange?.(false);
+      }
+    };
 
     for (const eventType of EVENT_TYPES) {
       es.addEventListener(eventType, (e: Event) => {
