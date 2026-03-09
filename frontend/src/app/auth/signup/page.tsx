@@ -18,10 +18,7 @@ export default function SignupPage() {
     <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <Link
-            href="/"
-            className="text-2xl font-bold tracking-tight mb-2 block"
-          >
+          <Link href="/" className="text-2xl font-bold tracking-tight mb-2 block">
             JobHunter Agent
           </Link>
           <CardTitle className="text-lg">Create your account</CardTitle>
@@ -58,9 +55,7 @@ export default function SignupPage() {
               <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-white dark:bg-zinc-950 px-2 text-zinc-500">
-                or
-              </span>
+              <span className="bg-white dark:bg-zinc-950 px-2 text-zinc-500">or</span>
             </div>
           </div>
 
@@ -69,8 +64,7 @@ export default function SignupPage() {
             validationSchema={signupSchema}
             onSubmit={async (values, { setSubmitting }) => {
               setError("");
-              const apiUrl =
-                process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+              const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
               // 1. Register with the backend
               const regRes = await fetch(`${apiUrl}/api/auth/register`, {
@@ -85,9 +79,7 @@ export default function SignupPage() {
 
               if (!regRes.ok) {
                 const data = await regRes.json().catch(() => ({}));
-                setError(
-                  data.detail || "Failed to create account. Please try again."
-                );
+                setError(data.detail || "Failed to create account. Please try again.");
                 setSubmitting(false);
                 return;
               }
@@ -120,11 +112,7 @@ export default function SignupPage() {
                   placeholder="Password (min 8 characters)"
                 />
                 {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isSubmitting}
-                >
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting ? "Creating account..." : "Create Account"}
                 </Button>
               </Form>

@@ -23,9 +23,7 @@ test.describe("Authentication Flow", () => {
       await page.goto("/auth/login");
     });
 
-    test("renders the login form with email and password fields", async ({
-      page,
-    }) => {
+    test("renders the login form with email and password fields", async ({ page }) => {
       await expect(page.getByText("Sign in to your account")).toBeVisible();
       await expect(page.getByPlaceholder("Email")).toBeVisible();
       await expect(page.getByPlaceholder("Password")).toBeVisible();
@@ -39,9 +37,7 @@ test.describe("Authentication Flow", () => {
     });
 
     test("shows the Google OAuth button", async ({ page }) => {
-      await expect(
-        page.getByRole("button", { name: /Continue with Google/i })
-      ).toBeVisible();
+      await expect(page.getByRole("button", { name: /Continue with Google/i })).toBeVisible();
     });
 
     test('shows "JobHunter Agent" branding', async ({ page }) => {
@@ -54,18 +50,12 @@ test.describe("Authentication Flow", () => {
       await page.goto("/auth/signup");
     });
 
-    test("renders the signup form with name, email, and password fields", async ({
-      page,
-    }) => {
+    test("renders the signup form with name, email, and password fields", async ({ page }) => {
       await expect(page.getByText("Create your account")).toBeVisible();
       await expect(page.getByPlaceholder("Full name")).toBeVisible();
       await expect(page.getByPlaceholder("Email")).toBeVisible();
-      await expect(
-        page.getByPlaceholder("Password (min 8 characters)")
-      ).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: "Create Account" })
-      ).toBeVisible();
+      await expect(page.getByPlaceholder("Password (min 8 characters)")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
     });
 
     test("has a link to the login page", async ({ page }) => {
@@ -87,9 +77,7 @@ test.describe("Authentication Flow", () => {
 
       // After login, we should be on the dashboard
       await expect(page).toHaveURL(/\/dashboard/);
-      await expect(
-        page.getByRole("heading", { name: "Dashboard" })
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     });
 
     test("after login, can access /dashboard", async ({ page }) => {
@@ -97,9 +85,7 @@ test.describe("Authentication Flow", () => {
 
       await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(/\/dashboard/);
-      await expect(
-        page.getByRole("heading", { name: "Dashboard" })
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     });
 
     test("after login, can access /session/new", async ({ page }) => {
@@ -107,9 +93,7 @@ test.describe("Authentication Flow", () => {
 
       await page.goto("/session/new", { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(/\/session\/new/);
-      await expect(
-        page.getByRole("heading", { name: "New Session" })
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "New Session" })).toBeVisible();
     });
   });
 });

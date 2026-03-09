@@ -23,9 +23,7 @@ interface CoachPanelProps {
   coach: CoachOutput;
 }
 
-export function CoachPanel({
-  coach,
-}: CoachPanelProps) {
+export function CoachPanel({ coach }: CoachPanelProps) {
   const scoreColor = (score: number) => {
     if (score >= 80) return "text-green-700 dark:text-green-400";
     if (score >= 60) return "text-yellow-700 dark:text-yellow-400";
@@ -47,9 +45,7 @@ export function CoachPanel({
           Career Coach Results
           <Badge
             variant="outline"
-            className={`font-semibold ${scoreBadgeStyle(
-              coach.resume_score.overall
-            )}`}
+            className={`font-semibold ${scoreBadgeStyle(coach.resume_score.overall)}`}
           >
             {coach.resume_score.overall}/100
           </Badge>
@@ -74,40 +70,28 @@ export function CoachPanel({
                 if (typeof value !== "number") return null;
                 return (
                   <div key={key} className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground w-36">
-                      {label}
-                    </span>
+                    <span className="text-sm text-muted-foreground w-36">{label}</span>
                     <Progress value={value} className="flex-1" />
-                    <span
-                      className={`text-sm font-medium w-10 text-right ${scoreColor(
-                        value
-                      )}`}
-                    >
+                    <span className={`text-sm font-medium w-10 text-right ${scoreColor(value)}`}>
                       {value}
                     </span>
                   </div>
                 );
               })}
             </div>
-            {coach.resume_score.feedback &&
-              coach.resume_score.feedback.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium mb-1">
-                    Improvement Suggestions
-                  </p>
-                  <ul className="space-y-1">
-                    {coach.resume_score.feedback.map((fb, i) => (
-                      <li
-                        key={i}
-                        className="text-sm text-muted-foreground flex items-start gap-2"
-                      >
-                        <span className="text-amber-500 mt-0.5">-</span>
-                        {fb}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+            {coach.resume_score.feedback && coach.resume_score.feedback.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-1">Improvement Suggestions</p>
+                <ul className="space-y-1">
+                  {coach.resume_score.feedback.map((fb, i) => (
+                    <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                      <span className="text-amber-500 mt-0.5">-</span>
+                      {fb}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {coach.key_strengths && coach.key_strengths.length > 0 && (
               <div>
                 <p className="text-sm font-medium mb-1.5">Key Strengths</p>
@@ -152,8 +136,7 @@ export function CoachPanel({
           <TabsContent value="linkedin" className="space-y-3">
             {coach.linkedin_advice.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No LinkedIn URL provided. Add your profile for personalized
-                advice.
+                No LinkedIn URL provided. Add your profile for personalized advice.
               </p>
             ) : (
               <>
@@ -165,7 +148,6 @@ export function CoachPanel({
                     </li>
                   ))}
                 </ul>
-
               </>
             )}
           </TabsContent>

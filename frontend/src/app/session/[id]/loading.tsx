@@ -28,7 +28,10 @@ export default function Loading() {
           {/* Tab bar skeleton */}
           <div className="flex gap-4 border-b border-zinc-200 dark:border-zinc-800 mb-6">
             {["Status Feed", "Screenshot Feed", "Take Control"].map((_, i) => (
-              <div key={i} className="h-4 w-28 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-3" />
+              <div
+                key={i}
+                className="h-4 w-28 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-3"
+              />
             ))}
           </div>
 

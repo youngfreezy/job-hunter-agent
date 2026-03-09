@@ -21,10 +21,7 @@ function scoreColor(score: number): string {
   return "#ef4444";
 }
 
-export default function ScoreDistribution({
-  scores,
-  statuses,
-}: ScoreDistributionProps) {
+export default function ScoreDistribution({ scores, statuses }: ScoreDistributionProps) {
   if (!scores || scores.length === 0) return null;
 
   const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
@@ -44,16 +41,11 @@ export default function ScoreDistribution({
               key={i}
               className="flex flex-col items-center gap-1 bg-card border rounded-lg px-4 py-3 min-w-[70px]"
             >
-              <span
-                className="text-lg font-bold"
-                style={{ color: scoreColor(score) }}
-              >
+              <span className="text-lg font-bold" style={{ color: scoreColor(score) }}>
                 {score}
               </span>
               {hasStatuses && (
-                <span className="text-[10px] text-muted-foreground capitalize">
-                  {statuses[i]}
-                </span>
+                <span className="text-[10px] text-muted-foreground capitalize">{statuses[i]}</span>
               )}
             </div>
           ))}
@@ -66,9 +58,7 @@ export default function ScoreDistribution({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">
-          {scores.length} applications
-        </span>
+        <span className="text-muted-foreground">{scores.length} applications</span>
         <span className="text-muted-foreground">
           Average: <span className="font-semibold text-foreground">{avg}/100</span>
         </span>
@@ -80,8 +70,7 @@ export default function ScoreDistribution({
         <div
           className="absolute inset-0 rounded-lg opacity-10"
           style={{
-            background:
-              "linear-gradient(to right, #ef4444, #eab308, #84cc16, #22c55e)",
+            background: "linear-gradient(to right, #ef4444, #eab308, #84cc16, #22c55e)",
           }}
         />
 
@@ -108,31 +97,20 @@ export default function ScoreDistribution({
         })}
 
         {/* Average marker */}
-        <div
-          className="absolute top-0 bottom-0 w-0.5 bg-foreground/60"
-          style={{ left: `${avg}%` }}
-        >
+        <div className="absolute top-0 bottom-0 w-0.5 bg-foreground/60" style={{ left: `${avg}%` }}>
           <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-medium text-foreground whitespace-nowrap">
             avg {avg}
           </div>
         </div>
 
         {/* Scale labels */}
-        <div className="absolute -bottom-5 left-0 text-[10px] text-muted-foreground">
-          0
-        </div>
-        <div className="absolute -bottom-5 left-1/4 text-[10px] text-muted-foreground">
-          25
-        </div>
+        <div className="absolute -bottom-5 left-0 text-[10px] text-muted-foreground">0</div>
+        <div className="absolute -bottom-5 left-1/4 text-[10px] text-muted-foreground">25</div>
         <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground">
           50
         </div>
-        <div className="absolute -bottom-5 left-3/4 text-[10px] text-muted-foreground">
-          75
-        </div>
-        <div className="absolute -bottom-5 right-0 text-[10px] text-muted-foreground">
-          100
-        </div>
+        <div className="absolute -bottom-5 left-3/4 text-[10px] text-muted-foreground">75</div>
+        <div className="absolute -bottom-5 right-0 text-[10px] text-muted-foreground">100</div>
       </div>
 
       {/* Legend for statuses */}
@@ -143,10 +121,7 @@ export default function ScoreDistribution({
             if (count === 0) return null;
             return (
               <div key={status} className="flex items-center gap-1">
-                <div
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: color }}
-                />
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
                 <span className="capitalize">
                   {status} ({count})
                 </span>

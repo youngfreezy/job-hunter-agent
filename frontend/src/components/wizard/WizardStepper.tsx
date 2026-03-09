@@ -21,10 +21,7 @@ export function WizardStepper({ steps, currentStep }: WizardStepperProps) {
           return (
             <li
               key={step.label}
-              className={cn(
-                "flex items-center",
-                index < steps.length - 1 && "flex-1"
-              )}
+              className={cn("flex items-center", index < steps.length - 1 && "flex-1")}
             >
               <div className="flex flex-col items-center">
                 <div
@@ -32,8 +29,7 @@ export function WizardStepper({ steps, currentStep }: WizardStepperProps) {
                     "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors",
                     isCompleted &&
                       "bg-zinc-900 dark:bg-white border-zinc-900 dark:border-white text-white dark:text-zinc-900",
-                    isCurrent &&
-                      "border-zinc-900 dark:border-white text-zinc-900 dark:text-white",
+                    isCurrent && "border-zinc-900 dark:border-white text-zinc-900 dark:text-white",
                     !isCompleted &&
                       !isCurrent &&
                       "border-zinc-300 dark:border-zinc-700 text-zinc-400"
@@ -56,9 +52,7 @@ export function WizardStepper({ steps, currentStep }: WizardStepperProps) {
                 <div
                   className={cn(
                     "flex-1 h-0.5 mx-4",
-                    isCompleted
-                      ? "bg-zinc-900 dark:bg-white"
-                      : "bg-zinc-200 dark:bg-zinc-800"
+                    isCompleted ? "bg-zinc-900 dark:bg-white" : "bg-zinc-200 dark:bg-zinc-800"
                   )}
                 />
               )}

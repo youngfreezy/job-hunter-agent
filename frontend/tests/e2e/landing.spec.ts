@@ -16,9 +16,7 @@ test.describe("Landing Page", () => {
     await expect(page.getByText("JobHunter Agent").first()).toBeVisible();
   });
 
-  test("shows all three pricing cards with monthly pricing by default", async ({
-    page,
-  }) => {
+  test("shows all three pricing cards with monthly pricing by default", async ({ page }) => {
     // Scroll to pricing section
     await page.locator("#pricing").scrollIntoViewIfNeeded();
 
@@ -71,25 +69,17 @@ test.describe("Landing Page", () => {
     await expect(page.getByText("V2 Software LLC")).toBeVisible();
   });
 
-  test("has navigation links to Dashboard and Get Started", async ({
-    page,
-  }) => {
+  test("has navigation links to Dashboard and Get Started", async ({ page }) => {
     await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Get Started" })).toBeVisible();
   });
 
   test("hero section has correct headline text", async ({ page }) => {
-    await expect(
-      page.getByText("Job searching should feel less chaotic.")
-    ).toBeVisible();
-    await expect(
-      page.getByText("Keep your standards while the work gets done.")
-    ).toBeVisible();
+    await expect(page.getByText("Job searching should feel less chaotic.")).toBeVisible();
+    await expect(page.getByText("Keep your standards while the work gets done.")).toBeVisible();
   });
 
-  test('hero has "Start Free" button linking to /session/new', async ({
-    page,
-  }) => {
+  test('hero has "Start Free" button linking to /session/new', async ({ page }) => {
     const sessionLink = page.getByRole("link", { name: "Start Free" }).first();
     await expect(sessionLink).toBeVisible();
     await expect(sessionLink).toHaveAttribute("href", "/session/new");

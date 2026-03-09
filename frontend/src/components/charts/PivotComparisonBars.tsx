@@ -2,15 +2,7 @@
 
 "use client";
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 interface PivotComparisonBarsProps {
   pivots: Array<{
@@ -21,14 +13,10 @@ interface PivotComparisonBarsProps {
   }>;
 }
 
-export default function PivotComparisonBars({
-  pivots,
-}: PivotComparisonBarsProps) {
+export default function PivotComparisonBars({ pivots }: PivotComparisonBarsProps) {
   if (!pivots || pivots.length === 0) return null;
 
-  const maxMedian = Math.max(
-    ...pivots.map((p) => p.salary_range?.median ?? 0)
-  );
+  const maxMedian = Math.max(...pivots.map((p) => p.salary_range?.median ?? 0));
 
   const data = pivots.map((p) => {
     const median = p.salary_range?.median ?? 0;
@@ -74,7 +62,9 @@ export default function PivotComparisonBars({
             if (name === "Salary" && payload?._salaryRaw) {
               const sr = payload._salaryRaw as { min: number; max: number; median: number };
               return [
-                `$${(sr.min / 1000).toFixed(0)}K – $${(sr.max / 1000).toFixed(0)}K (median $${(sr.median / 1000).toFixed(0)}K)`,
+                `$${(sr.min / 1000).toFixed(0)}K – $${(sr.max / 1000).toFixed(0)}K (median $${(
+                  sr.median / 1000
+                ).toFixed(0)}K)`,
                 "Salary",
               ];
             }
@@ -88,9 +78,7 @@ export default function PivotComparisonBars({
             return item?.fullRole ?? label;
           }}
         />
-        <Legend
-          wrapperStyle={{ color: "#a1a1aa", fontSize: 12 }}
-        />
+        <Legend wrapperStyle={{ color: "#a1a1aa", fontSize: 12 }} />
         <Bar dataKey="Skill Match" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={14} />
         <Bar dataKey="AI Safety" fill="#22c55e" radius={[0, 4, 4, 0]} barSize={14} />
         <Bar dataKey="Salary" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={14} />

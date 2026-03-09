@@ -46,10 +46,7 @@ export default function AnswerGradeRadar({ grade, averageGrades }: AnswerGradeRa
     <ResponsiveContainer width="100%" height={250}>
       <RadarChart data={data} cx="50%" cy="50%" outerRadius="75%">
         <PolarGrid stroke="#555" />
-        <PolarAngleAxis
-          dataKey="dimension"
-          tick={{ fill: "#a1a1aa", fontSize: 12 }}
-        />
+        <PolarAngleAxis dataKey="dimension" tick={{ fill: "#a1a1aa", fontSize: 12 }} />
         <PolarRadiusAxis
           angle={90}
           domain={[0, 10]}
@@ -74,11 +71,7 @@ export default function AnswerGradeRadar({ grade, averageGrades }: AnswerGradeRa
             dot={{ r: 2, fill: "#71717a" }}
           />
         )}
-        {averageGrades && (
-          <Legend
-            wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }}
-          />
-        )}
+        {averageGrades && <Legend wrapperStyle={{ fontSize: 12, color: "#a1a1aa" }} />}
       </RadarChart>
     </ResponsiveContainer>
   );

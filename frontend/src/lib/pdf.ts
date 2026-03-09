@@ -43,7 +43,12 @@ function parseResumeText(raw: string): ParsedResume {
 
     const trimmed = line.trim();
     // Section header: ALL CAPS line that isn't a bullet and is followed by content
-    if (trimmed.length > 0 && trimmed === trimmed.toUpperCase() && !trimmed.startsWith("•") && trimmed.length < 80) {
+    if (
+      trimmed.length > 0 &&
+      trimmed === trimmed.toUpperCase() &&
+      !trimmed.startsWith("•") &&
+      trimmed.length < 80
+    ) {
       if (currentSection) sections.push(currentSection);
       currentSection = { title: trimmed, lines: [] };
       continue;
@@ -63,7 +68,13 @@ function parseResumeText(raw: string): ParsedResume {
    left column (contact, education, skills, competencies)
    ────────────────────────────────────────────────────────────── */
 
-const SIDEBAR_KEYWORDS = ["CORE COMPETENCIES", "SKILLS", "EDUCATION", "CERTIFICATIONS", "CERTIFICATES"];
+const SIDEBAR_KEYWORDS = [
+  "CORE COMPETENCIES",
+  "SKILLS",
+  "EDUCATION",
+  "CERTIFICATIONS",
+  "CERTIFICATES",
+];
 
 function isSidebarSection(title: string): boolean {
   return SIDEBAR_KEYWORDS.some((kw) => title.toUpperCase().includes(kw));
@@ -208,9 +219,10 @@ export function buildResumePdf(rawText: string): jsPDF {
       }
 
       const isBullet = trimmed.startsWith("•") || trimmed.startsWith("-");
-      const isSubheading = !isBullet && trimmed.length < 100 && (
-        trimmed.includes(" | ") || trimmed.includes(" — ") || trimmed.includes(" -- ")
-      );
+      const isSubheading =
+        !isBullet &&
+        trimmed.length < 100 &&
+        (trimmed.includes(" | ") || trimmed.includes(" — ") || trimmed.includes(" -- "));
 
       if (isSubheading) {
         doc.setFont("helvetica", "bold");
@@ -344,7 +356,7 @@ export function downloadCoverLetterPdf(
   text: string,
   company: string,
   position: string,
-  filename: string,
+  filename: string
 ): void {
   const doc = buildCoverLetterPdf(text, company, position);
   doc.save(`${sanitizeFilename(filename) || "Cover Letter"}.pdf`);

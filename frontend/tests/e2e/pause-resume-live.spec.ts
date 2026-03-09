@@ -79,6 +79,8 @@ test.describe("Live Pause/Resume Steering", () => {
       (status) => status !== "paused" && status !== "awaiting_coach_review",
       60000
     );
-    await expect(page.getByText(/discover|search|finding/i).first()).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText(/discover|search|finding/i).first()).toBeVisible({
+      timeout: 30000,
+    });
   });
 });

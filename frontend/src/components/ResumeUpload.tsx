@@ -68,9 +68,12 @@ function base64ToFile(base64: string, fileName: string): File {
     bytes[i] = byteString.charCodeAt(i);
   }
   const ext = fileName.split(".").pop()?.toLowerCase() || "pdf";
-  const mime = ext === "pdf" ? "application/pdf"
-    : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    : "text/plain";
+  const mime =
+    ext === "pdf"
+      ? "application/pdf"
+      : ext === "docx"
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : "text/plain";
   return new File([bytes], fileName, { type: mime });
 }
 
@@ -122,10 +125,7 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
 
     setParsing(true);
     try {
-      const [result, base64] = await Promise.all([
-        parseResume(file),
-        fileToBase64(file),
-      ]);
+      const [result, base64] = await Promise.all([parseResume(file), fileToBase64(file)]);
       setResumeText(result.text);
       saveResumeToStorage(result.text, file.name, base64);
       onResumeReady?.(result.text);
@@ -153,8 +153,18 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
 
       {hasResume ? (
         <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-800 dark:bg-emerald-950/30">
-          <svg className="h-5 w-5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            className="h-5 w-5 text-emerald-600 shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
@@ -183,8 +193,10 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
           ) : (
             <>
               <p className="text-sm">
-                <span className="font-medium text-zinc-900 dark:text-white">Upload your resume</span>
-                {" "}to get started
+                <span className="font-medium text-zinc-900 dark:text-white">
+                  Upload your resume
+                </span>{" "}
+                to get started
               </p>
               <p className="text-xs text-muted-foreground mt-1">.txt, .pdf, or .docx</p>
             </>

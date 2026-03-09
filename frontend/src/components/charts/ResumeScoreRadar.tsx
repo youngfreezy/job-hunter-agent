@@ -2,13 +2,7 @@
 
 "use client";
 
-import {
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  Radar,
-  ResponsiveContainer,
-} from "recharts";
+import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from "recharts";
 
 import type { ResumeScore } from "@/lib/api";
 
@@ -45,10 +39,7 @@ export default function ResumeScoreRadar({ scores }: ResumeScoreRadarProps) {
     <ResponsiveContainer width="100%" height={250}>
       <RadarChart data={data} cx="50%" cy="50%" outerRadius="60%">
         <PolarGrid stroke="#555" />
-        <PolarAngleAxis
-          dataKey="dimension"
-          tick={{ fill: "#a1a1aa", fontSize: 11 }}
-        />
+        <PolarAngleAxis dataKey="dimension" tick={{ fill: "#a1a1aa", fontSize: 11 }} />
         <Radar
           name="Score"
           dataKey="value"

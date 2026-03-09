@@ -30,9 +30,7 @@ export default function FreelancePage() {
   }, []);
 
   function togglePlatform(id: string) {
-    setPlatforms((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
+    setPlatforms((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   }
 
   async function handleStart() {
@@ -69,7 +67,7 @@ export default function FreelancePage() {
       router.push(`/freelance/${session_id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
-    } 
+    }
   }
 
   return (
@@ -83,9 +81,7 @@ export default function FreelancePage() {
         <ResumeUpload onResumeReady={() => setHasResume(true)} />
 
         <div>
-          <label className="block text-sm font-medium mb-2">
-            Hourly Rate Range
-          </label>
+          <label className="block text-sm font-medium mb-2">Hourly Rate Range</label>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1">
               <span className="text-muted-foreground">$</span>
@@ -111,9 +107,7 @@ export default function FreelancePage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2">
-            Platforms to Search
-          </label>
+          <label className="block text-sm font-medium mb-2">Platforms to Search</label>
           <div className="flex flex-wrap gap-2">
             {PLATFORMS.map((p) => (
               <button
@@ -155,7 +149,13 @@ export default function FreelancePage() {
 
         {error && <p className="text-destructive text-sm">{error}</p>}
 
-        <Button size="lg" className="w-full" onClick={handleStart} disabled={!hasResume} loading={loading}>
+        <Button
+          size="lg"
+          className="w-full"
+          onClick={handleStart}
+          disabled={!hasResume}
+          loading={loading}
+        >
           Start Searching
         </Button>
       </div>

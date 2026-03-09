@@ -27,12 +27,7 @@ export function WizardNavigation({
 
   return (
     <div className="flex justify-between mt-8">
-      <Button
-        type="button"
-        variant="outline"
-        onClick={onBack}
-        disabled={currentStep === 0}
-      >
+      <Button type="button" variant="outline" onClick={onBack} disabled={currentStep === 0}>
         Back
       </Button>
 

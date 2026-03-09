@@ -18,10 +18,7 @@ export default function Loading() {
         {/* Tab bar skeleton */}
         <div className="flex gap-4 border-b border-border mb-6">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-4 w-28 bg-muted rounded animate-pulse mb-3"
-            />
+            <div key={i} className="h-4 w-28 bg-muted rounded animate-pulse mb-3" />
           ))}
         </div>
 
@@ -52,10 +49,7 @@ export default function Loading() {
           {/* Stats pills skeleton */}
           <div className="grid grid-cols-2 gap-2">
             {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="h-16 bg-muted rounded-lg animate-pulse"
-              />
+              <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
             ))}
           </div>
         </div>

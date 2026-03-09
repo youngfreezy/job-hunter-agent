@@ -34,37 +34,34 @@ test.describe("Live Session Viewer", () => {
     });
 
     // Mock the SSE stream endpoint
-    await page.route(
-      `**/api/sessions/${mockSessionId}/stream`,
-      async (route) => {
-        const body = [
-          `event: status\ndata: ${JSON.stringify({
-            event: "status",
-            agent: "orchestrator",
-            status: "discovering",
-            message: "Pipeline started - discovering jobs",
-            timestamp: new Date().toISOString(),
-          })}\n\n`,
-          `event: discovery\ndata: ${JSON.stringify({
-            event: "discovery",
-            agent: "discovery",
-            status: "discovering",
-            message: "Scanning Indeed for React jobs...",
-            timestamp: new Date().toISOString(),
-          })}\n\n`,
-        ].join("");
+    await page.route(`**/api/sessions/${mockSessionId}/stream`, async (route) => {
+      const body = [
+        `event: status\ndata: ${JSON.stringify({
+          event: "status",
+          agent: "orchestrator",
+          status: "discovering",
+          message: "Pipeline started - discovering jobs",
+          timestamp: new Date().toISOString(),
+        })}\n\n`,
+        `event: discovery\ndata: ${JSON.stringify({
+          event: "discovery",
+          agent: "discovery",
+          status: "discovering",
+          message: "Scanning Indeed for React jobs...",
+          timestamp: new Date().toISOString(),
+        })}\n\n`,
+      ].join("");
 
-        await route.fulfill({
-          status: 200,
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          },
-          body,
-        });
-      }
-    );
+      await route.fulfill({
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+        body,
+      });
+    });
   });
 
   test("session page loads and shows session data", async ({ page }) => {
@@ -120,12 +117,12 @@ test.describe("Live Session Viewer", () => {
     await page.goto(`/session/${mockSessionId}`);
 
     // Wait for SSE events to appear in the feed
-    await expect(
-      page.getByText("Pipeline started - discovering jobs")
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(
-      page.getByText("Scanning Indeed for React jobs...")
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Pipeline started - discovering jobs")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText("Scanning Indeed for React jobs...")).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("dashboard link is present in session viewer nav", async ({ page }) => {

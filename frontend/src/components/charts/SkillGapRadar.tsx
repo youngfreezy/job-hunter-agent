@@ -16,10 +16,7 @@ interface SkillGapRadarProps {
   roleName: string;
 }
 
-export default function SkillGapRadar({
-  comparison,
-  roleName,
-}: SkillGapRadarProps) {
+export default function SkillGapRadar({ comparison, roleName }: SkillGapRadarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -130,11 +127,7 @@ export default function SkillGapRadar({
       .attr("stroke-width", 2)
       .attr("stroke-opacity", 0.8);
 
-    targetPoly
-      .transition()
-      .duration(700)
-      .delay(200)
-      .attr("points", polygonPoints(target_scores));
+    targetPoly.transition().duration(700).delay(200).attr("points", polygonPoints(target_scores));
 
     // User polygon (blue, drawn on top)
     const userPoly = g
@@ -146,10 +139,7 @@ export default function SkillGapRadar({
       .attr("stroke-width", 2)
       .attr("stroke-opacity", 0.9);
 
-    userPoly
-      .transition()
-      .duration(700)
-      .attr("points", polygonPoints(user_scores));
+    userPoly.transition().duration(700).attr("points", polygonPoints(user_scores));
 
     // Dots on user polygon
     user_scores.forEach((score, i) => {
@@ -170,9 +160,7 @@ export default function SkillGapRadar({
     });
 
     // Legend
-    const legend = svg
-      .append("g")
-      .attr("transform", `translate(${cx - 80},${size + 10})`);
+    const legend = svg.append("g").attr("transform", `translate(${cx - 80},${size + 10})`);
 
     // User legend
     legend
@@ -206,7 +194,6 @@ export default function SkillGapRadar({
       .attr("fill", "#d1d5db")
       .attr("font-size", "11px")
       .text(roleName);
-
   }, [comparison, roleName, containerWidth]);
 
   if (!comparison?.categories?.length) return null;

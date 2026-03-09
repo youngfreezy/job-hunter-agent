@@ -11,7 +11,6 @@ const RESUME_FILE = {
 };
 
 test.describe("Session Creation - Multi-Step Wizard", () => {
-
   test.beforeEach(async ({ page }) => {
     await login(page);
     await page.goto("/session/new");
@@ -22,18 +21,12 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
   test("shows step progress indicator with 3 steps", async ({ page }) => {
     await expect(page.getByText("Job Search", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("Resume & Profile", { exact: true })
-    ).toBeVisible();
-    await expect(
-      page.getByText("Review & Launch", { exact: true })
-    ).toBeVisible();
+    await expect(page.getByText("Resume & Profile", { exact: true })).toBeVisible();
+    await expect(page.getByText("Review & Launch", { exact: true })).toBeVisible();
   });
 
   test("page header and description are visible", async ({ page }) => {
-    await expect(
-      page.getByRole("heading", { name: "New Session" })
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "New Session" })).toBeVisible();
     await expect(page.getByText("Configure the search once.")).toBeVisible();
   });
 
@@ -43,9 +36,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await expect(page.getByText("Search Keywords")).toBeVisible();
     await expect(page.getByText("Location & Preferences")).toBeVisible();
     await expect(
-      page.getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      page.getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
     ).toBeVisible();
     await expect(page.getByText("Remote only")).toBeVisible();
     await expect(page.getByPlaceholder("e.g. 120000")).toBeVisible();
@@ -54,9 +45,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
   test("Step 1: keywords input shows live Badge preview", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React, Python, Machine Learning");
 
     await expect(page.getByText("React").first()).toBeVisible();
@@ -64,38 +53,26 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await expect(page.getByText("Machine Learning")).toBeVisible();
   });
 
-  test("Step 1: validation prevents advancing without keywords", async ({
-    page,
-  }) => {
+  test("Step 1: validation prevents advancing without keywords", async ({ page }) => {
     await page.getByRole("button", { name: "Next" }).click();
     await expect(page.getByText("Enter at least one keyword.")).toBeVisible();
     await expect(page.getByText("Search Keywords")).toBeVisible();
   });
 
-  test("Step 1: salary validation rejects negative values", async ({
-    page,
-  }) => {
+  test("Step 1: salary validation rejects negative values", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React");
     await page.getByPlaceholder("e.g. 120000").fill("-5000");
     await page.getByRole("button", { name: "Next" }).click();
-    await expect(
-      page.getByText("Salary must be a positive number.")
-    ).toBeVisible();
+    await expect(page.getByText("Salary must be a positive number.")).toBeVisible();
   });
 
   // -- Step 1 → Step 2 navigation --
 
-  test("Step 1 -> Step 2: can advance with valid keywords", async ({
-    page,
-  }) => {
+  test("Step 1 -> Step 2: can advance with valid keywords", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React, Python");
     await page.getByRole("button", { name: "Next" }).click();
     // Should now see Step 2 content
@@ -106,13 +83,9 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
   // -- Step 2: Resume & Profile --
 
-  test("Step 2: validation prevents advancing without resume", async ({
-    page,
-  }) => {
+  test("Step 2: validation prevents advancing without resume", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -121,18 +94,12 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     // Should still be on Step 2 (Your Resume card still visible)
     await expect(page.getByText("Your Resume", { exact: true })).toBeVisible();
     // Should NOT have advanced to Step 3 (Start button not visible)
-    await expect(
-      page.getByRole("button", { name: "Start Job Hunt Session" })
-    ).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Start Job Hunt Session" })).not.toBeVisible();
   });
 
-  test("Step 2: LinkedIn URL validation rejects invalid URLs", async ({
-    page,
-  }) => {
+  test("Step 2: LinkedIn URL validation rejects invalid URLs", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -140,18 +107,14 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.locator("#resume-upload").setInputFiles(RESUME_FILE);
     await expect(page.getByText("test-resume.txt").first()).toBeVisible();
 
-    await page
-      .getByPlaceholder("https://linkedin.com/in/yourprofile")
-      .fill("not-a-url");
+    await page.getByPlaceholder("https://linkedin.com/in/yourprofile").fill("not-a-url");
     await page.getByRole("button", { name: "Next" }).click();
     await expect(page.getByText(/valid LinkedIn URL/)).toBeVisible();
   });
 
   test("Step 2: accepts valid LinkedIn URL", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -165,24 +128,16 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Next" }).click();
 
     // Should advance to Step 3
-    await expect(
-      page.getByRole("button", { name: "Start Job Hunt Session" })
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start Job Hunt Session" })).toBeVisible();
   });
 
   // -- Step 3: Review & Launch --
 
-  test("Step 3: shows review summary with keywords and resume preview", async ({
-    page,
-  }) => {
+  test("Step 3: shows review summary with keywords and resume preview", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React, Python");
-    await page
-      .getByPlaceholder("e.g. San Francisco, New York, Austin")
-      .fill("San Francisco");
+    await page.getByPlaceholder("e.g. San Francisco, New York, Austin").fill("San Francisco");
     await page.getByText("Remote only").click();
     await page.getByPlaceholder("e.g. 120000").fill("150000");
     await page.getByRole("button", { name: "Next" }).click();
@@ -198,18 +153,12 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await expect(page.getByText("San Francisco")).toBeVisible();
     await expect(page.getByText("Remote only")).toBeVisible();
     await expect(page.getByText("test-resume.txt").first()).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Start Job Hunt Session" })
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start Job Hunt Session" })).toBeVisible();
   });
 
-  test("Step 3: edit buttons navigate back to correct steps", async ({
-    page,
-  }) => {
+  test("Step 3: edit buttons navigate back to correct steps", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -223,9 +172,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     // Should be back on Step 1
     await expect(page.getByText("Search Keywords")).toBeVisible();
     await expect(
-      page.getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      page.getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
     ).toHaveValue("React");
   });
 
@@ -233,9 +180,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
   test("Back button navigates to previous step", async ({ page }) => {
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React");
     await page.getByRole("button", { name: "Next" }).click();
     await expect(page.getByText("Your Resume", { exact: true })).toBeVisible();
@@ -250,9 +195,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
   // -- localStorage persistence --
 
-  test("localStorage persistence: data survives page refresh", async ({
-    page,
-  }) => {
+  test("localStorage persistence: data survives page refresh", async ({ page }) => {
     const keywordsInput = page.getByPlaceholder(
       "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
     );
@@ -266,9 +209,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
   // -- Full flow submission --
 
-  test("full wizard: fill all steps and submit successfully", async ({
-    page,
-  }) => {
+  test("full wizard: fill all steps and submit successfully", async ({ page }) => {
     const mockSessionId = "test-session-abc123";
     await page.route("**/api/sessions", async (route) => {
       if (route.request().method() === "POST") {
@@ -287,13 +228,9 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
     // Step 1
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React, Python");
-    await page
-      .getByPlaceholder("e.g. San Francisco, New York, Austin")
-      .fill("San Francisco");
+    await page.getByPlaceholder("e.g. San Francisco, New York, Austin").fill("San Francisco");
     await page.getByText("Remote only").click();
     await page.getByPlaceholder("e.g. 120000").fill("150000");
     await page.getByRole("button", { name: "Next" }).click();
@@ -324,9 +261,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
     // Step 1
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -339,9 +274,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
     await page.getByRole("button", { name: "Start Job Hunt Session" }).click();
 
     await expect(
-      page.getByText(
-        /Failed to start session|Internal server error|Unable to connect/
-      )
+      page.getByText(/Failed to start session|Internal server error|Unable to connect/)
     ).toBeVisible();
   });
 
@@ -361,9 +294,7 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
     // Step 1
     await page
-      .getByPlaceholder(
-        "e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner"
-      )
+      .getByPlaceholder("e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner")
       .fill("React");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -377,8 +308,8 @@ test.describe("Session Creation - Multi-Step Wizard", () => {
 
     // While loading, the button text is replaced by animated dots (LoadingDots)
     // and the button is disabled. The text "Start Job Hunt Session" disappears.
-    await expect(
-      page.getByRole("button", { name: "Start Job Hunt Session" })
-    ).not.toBeVisible({ timeout: 3_000 });
+    await expect(page.getByRole("button", { name: "Start Job Hunt Session" })).not.toBeVisible({
+      timeout: 3_000,
+    });
   });
 });

@@ -58,8 +58,7 @@ export default function SkillBridgeViz({ bridges }: SkillBridgeVizProps) {
       <div className="flex flex-wrap gap-2">
         {bridges.map((bridge, i) => {
           const catClass =
-            CATEGORY_COLORS[bridge.skill_category] ||
-            "bg-muted text-muted-foreground border-muted";
+            CATEGORY_COLORS[bridge.skill_category] || "bg-muted text-muted-foreground border-muted";
           const isActive = i === selectedIdx;
           return (
             <button
@@ -69,7 +68,9 @@ export default function SkillBridgeViz({ bridges }: SkillBridgeVizProps) {
                 setExpandedWhy(null);
               }}
               className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all cursor-pointer ${catClass} ${
-                isActive ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "opacity-70 hover:opacity-100"
+                isActive
+                  ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
+                  : "opacity-70 hover:opacity-100"
               }`}
             >
               {bridge.your_skill}
@@ -84,10 +85,7 @@ export default function SkillBridgeViz({ bridges }: SkillBridgeVizProps) {
         {selected.transfers_to.map((target, j) => {
           const collar = COLLAR_STYLES[target.collar] || COLLAR_STYLES.white;
           return (
-            <div
-              key={j}
-              className="bg-card border rounded-lg p-4 space-y-2.5"
-            >
+            <div key={j} className="bg-card border rounded-lg p-4 space-y-2.5">
               {/* Header row */}
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -112,16 +110,10 @@ export default function SkillBridgeViz({ bridges }: SkillBridgeVizProps) {
               {/* Stats */}
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 {target.salary_range && (
-                  <span>
-                    ${(target.salary_range.median / 1000).toFixed(0)}K median
-                  </span>
+                  <span>${(target.salary_range.median / 1000).toFixed(0)}K median</span>
                 )}
-                <span className={DEMAND_COLORS[target.demand] || ""}>
-                  {target.demand} demand
-                </span>
-                {target.growth_rate && (
-                  <span>{target.growth_rate}</span>
-                )}
+                <span className={DEMAND_COLORS[target.demand] || ""}>{target.demand} demand</span>
+                {target.growth_rate && <span>{target.growth_rate}</span>}
               </div>
 
               {/* Why this transfers */}

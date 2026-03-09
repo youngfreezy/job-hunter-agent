@@ -21,10 +21,7 @@ test.describe("Session Persistence and Dashboard", () => {
     await login(page);
 
     await page.route("**/api/sessions", async (route) => {
-      if (
-        route.request().method() === "GET" &&
-        !route.request().url().includes("/api/sessions/")
-      ) {
+      if (route.request().method() === "GET" && !route.request().url().includes("/api/sessions/")) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -61,10 +58,7 @@ test.describe("Session Persistence and Dashboard", () => {
     await login(page);
 
     await page.route("**/api/sessions", async (route) => {
-      if (
-        route.request().method() === "GET" &&
-        !route.request().url().includes("/api/sessions/")
-      ) {
+      if (route.request().method() === "GET" && !route.request().url().includes("/api/sessions/")) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -83,10 +77,7 @@ test.describe("Session Persistence and Dashboard", () => {
     await login(page);
 
     await page.route("**/api/sessions", async (route) => {
-      if (
-        route.request().method() === "GET" &&
-        !route.request().url().includes("/api/sessions/")
-      ) {
+      if (route.request().method() === "GET" && !route.request().url().includes("/api/sessions/")) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -122,10 +113,7 @@ test.describe("Session Persistence and Dashboard", () => {
     await login(page);
 
     await page.route("**/api/sessions", async (route) => {
-      if (
-        route.request().method() === "GET" &&
-        !route.request().url().includes("/api/sessions/")
-      ) {
+      if (route.request().method() === "GET" && !route.request().url().includes("/api/sessions/")) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -166,20 +154,14 @@ test.describe("Session Persistence and Dashboard", () => {
     await page.goto("/dashboard");
 
     // Applications Sent = 5 (3 + 2)
-    await expect(
-      page.locator("text=Applications sent").locator("..").getByText("5")
-    ).toBeVisible();
+    await expect(page.locator("text=Applications sent").locator("..").getByText("5")).toBeVisible();
     // Needs attention = 0 for these fixtures
-    await expect(
-      page.locator("text=Needs attention").locator("..").getByText("0")
-    ).toBeVisible();
+    await expect(page.locator("text=Needs attention").locator("..").getByText("0")).toBeVisible();
   });
 
   // -- Session page keywords from registry --
 
-  test("session page shows keywords from getSession registry fallback", async ({
-    page,
-  }) => {
+  test("session page shows keywords from getSession registry fallback", async ({ page }) => {
     await login(page);
     const mockId = "persist-test-001";
 
@@ -239,9 +221,7 @@ test.describe("Session Persistence and Dashboard", () => {
 
   // -- SSE replay on refresh --
 
-  test("session page refresh preserves events via SSE replay", async ({
-    page,
-  }) => {
+  test("session page refresh preserves events via SSE replay", async ({ page }) => {
     await login(page);
     const mockId = "replay-test-001";
 

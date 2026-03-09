@@ -21,9 +21,7 @@ function aiRiskColor(pct: number): string {
   return "#22c55e";
 }
 
-export default function PivotComparisonScatter({
-  pivots,
-}: PivotComparisonScatterProps) {
+export default function PivotComparisonScatter({ pivots }: PivotComparisonScatterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -47,11 +45,7 @@ export default function PivotComparisonScatter({
     const width = containerWidth;
     const height = 340;
 
-    const svg = d3
-      .select(container)
-      .append("svg")
-      .attr("width", width)
-      .attr("height", height);
+    const svg = d3.select(container).append("svg").attr("width", width).attr("height", height);
 
     const data = pivots
       .filter((p) => p.salary_range)
@@ -83,32 +77,47 @@ export default function PivotComparisonScatter({
       .domain([Math.max(0, salaryExtent[0] - 15), salaryExtent[1] + 15])
       .range([height - margin.bottom, margin.top]);
 
-    const r = d3
-      .scaleSqrt()
-      .domain(demandExtent)
-      .range([8, 35]);
+    const r = d3.scaleSqrt().domain(demandExtent).range([8, 35]);
 
     // Gridlines
     svg
       .append("g")
       .attr("transform", `translate(0,${height - margin.bottom})`)
-      .call(d3.axisBottom(x).ticks(5).tickFormat((d) => `${d}%`))
+      .call(
+        d3
+          .axisBottom(x)
+          .ticks(5)
+          .tickFormat((d) => `${d}%`)
+      )
       .call((g) => g.select(".domain").attr("stroke", "#374151"))
-      .call((g) => g.selectAll(".tick line").clone()
-        .attr("y2", -(height - margin.top - margin.bottom))
-        .attr("stroke", "#1f2937")
-        .attr("stroke-dasharray", "2,3"))
+      .call((g) =>
+        g
+          .selectAll(".tick line")
+          .clone()
+          .attr("y2", -(height - margin.top - margin.bottom))
+          .attr("stroke", "#1f2937")
+          .attr("stroke-dasharray", "2,3")
+      )
       .call((g) => g.selectAll(".tick text").attr("fill", "#a1a1aa").attr("font-size", "11px"));
 
     svg
       .append("g")
       .attr("transform", `translate(${margin.left},0)`)
-      .call(d3.axisLeft(y).ticks(5).tickFormat((d) => `$${d}K`))
+      .call(
+        d3
+          .axisLeft(y)
+          .ticks(5)
+          .tickFormat((d) => `$${d}K`)
+      )
       .call((g) => g.select(".domain").attr("stroke", "#374151"))
-      .call((g) => g.selectAll(".tick line").clone()
-        .attr("x2", width - margin.left - margin.right)
-        .attr("stroke", "#1f2937")
-        .attr("stroke-dasharray", "2,3"))
+      .call((g) =>
+        g
+          .selectAll(".tick line")
+          .clone()
+          .attr("x2", width - margin.left - margin.right)
+          .attr("stroke", "#1f2937")
+          .attr("stroke-dasharray", "2,3")
+      )
       .call((g) => g.selectAll(".tick text").attr("fill", "#a1a1aa").attr("font-size", "11px"));
 
     // Axis labels
@@ -181,17 +190,17 @@ export default function PivotComparisonScatter({
 
     // Hover interactions (applied after transition)
     svg
-      .selectAll<SVGCircleElement, (typeof data)[number]>(".bubble")
+      .selectAll<SVGCircleElement, typeof data[number]>(".bubble")
       .on("mouseenter", function (event, d) {
         d3.select(this).attr("fill-opacity", 1).attr("stroke-width", 2.5);
         tooltip
           .style("opacity", "1")
           .html(
             `<div style="font-weight:600;margin-bottom:4px">${d.role}</div>` +
-            `Skill Overlap: ${d.skillOverlap}%<br/>` +
-            `Salary: $${d.salaryMin}K – $${d.salaryMax}K (median $${d.salaryMedian}K)<br/>` +
-            `Openings: ${d.demand.toLocaleString()}<br/>` +
-            `AI Risk: ${d.aiRisk}%`
+              `Skill Overlap: ${d.skillOverlap}%<br/>` +
+              `Salary: $${d.salaryMin}K – $${d.salaryMax}K (median $${d.salaryMedian}K)<br/>` +
+              `Openings: ${d.demand.toLocaleString()}<br/>` +
+              `AI Risk: ${d.aiRisk}%`
           );
       })
       .on("mousemove", function (event) {
@@ -202,7 +211,6 @@ export default function PivotComparisonScatter({
         d3.select(this).attr("fill-opacity", 0.75).attr("stroke-width", 1.5);
         tooltip.style("opacity", "0");
       });
-
   }, [pivots, containerWidth]);
 
   if (!pivots || pivots.length === 0) return null;

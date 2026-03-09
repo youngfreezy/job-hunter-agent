@@ -11,7 +11,13 @@ import PivotComparisonBars from "@/components/charts/PivotComparisonBars";
 import SkillGapRadar from "@/components/charts/SkillGapRadar";
 import SkillBridgeViz from "@/components/charts/SkillBridgeViz";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import type { LearningResource, LearningWeek, PivotRole, RiskAssessment, SkillBridge } from "@/lib/types/career-pivot";
+import type {
+  LearningResource,
+  LearningWeek,
+  PivotRole,
+  RiskAssessment,
+  SkillBridge,
+} from "@/lib/types/career-pivot";
 import { riskColor, riskLabel } from "@/lib/utils";
 
 export default function PivotResultPage() {
@@ -23,7 +29,9 @@ export default function PivotResultPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedRadar, setExpandedRadar] = useState<number | null>(null);
   const [skillBridges, setSkillBridges] = useState<SkillBridge[]>([]);
-  const [paywall, setPaywall] = useState<{ count: number; message: string; cost: number } | null>(null);
+  const [paywall, setPaywall] = useState<{ count: number; message: string; cost: number } | null>(
+    null
+  );
   const [unlocking, setUnlocking] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const router = useRouter();
@@ -60,7 +68,9 @@ export default function PivotResultPage() {
       es.addEventListener("paywall", (e) => {
         const data = JSON.parse(e.data);
         setPaywall({ count: data.count, message: data.message, cost: data.cost });
-        getWallet().then((w) => setWalletBalance(w.balance)).catch(() => {});
+        getWallet()
+          .then((w) => setWalletBalance(w.balance))
+          .catch(() => {});
       });
 
       es.addEventListener("done", () => {
@@ -112,27 +122,27 @@ export default function PivotResultPage() {
     status === "parsing_skills"
       ? "Parsing your resume..."
       : status === "researching_onet"
-        ? "Researching your occupation..."
-        : status === "assessing_risk"
-          ? "Calculating your automation risk..."
-          : status === "mapping_roles"
-            ? "Finding adjacent roles you're qualified for..."
-            : status === "mapping_cross_industry"
-              ? "Mapping your skills to unexpected industries..."
-              : "Starting your career analysis...";
+      ? "Researching your occupation..."
+      : status === "assessing_risk"
+      ? "Calculating your automation risk..."
+      : status === "mapping_roles"
+      ? "Finding adjacent roles you're qualified for..."
+      : status === "mapping_cross_industry"
+      ? "Mapping your skills to unexpected industries..."
+      : "Starting your career analysis...";
 
   const progressWidth =
     status === "parsing_skills"
       ? "20%"
       : status === "researching_onet"
-        ? "35%"
-        : status === "assessing_risk"
-          ? "50%"
-          : status === "mapping_roles"
-            ? "70%"
-            : status === "mapping_cross_industry"
-              ? "85%"
-              : "10%";
+      ? "35%"
+      : status === "assessing_risk"
+      ? "50%"
+      : status === "mapping_roles"
+      ? "70%"
+      : status === "mapping_cross_industry"
+      ? "85%"
+      : "10%";
 
   if (isLoading) {
     return (
@@ -266,7 +276,8 @@ export default function PivotResultPage() {
               <div className="text-4xl mb-3">&#128274;</div>
               <h3 className="text-lg font-semibold">{paywall.message}</h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-md text-center">
-                See salary data, skill comparisons, learning plans, and personalized charts for each role.
+                See salary data, skill comparisons, learning plans, and personalized charts for each
+                role.
               </p>
               <div className="flex items-center gap-3 mt-4">
                 <Button onClick={handleUnlock} loading={unlocking} size="lg">
@@ -293,7 +304,10 @@ export default function PivotResultPage() {
                   <div className="h-4 w-24 bg-muted rounded" />
                 </div>
                 <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-primary/40 h-2 rounded-full" style={{ width: `${50 + i * 15}%` }} />
+                  <div
+                    className="bg-primary/40 h-2 rounded-full"
+                    style={{ width: `${50 + i * 15}%` }}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="h-4 w-32 bg-muted rounded" />
@@ -318,17 +332,11 @@ export default function PivotResultPage() {
         <div className="bg-card border rounded-lg p-8 space-y-6">
           {/* Score header */}
           <div className="text-center space-y-3">
-            <h2 className="text-lg font-medium text-muted-foreground">
-              Your AI Automation Risk
-            </h2>
-            <div
-              className={`text-6xl font-bold ${riskColor(risk.automation_risk_score)}`}
-            >
+            <h2 className="text-lg font-medium text-muted-foreground">Your AI Automation Risk</h2>
+            <div className={`text-6xl font-bold ${riskColor(risk.automation_risk_score)}`}>
               {Math.round(risk.automation_risk_score)}%
             </div>
-            <p
-              className={`text-sm font-semibold ${riskColor(risk.automation_risk_score)}`}
-            >
+            <p className={`text-sm font-semibold ${riskColor(risk.automation_risk_score)}`}>
               {riskLabel(risk.automation_risk_score)}
             </p>
           </div>
@@ -378,11 +386,10 @@ export default function PivotResultPage() {
           {/* Task Breakdown */}
           {risk.task_breakdown.length > 0 && (
             <div>
-              <h3 className="text-sm font-medium mb-1">
-                Task-by-task automation risk
-              </h3>
+              <h3 className="text-sm font-medium mb-1">Task-by-task automation risk</h3>
               <p className="text-xs text-muted-foreground mb-3">
-                How likely each part of your daily work is to be automated, based on federal labor data.
+                How likely each part of your daily work is to be automated, based on federal labor
+                data.
                 <span className="text-green-400 ml-1">Green = safe</span>,{" "}
                 <span className="text-yellow-400">yellow = at risk</span>,{" "}
                 <span className="text-red-400">red = high risk</span>.
@@ -421,132 +428,126 @@ export default function PivotResultPage() {
             </div>
 
             {/* Role Cards */}
-          {pivots.map((pivot, i) => (
-            <div key={i} className="bg-card border rounded-lg p-6 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">
-                  #{i + 1} {pivot.role}
-                  {pivot.soc_code && (
-                    <span
-                      className="text-xs text-muted-foreground ml-2 font-normal border-b border-dotted border-muted-foreground cursor-help"
-                      title="Standard Occupational Classification code — used by the U.S. Department of Labor to categorize jobs"
-                    >
-                      {pivot.soc_code}
-                    </span>
-                  )}
-                </h3>
-                <span className="text-sm text-muted-foreground">
-                  {Math.round(pivot.skill_overlap_pct)}% skill match
-                </span>
-              </div>
-
-              <div className="w-full bg-muted rounded-full h-2">
-                <div
-                  className="bg-primary h-2 rounded-full transition-all duration-700"
-                  style={{ width: `${pivot.skill_overlap_pct}%` }}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                {pivot.salary_range && (
-                  <div>
-                    <span className="text-muted-foreground">Salary: </span>
-                    ${(pivot.salary_range.min / 1000).toFixed(0)}K - $
-                    {(pivot.salary_range.max / 1000).toFixed(0)}K
-                    <span className="text-xs text-muted-foreground ml-1">
-                      (median ${(pivot.salary_range.median / 1000).toFixed(0)}K)
-                    </span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground">AI Risk: </span>
-                  <span className={riskColor(pivot.ai_risk_pct)}>
-                    {Math.round(pivot.ai_risk_pct)}%
+            {pivots.map((pivot, i) => (
+              <div key={i} className="bg-card border rounded-lg p-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">
+                    #{i + 1} {pivot.role}
+                    {pivot.soc_code && (
+                      <span
+                        className="text-xs text-muted-foreground ml-2 font-normal border-b border-dotted border-muted-foreground cursor-help"
+                        title="Standard Occupational Classification code — used by the U.S. Department of Labor to categorize jobs"
+                      >
+                        {pivot.soc_code}
+                      </span>
+                    )}
+                  </h3>
+                  <span className="text-sm text-muted-foreground">
+                    {Math.round(pivot.skill_overlap_pct)}% skill match
                   </span>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Openings: </span>
-                  {pivot.market_demand.toLocaleString()}/yr
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Transition time:</span>
-                  ~{pivot.time_to_pivot_weeks} weeks
-                </div>
-                {pivot.growth_rate && (
-                  <div>
-                    <span className="text-muted-foreground">Growth: </span>
-                    {pivot.growth_rate}
-                  </div>
-                )}
-                {pivot.entry_education && (
-                  <div>
-                    <span className="text-muted-foreground">Education: </span>
-                    {pivot.entry_education}
-                  </div>
-                )}
-              </div>
 
-              {pivot.missing_skills.length > 0 && (
-                <div className="text-sm">
-                  <span className="text-muted-foreground">Skills gap: </span>
-                  {pivot.missing_skills.join(", ")}
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div
+                    className="bg-primary h-2 rounded-full transition-all duration-700"
+                    style={{ width: `${pivot.skill_overlap_pct}%` }}
+                  />
                 </div>
-              )}
 
-              {/* Skill Gap Radar */}
-              {pivot.skill_comparison && (
-                <div className="mt-2">
-                  <button
-                    onClick={() =>
-                      setExpandedRadar(expandedRadar === i ? null : i)
-                    }
-                    className="text-sm text-primary hover:underline cursor-pointer"
-                  >
-                    {expandedRadar === i
-                      ? "Hide Skill Comparison"
-                      : "View Skill Comparison"}
-                  </button>
-                  {expandedRadar === i && (
-                    <div className="mt-3 flex justify-center">
-                      <SkillGapRadar
-                        comparison={pivot.skill_comparison}
-                        roleName={pivot.role}
-                      />
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {pivot.salary_range && (
+                    <div>
+                      <span className="text-muted-foreground">Salary: </span>$
+                      {(pivot.salary_range.min / 1000).toFixed(0)}K - $
+                      {(pivot.salary_range.max / 1000).toFixed(0)}K
+                      <span className="text-xs text-muted-foreground ml-1">
+                        (median ${(pivot.salary_range.median / 1000).toFixed(0)}K)
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">AI Risk: </span>
+                    <span className={riskColor(pivot.ai_risk_pct)}>
+                      {Math.round(pivot.ai_risk_pct)}%
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Openings: </span>
+                    {pivot.market_demand.toLocaleString()}/yr
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Transition time:</span>~
+                    {pivot.time_to_pivot_weeks} weeks
+                  </div>
+                  {pivot.growth_rate && (
+                    <div>
+                      <span className="text-muted-foreground">Growth: </span>
+                      {pivot.growth_rate}
+                    </div>
+                  )}
+                  {pivot.entry_education && (
+                    <div>
+                      <span className="text-muted-foreground">Education: </span>
+                      {pivot.entry_education}
                     </div>
                   )}
                 </div>
-              )}
 
-              {pivot.learning_plan.length > 0 && (
-                <details className="text-sm">
-                  <summary className="cursor-pointer text-primary hover:underline">
-                    View Learning Plan
-                  </summary>
-                  <div className="mt-2 space-y-2 pl-4">
-                    {pivot.learning_plan.map((week: LearningWeek, j: number) => (
-                      <div key={j} className="border-l-2 border-muted pl-3">
-                        <p className="font-medium">
-                          Week {week.week}: {week.topic}
-                        </p>
-                        {week.resources?.map((r: LearningResource, k: number) => (
-                          <p key={k} className="text-muted-foreground">
-                            {r.name} · {r.hours}hrs · {r.cost}
-                          </p>
-                        ))}
-                      </div>
-                    ))}
+                {pivot.missing_skills.length > 0 && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Skills gap: </span>
+                    {pivot.missing_skills.join(", ")}
                   </div>
-                </details>
-              )}
-            </div>
-          ))}
+                )}
+
+                {/* Skill Gap Radar */}
+                {pivot.skill_comparison && (
+                  <div className="mt-2">
+                    <button
+                      onClick={() => setExpandedRadar(expandedRadar === i ? null : i)}
+                      className="text-sm text-primary hover:underline cursor-pointer"
+                    >
+                      {expandedRadar === i ? "Hide Skill Comparison" : "View Skill Comparison"}
+                    </button>
+                    {expandedRadar === i && (
+                      <div className="mt-3 flex justify-center">
+                        <SkillGapRadar comparison={pivot.skill_comparison} roleName={pivot.role} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {pivot.learning_plan.length > 0 && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-primary hover:underline">
+                      View Learning Plan
+                    </summary>
+                    <div className="mt-2 space-y-2 pl-4">
+                      {pivot.learning_plan.map((week: LearningWeek, j: number) => (
+                        <div key={j} className="border-l-2 border-muted pl-3">
+                          <p className="font-medium">
+                            Week {week.week}: {week.topic}
+                          </p>
+                          {week.resources?.map((r: LearningResource, k: number) => (
+                            <p key={k} className="text-muted-foreground">
+                              {r.name} · {r.hours}hrs · {r.cost}
+                            </p>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            ))}
           </TabsContent>
 
           <TabsContent value="bridges" className="space-y-4">
             <div className="bg-card border rounded-lg p-6">
               <h2 className="text-lg font-medium mb-2">Your Skills in New Industries</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Select a skill to see unexpected career paths where it transfers — across industries and collar types.
+                Select a skill to see unexpected career paths where it transfers — across industries
+                and collar types.
               </p>
               {skillBridges.length > 0 ? (
                 <SkillBridgeViz bridges={skillBridges} />

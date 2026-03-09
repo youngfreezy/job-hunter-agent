@@ -6,11 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormikProvider } from "formik";
 import { usePersistedFormik } from "@/lib/hooks/usePersistedFormik";
-import {
-  sessionInitialValues,
-  stepSchemas,
-  type SessionFormValues,
-} from "@/lib/schemas/session";
+import { sessionInitialValues, stepSchemas, type SessionFormValues } from "@/lib/schemas/session";
 import { startSession } from "@/lib/api";
 import { WizardStepper } from "./WizardStepper";
 import { WizardNavigation } from "./WizardNavigation";
@@ -83,13 +79,8 @@ export function SessionWizard() {
         setIsNavigating(true);
         router.push(`/session/${session.session_id}`);
       } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Failed to start session";
-        if (
-          msg === "Failed to fetch" ||
-          msg.includes("NetworkError") ||
-          msg === "Load failed"
-        ) {
+        const msg = err instanceof Error ? err.message : "Failed to start session";
+        if (msg === "Failed to fetch" || msg.includes("NetworkError") || msg === "Load failed") {
           setSubmitError(
             "Unable to connect to the server. Make sure the backend is running (npm start)."
           );
@@ -106,16 +97,16 @@ export function SessionWizard() {
     const fieldsToValidate = Object.keys(currentSchema.fields);
 
     // Touch all fields in current step to trigger error display
-    const touchedFields = fieldsToValidate.reduce(
-      (acc, field) => ({ ...acc, [field]: true }),
-      {}
-    );
+    const touchedFields = fieldsToValidate.reduce((acc, field) => ({ ...acc, [field]: true }), {});
     formik.setTouched({ ...formik.touched, ...touchedFields });
 
     try {
       await currentSchema.validate(formik.values, { abortEarly: false });
       const nextStep = Math.min(step + 1, WIZARD_STEPS.length - 1);
-      window.umami?.track("wizard-step", { step: WIZARD_STEPS[nextStep].label, number: nextStep + 1 });
+      window.umami?.track("wizard-step", {
+        step: WIZARD_STEPS[nextStep].label,
+        number: nextStep + 1,
+      });
       setStep(nextStep);
     } catch {
       // Validation errors display via FormError components

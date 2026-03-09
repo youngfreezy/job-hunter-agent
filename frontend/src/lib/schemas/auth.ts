@@ -3,9 +3,7 @@
 import * as Yup from "yup";
 
 export const loginSchema = Yup.object({
-  email: Yup.string()
-    .email("Enter a valid email address.")
-    .required("Email is required."),
+  email: Yup.string().email("Enter a valid email address.").required("Email is required."),
   password: Yup.string().max(128, "Password is too long.").required("Password is required."),
 });
 
@@ -18,9 +16,7 @@ export const loginInitialValues: LoginFormValues = {
 
 export const signupSchema = Yup.object({
   name: Yup.string().required("Name is required."),
-  email: Yup.string()
-    .email("Enter a valid email address.")
-    .required("Email is required."),
+  email: Yup.string().email("Enter a valid email address.").required("Email is required."),
   password: Yup.string()
     .min(8, "Password must be at least 8 characters.")
     .max(128, "Password is too long.")

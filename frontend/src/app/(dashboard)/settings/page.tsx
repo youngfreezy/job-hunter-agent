@@ -5,13 +5,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { API_BASE, getAuthHeaders } from "@/lib/api";
 
 export default function SettingsPage() {
@@ -158,7 +152,10 @@ export default function SettingsPage() {
                   maxLength={6}
                   className="w-32 rounded-md border px-3 py-2 text-sm bg-background text-center tracking-widest"
                 />
-                <Button onClick={handleConfirmCode} disabled={confirming || verificationCode.length !== 6}>
+                <Button
+                  onClick={handleConfirmCode}
+                  disabled={confirming || verificationCode.length !== 6}
+                >
                   {confirming ? "Verifying..." : "Verify"}
                 </Button>
                 <Button variant="outline" onClick={() => setVerifyStep("input")}>

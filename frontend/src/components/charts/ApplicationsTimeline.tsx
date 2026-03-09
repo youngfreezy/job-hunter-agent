@@ -2,14 +2,7 @@
 
 "use client";
 
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 interface ApplicationsTimelineProps {
   sessions: Array<{
@@ -24,9 +17,7 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function ApplicationsTimeline({
-  sessions,
-}: ApplicationsTimelineProps) {
+export default function ApplicationsTimeline({ sessions }: ApplicationsTimelineProps) {
   if (!sessions || sessions.length < 2) return null;
 
   const grouped = new Map<string, number>();

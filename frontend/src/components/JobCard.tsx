@@ -26,14 +26,7 @@ interface JobCardProps {
   compact?: boolean;
 }
 
-export function JobCard({
-  job,
-  score,
-  breakdown,
-  selected,
-  onToggle,
-  compact,
-}: JobCardProps) {
+export function JobCard({ job, score, breakdown, selected, onToggle, compact }: JobCardProps) {
   const scoreColor =
     score >= 80
       ? "bg-green-100 text-green-800"
@@ -53,11 +46,7 @@ export function JobCard({
       >
         <div className="flex items-center justify-between">
           <span className="font-medium truncate">{job.title}</span>
-          <span
-            className={`px-1.5 py-0.5 rounded text-xs font-medium ${scoreColor}`}
-          >
-            {score}
-          </span>
+          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${scoreColor}`}>{score}</span>
         </div>
         <p className="text-zinc-500 truncate">
           {job.company} — {job.location}
@@ -79,13 +68,9 @@ export function JobCard({
                 </Badge>
               )}
             </div>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              {job.company}
-            </p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">{job.company}</p>
             <p className="text-xs text-zinc-500">{job.location}</p>
-            {job.salary_range && (
-              <p className="text-xs text-green-600 mt-1">{job.salary_range}</p>
-            )}
+            {job.salary_range && <p className="text-xs text-green-600 mt-1">{job.salary_range}</p>}
             <div className="flex gap-1 mt-2">
               <Badge variant="outline" className="text-xs">
                 {job.board}
@@ -93,11 +78,7 @@ export function JobCard({
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 ml-3">
-            <div
-              className={`px-2 py-1 rounded text-sm font-bold ${scoreColor}`}
-            >
-              {score}/100
-            </div>
+            <div className={`px-2 py-1 rounded text-sm font-bold ${scoreColor}`}>{score}/100</div>
             {onToggle && (
               <Button
                 size="sm"

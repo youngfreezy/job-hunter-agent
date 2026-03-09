@@ -87,9 +87,7 @@ export default function RootLayout({
           />
         )}
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <NextTopLoader color="#3b82f6" showSpinner={false} height={2} />
         {children}
       </body>

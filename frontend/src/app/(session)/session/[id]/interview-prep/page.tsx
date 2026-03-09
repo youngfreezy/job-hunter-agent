@@ -8,7 +8,13 @@ import { Button } from "@/components/ui/button";
 import { API_BASE, getAuthHeaders, getSSEToken, getWallet } from "@/lib/api";
 import AnswerGradeRadar from "@/components/charts/AnswerGradeRadar";
 import ReadinessScoreBars from "@/components/charts/ReadinessScoreBars";
-import type { Question, Grade, CompanyBrief, InterviewReport, CoachingHints } from "@/lib/types/interview-prep";
+import type {
+  Question,
+  Grade,
+  CompanyBrief,
+  InterviewReport,
+  CoachingHints,
+} from "@/lib/types/interview-prep";
 
 export default function InterviewPrepPage() {
   const { id: sessionId } = useParams<{ id: string }>();
@@ -34,11 +40,7 @@ export default function InterviewPrepPage() {
   const router = useRouter();
 
   // Start prep session
-  async function handleStart(
-    company: string,
-    role: string,
-    resumeText: string,
-  ) {
+  async function handleStart(company: string, role: string, resumeText: string) {
     setStarting(true);
     setError(null);
     try {
@@ -58,9 +60,7 @@ export default function InterviewPrepPage() {
       setPrepId(data.session_id);
       setStatus("connecting");
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "An unknown error occurred",
-      );
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
       setStarting(false);
     }
   }
@@ -99,7 +99,10 @@ export default function InterviewPrepPage() {
       es.onerror = () => es?.close();
     });
 
-    return () => { cancelled = true; es?.close(); };
+    return () => {
+      cancelled = true;
+      es?.close();
+    };
   }, [prepId]);
 
   // Submit answer
@@ -111,14 +114,11 @@ export default function InterviewPrepPage() {
     try {
       const headers = await getAuthHeaders();
       const q = questions[currentQ];
-      const res = await fetch(
-        `${API_BASE}/api/interview-prep/${prepId}/answer`,
-        {
-          method: "POST",
-          headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ question_id: q.id, answer }),
-        },
-      );
+      const res = await fetch(`${API_BASE}/api/interview-prep/${prepId}/answer`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ question_id: q.id, answer }),
+      });
       if (res.status === 402) {
         setShowPaywall(true);
         getWallet()
@@ -131,12 +131,9 @@ export default function InterviewPrepPage() {
       setLastGrade(data.grade);
       setGrades((prev) => [...prev, data.grade]);
       setAnswer("");
-      if (!paid && data.questions_answered >= maxFreeQuestions)
-        setShowPaywall(true);
+      if (!paid && data.questions_answered >= maxFreeQuestions) setShowPaywall(true);
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "An unknown error occurred",
-      );
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
       setSubmitting(false);
     }
@@ -149,14 +146,11 @@ export default function InterviewPrepPage() {
     setCoachingLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${API_BASE}/api/interview-prep/${prepId}/coach`,
-        {
-          method: "POST",
-          headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ question_id: q.id }),
-        },
-      );
+      const res = await fetch(`${API_BASE}/api/interview-prep/${prepId}/coach`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ question_id: q.id }),
+      });
       if (res.status === 402) {
         setShowPaywall(true);
         getWallet()
@@ -194,13 +188,10 @@ export default function InterviewPrepPage() {
     setUnlocking(true);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${API_BASE}/api/interview-prep/${prepId}/unlock`,
-        {
-          method: "POST",
-          headers: { ...headers, "Content-Type": "application/json" },
-        },
-      );
+      const res = await fetch(`${API_BASE}/api/interview-prep/${prepId}/unlock`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+      });
       if (res.status === 402) {
         router.push("/billing");
         return;
@@ -220,15 +211,12 @@ export default function InterviewPrepPage() {
   // Show start form / loading until questions arrive
   if (questions.length === 0 && !error && status !== "completed") {
     const savedResume =
-      typeof window !== "undefined"
-        ? localStorage.getItem("jh_resume_text") || ""
-        : "";
+      typeof window !== "undefined" ? localStorage.getItem("jh_resume_text") || "" : "";
     return (
       <div className="container mx-auto max-w-3xl p-6 space-y-6">
         <h1 className="text-2xl font-bold">Interview Prep</h1>
         <p className="text-muted-foreground">
-          Practice for your interview with AI-powered mock questions and
-          real-time feedback.
+          Practice for your interview with AI-powered mock questions and real-time feedback.
         </p>
 
         {starting ? (
@@ -240,8 +228,8 @@ export default function InterviewPrepPage() {
                   {status === "researching" || status === "researching_company"
                     ? "Researching company culture & values..."
                     : status === "generating_questions"
-                      ? "Generating personalized interview questions..."
-                      : "Setting up your mock interview..."}
+                    ? "Generating personalized interview questions..."
+                    : "Setting up your mock interview..."}
                 </p>
               </div>
               <div className="w-full bg-muted rounded-full h-1.5">
@@ -249,12 +237,11 @@ export default function InterviewPrepPage() {
                   className="bg-primary h-1.5 rounded-full animate-pulse transition-all duration-500"
                   style={{
                     width:
-                      status === "researching" ||
-                      status === "researching_company"
+                      status === "researching" || status === "researching_company"
                         ? "50%"
                         : status === "generating_questions"
-                          ? "80%"
-                          : "30%",
+                        ? "80%"
+                        : "30%",
                   }}
                 />
               </div>
@@ -296,12 +283,8 @@ export default function InterviewPrepPage() {
             <Button
               loading={starting}
               onClick={() => {
-                const company = (
-                  document.getElementById("company") as HTMLInputElement
-                ).value;
-                const role = (
-                  document.getElementById("role") as HTMLInputElement
-                ).value;
+                const company = (document.getElementById("company") as HTMLInputElement).value;
+                const role = (document.getElementById("role") as HTMLInputElement).value;
                 if (company && role) handleStart(company, role, savedResume);
               }}
             >
@@ -320,9 +303,7 @@ export default function InterviewPrepPage() {
       {/* Company Brief */}
       {brief && (
         <details className="bg-card border rounded-lg p-4" open>
-          <summary className="cursor-pointer font-medium">
-            Company Brief
-          </summary>
+          <summary className="cursor-pointer font-medium">Company Brief</summary>
           <div className="mt-3 space-y-2 text-sm">
             {brief.mission && (
               <p>
@@ -355,8 +336,12 @@ export default function InterviewPrepPage() {
             ) : (
               <div className="mt-2 relative">
                 <div className="blur-sm select-none pointer-events-none text-muted-foreground">
-                  <p><strong>Recent:</strong> Company news and developments...</p>
-                  <p className="mt-1"><strong>Things to mention:</strong></p>
+                  <p>
+                    <strong>Recent:</strong> Company news and developments...
+                  </p>
+                  <p className="mt-1">
+                    <strong>Things to mention:</strong>
+                  </p>
                   <ul className="list-disc pl-5 mt-1">
                     <li>Key talking points tailored to this role...</li>
                     <li>Specific achievements to highlight...</li>
@@ -458,18 +443,16 @@ export default function InterviewPrepPage() {
                   Structure your answer (Situation, Task, Action, Result):
                 </p>
                 <div className="grid grid-cols-1 gap-1.5">
-                  {(["situation", "task", "action", "result"] as const).map(
-                    (key) => (
-                      <div key={key} className="flex gap-2">
-                        <span className="font-semibold text-blue-400 uppercase text-xs w-16 shrink-0 pt-0.5">
-                          {key[0]}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {coaching[q.id].star_scaffold[key]}
-                        </span>
-                      </div>
-                    ),
-                  )}
+                  {(["situation", "task", "action", "result"] as const).map((key) => (
+                    <div key={key} className="flex gap-2">
+                      <span className="font-semibold text-blue-400 uppercase text-xs w-16 shrink-0 pt-0.5">
+                        {key[0]}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {coaching[q.id].star_scaffold[key]}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -493,9 +476,7 @@ export default function InterviewPrepPage() {
 
               {coaching[q.id].pitfalls.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-1">
-                    Avoid:
-                  </p>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Avoid:</p>
                   <ul className="space-y-0.5">
                     {coaching[q.id].pitfalls.map((p, i) => (
                       <li key={i} className="text-yellow-400/80 text-xs">
@@ -515,18 +496,14 @@ export default function InterviewPrepPage() {
                 You&apos;re doing great! Continue practicing?
               </h3>
               <p className="text-sm text-muted-foreground">
-                You&apos;ve used your {maxFreeQuestions} free questions. Unlock
-                unlimited questions and coaching for the rest of this session.
+                You&apos;ve used your {maxFreeQuestions} free questions. Unlock unlimited questions
+                and coaching for the rest of this session.
               </p>
               <div className="flex items-center justify-center gap-3">
                 <Button onClick={handleUnlock} loading={unlocking} size="lg">
                   Unlock for 1 Credit
                 </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => router.push("/billing")}
-                >
+                <Button variant="outline" size="lg" onClick={() => router.push("/billing")}>
                   Buy Credits
                 </Button>
               </div>
@@ -556,10 +533,7 @@ export default function InterviewPrepPage() {
               />
 
               <div className="flex gap-3">
-                <Button
-                  onClick={handleSubmitAnswer}
-                  disabled={submitting || !answer.trim()}
-                >
+                <Button onClick={handleSubmitAnswer} disabled={submitting || !answer.trim()}>
                   {submitting ? "Grading..." : "Submit Answer"}
                 </Button>
                 <Button
@@ -607,18 +581,11 @@ export default function InterviewPrepPage() {
             averageGrades={
               grades.length > 1
                 ? {
-                    relevance:
-                      grades.reduce((s, g) => s + g.relevance, 0) /
-                      grades.length,
-                    specificity:
-                      grades.reduce((s, g) => s + g.specificity, 0) /
-                      grades.length,
+                    relevance: grades.reduce((s, g) => s + g.relevance, 0) / grades.length,
+                    specificity: grades.reduce((s, g) => s + g.specificity, 0) / grades.length,
                     star_structure:
-                      grades.reduce((s, g) => s + g.star_structure, 0) /
-                      grades.length,
-                    confidence:
-                      grades.reduce((s, g) => s + g.confidence, 0) /
-                      grades.length,
+                      grades.reduce((s, g) => s + g.star_structure, 0) / grades.length,
+                    confidence: grades.reduce((s, g) => s + g.confidence, 0) / grades.length,
                   }
                 : null
             }
@@ -626,12 +593,8 @@ export default function InterviewPrepPage() {
           <p className="text-sm text-muted-foreground">{lastGrade.feedback}</p>
           {lastGrade.strong_answer_example && (
             <details className="text-sm">
-              <summary className="cursor-pointer text-primary">
-                View strong answer example
-              </summary>
-              <p className="mt-2 text-muted-foreground">
-                {lastGrade.strong_answer_example}
-              </p>
+              <summary className="cursor-pointer text-primary">View strong answer example</summary>
+              <p className="mt-2 text-muted-foreground">{lastGrade.strong_answer_example}</p>
             </details>
           )}
         </div>
@@ -641,9 +604,7 @@ export default function InterviewPrepPage() {
       {report && (
         <div className="bg-card border rounded-lg p-8 text-center space-y-4">
           <h2 className="text-lg font-medium">Readiness Report</h2>
-          <div className="text-5xl font-bold text-primary">
-            {report.overall_readiness}/10
-          </div>
+          <div className="text-5xl font-bold text-primary">{report.overall_readiness}/10</div>
           {report.category_scores && (
             <div className="max-w-md mx-auto">
               <ReadinessScoreBars categoryScores={report.category_scores} />

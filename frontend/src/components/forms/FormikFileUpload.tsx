@@ -59,9 +59,12 @@ function base64ToFile(base64: string, fileName: string): File {
     bytes[i] = byteString.charCodeAt(i);
   }
   const ext = fileName.split(".").pop()?.toLowerCase() || "pdf";
-  const mime = ext === "pdf" ? "application/pdf"
-    : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    : "text/plain";
+  const mime =
+    ext === "pdf"
+      ? "application/pdf"
+      : ext === "docx"
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : "text/plain";
   return new File([bytes], fileName, { type: mime });
 }
 
@@ -151,10 +154,7 @@ export function FormikFileUpload() {
     // PDF and DOCX files: send to backend for parsing + cache bytes
     setParsing(true);
     try {
-      const [result, base64] = await Promise.all([
-        parseResume(file),
-        fileToBase64(file),
-      ]);
+      const [result, base64] = await Promise.all([parseResume(file), fileToBase64(file)]);
       setFieldValue("resumeText", result.text);
       if (result.file_path) {
         setFieldValue("resumeFilePath", result.file_path);
@@ -190,18 +190,12 @@ export function FormikFileUpload() {
         >
           <div className="text-sm text-zinc-600 dark:text-zinc-400">
             {parsing ? (
-              <span className="text-blue-600 font-medium">
-                Extracting text from your resume...
-              </span>
+              <span className="text-blue-600 font-medium">Extracting text from your resume...</span>
             ) : values.resumeFileName ? (
-              <span className="text-green-600 font-medium">
-                {values.resumeFileName}
-              </span>
+              <span className="text-green-600 font-medium">{values.resumeFileName}</span>
             ) : (
               <>
-                <span className="font-medium text-zinc-900 dark:text-white">
-                  Click to upload
-                </span>{" "}
+                <span className="font-medium text-zinc-900 dark:text-white">Click to upload</span>{" "}
                 your resume
               </>
             )}

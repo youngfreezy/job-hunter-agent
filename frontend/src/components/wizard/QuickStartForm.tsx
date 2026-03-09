@@ -54,12 +54,7 @@ function QuickStartInner() {
   // Auto-analyze when resume text appears
   useEffect(() => {
     const text = values.resumeText;
-    if (
-      text &&
-      text.length >= 50 &&
-      text !== analyzedTextRef.current &&
-      !analyzing
-    ) {
+    if (text && text.length >= 50 && text !== analyzedTextRef.current && !analyzing) {
       analyzedTextRef.current = text;
       setAnalyzing(true);
       setAnalyzeError("");
@@ -110,9 +105,7 @@ function QuickStartInner() {
   const handleLaunch = async () => {
     setSubmitError("");
     if (keywords.length === 0) {
-      setSubmitError(
-        "Upload your resume first so we can extract search keywords."
-      );
+      setSubmitError("Upload your resume first so we can extract search keywords.");
       return;
     }
     setIsNavigating(true);
@@ -131,13 +124,8 @@ function QuickStartInner() {
       router.push(`/session/${session.session_id}`);
     } catch (err) {
       setIsNavigating(false);
-      const msg =
-        err instanceof Error ? err.message : "Failed to start session";
-      if (
-        msg === "Failed to fetch" ||
-        msg.includes("NetworkError") ||
-        msg === "Load failed"
-      ) {
+      const msg = err instanceof Error ? err.message : "Failed to start session";
+      if (msg === "Failed to fetch" || msg.includes("NetworkError") || msg === "Load failed") {
         setSubmitError(
           "Unable to connect to the server. Make sure the backend is running (npm start)."
         );
@@ -177,11 +165,7 @@ function QuickStartInner() {
       {analyzeError && (
         <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
           {analyzeError}
-          <button
-            type="button"
-            onClick={handleRetryAnalysis}
-            className="ml-2 underline"
-          >
+          <button type="button" onClick={handleRetryAnalysis} className="ml-2 underline">
             Retry
           </button>
         </div>
@@ -208,12 +192,17 @@ function QuickStartInner() {
                   value={newKeyword}
                   onChange={(e) => setNewKeyword(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); addKeyword(); }
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addKeyword();
+                    }
                     if (e.key === "Backspace" && !newKeyword && keywords.length > 0) {
                       removeKeyword(keywords.length - 1);
                     }
                   }}
-                  placeholder={keywords.length === 0 ? "Type a keyword and press Enter…" : "Add more…"}
+                  placeholder={
+                    keywords.length === 0 ? "Type a keyword and press Enter…" : "Add more…"
+                  }
                   className="flex-1 min-w-[120px] bg-transparent text-sm outline-none placeholder:text-zinc-400"
                 />
               </div>
@@ -248,12 +237,19 @@ function QuickStartInner() {
                   value={newLocation}
                   onChange={(e) => setNewLocation(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); addLocation(); }
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addLocation();
+                    }
                     if (e.key === "Backspace" && !newLocation && locations.length > 0) {
                       removeLocation(locations.length - 1);
                     }
                   }}
-                  placeholder={locations.length === 0 && !remoteOnly ? "Type a city and press Enter…" : "Add more…"}
+                  placeholder={
+                    locations.length === 0 && !remoteOnly
+                      ? "Type a city and press Enter…"
+                      : "Add more…"
+                  }
                   className="flex-1 min-w-[120px] bg-transparent text-sm outline-none placeholder:text-zinc-400"
                 />
               </div>
