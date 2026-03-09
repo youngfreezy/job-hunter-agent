@@ -3,6 +3,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { Formik, Form } from "formik";
@@ -12,7 +13,10 @@ import { FormikInput } from "@/components/forms/FormikInput";
 import { loginSchema, loginInitialValues } from "@/lib/schemas/auth";
 
 export default function LoginPage() {
-  const [error, setError] = useState("");
+  const searchParams = useSearchParams();
+  const [error, setError] = useState(
+    searchParams.get("existing") ? "An account with this email already exists. Please sign in." : ""
+  );
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center px-4">
