@@ -297,7 +297,8 @@ export async function listSessions(): Promise<SessionListItem[]> {
   const auth = await getAuthHeaders();
   const res = await apiFetch(`${API_BASE}/api/sessions`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to list sessions: ${res.statusText}`);
-  return res.json();
+  const sessions: SessionListItem[] = await res.json();
+  return sessions.map((s) => ({ ...s, keywords: s.keywords || [], locations: s.locations || [] }));
 }
 
 export async function getSession(sessionId: string): Promise<Record<string, unknown>> {

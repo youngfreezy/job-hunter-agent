@@ -370,8 +370,6 @@ export default function SessionPage() {
     message: string;
   } | null>(null);
   const [loginConfirming, setLoginConfirming] = useState(false);
-  const eventsEndRef = useRef<HTMLDivElement>(null);
-  const eventsContainerRef = useRef<HTMLDivElement>(null);
   const latestStatusRef = useRef(
     (() => {
       if (typeof window === "undefined") return "intake";
@@ -714,16 +712,6 @@ export default function SessionPage() {
         setLoginPrompt(null);
       }
 
-      setTimeout(() => {
-        const container = eventsContainerRef.current;
-        if (container) {
-          // Only auto-scroll if user is already near the bottom (within 150px)
-          const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-          if (nearBottom) {
-            container.scrollTop = container.scrollHeight;
-          }
-        }
-      }, 100);
     }, setSseConnected);
     return cleanup;
   }, [sessionId, sseKey]);
@@ -1271,7 +1259,7 @@ export default function SessionPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent ref={eventsContainerRef} className="min-h-0 flex-1 overflow-y-auto py-3 space-y-1">
+            <CardContent className="min-h-0 flex-1 overflow-y-auto py-3 space-y-1">
               {surfacedEvents.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <svg
@@ -1368,7 +1356,7 @@ export default function SessionPage() {
                   </div>
                 );
               })}
-              <div ref={eventsEndRef} />
+              <div />
             </CardContent>
           </Card>
         </div>

@@ -296,7 +296,7 @@ export default function Dashboard() {
                       <Badge variant={STATUS_COLORS[session.status] || "secondary"}>
                         {STATUS_LABELS[session.status] || session.status}
                       </Badge>
-                      <p className="mt-2 font-medium">{session.keywords.join(", ")}</p>
+                      <p className="mt-2 font-medium">{(session.keywords || []).join(", ")}</p>
                       <p className="mt-1 text-sm text-zinc-500">{getSessionHeadline(session)}</p>
                     </div>
                     <span className="text-xs text-zinc-500">
@@ -419,13 +419,13 @@ function SessionCard({ session }: { session: SessionListItem }) {
                 </span>
                 {session.remote_only && <Badge variant="outline">Remote only</Badge>}
               </div>
-              <p className="mt-3 text-lg font-semibold">{session.keywords.join(", ")}</p>
+              <p className="mt-3 text-lg font-semibold">{(session.keywords || []).join(", ")}</p>
               <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                 {getSessionHeadline(session)}
               </p>
-              {session.locations.length > 0 && (
+              {(session.locations || []).length > 0 && (
                 <p className="mt-2 text-sm text-zinc-500">
-                  Targeting {session.locations.join(", ")}
+                  Targeting {(session.locations || []).join(", ")}
                 </p>
               )}
             </div>
