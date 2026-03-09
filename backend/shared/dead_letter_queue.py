@@ -62,34 +62,24 @@ def enqueue_failed_application(
 
 
 def get_pending_items(
-    user_id: Optional[str] = None,
+    user_id: str,
     limit: int = 50,
 ) -> List[Dict[str, Any]]:
-    """Get pending DLQ items, optionally filtered by user."""
+    """Get pending DLQ items for a specific user."""
+    if not user_id:
+        raise ValueError("user_id is required for DLQ queries")
     with _connect() as conn:
         try:
-            if user_id:
-                cur = conn.execute(
-                    """SELECT id, session_id, user_id, job_id, job_title, job_company,
-                              job_url, job_board, error_message, error_type,
-                              attempt_count, created_at, retry_after
-                       FROM dead_letter_queue
-                       WHERE user_id = %s AND status = 'pending'
-                       ORDER BY created_at DESC
-                       LIMIT %s""",
-                    (user_id, limit),
-                )
-            else:
-                cur = conn.execute(
-                    """SELECT id, session_id, user_id, job_id, job_title, job_company,
-                              job_url, job_board, error_message, error_type,
-                              attempt_count, created_at, retry_after
-                       FROM dead_letter_queue
-                       WHERE status = 'pending'
-                       ORDER BY created_at DESC
-                       LIMIT %s""",
-                    (limit,),
-                )
+            cur = conn.execute(
+                """SELECT id, session_id, user_id, job_id, job_title, job_company,
+                          job_url, job_board, error_message, error_type,
+                          attempt_count, created_at, retry_after
+                   FROM dead_letter_queue
+                   WHERE user_id = %s AND status = 'pending'
+                   ORDER BY created_at DESC
+                   LIMIT %s""",
+                (user_id, limit),
+            )
             return [
                 {
                     "id": r[0],
@@ -129,10 +119,35 @@ def mark_resolved(dlq_id: int, resolution: str = "resolved") -> None:
             logger.error("Failed to resolve DLQ item %d", dlq_id, exc_info=True)
 
 
+MAX_DLQ_ATTEMPTS: int = 3
+
+
 def increment_attempt(dlq_id: int, retry_delay_minutes: int = 60) -> None:
-    """Increment the attempt count and push back the retry_after time."""
+    """Increment the attempt count and push back the retry_after time.
+
+    Automatically marks the item as 'exhausted' after MAX_DLQ_ATTEMPTS.
+    """
     with _connect() as conn:
         try:
+            # Check current attempt count
+            cur = conn.execute(
+                "SELECT attempt_count FROM dead_letter_queue WHERE id = %s",
+                (dlq_id,),
+            )
+            row = cur.fetchone()
+            if row and row[0] >= MAX_DLQ_ATTEMPTS - 1:
+                # Max retries reached — mark as exhausted
+                conn.execute(
+                    """UPDATE dead_letter_queue
+                       SET status = 'exhausted', attempt_count = attempt_count + 1,
+                           resolved_at = NOW()
+                       WHERE id = %s""",
+                    (dlq_id,),
+                )
+                conn.commit()
+                logger.info("DLQ item %d exhausted after %d attempts", dlq_id, MAX_DLQ_ATTEMPTS)
+                return
+
             retry_after = datetime.now(timezone.utc) + timedelta(minutes=retry_delay_minutes)
             conn.execute(
                 """UPDATE dead_letter_queue
@@ -145,6 +160,22 @@ def increment_attempt(dlq_id: int, retry_delay_minutes: int = 60) -> None:
         except Exception:
             conn.rollback()
             logger.error("Failed to increment DLQ attempt for %d", dlq_id, exc_info=True)
+
+
+def delete_for_user(user_id: str) -> bool:
+    """Delete all DLQ entries for a user (GDPR)."""
+    with _connect() as conn:
+        try:
+            conn.execute(
+                "DELETE FROM dead_letter_queue WHERE user_id = %s",
+                (user_id,),
+            )
+            conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            logger.error("Failed to delete DLQ entries for user %s", user_id, exc_info=True)
+            return False
 
 
 def delete_for_sessions(session_ids: List[str]) -> bool:

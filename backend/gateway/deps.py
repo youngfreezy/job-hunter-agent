@@ -61,10 +61,5 @@ async def verify_session_owner(session_id: str, user: dict, request: Request) ->
         except Exception:
             logger.debug("Failed to check session ownership via checkpointer", exc_info=True)
 
-    # If we get here, session has no user_id recorded — allow access
-    # (handles legacy sessions created before auth was added)
-    logger.warning(
-        "Session %s has no user_id — allowing access for user %s (legacy session)",
-        session_id,
-        user["id"],
-    )
+    # Session has no user_id recorded — reject access
+    raise HTTPException(status_code=403, detail="Session ownership cannot be verified")
