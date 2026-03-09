@@ -51,8 +51,8 @@ def _pick_model(is_top_tier: bool) -> str:
     return OPUS_MODEL if is_top_tier else SONNET_MODEL
 
 
-def _build_llm(model: str):
-    return _shared_build_llm(model=model, max_tokens=8192, temperature=0.3)
+def _build_llm(model: str, temperature: float = 0.3):
+    return _shared_build_llm(model=model, max_tokens=8192, temperature=temperature)
 
 
 # ---------------------------------------------------------------------------
@@ -227,9 +227,15 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
         total_jobs = len(jobs_to_tailor)
         completed_count = 0
 
+        # Read ai_temperature from session config
+        config = state.get("session_config")
+        ai_temp = 0.3  # default for tailoring
+        if config:
+            ai_temp = config.ai_temperature if hasattr(config, "ai_temperature") else (config.get("ai_temperature", 0.3) if isinstance(config, dict) else 0.3)
+
         # Pre-create LLM instances (one per model) to avoid per-job overhead
-        sonnet_llm = _build_llm(SONNET_MODEL)
-        opus_llm = _build_llm(OPUS_MODEL)
+        sonnet_llm = _build_llm(SONNET_MODEL, temperature=ai_temp)
+        opus_llm = _build_llm(OPUS_MODEL, temperature=ai_temp)
 
         # Process in concurrent batches to avoid blocking the event loop
         for batch_start in range(0, total_jobs, CONCURRENCY):

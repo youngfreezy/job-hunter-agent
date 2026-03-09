@@ -289,8 +289,23 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # Sort descending by score
         scored_jobs.sort(key=lambda sj: sj.score, reverse=True)
 
-        # Cap to max_jobs from session config
+        # Apply scoring_strictness as a minimum score threshold
+        # 0.0 = lenient (min 30), 0.5 = moderate (min 50), 1.0 = strict (min 70)
         config = state.get("session_config")
+        strictness = 0.5  # default
+        if config:
+            cfg = config if isinstance(config, dict) else config.model_dump()
+            strictness = cfg.get("scoring_strictness", 0.5)
+        min_score = int(30 + strictness * 40)  # maps 0.0->30, 0.5->50, 1.0->70
+        before_filter = len(scored_jobs)
+        scored_jobs = [sj for sj in scored_jobs if sj.score >= min_score]
+        if len(scored_jobs) < before_filter:
+            logger.info(
+                "Scoring strictness %.1f filtered %d -> %d jobs (min_score=%d)",
+                strictness, before_filter, len(scored_jobs), min_score,
+            )
+
+        # Cap to max_jobs from session config
         max_jobs = 20  # default
         if config:
             cfg = config if isinstance(config, dict) else config.model_dump()
