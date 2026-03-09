@@ -58,7 +58,7 @@ def enqueue_failed_application(
             logger.info("DLQ: enqueued failed application %s (%s)", job_id, error_type)
         except Exception:
             conn.rollback()
-            logger.debug("Failed to enqueue to DLQ", exc_info=True)
+            logger.error("Failed to enqueue to DLQ", exc_info=True)
 
 
 def get_pending_items(
@@ -109,7 +109,7 @@ def get_pending_items(
                 for r in cur.fetchall()
             ]
         except Exception:
-            logger.debug("Failed to get DLQ items", exc_info=True)
+            logger.warning("Failed to get DLQ items", exc_info=True)
             return []
 
 
@@ -126,7 +126,7 @@ def mark_resolved(dlq_id: int, resolution: str = "resolved") -> None:
             conn.commit()
         except Exception:
             conn.rollback()
-            logger.debug("Failed to resolve DLQ item %d", dlq_id, exc_info=True)
+            logger.error("Failed to resolve DLQ item %d", dlq_id, exc_info=True)
 
 
 def increment_attempt(dlq_id: int, retry_delay_minutes: int = 60) -> None:
@@ -144,7 +144,7 @@ def increment_attempt(dlq_id: int, retry_delay_minutes: int = 60) -> None:
             conn.commit()
         except Exception:
             conn.rollback()
-            logger.debug("Failed to increment DLQ attempt for %d", dlq_id, exc_info=True)
+            logger.error("Failed to increment DLQ attempt for %d", dlq_id, exc_info=True)
 
 
 def delete_for_sessions(session_ids: List[str]) -> bool:
@@ -161,5 +161,5 @@ def delete_for_sessions(session_ids: List[str]) -> bool:
             return True
         except Exception:
             conn.rollback()
-            logger.debug("Failed to delete DLQ entries", exc_info=True)
+            logger.error("Failed to delete DLQ entries", exc_info=True)
             return False

@@ -115,7 +115,7 @@ async def ensure_table() -> None:
             conn.commit()
         logger.info("board_selectors table ensured (with health-check columns)")
     except Exception:
-        logger.debug("Could not create board_selectors table", exc_info=True)
+        logger.error("Could not create board_selectors table", exc_info=True)
 
 
 def record_success(board: str, selector: str) -> None:
@@ -125,7 +125,7 @@ def record_success(board: str, selector: str) -> None:
             conn.execute(_UPSERT, {"board": board, "selector": selector})
             conn.commit()
     except Exception:
-        logger.debug("Failed to record selector success", exc_info=True)
+        logger.warning("Failed to record selector success", exc_info=True)
 
 
 def record_failure(board: str, selector: str) -> None:
@@ -135,7 +135,7 @@ def record_failure(board: str, selector: str) -> None:
             conn.execute(_INCREMENT_FAIL, {"board": board, "selector": selector})
             conn.commit()
     except Exception:
-        logger.debug("Failed to record selector failure", exc_info=True)
+        logger.warning("Failed to record selector failure", exc_info=True)
 
 
 def get_top_selectors(board: str, limit: int = 5) -> List[str]:
@@ -146,7 +146,7 @@ def get_top_selectors(board: str, limit: int = 5) -> List[str]:
             rows = cur.fetchall()
             return [row[0] for row in rows]
     except Exception:
-        logger.debug("Failed to get selectors for %s", board, exc_info=True)
+        logger.warning("Failed to get selectors for %s", board, exc_info=True)
         return []
 
 
@@ -159,7 +159,7 @@ def record_health_check(board: str, selector: str, passed: bool) -> None:
             })
             conn.commit()
     except Exception:
-        logger.debug("Failed to record health check", exc_info=True)
+        logger.warning("Failed to record health check", exc_info=True)
 
 
 def get_all_for_board(board: str) -> List[Dict]:
@@ -171,7 +171,7 @@ def get_all_for_board(board: str) -> List[Dict]:
                     "last_checked", "last_check_passed"]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
     except Exception:
-        logger.debug("Failed to get selectors for %s", board, exc_info=True)
+        logger.warning("Failed to get selectors for %s", board, exc_info=True)
         return []
 
 
@@ -184,7 +184,7 @@ def get_all_selectors() -> List[Dict]:
                     "last_checked", "last_check_passed"]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
     except Exception:
-        logger.debug("Failed to get all selectors", exc_info=True)
+        logger.warning("Failed to get all selectors", exc_info=True)
         return []
 
 
@@ -198,4 +198,4 @@ async def seed_defaults() -> None:
             conn.commit()
         logger.info("Seeded default discovery selectors")
     except Exception:
-        logger.debug("Could not seed default discovery selectors", exc_info=True)
+        logger.warning("Could not seed default discovery selectors", exc_info=True)

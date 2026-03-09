@@ -42,7 +42,7 @@ def upsert_session(session_id: str, data: Dict[str, Any]) -> None:
                 """,
                 (
                     session_id,
-                    data.get("user_id", ""),
+                    data["user_id"],
                     data.get("status", "intake"),
                     json.dumps(data.get("keywords", [])),
                     json.dumps(data.get("locations", [])),
@@ -58,7 +58,7 @@ def upsert_session(session_id: str, data: Dict[str, Any]) -> None:
             conn.commit()
         except Exception:
             conn.rollback()
-            logger.debug("Failed to upsert session %s", session_id, exc_info=True)
+            logger.error("Failed to upsert session %s", session_id, exc_info=True)
 
 
 def update_session_status(session_id: str, status: str) -> None:
@@ -72,7 +72,7 @@ def update_session_status(session_id: str, status: str) -> None:
             conn.commit()
         except Exception:
             conn.rollback()
-            logger.debug("Failed to update session status %s", session_id, exc_info=True)
+            logger.error("Failed to update session status %s", session_id, exc_info=True)
 
 
 def update_session_counts(
@@ -94,7 +94,7 @@ def update_session_counts(
             conn.commit()
         except Exception:
             conn.rollback()
-            logger.debug("Failed to update session counts %s", session_id, exc_info=True)
+            logger.error("Failed to update session counts %s", session_id, exc_info=True)
 
 
 def get_sessions_for_user(user_id: str) -> List[Dict[str, Any]]:
@@ -129,7 +129,7 @@ def get_sessions_for_user(user_id: str) -> List[Dict[str, Any]]:
                 for r in rows
             ]
         except Exception:
-            logger.debug("Failed to load sessions for user %s", user_id, exc_info=True)
+            logger.warning("Failed to load sessions for user %s", user_id, exc_info=True)
             return []
 
 
@@ -152,7 +152,7 @@ def get_interrupted_sessions(max_age_hours: int = 2) -> List[Dict[str, Any]]:
             )
             return [{"session_id": r[0], "user_id": r[1], "status": r[2]} for r in cur.fetchall()]
         except Exception:
-            logger.debug("Failed to query interrupted sessions", exc_info=True)
+            logger.warning("Failed to query interrupted sessions", exc_info=True)
             return []
 
 
@@ -169,7 +169,7 @@ def mark_sessions_interrupted(session_ids: List[str]) -> None:
             conn.commit()
         except Exception:
             conn.rollback()
-            logger.debug("Failed to mark sessions interrupted", exc_info=True)
+            logger.error("Failed to mark sessions interrupted", exc_info=True)
 
 
 def delete_sessions_for_user(user_id: str) -> bool:
@@ -181,5 +181,5 @@ def delete_sessions_for_user(user_id: str) -> bool:
             return True
         except Exception:
             conn.rollback()
-            logger.debug("Failed to delete sessions for user %s", user_id, exc_info=True)
+            logger.error("Failed to delete sessions for user %s", user_id, exc_info=True)
             return False

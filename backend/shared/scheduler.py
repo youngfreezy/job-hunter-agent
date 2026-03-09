@@ -1,12 +1,14 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Lightweight async periodic scheduler — no external deps.
+"""Lightweight async periodic scheduler with optional LISTEN/NOTIFY support.
 
 Usage during app startup::
 
-    from backend.shared.scheduler import schedule, schedule_seconds, cancel_all
+    from backend.shared.scheduler import schedule, schedule_seconds, schedule_with_notify, cancel_all
     schedule("selector-health-check", run_health_check, interval_hours=24.0)
-    schedule_seconds("autopilot-checker", check_autopilot, interval_seconds=60)
+    schedule_with_notify("autopilot-checker", check_autopilot,
+                         channel="autopilot_schedules_changed",
+                         fallback_interval_seconds=300)
     # on shutdown:
     cancel_all()
 """
@@ -53,6 +55,87 @@ def schedule_seconds(name: str, coro_factory, interval_seconds: float = 60.0):
     task = asyncio.create_task(_run_periodic(name, coro_factory, interval_seconds))
     _tasks[name] = task
     logger.info("Scheduler: registered %s (every %.0fs)", name, interval_seconds)
+
+
+async def _run_listen_notify(
+    name: str,
+    coro_factory,
+    channel: str,
+    fallback_interval_seconds: float,
+    database_url: str,
+):
+    """Listen for PG notifications on *channel*, running *coro_factory()* on each.
+
+    Also runs *coro_factory()* every *fallback_interval_seconds* to catch
+    schedules that become due purely by clock advancement (no INSERT/UPDATE).
+    Reconnects automatically on connection loss.
+    """
+    from psycopg import AsyncConnection, OperationalError
+
+    while True:
+        conn = None
+        try:
+            conn = await AsyncConnection.connect(database_url, autocommit=True)
+            await conn.execute(f"LISTEN {channel}")
+            logger.info("Scheduler: %s listening on channel %s", name, channel)
+
+            # Run once immediately on connect to catch anything due now
+            await coro_factory()
+
+            while True:
+                # notifies() exits the loop on timeout — we re-enter to keep listening
+                async for notify in conn.notifies(timeout=fallback_interval_seconds):
+                    logger.info("Scheduler: %s triggered by NOTIFY (payload=%s)", name, notify.payload)
+                    await coro_factory()
+                    logger.info("Scheduler: %s completed", name)
+
+                # Timeout reached — fallback poll for clock-based due schedules
+                logger.info("Scheduler: running %s (fallback poll)", name)
+                await coro_factory()
+                logger.info("Scheduler: %s completed", name)
+
+        except asyncio.CancelledError:
+            break
+        except OperationalError:
+            logger.warning("Scheduler: %s lost DB connection, reconnecting in 5s", name)
+            await asyncio.sleep(5)
+        except Exception:
+            logger.exception("Scheduler: %s failed, retrying in 10s", name)
+            await asyncio.sleep(10)
+        finally:
+            if conn is not None:
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
+
+
+def schedule_with_notify(
+    name: str,
+    coro_factory,
+    *,
+    channel: str,
+    fallback_interval_seconds: float = 300.0,
+    database_url: str | None = None,
+):
+    """Register a task driven by PG LISTEN/NOTIFY with a fallback poll.
+
+    Requires a PG trigger that sends NOTIFY on the given channel.
+    """
+    if name in _tasks:
+        logger.warning("Scheduler: %s already registered, skipping", name)
+        return
+    if database_url is None:
+        from backend.shared.config import get_settings
+        database_url = get_settings().DATABASE_URL
+    task = asyncio.create_task(
+        _run_listen_notify(name, coro_factory, channel, fallback_interval_seconds, database_url)
+    )
+    _tasks[name] = task
+    logger.info(
+        "Scheduler: registered %s (LISTEN %s, fallback every %.0fs)",
+        name, channel, fallback_interval_seconds,
+    )
 
 
 def cancel_all():

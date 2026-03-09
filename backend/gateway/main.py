@@ -134,13 +134,18 @@ async def lifespan(app: FastAPI):
         await ensure_autopilot_tables()
 
         # Schedule daily selector health-check
-        from backend.shared.scheduler import schedule, schedule_seconds
+        from backend.shared.scheduler import schedule, schedule_with_notify
         from backend.shared.selector_health import run_selector_health_check
         schedule("selector-health-check", run_selector_health_check, interval_hours=24.0)
 
-        # Schedule autopilot checker (every 60s)
+        # Schedule autopilot checker (LISTEN/NOTIFY + 5min fallback)
         from backend.shared.autopilot_runner import check_and_run_due_schedules
-        schedule_seconds("autopilot-checker", check_and_run_due_schedules, interval_seconds=60)
+        schedule_with_notify(
+            "autopilot-checker",
+            check_and_run_due_schedules,
+            channel="autopilot_schedules_changed",
+            fallback_interval_seconds=300,
+        )
     except Exception as exc:
         logger.warning(
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
