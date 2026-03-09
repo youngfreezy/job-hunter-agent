@@ -14,9 +14,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import psycopg
-
 from backend.shared.config import get_settings
+from backend.shared.db import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +61,8 @@ CREATE INDEX IF NOT EXISTS idx_autopilot_next_run ON autopilot_schedules(next_ru
 """
 
 
-def _connect() -> psycopg.Connection:
-    return psycopg.connect(get_settings().DATABASE_URL)
+def _connect():
+    return get_connection()
 
 
 async def ensure_autopilot_tables() -> None:

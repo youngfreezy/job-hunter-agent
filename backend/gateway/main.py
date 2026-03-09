@@ -191,17 +191,16 @@ async def lifespan(app: FastAPI):
     )
 
     # Mark stale orphaned sessions (>2h old) as failed so they don't sit in limbo
-    import psycopg as _pg
+    from backend.shared.db import get_connection as _get_conn
     try:
-        stale_conn = _pg.connect(settings.DATABASE_URL)
-        stale_conn.execute(
-            """UPDATE sessions SET status = 'failed', updated_at = NOW()
-               WHERE status IN ('intake', 'coaching', 'discovering', 'scoring',
-                                'tailoring', 'applying', 'running', 'interrupted')
-                 AND updated_at < NOW() - INTERVAL '2 hours'""",
-        )
-        stale_conn.commit()
-        stale_conn.close()
+        with _get_conn() as stale_conn:
+            stale_conn.execute(
+                """UPDATE sessions SET status = 'failed', updated_at = NOW()
+                   WHERE status IN ('intake', 'coaching', 'discovering', 'scoring',
+                                    'tailoring', 'applying', 'running', 'interrupted')
+                     AND updated_at < NOW() - INTERVAL '2 hours'""",
+            )
+            stale_conn.commit()
     except Exception:
         logger.debug("Failed to clean up stale sessions", exc_info=True)
 
@@ -247,6 +246,9 @@ async def lifespan(app: FastAPI):
         await redis_client.close()
     except Exception:
         pass
+
+    from backend.shared.db import close_pool
+    close_pool()
 
     if pool is not None:
         await pool.close()

@@ -14,9 +14,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import psycopg
-
-from backend.shared.config import get_settings
+from backend.shared.db import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +42,14 @@ CREATE INDEX IF NOT EXISTS idx_app_results_job_id_status ON application_results(
 """
 
 
-def _connect() -> psycopg.Connection:
-    settings = get_settings()
-    return psycopg.connect(settings.DATABASE_URL)
+def _connect():
+    return get_connection()
 
 
 async def ensure_table() -> None:
     """Create the application_results table if it doesn't exist."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_CREATE_TABLE)
             # Migration: add screenshot_path column if missing
             conn.execute("""
@@ -62,8 +58,6 @@ async def ensure_table() -> None:
             """)
             conn.commit()
             logger.info("application_results table ensured")
-        finally:
-            conn.close()
     except Exception:
         logger.exception("Failed to ensure application_results table")
 
@@ -85,8 +79,7 @@ def record_result(
 ) -> None:
     """Insert a single application result row."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(
                 """
                 INSERT INTO application_results
@@ -100,8 +93,6 @@ def record_result(
                  tailored_resume_text, duration_seconds, screenshot_path),
             )
             conn.commit()
-        finally:
-            conn.close()
     except Exception:
         logger.exception("Failed to record application result for %s", job_id)
 
@@ -113,8 +104,7 @@ def check_already_applied(job_id: str) -> Optional[Dict[str, Any]]:
     Only ``submitted`` status counts -- failed/skipped don't block re-attempts.
     """
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(
                 """
                 SELECT session_id, job_title, job_company, created_at
@@ -134,8 +124,6 @@ def check_already_applied(job_id: str) -> Optional[Dict[str, Any]]:
                     "applied_at": row[3].isoformat() if row[3] else None,
                 }
             return None
-        finally:
-            conn.close()
     except Exception:
         logger.exception("Failed to check duplicate for %s", job_id)
         return None
@@ -152,8 +140,7 @@ def check_company_rate_limit(
     Only ``submitted`` status counts.
     """
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(
                 """
                 SELECT COUNT(*), MAX(created_at)
@@ -174,8 +161,6 @@ def check_company_rate_limit(
                     "max_applications": max_applications,
                 }
             return None
-        finally:
-            conn.close()
     except Exception:
         logger.exception("Failed to check company rate limit for %s", company)
         return None
@@ -188,31 +173,28 @@ def delete_application_results_for_sessions(session_ids: List[str]) -> bool:
     """
     if not session_ids:
         return True
-    conn = _connect()
-    try:
-        # Use ANY(%s) with a list parameter for safe IN-clause
-        conn.execute(
-            "DELETE FROM application_results WHERE session_id = ANY(%s)",
-            (session_ids,),
-        )
-        conn.commit()
-        logger.info(
-            "Deleted application results for %d sessions", len(session_ids)
-        )
-        return True
-    except Exception:
-        conn.rollback()
-        logger.exception("Failed to delete application results for sessions")
-        return False
-    finally:
-        conn.close()
+    with _connect() as conn:
+        try:
+            # Use ANY(%s) with a list parameter for safe IN-clause
+            conn.execute(
+                "DELETE FROM application_results WHERE session_id = ANY(%s)",
+                (session_ids,),
+            )
+            conn.commit()
+            logger.info(
+                "Deleted application results for %d sessions", len(session_ids)
+            )
+            return True
+        except Exception:
+            conn.rollback()
+            logger.exception("Failed to delete application results for sessions")
+            return False
 
 
 def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
     """Return all application results for a session, ordered by creation time."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(
                 """
                 SELECT job_id, status, job_title, job_company, job_url,
@@ -246,8 +228,6 @@ def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
                 }
                 for r in rows
             ]
-        finally:
-            conn.close()
     except Exception:
         logger.exception("Failed to get application results for session %s", session_id)
         return []

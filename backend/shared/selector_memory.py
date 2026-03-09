@@ -11,9 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
-import psycopg
-
-from backend.shared.config import get_settings
+from backend.shared.db import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -101,25 +99,20 @@ _DEFAULTS: Dict[str, List[str]] = {
 }
 
 
-def _connect() -> psycopg.Connection:
-    """Create a sync connection (used infrequently, no pool needed)."""
-    settings = get_settings()
-    return psycopg.connect(settings.DATABASE_URL)
+def _connect():
+    return get_connection()
 
 
 async def ensure_table() -> None:
     """Create the board_selectors table if it doesn't exist, and add new columns."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_CREATE_TABLE)
             # Migrate: add health-check columns if missing (idempotent)
             for stmt in _MIGRATE_COLUMNS.strip().split("\n"):
                 if stmt.strip():
                     conn.execute(stmt)
             conn.commit()
-        finally:
-            conn.close()
         logger.info("board_selectors table ensured (with health-check columns)")
     except Exception:
         logger.debug("Could not create board_selectors table", exc_info=True)
@@ -128,12 +121,9 @@ async def ensure_table() -> None:
 def record_success(board: str, selector: str) -> None:
     """Record a successful selector extraction for a board."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_UPSERT, {"board": board, "selector": selector})
             conn.commit()
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to record selector success", exc_info=True)
 
@@ -141,12 +131,9 @@ def record_success(board: str, selector: str) -> None:
 def record_failure(board: str, selector: str) -> None:
     """Record a failed selector attempt for a board."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_INCREMENT_FAIL, {"board": board, "selector": selector})
             conn.commit()
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to record selector failure", exc_info=True)
 
@@ -154,13 +141,10 @@ def record_failure(board: str, selector: str) -> None:
 def get_top_selectors(board: str, limit: int = 5) -> List[str]:
     """Get the top-performing selectors for a board, ranked by net success."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(_GET_TOP, {"board": board, "limit": limit})
             rows = cur.fetchall()
             return [row[0] for row in rows]
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to get selectors for %s", board, exc_info=True)
         return []
@@ -169,14 +153,11 @@ def get_top_selectors(board: str, limit: int = 5) -> List[str]:
 def record_health_check(board: str, selector: str, passed: bool) -> None:
     """Update health-check timestamp and pass/fail for a discovery selector."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_HEALTH_CHECK, {
                 "board": board, "selector": selector, "passed": passed,
             })
             conn.commit()
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to record health check", exc_info=True)
 
@@ -184,14 +165,11 @@ def record_health_check(board: str, selector: str, passed: bool) -> None:
 def get_all_for_board(board: str) -> List[Dict]:
     """Return all selectors for a board (for health-check iteration)."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(_GET_ALL_FOR_BOARD, {"board": board})
             cols = ["board", "selector", "success_count", "fail_count",
                     "last_checked", "last_check_passed"]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to get selectors for %s", board, exc_info=True)
         return []
@@ -200,14 +178,11 @@ def get_all_for_board(board: str) -> List[Dict]:
 def get_all_selectors() -> List[Dict]:
     """Return all discovery selectors across all boards."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(_GET_ALL)
             cols = ["board", "selector", "success_count", "fail_count",
                     "last_checked", "last_check_passed"]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to get all selectors", exc_info=True)
         return []
@@ -216,14 +191,11 @@ def get_all_selectors() -> List[Dict]:
 async def seed_defaults() -> None:
     """Insert default discovery selectors if they don't already exist."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             for board, selectors in _DEFAULTS.items():
                 for selector in selectors:
                     conn.execute(_UPSERT, {"board": board, "selector": selector})
             conn.commit()
-        finally:
-            conn.close()
         logger.info("Seeded default discovery selectors")
     except Exception:
         logger.debug("Could not seed default discovery selectors", exc_info=True)
