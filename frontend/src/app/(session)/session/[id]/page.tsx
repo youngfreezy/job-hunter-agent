@@ -364,6 +364,7 @@ export default function SessionPage() {
   const [rewindLoading, setRewindLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
   const [sseConnected, setSseConnected] = useState(true);
+  const [tipDismissed, setTipDismissed] = useState(false);
   const [loginPrompt, setLoginPrompt] = useState<{
     board: string;
     message: string;
@@ -1124,6 +1125,34 @@ export default function SessionPage() {
           </div>
         </div>
       </div>
+
+      {/* Session Tip Banner — shown during active non-blocked stages */}
+      {isActive && !interventionData && !coachReviewOpen && !shortlistReviewOpen && !tipDismissed && (
+        <div className="max-w-6xl mx-auto px-6 pt-4">
+          <div className="relative flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+            <svg className="w-5 h-5 mt-0.5 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+            <div>
+              <span className="font-medium">Feel free to watch or step away</span> — your session runs
+              automatically and usually takes 15–20 minutes. We&apos;ll email you when it&apos;s done.
+              <span className="block mt-1 text-blue-600/80 dark:text-blue-400/70">
+                Tip: On a Mac, run <code className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-xs dark:bg-blue-900/50">caffeinate -d</code> in
+                Terminal to keep your screen awake while the agent works.
+              </span>
+            </div>
+            <button
+              onClick={() => setTipDismissed(true)}
+              className="absolute top-2 right-2 rounded-md p-1 text-blue-400 hover:text-blue-600 dark:hover:text-blue-200"
+              aria-label="Dismiss tip"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Intervention Banner */}
       {interventionData && (
