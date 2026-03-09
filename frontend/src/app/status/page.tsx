@@ -7,8 +7,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API_BASE, apiFetch } from "@/lib/api";
 
 interface HealthCheck {
   status: "ok" | "degraded" | "error";
@@ -27,7 +26,7 @@ export default function StatusPage() {
   useEffect(() => {
     async function check() {
       try {
-        const res = await fetch(`${API_BASE}/api/health/ready`, { cache: "no-store" });
+        const res = await apiFetch(`${API_BASE}/api/health/ready`, { cache: "no-store" });
         const data = await res.json();
         setHealth(data);
         setError(false);

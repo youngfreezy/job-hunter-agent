@@ -114,19 +114,26 @@ export default function HistoryPage() {
   const fetchAll = async () => {
     try {
       const allSessions = await listSessions();
-      const results: SessionWithApps[] = await Promise.all(
-        allSessions.map(async (session) => {
-          let entries: ApplicationLogEntry[] = [];
-          try {
-            const log = await getApplicationLog(session.session_id);
-            entries = log.entries;
-          } catch {
-            // session may not have an application log yet
-          }
-          const { timeSaved, automationTime, manualEstimate } = computeTimeSaved(entries);
-          return { session, entries, timeSaved, automationTime, manualEstimate };
-        })
-      );
+      // Fetch application logs sequentially (3 at a time) to avoid 429 rate limits
+      const results: SessionWithApps[] = [];
+      const BATCH_SIZE = 3;
+      for (let i = 0; i < allSessions.length; i += BATCH_SIZE) {
+        const batch = allSessions.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map(async (session) => {
+            let entries: ApplicationLogEntry[] = [];
+            try {
+              const log = await getApplicationLog(session.session_id);
+              entries = log.entries;
+            } catch {
+              // session may not have an application log yet
+            }
+            const { timeSaved, automationTime, manualEstimate } = computeTimeSaved(entries);
+            return { session, entries, timeSaved, automationTime, manualEstimate };
+          })
+        );
+        results.push(...batchResults);
+      }
 
       // Sort by most recent first
       results.sort(

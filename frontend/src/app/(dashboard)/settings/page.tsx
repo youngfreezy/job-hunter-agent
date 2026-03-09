@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { API_BASE, getAuthHeaders } from "@/lib/api";
+import { API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
 
 export default function SettingsPage() {
   const [phone, setPhone] = useState("");
@@ -25,7 +25,7 @@ export default function SettingsPage() {
     async function load() {
       try {
         const auth = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/auth/me`, { headers: auth });
+        const res = await apiFetch(`${API_BASE}/api/auth/me`, { headers: auth });
         if (res.ok) {
           const user = await res.json();
           setSavedPhone(user.phone_number || null);
@@ -50,7 +50,7 @@ export default function SettingsPage() {
     setSending(true);
     try {
       const auth = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/sms/verify`, {
+      const res = await apiFetch(`${API_BASE}/api/sms/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify({ phone_number: phone }),
@@ -72,7 +72,7 @@ export default function SettingsPage() {
     setConfirming(true);
     try {
       const auth = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/sms/confirm`, {
+      const res = await apiFetch(`${API_BASE}/api/sms/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify({ code: verificationCode }),
@@ -97,7 +97,7 @@ export default function SettingsPage() {
     setSavingChannel(true);
     try {
       const auth = await getAuthHeaders();
-      await fetch(`${API_BASE}/api/auth/me/notification-channel`, {
+      await apiFetch(`${API_BASE}/api/auth/me/notification-channel`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify({ notification_channel: channel }),

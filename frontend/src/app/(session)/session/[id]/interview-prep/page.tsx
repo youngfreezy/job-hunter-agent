@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { API_BASE, getAuthHeaders, getSSEToken, getWallet } from "@/lib/api";
+import { API_BASE, getAuthHeaders, getSSEToken, getWallet, apiFetch } from "@/lib/api";
 import AnswerGradeRadar from "@/components/charts/AnswerGradeRadar";
 import ReadinessScoreBars from "@/components/charts/ReadinessScoreBars";
 import type {
@@ -45,7 +45,7 @@ export default function InterviewPrepPage() {
     setError(null);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/interview-prep`, {
+      const res = await apiFetch(`${API_BASE}/api/interview-prep`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -114,7 +114,7 @@ export default function InterviewPrepPage() {
     try {
       const headers = await getAuthHeaders();
       const q = questions[currentQ];
-      const res = await fetch(`${API_BASE}/api/interview-prep/${prepId}/answer`, {
+      const res = await apiFetch(`${API_BASE}/api/interview-prep/${prepId}/answer`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ question_id: q.id, answer }),
@@ -146,7 +146,7 @@ export default function InterviewPrepPage() {
     setCoachingLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/interview-prep/${prepId}/coach`, {
+      const res = await apiFetch(`${API_BASE}/api/interview-prep/${prepId}/coach`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ question_id: q.id }),
@@ -172,7 +172,7 @@ export default function InterviewPrepPage() {
   async function handleEnd() {
     if (!prepId) return;
     const headers = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/api/interview-prep/${prepId}/end`, {
+    const res = await apiFetch(`${API_BASE}/api/interview-prep/${prepId}/end`, {
       method: "POST",
       headers,
     });
@@ -188,7 +188,7 @@ export default function InterviewPrepPage() {
     setUnlocking(true);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/interview-prep/${prepId}/unlock`, {
+      const res = await apiFetch(`${API_BASE}/api/interview-prep/${prepId}/unlock`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
       });

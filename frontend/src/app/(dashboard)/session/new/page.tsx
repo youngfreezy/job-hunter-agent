@@ -2,15 +2,29 @@
 
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { SessionWizard } from "@/components/wizard/SessionWizard";
 import { QuickStartForm } from "@/components/wizard/QuickStartForm";
 
 export default function NewSession() {
   const [mode, setMode] = useState<"quick" | "advanced">("quick");
+  const [analyzing, setAnalyzing] = useState(false);
+  const handleAnalyzingChange = useCallback((v: boolean) => setAnalyzing(v), []);
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-12">
+    <>
+      {/* Sticky subheader — analyzing indicator */}
+      {analyzing && (
+        <div className="sticky top-[89px] z-40 border-b border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 supports-[backdrop-filter]:bg-blue-50/95 supports-[backdrop-filter]:backdrop-blur-sm">
+          <div className="max-w-7xl mx-auto px-6 py-2 flex items-center gap-3">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700 dark:border-blue-600 dark:border-t-blue-200 shrink-0" />
+            <p className="text-xs text-blue-800 dark:text-blue-300">
+              Analyzing your resume for job search keywords...
+            </p>
+          </div>
+        </div>
+      )}
+      <div className="max-w-4xl mx-auto px-6 py-12">
       <div className="mb-8 grid gap-4 rounded-3xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-900/60 md:grid-cols-[1.15fr_0.85fr]">
         <div>
           <h1 className="text-3xl font-bold mb-2">New Session</h1>
@@ -65,7 +79,8 @@ export default function NewSession() {
         </button>
       </div>
 
-      {mode === "quick" ? <QuickStartForm /> : <SessionWizard />}
+      {mode === "quick" ? <QuickStartForm onAnalyzingChange={handleAnalyzingChange} /> : <SessionWizard />}
     </div>
+    </>
   );
 }

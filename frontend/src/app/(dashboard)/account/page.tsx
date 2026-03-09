@@ -7,7 +7,7 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { API_BASE, getAuthHeaders } from "@/lib/api";
+import { API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
 
 interface UserInfo {
   id: string;
@@ -44,7 +44,7 @@ export default function AccountPage() {
     async function fetchUser() {
       try {
         const auth = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/auth/me`, { headers: auth });
+        const res = await apiFetch(`${API_BASE}/api/auth/me`, { headers: auth });
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
@@ -69,7 +69,7 @@ export default function AccountPage() {
     setDeleting(true);
     try {
       const auth = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/auth/me/data`, {
+      const res = await apiFetch(`${API_BASE}/api/auth/me/data`, {
         method: "DELETE",
         headers: auth,
       });

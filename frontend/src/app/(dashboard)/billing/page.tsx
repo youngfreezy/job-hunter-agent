@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { API_BASE, getAuthHeaders, updateAutoRefill } from "@/lib/api";
+import { API_BASE, getAuthHeaders, updateAutoRefill, apiFetch } from "@/lib/api";
 
 interface WalletData {
   balance: number;
@@ -63,9 +63,9 @@ export default function BillingPage() {
       try {
         const auth = await getAuthHeaders();
         const [walletRes, packsRes, txnRes] = await Promise.all([
-          fetch(`${API_BASE}/api/billing/wallet`, { headers: auth }),
-          fetch(`${API_BASE}/api/billing/packs`),
-          fetch(`${API_BASE}/api/billing/transactions`, { headers: auth }),
+          apiFetch(`${API_BASE}/api/billing/wallet`, { headers: auth }),
+          apiFetch(`${API_BASE}/api/billing/packs`),
+          apiFetch(`${API_BASE}/api/billing/transactions`, { headers: auth }),
         ]);
         if (walletRes.ok) {
           const walletData = await walletRes.json();
@@ -96,7 +96,7 @@ export default function BillingPage() {
     window.umami?.track("checkout-initiate", { pack: packId });
     try {
       const auth = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/billing/checkout`, {
+      const res = await apiFetch(`${API_BASE}/api/billing/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify({
@@ -291,7 +291,7 @@ export default function BillingPage() {
               setCheckoutLoading("unlimited");
               try {
                 const auth = await getAuthHeaders();
-                const res = await fetch(`${API_BASE}/api/billing/subscribe`, {
+                const res = await apiFetch(`${API_BASE}/api/billing/subscribe`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json", ...auth },
                   body: JSON.stringify({

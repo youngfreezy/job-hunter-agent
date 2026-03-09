@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ResumeUpload } from "@/components/ResumeUpload";
-import { API_BASE, getAuthHeaders } from "@/lib/api";
+import { API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
 
 const PLATFORMS = [
   { id: "upwork", label: "Upwork" },
@@ -49,7 +49,7 @@ export default function FreelancePage() {
 
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/freelance`, {
+      const res = await apiFetch(`${API_BASE}/api/freelance`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({

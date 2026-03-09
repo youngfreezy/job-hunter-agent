@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { API_BASE, getAuthHeaders, getSSEToken, getWallet } from "@/lib/api";
+import { API_BASE, getAuthHeaders, getSSEToken, getWallet, apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import TaskRiskBars from "@/components/charts/TaskRiskBars";
@@ -57,7 +57,7 @@ export default function SessionCareerPivotPage() {
     setError(null);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/career-pivot`, {
+      const res = await apiFetch(`${API_BASE}/api/career-pivot`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ resume_text: resumeText, location: "Remote" }),
@@ -139,7 +139,7 @@ export default function SessionCareerPivotPage() {
     setUnlocking(true);
     try {
       const auth = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/career-pivot/${pivotId}/unlock`, {
+      const res = await apiFetch(`${API_BASE}/api/career-pivot/${pivotId}/unlock`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...auth },
       });
