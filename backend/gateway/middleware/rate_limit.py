@@ -47,7 +47,7 @@ _ROUTE_RULES: list[Tuple[str, Optional[str], int, int, str]] = [
     # SSE stream — reconnect-friendly
     ("/stream", "GET", 20, 60, "sse_stream"),
     # Catch-all for other API routes
-    ("/api/", None, 60, 60, "api_general"),
+    ("/api/", None, 200, 60, "api_general"),
 ]
 
 # Paths that are never rate-limited.
