@@ -541,8 +541,8 @@ async def _apply_to_job(
             duration_seconds=int(time.monotonic() - start_time),
         )
 
-    # Pre-flight: skip jobs already submitted in any session
-    prior = check_already_applied(job_id)
+    # Pre-flight: skip jobs already submitted by this user
+    prior = check_already_applied(job_id, user_id=user_id)
     if prior:
         applied_at = prior.get("applied_at", "unknown date")
         msg = f"Already applied on {applied_at}"
@@ -561,6 +561,7 @@ async def _apply_to_job(
             job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
             job_location=job.location or "",
             error_message=f"duplicate: {msg}",
+            user_id=user_id,
         )
         return ApplicationResult(
             job_id=job_id,
@@ -570,7 +571,7 @@ async def _apply_to_job(
         )
 
     # Pre-flight: enforce company application rate limit (max 2 per company per 2 weeks)
-    company_limit = check_company_rate_limit(job.company)
+    company_limit = check_company_rate_limit(job.company, user_id=user_id)
     if company_limit:
         msg = f"Already applied to {company_limit['count']} jobs at {job.company} in the last {company_limit['window_days']} days"
         logger.info("Company rate limit: %s — %s", job.title, msg)
@@ -588,6 +589,7 @@ async def _apply_to_job(
             job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
             job_location=job.location or "",
             error_message=f"company_rate_limit: {msg}",
+            user_id=user_id,
         )
         return ApplicationResult(
             job_id=job_id,
@@ -876,6 +878,7 @@ async def _apply_to_job(
             tailored_resume_text=_tailored_text,
             duration_seconds=result.duration_seconds,
             screenshot_path=result.screenshot_url,
+            user_id=user_id,
         )
 
         # Charge the user based on outcome
@@ -914,6 +917,7 @@ async def _apply_to_job(
             job_location=job.location or "",
             error_message=str(exc),
             duration_seconds=duration,
+            user_id=user_id,
         )
 
         # Charge partial credit for failed attempt (work was done)
@@ -972,6 +976,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
     skipped: List[ApplicationResult] = []
     consecutive_failures: int = state.get("consecutive_failures", 0)
     session_id: str = state.get("session_id", "unknown")
+    user_id: str = state.get("user_id", "")
 
     manager: Optional[BrowserManager] = None
 
@@ -1042,6 +1047,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
                     job_location=job_obj.location or "",
                     error_message="skipped_by_workflow_supervisor",
+                    user_id=user_id,
                 )
             await emit_agent_event(session_id, "application_progress", {
                 "step": f"Skipped {job_label} (workflow steering)",
@@ -1166,6 +1172,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
                     job_location=job_obj.location or "",
                     error_message=str(exc),
+                    user_id=user_id,
                 )
 
         agent_status = f"processed -- {job_label}"
