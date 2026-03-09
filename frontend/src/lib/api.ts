@@ -183,6 +183,32 @@ export async function getSSEToken(): Promise<string> {
   return "";
 }
 
+// ---------- Fetch wrapper (surfaces 429 to user) ----------
+
+let _lastRateLimitToast = 0;
+
+/**
+ * Wrapper around fetch that shows a user-visible toast on 429 responses
+ * so rate-limit errors aren't silently swallowed.
+ */
+export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  if (res.status === 429) {
+    const now = Date.now();
+    // Debounce: only show one toast per 5 seconds
+    if (now - _lastRateLimitToast > 5000) {
+      _lastRateLimitToast = now;
+      const retryAfter = res.headers.get("Retry-After");
+      const msg = retryAfter
+        ? `Too many requests — please wait ${retryAfter}s and try again.`
+        : "Too many requests — please wait a moment and try again.";
+      // Dynamic import to avoid issues in non-browser contexts
+      import("sonner").then(({ toast }) => toast.error(msg));
+    }
+  }
+  return res;
+}
+
 // ---------- REST API ----------
 
 export async function startSession(params: {
@@ -206,7 +232,7 @@ export async function startSession(params: {
   };
 }): Promise<{ session_id: string }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(params),
@@ -239,7 +265,7 @@ export interface ResumeAnalysis {
 
 export async function analyzeResume(resumeText: string): Promise<ResumeAnalysis> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/resume/analyze`, {
+  const res = await apiFetch(`${API_BASE}/api/resume/analyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify({ resume_text: resumeText }),
@@ -261,27 +287,27 @@ export interface LifetimeStats {
 
 export async function getLifetimeStats(): Promise<LifetimeStats> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/stats/lifetime`, { headers: auth });
+  const res = await apiFetch(`${API_BASE}/api/stats/lifetime`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to get lifetime stats: ${res.statusText}`);
   return res.json();
 }
 
 export async function listSessions(): Promise<SessionListItem[]> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions`, { headers: auth });
+  const res = await apiFetch(`${API_BASE}/api/sessions`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to list sessions: ${res.statusText}`);
   return res.json();
 }
 
 export async function getSession(sessionId: string): Promise<Record<string, unknown>> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, { headers: auth });
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to get session: ${res.statusText}`);
   return res.json();
 }
 
 export async function getSkippedJobs(sessionId: string): Promise<{ skipped_jobs: SkippedJob[] }> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/skipped-jobs`);
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/skipped-jobs`);
   if (!res.ok) throw new Error(`Failed to get skipped jobs: ${res.statusText}`);
   return res.json();
 }
@@ -329,7 +355,7 @@ export type ApplicationLogEntry = {
 export async function getApplicationLog(
   sessionId: string
 ): Promise<{ entries: ApplicationLogEntry[] }> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/application-log`);
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/application-log`);
   if (!res.ok) throw new Error(`Failed to get application log: ${res.statusText}`);
   return res.json();
 }
@@ -343,7 +369,7 @@ export async function sendSteer(
   directives: Record<string, unknown>[];
 }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/steer`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/steer`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(data),
@@ -362,7 +388,7 @@ export async function sendCoachChat(
   coach_chat_history: Array<{ role: string; text: string }>;
 }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/coach-chat`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/coach-chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(data),
@@ -376,7 +402,7 @@ export async function submitCoachReview(
   data: { approved: boolean; edited_resume?: string; feedback?: string }
 ): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/coach-review`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/coach-review`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(data),
@@ -389,7 +415,7 @@ export async function submitReview(
   data: { approved_job_ids: string[]; feedback: string }
 ): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/review`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/review`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(data),
@@ -402,7 +428,7 @@ export async function submitDecision(
   decision: "submit" | "skip"
 ): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/submit-decision`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/submit-decision`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify({ decision }),
@@ -412,7 +438,7 @@ export async function submitDecision(
 
 export async function resumeIntervention(sessionId: string): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/resume-intervention`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/resume-intervention`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
   });
@@ -423,7 +449,7 @@ export async function resumeIntervention(sessionId: string): Promise<void> {
 
 export async function confirmLogin(sessionId: string): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/login-complete`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/login-complete`, {
     method: "POST",
     headers: auth,
   });
@@ -436,7 +462,7 @@ export async function resumeSession(
   sessionId: string
 ): Promise<{ status: string; next: string[]; action: string }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/resume`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/resume`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
   });
@@ -455,7 +481,7 @@ export interface Checkpoint {
 }
 
 export async function listCheckpoints(sessionId: string): Promise<Checkpoint[]> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/checkpoints`);
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/checkpoints`);
   if (!res.ok) throw new Error(`Failed to list checkpoints: ${res.statusText}`);
   const data = await res.json();
   return data.checkpoints;
@@ -467,7 +493,7 @@ export async function rewindSession(
   approvedJobIds?: string[]
 ): Promise<{ status: string; message: string }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/rewind`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/rewind`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify({
@@ -593,7 +619,7 @@ export async function parseResume(
   const auth = await getAuthHeaders();
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API_BASE}/api/sessions/parse-resume`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/parse-resume`, {
     method: "POST",
     headers: auth,
     body: form,
@@ -618,7 +644,7 @@ export async function startLinkedInUpdate(
   linkedinUrl?: string
 ): Promise<{ status: string; message: string }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/linkedin-update`, {
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/linkedin-update`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify({ updates, linkedin_url: linkedinUrl }),
@@ -635,7 +661,7 @@ export async function getWallet(): Promise<{
   application_cost: number;
 }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/billing/wallet`, { headers: auth });
+  const res = await apiFetch(`${API_BASE}/api/billing/wallet`, { headers: auth });
   if (!res.ok) throw new Error("Failed to fetch wallet");
   return res.json();
 }
@@ -651,7 +677,7 @@ export async function getTransactions(): Promise<{
   }>;
 }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/billing/transactions`, { headers: auth });
+  const res = await apiFetch(`${API_BASE}/api/billing/transactions`, { headers: auth });
   if (!res.ok) throw new Error("Failed to fetch transactions");
   return res.json();
 }
@@ -662,7 +688,7 @@ export async function updateAutoRefill(settings: {
   pack_id: string;
 }): Promise<{ ok: boolean }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/billing/auto-refill`, {
+  const res = await apiFetch(`${API_BASE}/api/billing/auto-refill`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(settings),
@@ -673,7 +699,7 @@ export async function updateAutoRefill(settings: {
 
 export async function createCheckout(packId: string): Promise<{ url: string }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/billing/checkout`, {
+  const res = await apiFetch(`${API_BASE}/api/billing/checkout`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify({ pack_id: packId }),
@@ -705,7 +731,7 @@ export interface AutopilotSchedule {
 
 export async function listAutopilotSchedules(): Promise<AutopilotSchedule[]> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/autopilot/schedules`, { headers: auth });
+  const res = await apiFetch(`${API_BASE}/api/autopilot/schedules`, { headers: auth });
   if (!res.ok) throw new Error("Failed to list autopilot schedules");
   return res.json();
 }
@@ -725,7 +751,7 @@ export async function createAutopilotSchedule(params: {
   auto_approve?: boolean;
 }): Promise<AutopilotSchedule> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/autopilot/schedules`, {
+  const res = await apiFetch(`${API_BASE}/api/autopilot/schedules`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(params),
@@ -739,7 +765,7 @@ export async function updateAutopilotSchedule(
   updates: Partial<AutopilotSchedule>
 ): Promise<AutopilotSchedule> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}`, {
+  const res = await apiFetch(`${API_BASE}/api/autopilot/schedules/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(updates),
@@ -750,7 +776,7 @@ export async function updateAutopilotSchedule(
 
 export async function deleteAutopilotSchedule(id: string): Promise<void> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}`, {
+  const res = await apiFetch(`${API_BASE}/api/autopilot/schedules/${id}`, {
     method: "DELETE",
     headers: auth,
   });
@@ -759,7 +785,7 @@ export async function deleteAutopilotSchedule(id: string): Promise<void> {
 
 export async function toggleAutopilotPause(id: string): Promise<AutopilotSchedule> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}/pause`, {
+  const res = await apiFetch(`${API_BASE}/api/autopilot/schedules/${id}/pause`, {
     method: "POST",
     headers: auth,
   });
@@ -769,7 +795,7 @@ export async function toggleAutopilotPause(id: string): Promise<AutopilotSchedul
 
 export async function triggerAutopilotNow(id: string): Promise<{ triggered: boolean }> {
   const auth = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/api/autopilot/schedules/${id}/run-now`, {
+  const res = await apiFetch(`${API_BASE}/api/autopilot/schedules/${id}/run-now`, {
     method: "POST",
     headers: auth,
   });

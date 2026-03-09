@@ -36,7 +36,7 @@ declare global {
 }
 
 /** Inner component that watches Formik context for resume text changes. */
-function QuickStartInner() {
+function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolean) => void }) {
   const router = useRouter();
   const { values, isSubmitting } = useFormikContext<SessionFormValues>();
   const [keywords, setKeywords] = useState<string[]>([]);
@@ -50,6 +50,7 @@ function QuickStartInner() {
   const [newKeyword, setNewKeyword] = useState("");
   const [newLocation, setNewLocation] = useState("");
   const analyzedTextRef = useRef("");
+  const launchRef = useRef<HTMLButtonElement>(null);
 
   // Auto-analyze when resume text appears
   useEffect(() => {
@@ -57,6 +58,7 @@ function QuickStartInner() {
     if (text && text.length >= 50 && text !== analyzedTextRef.current && !analyzing) {
       analyzedTextRef.current = text;
       setAnalyzing(true);
+      onAnalyzingChange?.(true);
       setAnalyzeError("");
       analyzeResume(text)
         .then((result) => {
@@ -64,14 +66,19 @@ function QuickStartInner() {
           setLocations(result.locations);
           setAnalyzed(true);
           window.umami?.track("quickstart-analyzed");
+          // Auto-scroll to the Launch button after a short delay for render
+          setTimeout(() => launchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
         })
         .catch((err) => {
           const msg = err instanceof Error ? err.message : "Analysis failed";
           setAnalyzeError(msg);
         })
-        .finally(() => setAnalyzing(false));
+        .finally(() => {
+          setAnalyzing(false);
+          onAnalyzingChange?.(false);
+        });
     }
-  }, [values.resumeText, analyzing]);
+  }, [values.resumeText, analyzing, onAnalyzingChange]);
 
   const removeKeyword = (index: number) => {
     setKeywords((prev) => prev.filter((_, i) => i !== index));
@@ -152,20 +159,6 @@ function QuickStartInner() {
 
   return (
     <div className="space-y-6">
-      {/* Sticky analyzing banner */}
-      {analyzing && (
-        <div className="sticky top-[105px] z-30 -mx-6 mb-2">
-          <div className="border-b border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 px-6 py-2">
-            <div className="flex items-center gap-3 max-w-7xl mx-auto">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700 dark:border-blue-600 dark:border-t-blue-200 shrink-0" />
-              <p className="text-xs text-blue-800 dark:text-blue-300">
-                Analyzing your resume for job search keywords...
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       <Card>
         <CardContent className="p-6 space-y-4">
           <div>
@@ -286,6 +279,7 @@ function QuickStartInner() {
 
       {analyzed && keywords.length > 0 && (
         <Button
+          ref={launchRef}
           type="button"
           size="lg"
           className="w-full"
@@ -306,7 +300,7 @@ function QuickStartInner() {
   );
 }
 
-export function QuickStartForm() {
+export function QuickStartForm({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolean) => void }) {
   return (
     <Formik<SessionFormValues>
       initialValues={sessionInitialValues}
@@ -316,7 +310,7 @@ export function QuickStartForm() {
       }}
     >
       <Form>
-        <QuickStartInner />
+        <QuickStartInner onAnalyzingChange={onAnalyzingChange} />
       </Form>
     </Formik>
   );

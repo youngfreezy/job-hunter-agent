@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { API_BASE, getAuthHeaders, getSSEToken, getWallet } from "@/lib/api";
+import { API_BASE, getAuthHeaders, getSSEToken, getWallet, apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import TaskRiskBars from "@/components/charts/TaskRiskBars";
 import PivotComparisonBars from "@/components/charts/PivotComparisonBars";
@@ -99,7 +99,7 @@ export default function PivotResultPage() {
     setUnlocking(true);
     try {
       const auth = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/career-pivot/${id}/unlock`, {
+      const res = await apiFetch(`${API_BASE}/api/career-pivot/${id}/unlock`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...auth },
       });

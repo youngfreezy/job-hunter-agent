@@ -7,7 +7,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ExternalLink, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { API_BASE, getSSEToken, getAuthHeaders } from "@/lib/api";
+import { API_BASE, getSSEToken, getAuthHeaders, apiFetch } from "@/lib/api";
 import GigScatterChart from "@/components/charts/GigScatterChart";
 
 interface Gig {
@@ -50,7 +50,7 @@ export default function FreelanceResultPage() {
     async function checkWallet() {
       try {
         const auth = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/billing/wallet`, { headers: auth });
+        const res = await apiFetch(`${API_BASE}/api/billing/wallet`, { headers: auth });
         if (res.ok) {
           const data = await res.json();
           setHasCredits(data.balance > 0 || data.free_remaining > 0);

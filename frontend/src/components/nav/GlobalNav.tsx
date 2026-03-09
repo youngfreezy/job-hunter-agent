@@ -9,7 +9,7 @@ import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { NotificationBanner } from "@/components/NotificationBanner";
 import { NavShell } from "./NavShell";
-import { API_BASE, getAuthHeaders } from "@/lib/api";
+import { API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
 
 declare global {
   interface Window {
@@ -56,8 +56,8 @@ export function GlobalNav() {
       try {
         const auth = await getAuthHeaders();
         const [walletRes, meRes] = await Promise.all([
-          fetch(`${API_BASE}/api/billing/wallet`, { headers: auth }),
-          fetch(`${API_BASE}/api/auth/me`, { headers: auth }),
+          apiFetch(`${API_BASE}/api/billing/wallet`, { headers: auth }),
+          apiFetch(`${API_BASE}/api/auth/me`, { headers: auth }),
         ]);
         if (walletRes.ok) {
           const data = await walletRes.json();

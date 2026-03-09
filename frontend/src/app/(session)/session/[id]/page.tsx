@@ -371,6 +371,7 @@ export default function SessionPage() {
   } | null>(null);
   const [loginConfirming, setLoginConfirming] = useState(false);
   const eventsEndRef = useRef<HTMLDivElement>(null);
+  const eventsContainerRef = useRef<HTMLDivElement>(null);
   const latestStatusRef = useRef(
     (() => {
       if (typeof window === "undefined") return "intake";
@@ -714,9 +715,13 @@ export default function SessionPage() {
       }
 
       setTimeout(() => {
-        const el = eventsEndRef.current;
-        if (el?.parentElement) {
-          el.parentElement.scrollTop = el.parentElement.scrollHeight;
+        const container = eventsContainerRef.current;
+        if (container) {
+          // Only auto-scroll if user is already near the bottom (within 150px)
+          const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+          if (nearBottom) {
+            container.scrollTop = container.scrollHeight;
+          }
         }
       }, 100);
     }, setSseConnected);
@@ -1255,7 +1260,7 @@ export default function SessionPage() {
       {/* Main content */}
       <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
-          <Card className="flex min-h-[420px] flex-col overflow-hidden">
+          <Card className="flex min-h-[420px] max-h-[600px] flex-col overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-2">
               <div className="flex items-center justify-between">
                 <div>
@@ -1266,7 +1271,7 @@ export default function SessionPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-y-auto py-3 space-y-1">
+            <CardContent ref={eventsContainerRef} className="min-h-0 flex-1 overflow-y-auto py-3 space-y-1">
               {surfacedEvents.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <svg
