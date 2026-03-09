@@ -89,27 +89,28 @@ class GreenhouseApplier(BaseApplier):
         # Step 4: Upload resume (generate temp file if no PDF provided)
         _upload_path = resume_file_path
         _temp_resume = None
-        if not _upload_path and resume_text:
-            import os, tempfile
-            _temp_resume = tempfile.NamedTemporaryFile(
-                suffix=".txt", prefix="resume_", delete=False, mode="w",
-            )
-            _temp_resume.write(resume_text)
-            _temp_resume.close()
-            _upload_path = _temp_resume.name
-            logger.info("Generated temp resume file: %s", _upload_path)
+        try:
+            if not _upload_path and resume_text:
+                import os, tempfile
+                _temp_resume = tempfile.NamedTemporaryFile(
+                    suffix=".txt", prefix="resume_", delete=False, mode="w",
+                )
+                _temp_resume.write(resume_text)
+                _temp_resume.close()
+                _upload_path = _temp_resume.name
+                logger.info("Generated temp resume file: %s", _upload_path)
 
-        if _upload_path:
-            await self._emit_step("Uploading resume...")
-            await self._upload_resume(_upload_path)
-            await self._random_delay(0.5, 1.0)
-
-        if _temp_resume:
-            try:
-                import os
-                os.unlink(_temp_resume.name)
-            except Exception:
-                pass
+            if _upload_path:
+                await self._emit_step("Uploading resume...")
+                await self._upload_resume(_upload_path)
+                await self._random_delay(0.5, 1.0)
+        finally:
+            if _temp_resume:
+                try:
+                    import os
+                    os.unlink(_temp_resume.name)
+                except Exception:
+                    pass
 
         # Step 4b: Check for empty required react-select fields before submit
         try:

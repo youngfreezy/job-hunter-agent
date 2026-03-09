@@ -191,7 +191,9 @@ async def delete_user_data(request: Request):
     """GDPR: permanently delete all data associated with the current user."""
     from backend.gateway.routes.sessions import session_registry
     from backend.shared.application_store import delete_application_results_for_sessions
+    from backend.shared.autopilot_store import delete_all_user_schedules
     from backend.shared.billing_store import delete_user_data as delete_billing_data
+    from backend.shared.dead_letter_queue import delete_for_user as delete_dlq_for_user
     from backend.shared.redis_client import redis_client
 
     user = get_current_user(request)
@@ -209,10 +211,16 @@ async def delete_user_data(request: Request):
     # 2. Delete application results for those sessions
     app_deleted = delete_application_results_for_sessions(user_session_ids)
 
-    # 3. Delete billing data (wallet_transactions + users row)
+    # 3. Delete autopilot schedules for this user
+    delete_all_user_schedules(user_id)
+
+    # 4. Delete dead letter queue entries for this user
+    delete_dlq_for_user(user_id)
+
+    # 5. Delete billing data (wallet_transactions + users row)
     billing_deleted = delete_billing_data(user_id)
 
-    # 4. Clear Redis keys for this user's sessions (gmail tokens)
+    # 6. Clear Redis keys for this user's sessions (gmail tokens)
     redis_keys_deleted = 0
     for sid in user_session_ids:
         try:
@@ -221,7 +229,7 @@ async def delete_user_data(request: Request):
         except Exception:
             logger.exception("Failed to delete gmail_token for session %s", sid)
 
-    # 5. Clear rate-limit keys for this user
+    # 7. Clear rate-limit keys for this user
     try:
         rl_pattern = f"ratelimit:user:{user_id}:*"
         keys = await redis_client.client.keys(rl_pattern)
@@ -231,7 +239,7 @@ async def delete_user_data(request: Request):
     except Exception:
         logger.exception("Failed to clear rate-limit keys for user %s", user_id)
 
-    # 6. Remove sessions from in-memory registry
+    # 8. Remove sessions from in-memory registry
     for sid in user_session_ids:
         session_registry.pop(sid, None)
 
