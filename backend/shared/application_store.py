@@ -22,6 +22,7 @@ _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS application_results (
     id SERIAL PRIMARY KEY,
     session_id TEXT NOT NULL,
+    user_id UUID,
     job_id TEXT NOT NULL,
     status TEXT NOT NULL,
     job_title TEXT,
@@ -56,6 +57,10 @@ async def ensure_table() -> None:
                 ALTER TABLE application_results
                 ADD COLUMN IF NOT EXISTS screenshot_path TEXT
             """)
+            conn.execute("""
+                ALTER TABLE application_results
+                ADD COLUMN IF NOT EXISTS user_id UUID
+            """)
             conn.commit()
             logger.info("application_results table ensured")
     except Exception:
@@ -76,6 +81,7 @@ def record_result(
     tailored_resume_text: Optional[str] = None,
     duration_seconds: Optional[int] = None,
     screenshot_path: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> None:
     """Insert a single application result row."""
     try:
@@ -83,12 +89,12 @@ def record_result(
             conn.execute(
                 """
                 INSERT INTO application_results
-                    (session_id, job_id, status, job_title, job_company, job_url,
+                    (session_id, user_id, job_id, status, job_title, job_company, job_url,
                      job_board, job_location, error_message, cover_letter,
                      tailored_resume_text, duration_seconds, screenshot_path)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (session_id, job_id, status, job_title, job_company, job_url,
+                (session_id, user_id, job_id, status, job_title, job_company, job_url,
                  job_board, job_location, error_message, cover_letter,
                  tailored_resume_text, duration_seconds, screenshot_path),
             )
@@ -97,24 +103,37 @@ def record_result(
         logger.exception("Failed to record application result for %s", job_id)
 
 
-def check_already_applied(job_id: str) -> Optional[Dict[str, Any]]:
-    """Check if this job was already submitted (any session).
+def check_already_applied(job_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Check if this job was already submitted by this user.
 
     Returns the prior application record if found, None otherwise.
     Only ``submitted`` status counts -- failed/skipped don't block re-attempts.
+    When *user_id* is provided, only checks that user's applications.
     """
     try:
         with _connect() as conn:
-            cur = conn.execute(
-                """
-                SELECT session_id, job_title, job_company, created_at
-                FROM application_results
-                WHERE job_id = %s AND status = 'submitted'
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (job_id,),
-            )
+            if user_id:
+                cur = conn.execute(
+                    """
+                    SELECT session_id, job_title, job_company, created_at
+                    FROM application_results
+                    WHERE job_id = %s AND user_id = %s AND status = 'submitted'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (job_id, user_id),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    SELECT session_id, job_title, job_company, created_at
+                    FROM application_results
+                    WHERE job_id = %s AND status = 'submitted'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (job_id,),
+                )
             row = cur.fetchone()
             if row:
                 return {
@@ -131,26 +150,41 @@ def check_already_applied(job_id: str) -> Optional[Dict[str, Any]]:
 
 def check_company_rate_limit(
     company: str,
+    user_id: Optional[str] = None,
     max_applications: int = 2,
     window_days: int = 14,
 ) -> Optional[Dict[str, Any]]:
-    """Check if company application rate limit has been reached.
+    """Check if company application rate limit has been reached for this user.
 
     Returns the most recent application record if limit is exceeded, None if OK.
-    Only ``submitted`` status counts.
+    Only ``submitted`` status counts. When *user_id* is provided, only checks
+    that user's applications to the company.
     """
     try:
         with _connect() as conn:
-            cur = conn.execute(
-                """
-                SELECT COUNT(*), MAX(created_at)
-                FROM application_results
-                WHERE LOWER(job_company) = LOWER(%s)
-                  AND status = 'submitted'
-                  AND created_at > NOW() - INTERVAL '%s days'
-                """,
-                (company, window_days),
-            )
+            if user_id:
+                cur = conn.execute(
+                    """
+                    SELECT COUNT(*), MAX(created_at)
+                    FROM application_results
+                    WHERE LOWER(job_company) = LOWER(%s)
+                      AND user_id = %s
+                      AND status = 'submitted'
+                      AND created_at > NOW() - INTERVAL '%s days'
+                    """,
+                    (company, user_id, window_days),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    SELECT COUNT(*), MAX(created_at)
+                    FROM application_results
+                    WHERE LOWER(job_company) = LOWER(%s)
+                      AND status = 'submitted'
+                      AND created_at > NOW() - INTERVAL '%s days'
+                    """,
+                    (company, window_days),
+                )
             row = cur.fetchone()
             if row and row[0] >= max_applications:
                 return {
