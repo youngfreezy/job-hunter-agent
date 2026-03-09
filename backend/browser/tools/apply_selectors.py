@@ -11,9 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
-import psycopg
-
-from backend.shared.config import get_settings
+from backend.shared.db import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -77,20 +75,16 @@ ORDER BY platform, step_type, (success_count - fail_count) DESC;
 """
 
 
-def _connect() -> psycopg.Connection:
-    settings = get_settings()
-    return psycopg.connect(settings.DATABASE_URL)
+def _connect():
+    return get_connection()
 
 
 async def ensure_table() -> None:
     """Create the apply_selectors table if it doesn't exist."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_CREATE_TABLE)
             conn.commit()
-        finally:
-            conn.close()
         logger.info("apply_selectors table ensured")
     except Exception:
         logger.debug("Could not create apply_selectors table", exc_info=True)
@@ -98,24 +92,18 @@ async def ensure_table() -> None:
 
 def record_success(platform: str, step_type: str, selector: str) -> None:
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_UPSERT, {"platform": platform, "step_type": step_type, "selector": selector})
             conn.commit()
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to record apply selector success", exc_info=True)
 
 
 def record_failure(platform: str, step_type: str, selector: str) -> None:
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_INCREMENT_FAIL, {"platform": platform, "step_type": step_type, "selector": selector})
             conn.commit()
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to record apply selector failure", exc_info=True)
 
@@ -123,12 +111,9 @@ def record_failure(platform: str, step_type: str, selector: str) -> None:
 def get_top_selectors(platform: str, step_type: str, limit: int = 5) -> List[str]:
     """Get top-performing selectors for a platform+step_type, ranked by net success."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(_GET_TOP, {"platform": platform, "step_type": step_type, "limit": limit})
             return [row[0] for row in cur.fetchall()]
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to get apply selectors for %s/%s", platform, step_type, exc_info=True)
         return []
@@ -136,28 +121,22 @@ def get_top_selectors(platform: str, step_type: str, limit: int = 5) -> List[str
 
 def record_health_check(platform: str, step_type: str, selector: str, passed: bool) -> None:
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_HEALTH_CHECK, {
                 "platform": platform, "step_type": step_type,
                 "selector": selector, "passed": passed,
             })
             conn.commit()
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to record health check", exc_info=True)
 
 
 def get_all_for_platform(platform: str) -> List[Dict]:
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(_GET_ALL_FOR_PLATFORM, {"platform": platform})
             cols = ["platform", "step_type", "selector", "success_count", "fail_count", "last_checked", "last_check_passed"]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to get selectors for %s", platform, exc_info=True)
         return []
@@ -165,13 +144,10 @@ def get_all_for_platform(platform: str) -> List[Dict]:
 
 def get_all_selectors() -> List[Dict]:
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             cur = conn.execute(_GET_ALL)
             cols = ["platform", "step_type", "selector", "success_count", "fail_count", "last_checked", "last_check_passed"]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
-        finally:
-            conn.close()
     except Exception:
         logger.debug("Failed to get all selectors", exc_info=True)
         return []
@@ -281,8 +257,7 @@ _DEFAULTS: Dict[str, Dict[str, List[str]]] = {
 async def seed_defaults() -> None:
     """Insert default selectors if they don't already exist."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             for platform, steps in _DEFAULTS.items():
                 for step_type, selectors in steps.items():
                     for selector in selectors:
@@ -292,8 +267,6 @@ async def seed_defaults() -> None:
                             "selector": selector,
                         })
             conn.commit()
-        finally:
-            conn.close()
         logger.info("Seeded default apply selectors")
     except Exception:
         logger.debug("Could not seed default apply selectors", exc_info=True)

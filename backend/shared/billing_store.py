@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-import psycopg
 import stripe
 
 from backend.shared.config import get_settings
+from backend.shared.db import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -101,16 +101,14 @@ CREATE INDEX IF NOT EXISTS idx_wallet_tx_created ON wallet_transactions(user_id,
 """
 
 
-def _connect() -> psycopg.Connection:
-    settings = get_settings()
-    return psycopg.connect(settings.DATABASE_URL)
+def _connect():
+    return get_connection()
 
 
 async def ensure_billing_tables() -> None:
     """Create users + wallet_transactions tables if they don't exist."""
     try:
-        conn = _connect()
-        try:
+        with _connect() as conn:
             conn.execute(_CREATE_TABLES)
             conn.commit()
             logger.info("Billing tables ensured")
@@ -124,16 +122,13 @@ async def ensure_billing_tables() -> None:
                     (premium_emails,),
                 )
                 conn.commit()
-        finally:
-            conn.close()
     except Exception:
         logger.exception("Failed to create billing tables")
 
 
 def get_or_create_user(email: str) -> Dict[str, Any]:
     """Get or create a user by email. Returns dict with id, email, balance, free_remaining."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         cur = conn.execute(
             "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider, created_at FROM users WHERE email = %s",
             (email,),
@@ -177,27 +172,21 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
             "free_applications_remaining": 3,
             "is_premium": False,
         }
-    finally:
-        conn.close()
 
 
 def get_stripe_customer_id(user_id: str) -> Optional[str]:
     """Get the Stripe customer ID for a user."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         cur = conn.execute(
             "SELECT stripe_customer_id FROM users WHERE id = %s", (user_id,)
         )
         row = cur.fetchone()
         return row[0] if row else None
-    finally:
-        conn.close()
 
 
 def get_wallet(user_id: str) -> Dict[str, Any]:
     """Get wallet balance, free applications remaining, and auto-refill info."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         cur = conn.execute(
             """SELECT wallet_balance, free_applications_remaining,
                       auto_refill_enabled, auto_refill_threshold, auto_refill_pack_id
@@ -222,14 +211,11 @@ def get_wallet(user_id: str) -> Dict[str, Any]:
             "auto_refill_pack_id": auto_refill_pack_id,
             "low_balance": low_balance,
         }
-    finally:
-        conn.close()
 
 
 def get_auto_refill_settings(user_id: str) -> Dict[str, Any]:
     """Get auto-refill preferences for a user."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         cur = conn.execute(
             """SELECT auto_refill_enabled, auto_refill_threshold, auto_refill_pack_id
                FROM users WHERE id = %s""",
@@ -243,16 +229,13 @@ def get_auto_refill_settings(user_id: str) -> Dict[str, Any]:
             "threshold": float(row[1]) if row[1] is not None else 5.0,
             "pack_id": row[2] or "top_up_10",
         }
-    finally:
-        conn.close()
 
 
 def update_auto_refill_settings(
     user_id: str, enabled: bool, threshold: float, pack_id: str
 ) -> None:
     """Update auto-refill preferences for a user."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         conn.execute(
             """UPDATE users
                SET auto_refill_enabled = %s,
@@ -262,8 +245,6 @@ def update_auto_refill_settings(
             (enabled, threshold, pack_id, user_id),
         )
         conn.commit()
-    finally:
-        conn.close()
 
 
 def credit_wallet(
@@ -274,8 +255,7 @@ def credit_wallet(
     description: str = "",
 ) -> Dict[str, Any]:
     """Add funds to a user's wallet. Returns new balance."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         # Update balance
         conn.execute(
             "UPDATE users SET wallet_balance = wallet_balance + %s WHERE id = %s",
@@ -296,8 +276,6 @@ def credit_wallet(
         )
         conn.commit()
         return {"balance": new_balance}
-    finally:
-        conn.close()
 
 
 def debit_wallet(
@@ -314,8 +292,7 @@ def debit_wallet(
     - Free applications are consumed first (1 free app per attempt, regardless of amount)
     - Then wallet credits are deducted
     """
-    conn = _connect()
-    try:
+    with _connect() as conn:
         # Row-level lock to prevent concurrent double-debit
         cur = conn.execute(
             "SELECT wallet_balance, free_applications_remaining, is_premium FROM users WHERE id = %s FOR UPDATE",
@@ -378,8 +355,6 @@ def debit_wallet(
         )
         conn.commit()
         return {"balance": new_balance, "free_used": False}
-    finally:
-        conn.close()
 
 
 def check_sufficient_credits(user_id: str, amount: float = 1.0) -> bool:
@@ -388,8 +363,7 @@ def check_sufficient_credits(user_id: str, amount: float = 1.0) -> bool:
     Premium (unlimited subscription) users always pass.
     Reserves against the full credit cost (1.0) since outcome is unknown upfront.
     """
-    conn = _connect()
-    try:
+    with _connect() as conn:
         cur = conn.execute(
             "SELECT wallet_balance, free_applications_remaining, is_premium FROM users WHERE id = %s",
             (user_id,),
@@ -402,26 +376,22 @@ def check_sufficient_credits(user_id: str, amount: float = 1.0) -> bool:
         balance = float(row[0])
         free_remaining = row[1]
         return free_remaining > 0 or balance >= amount
-    finally:
-        conn.close()
 
 
 def set_premium(user_id: str, is_premium: bool = True) -> bool:
     """Set or unset premium status for a user."""
-    conn = _connect()
-    try:
-        conn.execute(
-            "UPDATE users SET is_premium = %s WHERE id = %s",
-            (is_premium, user_id),
-        )
-        conn.commit()
-        return True
-    except Exception:
-        conn.rollback()
-        logger.exception("Failed to set premium for user %s", user_id)
-        return False
-    finally:
-        conn.close()
+    with _connect() as conn:
+        try:
+            conn.execute(
+                "UPDATE users SET is_premium = %s WHERE id = %s",
+                (is_premium, user_id),
+            )
+            conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            logger.exception("Failed to set premium for user %s", user_id)
+            return False
 
 
 def delete_user_data(user_id: str) -> bool:
@@ -430,31 +400,28 @@ def delete_user_data(user_id: str) -> bool:
     Removes all wallet_transactions, then the users row itself.
     Returns True on success, False on error.
     """
-    conn = _connect()
-    try:
-        conn.execute(
-            "DELETE FROM wallet_transactions WHERE user_id = %s",
-            (user_id,),
-        )
-        conn.execute(
-            "DELETE FROM users WHERE id = %s",
-            (user_id,),
-        )
-        conn.commit()
-        logger.info("Deleted billing data for user %s", user_id)
-        return True
-    except Exception:
-        conn.rollback()
-        logger.exception("Failed to delete billing data for user %s", user_id)
-        return False
-    finally:
-        conn.close()
+    with _connect() as conn:
+        try:
+            conn.execute(
+                "DELETE FROM wallet_transactions WHERE user_id = %s",
+                (user_id,),
+            )
+            conn.execute(
+                "DELETE FROM users WHERE id = %s",
+                (user_id,),
+            )
+            conn.commit()
+            logger.info("Deleted billing data for user %s", user_id)
+            return True
+        except Exception:
+            conn.rollback()
+            logger.exception("Failed to delete billing data for user %s", user_id)
+            return False
 
 
 def get_user_auth_info(email: str) -> Optional[Dict[str, Any]]:
     """Get auth-relevant fields for a user by email. Returns None if not found."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         cur = conn.execute(
             "SELECT id, email, password_hash, auth_provider, name FROM users WHERE email = %s",
             (email,),
@@ -469,14 +436,11 @@ def get_user_auth_info(email: str) -> Optional[Dict[str, Any]]:
             "auth_provider": row[3] or "google",
             "name": row[4],
         }
-    finally:
-        conn.close()
 
 
 def create_user_with_password(email: str, password_hash: str, name: str) -> Dict[str, Any]:
     """Create a new user with email/password auth. Returns user dict."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         user_id = str(uuid.uuid4())
 
         # Create Stripe customer
@@ -502,14 +466,11 @@ def create_user_with_password(email: str, password_hash: str, name: str) -> Dict
             "name": name,
             "auth_provider": "email",
         }
-    finally:
-        conn.close()
 
 
 def set_user_password(email: str, password_hash: str, name: Optional[str] = None) -> Dict[str, Any]:
     """Set password on an existing user (e.g. Google-only user adding email auth)."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         if name:
             conn.execute(
                 "UPDATE users SET password_hash = %s, name = COALESCE(name, %s), auth_provider = 'both' WHERE email = %s",
@@ -533,32 +494,27 @@ def set_user_password(email: str, password_hash: str, name: Optional[str] = None
             "name": row[2],
             "auth_provider": row[3],
         }
-    finally:
-        conn.close()
 
 
 def link_google_provider(email: str) -> bool:
     """Mark an email-only user as having linked Google auth."""
-    conn = _connect()
-    try:
-        conn.execute(
-            "UPDATE users SET auth_provider = 'both' WHERE email = %s AND auth_provider = 'email'",
-            (email,),
-        )
-        conn.commit()
-        return True
-    except Exception:
-        conn.rollback()
-        logger.exception("Failed to link Google for %s", email)
-        return False
-    finally:
-        conn.close()
+    with _connect() as conn:
+        try:
+            conn.execute(
+                "UPDATE users SET auth_provider = 'both' WHERE email = %s AND auth_provider = 'email'",
+                (email,),
+            )
+            conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            logger.exception("Failed to link Google for %s", email)
+            return False
 
 
 def get_transactions(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
     """Get recent wallet transactions."""
-    conn = _connect()
-    try:
+    with _connect() as conn:
         cur = conn.execute(
             """SELECT id, amount, balance_after, type, reference_id, description, created_at
                FROM wallet_transactions
@@ -579,5 +535,3 @@ def get_transactions(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
             }
             for row in cur.fetchall()
         ]
-    finally:
-        conn.close()

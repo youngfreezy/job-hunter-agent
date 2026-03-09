@@ -24,11 +24,9 @@ async def readiness_check():
 
     # Postgres
     try:
-        import psycopg
-        from backend.shared.config import get_settings
-        conn = psycopg.connect(get_settings().DATABASE_URL)
-        conn.execute("SELECT 1")
-        conn.close()
+        from backend.shared.db import get_connection
+        with get_connection() as conn:
+            conn.execute("SELECT 1")
         checks["postgres"] = "ok"
     except Exception as e:
         logger.warning("Health check: Postgres unavailable: %s", e)

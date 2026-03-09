@@ -185,12 +185,11 @@ async def _cmd_search(user_id: str, keywords_str: str) -> str:
 async def _get_user_by_phone(phone: str):
     """Look up a user by phone number."""
     import asyncio
-    import psycopg
-    from backend.shared.config import get_settings
+    from backend.shared.db import get_connection
 
     def _fetch():
         try:
-            with psycopg.connect(get_settings().DATABASE_URL) as conn:
+            with get_connection() as conn:
                 row = conn.execute(
                     "SELECT id, email FROM users WHERE phone_number = %s AND phone_verified = TRUE",
                     (phone,),
@@ -261,10 +260,10 @@ async def confirm_verification(body: ConfirmPhoneRequest, request: Request):
 
     # Update user in DB
     import asyncio
-    import psycopg
+    from backend.shared.db import get_connection
 
     def _update():
-        with psycopg.connect(get_settings().DATABASE_URL) as conn:
+        with get_connection() as conn:
             conn.execute(
                 "UPDATE users SET phone_number = %s, phone_verified = TRUE WHERE id = %s",
                 (stored_phone_str, user_id),

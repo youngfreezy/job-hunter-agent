@@ -251,11 +251,10 @@ async def _run_schedule(sched: Dict[str, Any]) -> None:
 async def _get_resume_bytes(schedule_id: str) -> Optional[bytes]:
     """Fetch resume_bytes from DB (not returned by default _row_to_dict)."""
     import asyncio
-    import psycopg
-    from backend.shared.config import get_settings
+    from backend.shared.db import get_connection
 
     def _fetch():
-        with psycopg.connect(get_settings().DATABASE_URL) as conn:
+        with get_connection() as conn:
             row = conn.execute(
                 "SELECT resume_bytes FROM autopilot_schedules WHERE id = %s",
                 (schedule_id,),
@@ -270,11 +269,10 @@ async def _get_resume_bytes(schedule_id: str) -> Optional[bytes]:
 async def _get_user_email(user_id: str) -> Optional[str]:
     """Look up a user's email by their ID."""
     import asyncio
-    import psycopg
-    from backend.shared.config import get_settings
+    from backend.shared.db import get_connection
 
     def _fetch():
-        with psycopg.connect(get_settings().DATABASE_URL) as conn:
+        with get_connection() as conn:
             row = conn.execute(
                 "SELECT email FROM users WHERE id = %s",
                 (user_id,),
