@@ -135,26 +135,71 @@ async def _release_task_slot(session_id: str) -> None:
         logger.debug("Failed to release task queue slot for %s", session_id, exc_info=True)
 
 
-async def _send_completion_email(session_id: str) -> None:
-    """Send a session-complete email notification (best-effort, non-blocking)."""
+async def _send_completion_notifications(session_id: str) -> None:
+    """Send session-complete email and/or SMS notifications (best-effort)."""
     try:
         from backend.shared.email_notifications import send_session_complete_email
+        from backend.shared.sms import send_session_complete_sms
+        from backend.shared.billing_store import get_user_by_id
+        from backend.shared.application_store import get_results_for_session
+
         meta = session_registry.get(session_id, {})
-        user_email = meta.get("user_email")
-        if not user_email:
+        user_id = meta.get("user_id")
+        if not user_id:
             return
-        await send_session_complete_email(
-            to_email=user_email,
-            session_id=session_id,
-            total_applied=meta.get("applications_submitted", 0),
-            total_failed=meta.get("applications_failed", 0),
-            total_skipped=0,
-            top_companies=[],
-            avg_fit_score=0.0,
-            duration_minutes=0.0,
-        )
+
+        # Compute actual stats from DB
+        results = get_results_for_session(session_id)
+        total_applied = sum(1 for r in results if r["status"] == "submitted")
+        total_failed = sum(1 for r in results if r["status"] == "failed")
+        total_skipped = sum(1 for r in results if r["status"] == "skipped")
+        top_companies = list(
+            {r["job"]["company"] for r in results if r["status"] == "submitted" and r["job"].get("company")}
+        )[:5]
+
+        # Compute duration
+        created = meta.get("created_at")
+        duration_minutes = 0.0
+        if created:
+            try:
+                start = datetime.fromisoformat(created) if isinstance(created, str) else created
+                duration_minutes = (datetime.now(timezone.utc) - start).total_seconds() / 60
+            except Exception:
+                pass
+
+        # Get user info for notification preferences
+        user_info = get_user_by_id(user_id)
+        channel = "email"
+        phone = None
+        user_email = meta.get("user_email")
+        if user_info:
+            channel = user_info.get("notification_channel", "email")
+            phone = user_info.get("phone_number")
+            user_email = user_email or user_info.get("email")
+
+        # Send email if channel is email or both
+        if user_email and channel in ("email", "both"):
+            await send_session_complete_email(
+                to_email=user_email,
+                session_id=session_id,
+                total_applied=total_applied,
+                total_failed=total_failed,
+                total_skipped=total_skipped,
+                top_companies=top_companies,
+                avg_fit_score=0.0,
+                duration_minutes=duration_minutes,
+            )
+
+        # Send SMS if channel is sms or both and phone exists
+        if phone and channel in ("sms", "both"):
+            await send_session_complete_sms(
+                to_phone=phone,
+                session_id=session_id,
+                total_applied=total_applied,
+                total_failed=total_failed,
+            )
     except Exception:
-        logger.debug("Failed to send completion email for %s", session_id, exc_info=True)
+        logger.debug("Failed to send completion notifications for %s", session_id, exc_info=True)
 
 
 STATUS_MESSAGES = {
@@ -313,6 +358,50 @@ async def _handle_shortlist_interrupt(session_id: str, graph: Any, config: dict)
     except Exception:
         logger.exception("Failed to emit shortlist review event for session %s", session_id)
 
+    # Send approval email/SMS for autopilot sessions
+    try:
+        meta = session_registry.get(session_id, {})
+        schedule_id = meta.get("autopilot_schedule_id")
+        if schedule_id:
+            from backend.shared.autopilot_runner import generate_approval_token
+            from backend.shared.email_notifications import send_autopilot_approval_email
+            from backend.shared.sms import send_autopilot_approval_sms
+            from backend.shared.billing_store import get_user_by_id
+
+            user_id = meta.get("user_id")
+            jobs_found = len(top_scored) if top_scored else 0
+            token = generate_approval_token(schedule_id, session_id)
+
+            # Get user info for notification routing
+            user_info = get_user_by_id(user_id) if user_id else None
+            user_email = meta.get("user_email")
+            channel = "email"
+            phone = None
+            if user_info:
+                channel = user_info.get("notification_channel", "email")
+                phone = user_info.get("phone_number")
+                user_email = user_email or user_info.get("email")
+
+            if user_email and channel in ("email", "both"):
+                await send_autopilot_approval_email(
+                    to_email=user_email,
+                    session_id=session_id,
+                    schedule_id=schedule_id,
+                    jobs_found=jobs_found,
+                    approval_token=token,
+                )
+
+            if phone and channel in ("sms", "both"):
+                schedule_name = meta.get("schedule_name", "My Job Search")
+                await send_autopilot_approval_sms(
+                    to_phone=phone,
+                    schedule_name=schedule_name,
+                    jobs_found=jobs_found,
+                    session_id=session_id,
+                )
+    except Exception:
+        logger.debug("Failed to send approval notifications for %s", session_id, exc_info=True)
+
 
 async def _run_pipeline(
     session_id: str,
@@ -421,7 +510,7 @@ async def _run_pipeline(
             await _release_task_slot(session_id)
 
             # Send session-complete email notification (best-effort)
-            await _send_completion_email(session_id)
+            await _send_completion_notifications(session_id)
 
     except Exception as exc:
         logger.exception("Pipeline error for session %s", session_id)

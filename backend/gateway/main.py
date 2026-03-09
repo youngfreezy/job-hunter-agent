@@ -102,7 +102,7 @@ async def lifespan(app: FastAPI):
         pool = AsyncConnectionPool(
             conninfo=settings.DATABASE_URL,
             min_size=2,
-            max_size=10,
+            max_size=20,
             open=False,
         )
         await pool.open()
@@ -137,6 +137,10 @@ async def lifespan(app: FastAPI):
         from backend.shared.scheduler import schedule, schedule_with_notify
         from backend.shared.selector_health import run_selector_health_check
         schedule("selector-health-check", run_selector_health_check, interval_hours=24.0)
+
+        # Schedule daily data cleanup (delete app results older than 90 days)
+        from backend.shared.session_store import cleanup_old_data
+        schedule("data-cleanup", cleanup_old_data, interval_hours=24.0)
 
         # Schedule autopilot checker (LISTEN/NOTIFY + 5min fallback)
         from backend.shared.autopilot_runner import check_and_run_due_schedules

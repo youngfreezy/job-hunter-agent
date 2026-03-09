@@ -186,6 +186,21 @@ async def me(request: Request):
     return {"user": user}
 
 
+class NotificationChannelUpdate(BaseModel):
+    notification_channel: str
+
+
+@router.put("/me/notification-channel")
+async def update_notification_channel(request: Request, body: NotificationChannelUpdate):
+    """Update the user's notification channel preference (email, sms, or both)."""
+    user = get_current_user(request)
+    if body.notification_channel not in ("email", "sms", "both"):
+        return JSONResponse(status_code=400, content={"detail": "Invalid channel. Must be email, sms, or both."})
+    from backend.shared.billing_store import update_notification_channel as _update_channel
+    _update_channel(user["id"], body.notification_channel)
+    return {"notification_channel": body.notification_channel}
+
+
 @router.delete("/me/data")
 async def delete_user_data(request: Request):
     """GDPR: permanently delete all data associated with the current user."""
