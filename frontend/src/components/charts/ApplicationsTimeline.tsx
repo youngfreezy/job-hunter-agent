@@ -23,7 +23,7 @@ export default function ApplicationsTimeline({ sessions }: ApplicationsTimelineP
   const grouped = new Map<string, number>();
 
   for (const s of sessions) {
-    if (!s.created_at) continue;
+    if (!s.created_at || isNaN(new Date(s.created_at).getTime())) continue;
     const key = formatDate(s.created_at);
     grouped.set(key, (grouped.get(key) ?? 0) + (s.applications_submitted ?? 0));
   }
