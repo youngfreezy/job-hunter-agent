@@ -53,6 +53,7 @@ export default function BillingPage() {
   const canceled = searchParams.get("canceled");
 
   useEffect(() => {
+    window.umami?.track("billing-page-viewed");
     if (success) window.umami?.track("payment-success");
     if (canceled) window.umami?.track("payment-canceled");
   }, [success, canceled]);
