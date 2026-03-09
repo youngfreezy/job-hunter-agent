@@ -146,7 +146,7 @@ RULES:
 - If a board shows a CAPTCHA or hard block, skip it IMMEDIATELY and go to the next board. Do NOT retry failed navigations.
 - STRICT STEP BUDGET: You have at most 8 steps per board. If you haven't extracted jobs in 8 steps, SKIP and move to the next board immediately. Do NOT waste steps waiting or retrying.
 - If you find yourself waiting (wait action) more than twice in a row on a board, SKIP it and move to the next board.
-- If all assigned boards fail, you may proactively try other major job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter) to find results. Label each job with the correct board it came from.
+- If all assigned boards fail, you may proactively try other major job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter) to find results. Use the SAME keyword search approach: search for {keywords} in {location} on those boards too. Do NOT just browse the generic feed — actively search with the keywords. Label each job with the correct board it came from.
 - For each keyword, search and extract, then move to the next keyword. Do NOT search every keyword -- pick the top 2 most relevant.
 - Maximum {max_per_board} listings per board
 - Include the "board" field (indeed/linkedin/glassdoor/ziprecruiter) for each job
