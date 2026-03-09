@@ -1034,10 +1034,14 @@ export default function SessionPage() {
               </span>
             )}
           </div>
-          {/* Step-away tip */}
+          {/* Caffeinate tip */}
           {isActive && !tipDismissed && (
             <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-              <span>Feel free to step away — we&apos;ll email you when done.</span>
+              <span>
+                Feel free to step away — we&apos;ll email you when done. Tip: run{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">caffeinate -d</code>{" "}
+                to keep your screen awake.
+              </span>
               <button
                 onClick={() => setTipDismissed(true)}
                 className="text-muted-foreground/50 hover:text-muted-foreground"
