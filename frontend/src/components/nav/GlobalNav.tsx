@@ -11,6 +11,15 @@ import { NotificationBanner } from "@/components/NotificationBanner";
 import { NavShell } from "./NavShell";
 import { API_BASE, getAuthHeaders } from "@/lib/api";
 
+declare global {
+  interface Window {
+    umami?: {
+      track: (event: string, data?: Record<string, unknown>) => void;
+      identify: (data: Record<string, unknown>) => void;
+    };
+  }
+}
+
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/apply", label: "Review & Apply" },
@@ -56,10 +65,15 @@ export function GlobalNav() {
         }
         if (meRes.ok) {
           const data = await meRes.json();
-          const provider = data.user?.auth_provider;
+          const user = data.user;
+          const provider = user?.auth_provider;
           if (provider === "email") {
             const dismissed = sessionStorage.getItem("jh_google_banner_dismissed");
             if (!dismissed) setShowGoogleBanner(true);
+          }
+          // Identify user in Umami analytics
+          if (user?.id && window.umami) {
+            window.umami.identify({ userId: user.id, name: user.name || user.email });
           }
         }
       } catch {}
