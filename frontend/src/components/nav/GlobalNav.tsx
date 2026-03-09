@@ -73,7 +73,7 @@ export function GlobalNav() {
           }
           // Identify user in Umami analytics
           if (user?.id && window.umami) {
-            window.umami.identify({ userId: user.id, name: user.name || user.email });
+            window.umami.identify({ userId: user.id, name: user.name || user.email, email: user.email });
           }
         }
       } catch {}
