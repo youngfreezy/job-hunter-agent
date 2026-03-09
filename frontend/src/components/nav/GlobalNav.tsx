@@ -19,6 +19,7 @@ const NAV_LINKS = [
   { href: "/autopilot", label: "Autopilot" },
   { href: "/history", label: "History" },
   { href: "/billing", label: "Billing" },
+  { href: "/account", label: "Account" },
   { href: "/settings", label: "Settings" },
 ];
 
