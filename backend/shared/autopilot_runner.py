@@ -95,14 +95,26 @@ async def check_and_run_due_schedules() -> None:
 
     logger.info("Autopilot: %d schedule(s) due", len(due))
 
+    # Batch-fetch resume_bytes for all due schedules to avoid N+1 queries
+    schedule_ids = [s["id"] for s in due if s.get("resume_bytes") or s.get("resume_filename")]
+    resume_bytes_map: Dict[str, Optional[bytes]] = {}
+    if schedule_ids:
+        try:
+            resume_bytes_map = await _batch_get_resume_bytes(schedule_ids)
+        except Exception:
+            logger.exception("Autopilot: failed to batch-fetch resume bytes")
+
     for sched in due:
         try:
-            await _run_schedule(sched)
+            await _run_schedule(sched, resume_bytes_map=resume_bytes_map)
         except Exception:
             logger.exception("Autopilot: failed to run schedule %s", sched.get("id"))
 
 
-async def _run_schedule(sched: Dict[str, Any]) -> None:
+async def _run_schedule(
+    sched: Dict[str, Any],
+    resume_bytes_map: Optional[Dict[str, Optional[bytes]]] = None,
+) -> None:
     """Spawn a session for a single autopilot schedule."""
     schedule_id = sched["id"]
     user_id = sched["user_id"]
@@ -133,7 +145,11 @@ async def _run_schedule(sched: Dict[str, Any]) -> None:
     # Write resume bytes to temp file if available
     resume_file_path = None
     if sched.get("resume_bytes") or sched.get("resume_filename"):
-        resume_bytes = await _get_resume_bytes(schedule_id)
+        # Use batch-fetched bytes if available, fall back to individual fetch
+        if resume_bytes_map and schedule_id in resume_bytes_map:
+            resume_bytes = resume_bytes_map[schedule_id]
+        else:
+            resume_bytes = await _get_resume_bytes(schedule_id)
         if resume_bytes:
             resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
             os.makedirs(resume_dir, exist_ok=True)
@@ -246,6 +262,26 @@ async def _run_schedule(sched: Dict[str, Any]) -> None:
                 )
             except Exception:
                 logger.exception("Autopilot: failed to send notification email")
+
+
+async def _batch_get_resume_bytes(schedule_ids: list[str]) -> Dict[str, Optional[bytes]]:
+    """Batch fetch resume_bytes for multiple schedules in one query."""
+    import asyncio
+    from backend.shared.db import get_connection
+
+    def _fetch():
+        with get_connection() as conn:
+            placeholders = ",".join(["%s"] * len(schedule_ids))
+            cur = conn.execute(
+                f"SELECT id, resume_bytes FROM autopilot_schedules WHERE id IN ({placeholders})",
+                schedule_ids,
+            )
+            return {
+                str(row[0]): (bytes(row[1]) if isinstance(row[1], memoryview) else row[1]) if row[1] else None
+                for row in cur.fetchall()
+            }
+
+    return await asyncio.to_thread(_fetch)
 
 
 async def _get_resume_bytes(schedule_id: str) -> Optional[bytes]:

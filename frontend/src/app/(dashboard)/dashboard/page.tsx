@@ -372,22 +372,20 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Autopilot Coming Soon teaser */}
+      {/* Autopilot Mode CTA */}
       <div className="mt-10">
         <Card className="border-dashed border-indigo-200 bg-gradient-to-br from-indigo-50/50 to-violet-50/50 dark:border-indigo-800 dark:from-indigo-950/30 dark:to-violet-950/30">
           <CardContent className="py-8 text-center">
-            <Badge
-              variant="outline"
-              className="mb-3 border-indigo-300 text-indigo-600 dark:border-indigo-700 dark:text-indigo-400"
-            >
-              Coming Soon
-            </Badge>
             <p className="text-xl font-semibold">Autopilot Mode</p>
             <p className="mt-2 text-sm text-zinc-500 max-w-lg mx-auto">
-              Set your preferences once and let JobHunter run on autopilot — daily or weekly
-              automated searches with an approval gate before any applications go out. You stay in
-              control, we do the work.
+              Set up automated job searches on a schedule — daily or weekly with an approval gate
+              before any applications go out. You stay in control, we do the work.
             </p>
+            <Link href="/autopilot" className="inline-block mt-4">
+              <Button variant="outline" className="border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950">
+                Manage Schedules
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

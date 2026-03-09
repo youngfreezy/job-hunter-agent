@@ -363,6 +363,7 @@ export default function SessionPage() {
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [rewindLoading, setRewindLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
+  const [sseConnected, setSseConnected] = useState(true);
   const [loginPrompt, setLoginPrompt] = useState<{
     board: string;
     message: string;
@@ -717,7 +718,7 @@ export default function SessionPage() {
           el.parentElement.scrollTop = el.parentElement.scrollHeight;
         }
       }, 100);
-    });
+    }, setSseConnected);
     return cleanup;
   }, [sessionId, sseKey]);
 
@@ -1017,6 +1018,16 @@ export default function SessionPage() {
           {STATUS_LABELS[session.status] || session.status}
         </Badge>
       </div>
+
+      {/* SSE Disconnected Banner */}
+      {!sseConnected && isActive && (
+        <div className="max-w-6xl mx-auto px-6 pt-2">
+          <div className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-700 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            Connection lost — Reconnecting...
+          </div>
+        </div>
+      )}
 
       {/* Pipeline Stepper */}
       <div className="border-b border-border/70 bg-card/95 shadow-sm supports-[backdrop-filter]:bg-card/90 supports-[backdrop-filter]:backdrop-blur-sm">

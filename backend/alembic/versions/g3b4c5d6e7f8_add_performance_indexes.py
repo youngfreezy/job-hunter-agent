@@ -44,8 +44,14 @@ def upgrade() -> None:
         ON board_selectors (board)
     """)
 
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_sessions_user_created
+        ON sessions (user_id, created_at DESC)
+    """)
+
 
 def downgrade() -> None:
+    op.execute("DROP INDEX IF EXISTS idx_sessions_user_created")
     op.execute("DROP INDEX IF EXISTS idx_board_selectors_board")
     op.execute("DROP INDEX IF EXISTS idx_dlq_status_retry")
     op.execute("DROP INDEX IF EXISTS idx_app_results_created")
