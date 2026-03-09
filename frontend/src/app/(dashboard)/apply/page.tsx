@@ -16,6 +16,7 @@ import {
   API_BASE,
 } from "@/lib/api";
 import { downloadResumePdf, downloadCoverLetterPdf } from "@/lib/pdf";
+import { toast } from "sonner";
 
 type Tab = "all" | "submitted" | "failed" | "skipped";
 
@@ -35,7 +36,6 @@ export default function ApplyPage() {
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("all");
-  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [expandedScreenshot, setExpandedScreenshot] = useState<string | null>(null);
 
   const fetchAll = async () => {
@@ -93,10 +93,9 @@ export default function ApplyPage() {
 
   const readyToApplyCount = counts.failed + counts.skipped;
 
-  const copyToClipboard = (text: string, fieldId: string) => {
+  const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedField(fieldId);
-    setTimeout(() => setCopiedField(null), 2000);
+    toast.success("Copied to clipboard");
   };
 
   return (
@@ -322,9 +321,9 @@ export default function ApplyPage() {
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs"
-                            onClick={() => copyToClipboard(entry.cover_letter, `cover-${key}`)}
+                            onClick={() => copyToClipboard(entry.cover_letter)}
                           >
-                            {copiedField === `cover-${key}` ? "Copied!" : "Copy Cover Letter"}
+                            Copy Cover Letter
                           </Button>
                         </>
                       )}
@@ -366,10 +365,10 @@ export default function ApplyPage() {
                             size="sm"
                             className="h-7 text-xs"
                             onClick={() =>
-                              copyToClipboard(entry.tailored_resume!.tailored_text, `resume-${key}`)
+                              copyToClipboard(entry.tailored_resume!.tailored_text)
                             }
                           >
-                            {copiedField === `resume-${key}` ? "Copied!" : "Copy Resume"}
+                            Copy Resume
                           </Button>
                         </>
                       )}

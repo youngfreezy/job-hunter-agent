@@ -29,10 +29,10 @@ def get_pool() -> ConnectionPool:
         _pool = ConnectionPool(
             conninfo=get_settings().DATABASE_URL,
             min_size=2,
-            max_size=20,
+            max_size=10,
             open=True,
         )
-        logger.info("Sync connection pool opened (min=2, max=20)")
+        logger.info("Sync connection pool opened (min=2, max=10)")
     return _pool
 
 
