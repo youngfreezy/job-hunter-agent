@@ -168,7 +168,7 @@ export default function Dashboard() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] items-start">
-        <Card className="border-zinc-200 dark:border-zinc-800 max-h-[480px] flex flex-col overflow-hidden">
+        <Card className="border-zinc-200 dark:border-zinc-800 h-[480px] flex flex-col overflow-hidden">
           <CardContent className="flex flex-col gap-5 p-8 overflow-y-auto min-h-0">
             <div>
               <p className="text-sm font-medium uppercase tracking-[0.22em] text-zinc-500">
@@ -268,7 +268,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-zinc-200 dark:border-zinc-800 max-h-[480px] flex flex-col overflow-hidden">
+        <Card className="border-zinc-200 dark:border-zinc-800 h-[480px] flex flex-col overflow-hidden">
           <CardHeader className="shrink-0">
             <CardTitle className="text-lg">Needs Your Attention</CardTitle>
           </CardHeader>
