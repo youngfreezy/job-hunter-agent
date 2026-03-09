@@ -185,6 +185,8 @@ export async function getSSEToken(): Promise<string> {
 
 // ---------- Fetch wrapper (surfaces 429 to user) ----------
 
+import { toast } from "sonner";
+
 let _lastRateLimitToast = 0;
 
 /**
@@ -202,8 +204,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
       const msg = retryAfter
         ? `Too many requests — please wait ${retryAfter}s and try again.`
         : "Too many requests — please wait a moment and try again.";
-      // Dynamic import to avoid issues in non-browser contexts
-      import("sonner").then(({ toast }) => toast.error(msg));
+      toast.error(msg);
     }
   }
   return res;
