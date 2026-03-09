@@ -98,9 +98,19 @@ async def _scrape_board(
 
     except asyncio.TimeoutError:
         logger.warning("Direct scrape of %s timed out after %ds", board, timeout)
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": board,
+            "step": f"{board.title()} timed out, trying fallback...",
+            "error": True,
+        })
         return []
     except Exception:
         logger.warning("Direct scrape of %s failed", board, exc_info=True)
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": board,
+            "step": f"{board.title()} scrape failed, trying fallback...",
+            "error": True,
+        })
         return []
     finally:
         await manager.close_context(ctx_id)
@@ -177,6 +187,11 @@ async def discover_all_boards(
                     logger.info(
                         "Board %s returned 0 results, queued for fallback", board,
                     )
+                    await emit_agent_event(session_id, "discovery_progress", {
+                        "board": board,
+                        "step": f"{board.title()} returned 0 results, trying fallback...",
+                        "error": True,
+                    })
                     fallback_boards.append(board)
         finally:
             await manager.stop()
@@ -218,6 +233,11 @@ async def discover_all_boards(
                     board,
                     exc_info=True,
                 )
+                await emit_agent_event(session_id, "discovery_progress", {
+                    "board": board,
+                    "step": f"Bright Data failed for {board.title()}, trying AI agent...",
+                    "error": True,
+                })
                 bd_remaining.append(board)
             finally:
                 await bd_manager.stop()
@@ -245,6 +265,11 @@ async def discover_all_boards(
             all_jobs.extend(fallback_jobs)
         except Exception:
             logger.warning("Browser-use fallback failed", exc_info=True)
+            await emit_agent_event(session_id, "discovery_progress", {
+                "board": "all",
+                "step": f"AI agent fallback failed for {', '.join(bd_remaining)}",
+                "error": True,
+            })
 
     # Skip URL validation -- job board URLs commonly reject HEAD requests
     # (auth walls, cookie requirements, GET-only) but are still valid listings.

@@ -259,6 +259,11 @@ async def _scrape_board_api(
 
     snapshot_id = await _trigger_scrape(session, board, search_config, token)
     if not snapshot_id:
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": board,
+            "step": f"Failed to start {board.title()} scrape",
+            "error": True,
+        })
         return []
 
     await emit_agent_event(session_id, "discovery_progress", {
@@ -322,8 +327,19 @@ async def discover_all_boards(
         for board, result in zip(supported, results):
             if isinstance(result, Exception):
                 logger.error("Bright Data %s failed: %s", board, result)
+                await emit_agent_event(session_id, "discovery_progress", {
+                    "board": board,
+                    "step": f"{board.title()} failed: {str(result)[:80]}",
+                    "error": True,
+                })
             elif result:
                 all_jobs.extend(result)
+            else:
+                await emit_agent_event(session_id, "discovery_progress", {
+                    "board": board,
+                    "step": f"{board.title()} returned 0 results",
+                    "error": True,
+                })
 
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "all",
