@@ -108,6 +108,7 @@ export type SSEEventType =
   | "application_progress"
   | "application_browser_action"
   | "verification_progress"
+  | "backfill_progress"
   | "reporting_progress"
   | "needs_intervention"
   | "ready_to_submit"
@@ -545,6 +546,7 @@ export function connectSSE(
     "application_progress",
     "application_browser_action",
     "verification_progress",
+    "backfill_progress",
     "reporting_progress",
     "needs_intervention",
     "ready_to_submit",

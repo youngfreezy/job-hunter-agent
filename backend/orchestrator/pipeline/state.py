@@ -120,6 +120,11 @@ class JobHunterState(TypedDict):
     # --- Session config ---
     session_config: Optional[SessionConfig]
 
+    # --- Backfill (self-correcting loop) ---
+    backfill_rounds: int  # Current backfill round (0 = first pass)
+    discovered_job_ids_seen: Annotated[List[str], operator.add]  # All job IDs ever discovered
+    _prev_backfill_submitted: int  # Submitted count before last backfill round (stall detection)
+
     # --- Billing ---
     session_start_time: Optional[str]
     applications_used: int

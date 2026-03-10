@@ -198,6 +198,7 @@ const AGENT_DISPLAY_NAMES: Record<string, string> = {
   application: "Apply",
   verification: "Verify",
   reporting: "Summary",
+  backfill: "Backfill",
   status: "Status",
   system: "System",
 };
@@ -221,6 +222,8 @@ const AGENT_COLORS: Record<string, string> = {
     "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800",
   reporting:
     "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
+  backfill:
+    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800",
   status:
     "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:border-slate-800",
   system:

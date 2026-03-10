@@ -160,6 +160,23 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         if not resume:
             logger.warning("No resume available for scoring -- using empty string")
 
+        # On backfill rounds, only score newly discovered jobs (not re-score old ones)
+        if state.get("backfill_rounds", 0) > 0:
+            already_scored_ids = {sj.job_id for sj in (state.get("scored_jobs") or [])}
+            before = len(discovered_jobs)
+            discovered_jobs = [j for j in discovered_jobs if str(j.id) not in already_scored_ids]
+            logger.info(
+                "Backfill scoring: %d total discovered, %d already scored, %d new to score",
+                before, len(already_scored_ids), len(discovered_jobs),
+            )
+            if not discovered_jobs:
+                logger.warning("Backfill scoring: no new jobs to score")
+                return {
+                    "scored_jobs": list(state.get("scored_jobs") or []),
+                    "agent_statuses": {"scoring": "done (backfill: no new jobs)"},
+                    "status": "tailoring",
+                }
+
         # Step 1: Deduplicate
         unique_jobs = _deduplicate_jobs(discovered_jobs)
 
@@ -313,6 +330,18 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         if len(scored_jobs) > max_jobs:
             logger.info("Capping scored jobs from %d to %d (session config)", len(scored_jobs), max_jobs)
             scored_jobs = scored_jobs[:max_jobs]
+
+        # On backfill rounds, merge new scores with previously scored jobs
+        if state.get("backfill_rounds", 0) > 0:
+            prev_scored = list(state.get("scored_jobs") or [])
+            new_ids = {sj.job_id for sj in scored_jobs}
+            merged = [sj for sj in prev_scored if sj.job_id not in new_ids] + scored_jobs
+            merged.sort(key=lambda sj: sj.score, reverse=True)
+            scored_jobs = merged
+            logger.info(
+                "Backfill scoring: merged %d previous + %d new = %d total scored jobs",
+                len(prev_scored), len(new_ids), len(scored_jobs),
+            )
 
         logger.info(
             "Scoring agent finished -- %d jobs scored, top score=%d",
