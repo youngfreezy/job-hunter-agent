@@ -147,7 +147,7 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="font-medium text-zinc-500">Max jobs</p>
-              <p>{values.maxJobs ?? 20}</p>
+              <p>{values.maxJobs ?? 5}</p>
             </div>
             <div>
               <p className="font-medium text-zinc-500">Tailoring quality</p>
