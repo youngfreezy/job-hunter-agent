@@ -176,7 +176,7 @@ async def _trigger_scrape(
     try:
         async with session.post(
             url,
-            json=inputs,
+            json={"input": inputs},
             headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
