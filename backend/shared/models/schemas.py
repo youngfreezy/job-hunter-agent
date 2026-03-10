@@ -161,12 +161,31 @@ class CoverLetter(BaseModel):
     tone: str = "professional"
 
 
+class ApplicationErrorCategory(str, Enum):
+    """Structured error categories for application failures."""
+    AUTH_REQUIRED = "auth_required"
+    FORM_NAVIGATION = "form_navigation"
+    FORM_FILL_ERROR = "form_fill_error"
+    SUBMIT_FAILED = "submit_failed"
+    NO_CONFIRMATION = "no_confirmation"
+    CAPTCHA = "captcha"
+    JOB_EXPIRED = "job_expired"
+    TIMEOUT = "timeout"
+    CREDIT_INSUFFICIENT = "credit_insufficient"
+    DUPLICATE = "duplicate"
+    RATE_LIMITED = "rate_limited"
+    UNKNOWN = "unknown"
+
+
 class ApplicationResult(BaseModel):
     """Result of an application attempt."""
     job_id: str
     status: ApplicationStatus
     screenshot_url: Optional[str] = None
     error_message: Optional[str] = None
+    error_category: Optional[ApplicationErrorCategory] = None
+    ats_type: Optional[str] = None
+    failure_step: Optional[str] = None  # page_load, form_fill, submit, confirmation
     cover_letter_used: Optional[str] = None
     duration_seconds: Optional[int] = None
     submitted_at: Optional[datetime] = None

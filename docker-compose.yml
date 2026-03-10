@@ -45,5 +45,20 @@ services:
         condition: service_healthy
     init: true
 
+  skyvern:
+    image: public.ecr.aws/skyvern-ai/skyvern:latest
+    container_name: jobhunter_skyvern
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ENABLE_ANTHROPIC: "true"
+      LLM_KEY: ANTHROPIC
+      SKYVERN_TELEMETRY: "false"
+      DATABASE_STRING: postgresql://${POSTGRES_USER:-jobhunter}:${POSTGRES_PASSWORD:-jobhunter_dev}@postgres:5432/skyvern
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:
