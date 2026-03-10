@@ -188,6 +188,17 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
 
         # Determine which jobs to tailor
         application_queue: List[str] = state.get("application_queue", [])
+
+        # On backfill rounds, skip jobs already tailored in previous rounds
+        already_tailored = set((state.get("tailored_resumes") or {}).keys())
+        if state.get("backfill_rounds", 0) > 0 and already_tailored:
+            before = len(scored_jobs)
+            scored_jobs = [sj for sj in scored_jobs if sj.job.id not in already_tailored]
+            logger.info(
+                "Backfill tailoring: %d total scored, %d already tailored, %d new to tailor",
+                before, len(already_tailored), len(scored_jobs),
+            )
+
         if application_queue:
             jobs_to_tailor = [
                 sj for sj in scored_jobs if sj.job.id in application_queue
@@ -293,6 +304,15 @@ async def run_resume_tailor_agent(state: JobHunterState) -> dict:
         errors.append(f"Resume tailor agent error: {exc}")
         status = "failed"
         agent_status = f"failed -- {exc}"
+
+    # On backfill rounds, merge new tailored resumes with existing ones
+    if state.get("backfill_rounds", 0) > 0:
+        prev_resumes = dict(state.get("tailored_resumes") or {})
+        prev_scores = dict(state.get("resume_scores") or {})
+        prev_resumes.update(tailored_resumes)
+        prev_scores.update(resume_scores)
+        tailored_resumes = prev_resumes
+        resume_scores = prev_scores
 
     return {
         "tailored_resumes": tailored_resumes,

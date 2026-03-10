@@ -115,7 +115,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         errors.append(f"Discovery failed: {exc}")
         all_jobs = []
 
-    # Deduplicate
+    # Deduplicate within this batch
     seen_keys: set[str] = set()
     deduped: List[JobListing] = []
     for job in all_jobs:
@@ -123,6 +123,20 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         if key not in seen_keys:
             seen_keys.add(key)
             deduped.append(job)
+
+    # On backfill rounds, exclude jobs already seen in previous rounds
+    # (by title+company since IDs are regenerated each discovery)
+    if state.get("backfill_rounds", 0) > 0:
+        prev_keys: set[str] = set()
+        for prev_job in (state.get("discovered_jobs") or []):
+            prev_keys.add(_dedup_key(prev_job))
+        before_backfill = len(deduped)
+        deduped = [j for j in deduped if _dedup_key(j) not in prev_keys]
+        if before_backfill != len(deduped):
+            logger.info(
+                "Backfill dedup: %d -> %d jobs (excluded %d already seen)",
+                before_backfill, len(deduped), before_backfill - len(deduped),
+            )
 
     # Check which boards returned results
     boards_with_results = {

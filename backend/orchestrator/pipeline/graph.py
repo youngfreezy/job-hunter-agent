@@ -1,16 +1,18 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""LangGraph StateGraph for the 8-agent JobHunter pipeline.
+"""LangGraph StateGraph for the JobHunter pipeline.
 
 Pipeline stages:
     intake -> career_coach -> [HITL: review coached resume]
            -> discovery (sequential, single browser) -> scoring
            -> resume_tailor -> [HITL: review shortlist]
            -> application (loop with circuit breaker) -> verification
+           -> backfill_prep (if submitted < max_jobs) -> discovery (loop)
            -> reporting
 
-Discovery scrapes all 5 job boards sequentially through a single shared
-browser process.  Application uses Playwright for form filling.
+Self-correcting backfill: after verification, if submitted applications are
+below the user's max_jobs target, the pipeline loops back through discovery →
+scoring → tailoring → application → verification again, up to 3 rounds.
 """
 
 from __future__ import annotations
@@ -22,6 +24,9 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from backend.shared.config import MAX_APPLICATION_JOBS
+from backend.shared.event_bus import emit_agent_event
+
+from backend.orchestrator.pipeline.backfill import should_backfill
 
 from backend.orchestrator.agents import (
     application,
@@ -257,24 +262,41 @@ def route_after_supervise_after_scoring(state: JobHunterState) -> str:
 
 
 async def auto_approve_gate(state: JobHunterState) -> dict:
-    """If autopilot auto-approve is set, populate application_queue and skip shortlist review."""
+    """If autopilot or backfill round, populate application_queue and skip shortlist review."""
     prefs = state.get("preferences") or {}
-    if isinstance(prefs, dict) and prefs.get("_autopilot_auto_approve"):
+    is_autopilot = isinstance(prefs, dict) and prefs.get("_autopilot_auto_approve")
+    is_backfill = state.get("backfill_rounds", 0) > 0
+
+    if is_autopilot or is_backfill:
         all_scored = state.get("scored_jobs") or []
-        top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
-        approved_ids = [sj.job_id for sj in top_scored]
+        # On backfill, only queue jobs not already attempted
+        done_ids: set[str] = set()
+        if is_backfill:
+            done_ids = (
+                {r.job_id for r in (state.get("applications_submitted") or [])}
+                | {r.job_id for r in (state.get("applications_failed") or [])}
+                | set(state.get("applications_skipped") or [])
+            )
+        top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)
+        approved_ids = [
+            sj.job_id for sj in top_scored
+            if sj.job_id not in done_ids
+        ][:MAX_APPLICATION_JOBS]
+        label = "backfill" if is_backfill else "autopilot"
         logger.info(
-            "Auto-approve gate: approving %d jobs for autopilot session",
-            len(approved_ids),
+            "Auto-approve gate (%s): approving %d jobs",
+            label, len(approved_ids),
         )
         return {"application_queue": approved_ids, "consecutive_failures": 0}
     return {}
 
 
 def _route_after_auto_approve_gate(state: JobHunterState) -> str:
-    """Route to application (via supervise) if auto-approved, otherwise to shortlist_review."""
+    """Route to application (via supervise) if auto-approved or backfill, otherwise to shortlist_review."""
     prefs = state.get("preferences") or {}
-    if isinstance(prefs, dict) and prefs.get("_autopilot_auto_approve"):
+    is_autopilot = isinstance(prefs, dict) and prefs.get("_autopilot_auto_approve")
+    is_backfill = state.get("backfill_rounds", 0) > 0
+    if is_autopilot or is_backfill:
         return "supervise_after_shortlist"
     return "shortlist_review"
 
@@ -390,6 +412,7 @@ def route_after_pause_gate(
     "shortlist_review",
     "application",
     "verification",
+    "backfill_prep",
     "reporting",
 ]:
     if state.get("pause_requested"):
@@ -404,6 +427,7 @@ def route_after_pause_gate(
         "shortlist_review",
         "application",
         "verification",
+        "backfill_prep",
         "reporting",
     }
     if target not in allowed:
@@ -425,6 +449,72 @@ async def verification_node(state: JobHunterState) -> dict:
 async def reporting_node(state: JobHunterState) -> dict:
     """Generate a session summary report."""
     return await reporting.run(state)
+
+
+# ---------------------------------------------------------------------------
+# Backfill (self-correcting loop)
+# ---------------------------------------------------------------------------
+
+
+def _get_max_jobs(state: JobHunterState) -> int:
+    """Extract the user's max_jobs target from session config."""
+    config = state.get("session_config")
+    if config:
+        cfg = config if isinstance(config, dict) else (
+            config.model_dump() if hasattr(config, "model_dump") else {}
+        )
+        return cfg.get("max_jobs", 20) or 20
+    return 20
+
+
+async def backfill_prep_node(state: JobHunterState) -> dict:
+    """Prepare state for a backfill round — collect seen IDs and bump counter."""
+    submitted = len(state.get("applications_submitted") or [])
+    max_jobs = _get_max_jobs(state)
+    deficit = max_jobs - submitted
+    rounds = state.get("backfill_rounds", 0)
+
+    # Collect all job IDs we've already seen (for dedup in next discovery)
+    seen_ids = [str(job.id) for job in (state.get("discovered_jobs") or [])]
+
+    await emit_agent_event(state["session_id"], "backfill_progress", {
+        "step": f"Backfill round {rounds + 1}: need {deficit} more applications",
+        "submitted": submitted,
+        "target": max_jobs,
+        "round": rounds + 1,
+    })
+
+    return {
+        "backfill_rounds": rounds + 1,
+        "discovered_job_ids_seen": seen_ids,
+        "_prev_backfill_submitted": submitted,
+        "consecutive_failures": 0,
+        "status": "discovering",
+    }
+
+
+def route_after_verification(state: JobHunterState) -> str:
+    """After verification, check if we need more applications (backfill)."""
+    submitted = len(state.get("applications_submitted") or [])
+    max_jobs = _get_max_jobs(state)
+
+    if should_backfill(state, submitted, max_jobs):
+        logger.info(
+            "Backfill: %d/%d submitted, round %d — routing to backfill_prep",
+            submitted, max_jobs, state.get("backfill_rounds", 0),
+        )
+        return "backfill_prep"
+    return "reporting"
+
+
+def route_after_supervise_after_verification(state: JobHunterState) -> str:
+    if state.get("pause_requested"):
+        return "pause_gate"
+    return route_after_verification(state)
+
+
+def _continue_after_verification(state: JobHunterState) -> str:
+    return route_after_verification(state)
 
 
 # ===================================================================
@@ -466,7 +556,8 @@ def build_graph(checkpointer=None):
     g.add_node("application", application_node)
     g.add_node("supervise_after_application", make_workflow_supervisor_node(_continue_after_application))
     g.add_node("verification", verification_node)
-    g.add_node("supervise_after_verification", make_workflow_supervisor_node(_continue_to_reporting))
+    g.add_node("supervise_after_verification", make_workflow_supervisor_node(_continue_after_verification))
+    g.add_node("backfill_prep", backfill_prep_node)
     g.add_node("pause_gate", pause_gate_node)
     g.add_node("supervise_after_pause", make_workflow_supervisor_node(_continue_after_pause))
     g.add_node("reporting", reporting_node)
@@ -555,13 +646,14 @@ def build_graph(checkpointer=None):
     )
     g.add_edge("application", "supervise_after_application")
 
-    # 10. verification -> reporting
+    # 10. verification -> reporting OR backfill_prep (self-correcting loop)
     g.add_edge("verification", "supervise_after_verification")
     g.add_conditional_edges(
         "supervise_after_verification",
-        lambda state: route_after_supervise_after_simple_stage(state, default_next="reporting"),
-        {"reporting": "reporting", "pause_gate": "pause_gate"},
+        route_after_supervise_after_verification,
+        {"reporting": "reporting", "backfill_prep": "backfill_prep", "pause_gate": "pause_gate"},
     )
+    g.add_edge("backfill_prep", "discovery")
 
     g.add_edge("pause_gate", "supervise_after_pause")
     g.add_conditional_edges(
@@ -576,6 +668,7 @@ def build_graph(checkpointer=None):
             "shortlist_review": "shortlist_review",
             "application": "application",
             "verification": "verification",
+            "backfill_prep": "backfill_prep",
             "reporting": "reporting",
         },
     )
