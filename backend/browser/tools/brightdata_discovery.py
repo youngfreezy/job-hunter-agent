@@ -43,7 +43,7 @@ _BOARD_TO_ENUM: Dict[str, JobBoard] = {
 
 # Polling config
 _POLL_INTERVAL = 10  # seconds
-_MAX_POLL_TIME = 300  # 5 minutes max wait per board
+_MAX_POLL_TIME = 600  # 10 minutes max wait per board (6 keywords = ~3-5 min)
 
 
 def _get_api_token() -> str:
@@ -291,10 +291,18 @@ async def _scrape_board_api(
     raw_results = await _poll_results(session, snapshot_id, board, token)
 
     jobs = []
+    parse_failures = 0
     for raw in raw_results:
         job = _parse_job(raw, board)
         if job:
             jobs.append(job)
+        else:
+            parse_failures += 1
+    if parse_failures:
+        logger.info(
+            "Bright Data %s: %d records failed to parse (missing title/company/url)",
+            board, parse_failures,
+        )
 
     # Cap results
     jobs = jobs[:max_results]
