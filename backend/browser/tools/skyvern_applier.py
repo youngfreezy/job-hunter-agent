@@ -94,6 +94,14 @@ def _build_navigation_goal(
         "After filling all required fields, click the Submit/Apply button."
     )
     parts.append(
+        "IMPORTANT: For any required field where you do not have the user's "
+        "data, use a reasonable default — for salary fields enter the "
+        "salary_expectation from the provided data or 'Negotiable', for "
+        "start dates enter 'Immediately', for yes/no authorization questions "
+        "select 'Yes', for other free-text fields write a brief plausible "
+        "answer. NEVER leave a required field empty or produce a null value."
+    )
+    parts.append(
         "If the page asks you to create an account or log in, STOP and report "
         "'auth_required' as the failure reason."
     )
@@ -126,6 +134,8 @@ def _build_navigation_payload(
         payload["phone"] = user_profile["phone"]
     if user_profile.get("location"):
         payload["location"] = user_profile["location"]
+    if user_profile.get("salary_expectation"):
+        payload["salary_expectation"] = user_profile["salary_expectation"]
 
     if resume_text:
         # Truncate for payload size limits (Skyvern sends this to LLM)

@@ -515,6 +515,11 @@ async def _extract_user_profile(state: JobHunterState) -> Dict[str, str]:
     if loc_match:
         profile["location"] = loc_match.group(1)
 
+    # Salary expectation from session config
+    salary_min = state.get("salary_min")
+    if salary_min:
+        profile["salary_expectation"] = f"${salary_min:,}"
+
     return profile
 
 
