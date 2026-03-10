@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Redis-backed token store  (key: gmail_token:{session_id})
 # ---------------------------------------------------------------------------
 
-_GMAIL_TOKEN_TTL = 7200  # 2 hours
+_GMAIL_TOKEN_TTL = 28800  # 8 hours
 
 
 async def store_gmail_token(
@@ -59,12 +59,17 @@ def _build_gmail_service(creds):
 
 
 async def _get_service(session_id: str):
-    """Return a Gmail API service for *session_id*, or None."""
+    """Return a Gmail API service for *session_id*, or None.
+
+    If the access token is expired and a refresh token + client credentials
+    are available, attempts an automatic refresh and updates Redis.
+    """
     data = await redis_client.get_json(f"gmail_token:{session_id}")
     if not data:
         return None
     try:
         from google.oauth2.credentials import Credentials
+        import google.auth.transport.requests  # noqa: E402
 
         creds = Credentials(
             token=data["access_token"],
@@ -73,9 +78,24 @@ async def _get_service(session_id: str):
             client_id=data.get("client_id"),
             client_secret=data.get("client_secret"),
         )
+
+        # Attempt refresh if token is expired and we have credentials to do so
+        if creds.expired and creds.refresh_token and creds.client_id and creds.client_secret:
+            logger.info("Gmail token expired for session %s — refreshing", session_id)
+            creds.refresh(google.auth.transport.requests.Request())
+            # Persist the refreshed token back to Redis
+            await store_gmail_token(
+                session_id=session_id,
+                access_token=creds.token,
+                refresh_token=creds.refresh_token,
+                client_id=creds.client_id,
+                client_secret=creds.client_secret,
+            )
+            logger.info("Gmail token refreshed successfully for session %s", session_id)
+
         return _build_gmail_service(creds)
     except Exception:
-        logger.exception("Failed to build Gmail service for %s", session_id)
+        logger.exception("Failed to build/refresh Gmail service for %s", session_id)
         return None
 
 
@@ -174,7 +194,12 @@ async def poll_for_verification_code(
     """
     service = await _get_service(session_id)
     if not service:
-        logger.warning("No Gmail token for session %s — skipping auto-extraction", session_id)
+        # Check if there's no token at all vs a broken one
+        data = await redis_client.get_json(f"gmail_token:{session_id}")
+        if not data:
+            logger.warning("No Gmail token for session %s — user may not have signed in with Google", session_id)
+        else:
+            logger.warning("Gmail token exists but service build failed for session %s — token may be expired/invalid", session_id)
         return None
 
     # Build search query — look for recent verification/confirmation emails
