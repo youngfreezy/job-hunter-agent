@@ -70,28 +70,29 @@ def _build_inputs(
     """
     inputs = []
     location = search_config.locations[0] if search_config.locations else ""
+    # Glassdoor/Indeed require a non-empty location
+    default_location = location or "United States"
 
     for kw in search_config.keywords:
         if board == "indeed":
             entry: Dict[str, Any] = {
                 "keyword_search": kw,
-                "location": location,
+                "location": default_location,
                 "country": "US",
                 "domain": "indeed.com",
             }
         elif board == "glassdoor":
             entry = {
                 "keyword": kw,
-                "location": location,
+                "location": default_location,
                 "country": "US",
             }
         else:
             # LinkedIn (and any future boards)
-            entry = {"keyword": kw}
-            if location:
-                entry["location"] = location
+            entry = {"keyword": kw, "location": default_location}
             if search_config.remote_only:
                 entry["remote"] = "Remote"
+            # Only set experience_level if we have a valid mapped value
             if getattr(search_config, "experience_level", None):
                 level_map = {
                     "entry": "Entry level",
@@ -99,16 +100,19 @@ def _build_inputs(
                     "senior": "Mid-Senior level",
                     "executive": "Executive",
                 }
-                entry["experience_level"] = level_map.get(
-                    search_config.experience_level, ""
-                )
+                mapped = level_map.get(search_config.experience_level)
+                if mapped:
+                    entry["experience_level"] = mapped
+            # Only set job_type if we have a valid mapped value
             if getattr(search_config, "job_type", None):
                 type_map = {
                     "full-time": "Full-time",
                     "contract": "Contract",
                     "part-time": "Part-time",
                 }
-                entry["job_type"] = type_map.get(search_config.job_type, "")
+                mapped = type_map.get(search_config.job_type)
+                if mapped:
+                    entry["job_type"] = mapped
             entry["time_range"] = "Past month"
 
         inputs.append(entry)
