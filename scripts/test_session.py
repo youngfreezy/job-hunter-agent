@@ -278,12 +278,16 @@ def monitor_session(
                 if (
                     auto_approve_shortlist
                     and not shortlist_approved
-                    and event_type in ("hitl", "status")
+                    and event_type in ("hitl", "status", "shortlist_review")
                     and data.get("status") == "awaiting_review"
                 ):
-                    shortlist = data.get("shortlist", [])
-                    job_ids = [j.get("job", {}).get("id", j.get("id", "")) for j in shortlist]
-                    job_ids = [jid for jid in job_ids if jid]
+                    scored_jobs = data.get("scored_jobs", data.get("shortlist", []))
+                    job_ids = []
+                    for sj in scored_jobs:
+                        if isinstance(sj, dict):
+                            jid = sj.get("job", {}).get("id") if isinstance(sj.get("job"), dict) else sj.get("job_id", sj.get("id", ""))
+                            if jid:
+                                job_ids.append(jid)
                     if job_ids:
                         print(f"\n  🤖 Auto-approving shortlist ({len(job_ids)} jobs)...")
                         time.sleep(2)
@@ -453,7 +457,7 @@ def main():
     monitor_session(
         base_url, token, session_id,
         auto_approve_coaching=True,
-        auto_approve_shortlist=args.skip_shortlist,
+        auto_approve_shortlist=True,
     )
 
 
