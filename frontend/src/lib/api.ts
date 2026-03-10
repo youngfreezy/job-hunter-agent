@@ -239,7 +239,14 @@ export async function startSession(params: {
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error(`Failed to start session: ${res.statusText}`);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {}
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
   return res.json();
 }
 

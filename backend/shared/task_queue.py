@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-MAX_CONCURRENT_PER_USER: int = 2
+MAX_CONCURRENT_PER_USER: int = 5
 TASK_META_TTL: int = 86400  # 24 hours
 
 # Redis key helpers
