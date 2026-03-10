@@ -96,10 +96,27 @@ async def _tailor_single(
         f"## Job URL\n{job.job.url}\n"
     )
 
+    # Inject ATS-specific formatting guidance from application feedback loop
+    system_prompt = TAILOR_SYSTEM
+    ats_type = getattr(job.job, "ats_type", None)
+    if ats_type and str(ats_type) != "unknown":
+        try:
+            from backend.optimization.application_feedback import get_ats_tips
+            ats_val = str(ats_type.value) if hasattr(ats_type, "value") else str(ats_type)
+            tips = get_ats_tips(ats_val)
+            if tips:
+                system_prompt += (
+                    f"\n\n## ATS Formatting Guidance\n"
+                    f"This resume will be submitted to a {ats_val.capitalize()} ATS. "
+                    f"Optimize accordingly: {tips}"
+                )
+        except Exception:
+            pass  # Don't block tailoring if feedback lookup fails
+
     structured_llm = llm.with_structured_output(TailorResult)
 
     messages = [
-        SystemMessage(content=TAILOR_SYSTEM),
+        SystemMessage(content=system_prompt),
         HumanMessage(content=user_content),
     ]
     result: TailorResult = await invoke_with_retry(structured_llm, messages)

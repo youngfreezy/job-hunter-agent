@@ -257,6 +257,16 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
         except Exception:
             logger.warning("Failed to record session outcome", exc_info=True)
 
+        # --- Refresh ATS strategies from application feedback loop ---
+        try:
+            from backend.optimization.application_feedback import refresh_all_strategies
+            import asyncio
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, refresh_all_strategies)
+            logger.info("Triggered ATS strategy refresh from application feedback")
+        except Exception:
+            logger.warning("ATS strategy refresh failed", exc_info=True)
+
     except Exception as exc:
         logger.exception("Reporting agent failed")
         errors.append(f"Reporting agent error: {exc}")
