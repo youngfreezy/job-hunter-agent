@@ -124,7 +124,7 @@ class JobListing(BaseModel):
     title: str
     company: str
     location: str
-    url: str
+    url: str  # Board listing URL (e.g. linkedin.com/jobs/view/123)
     board: JobBoard
     ats_type: ATSType = ATSType.UNKNOWN
     salary_range: Optional[str] = None
@@ -132,6 +132,7 @@ class JobListing(BaseModel):
     posted_date: Optional[str] = None
     is_remote: bool = False
     is_easy_apply: bool = False
+    external_apply_url: Optional[str] = None  # Direct ATS URL (e.g. boards.greenhouse.io/...)
     discovered_at: datetime = Field(default_factory=datetime.utcnow)
 
 

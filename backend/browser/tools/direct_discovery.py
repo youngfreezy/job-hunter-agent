@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional
+from urllib.parse import urlparse, parse_qs, unquote
 
 import aiohttp
 
@@ -29,6 +30,179 @@ from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import JobListing, SearchConfig
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# External ATS URL extraction (runs after card scraping)
+# ---------------------------------------------------------------------------
+
+# Domains that host direct application forms (no board login needed)
+_ATS_DOMAINS = [
+    "greenhouse.io", "boards.greenhouse.io",
+    "lever.co", "jobs.lever.co",
+    "myworkdayjobs.com", "wd1.myworkdayjobs.com", "wd3.myworkdayjobs.com",
+    "wd5.myworkdayjobs.com",
+    "smartrecruiters.com", "jobs.smartrecruiters.com",
+    "icims.com", "jobvite.com", "ashbyhq.com",
+    "bamboohr.com", "breezy.hr", "recruitee.com",
+    "workable.com", "jazz.co", "applytojob.com",
+]
+
+# Board domains whose job URLs require login to apply
+_BOARD_GATED_HOSTS = {"linkedin.com", "indeed.com", "glassdoor.com"}
+
+# Selectors for "Apply on company website" links on job detail pages
+_APPLY_LINK_SELECTORS = [
+    'a[href*="greenhouse.io"]',
+    'a[href*="lever.co"]',
+    'a[href*="myworkdayjobs.com"]',
+    'a[href*="smartrecruiters.com"]',
+    'a[href*="icims.com"]',
+    'a[href*="jobvite.com"]',
+    'a[href*="ashbyhq.com"]',
+    'a:has-text("Apply on company")',
+    'a:has-text("Apply on employer")',
+    'a:has-text("apply on company")',
+    'a:has-text("External Apply")',
+    'a.job_apply_url',
+    'a[data-testid="apply-link"]',
+]
+
+
+def _extract_ats_url(href: str) -> str | None:
+    """Extract a direct ATS URL from a link, handling LinkedIn redirects."""
+    if not href:
+        return None
+    href_lower = href.lower()
+
+    # LinkedIn externalApply pattern: ...externalApply/ID?url=ENCODED_ATS_URL
+    if "externalapply" in href_lower:
+        try:
+            parsed = urlparse(href)
+            params = parse_qs(parsed.query)
+            if "url" in params:
+                decoded = unquote(params["url"][0])
+                if any(d in decoded.lower() for d in _ATS_DOMAINS):
+                    return decoded
+        except Exception:
+            pass
+
+    # Direct ATS link
+    if any(d in href_lower for d in _ATS_DOMAINS):
+        return href
+
+    return None
+
+
+async def _find_ats_link_on_page(page: Any) -> str | None:
+    """Search a job detail page for an external ATS apply link."""
+    # Try targeted selectors
+    for sel in _APPLY_LINK_SELECTORS:
+        try:
+            el = await page.query_selector(sel)
+            if el:
+                href = await el.get_attribute("href")
+                result = _extract_ats_url(href)
+                if result:
+                    return result
+        except Exception:
+            continue
+
+    # Scan all links on the page
+    try:
+        links = await page.evaluate("""() => {
+            return Array.from(document.querySelectorAll('a[href]'))
+                .map(a => a.href)
+        }""")
+        for href in (links or []):
+            result = _extract_ats_url(href)
+            if result:
+                return result
+    except Exception:
+        pass
+
+    # LinkedIn: try clicking the Apply button to reveal external link in modal
+    try:
+        apply_btn = await page.query_selector(
+            'button.sign-up-modal__outlet-btn, '
+            'button.sign-up-modal__outlet, '
+            'button[data-tracking-control-name*="apply"], '
+            'button.apply-button'
+        )
+        if apply_btn:
+            btn_text = await apply_btn.inner_text()
+            if "easy" not in btn_text.lower():
+                await apply_btn.click()
+                await asyncio.sleep(1.5)
+                modal_links = await page.evaluate("""() => {
+                    return Array.from(document.querySelectorAll('a[href]'))
+                        .map(a => a.href)
+                        .filter(h => h.includes('externalApply') ||
+                                    h.includes('greenhouse') ||
+                                    h.includes('lever.co') ||
+                                    h.includes('myworkdayjobs') ||
+                                    h.includes('smartrecruiters'))
+                }""")
+                for href in (modal_links or []):
+                    result = _extract_ats_url(href)
+                    if result:
+                        return result
+    except Exception:
+        pass
+
+    return None
+
+
+def _is_board_gated(url: str) -> bool:
+    """Check if a job URL is on a board that requires login to apply."""
+    try:
+        host = urlparse(url).hostname or ""
+        return any(host == d or host.endswith(f".{d}") for d in _BOARD_GATED_HOSTS)
+    except Exception:
+        return False
+
+
+async def _extract_external_urls(
+    context: Any,
+    listings: List[JobListing],
+    session_id: str,
+) -> None:
+    """Visit each board-gated job's detail page and extract external ATS URLs.
+
+    Modifies listings in-place by setting ``external_apply_url`` when found.
+    Processes up to 3 concurrently to avoid triggering rate limits.
+    """
+    board_gated = [j for j in listings if _is_board_gated(j.url)]
+    if not board_gated:
+        return
+
+    logger.info(
+        "Extracting external apply URLs for %d board-gated jobs", len(board_gated),
+    )
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": "all",
+        "step": f"Extracting direct apply links for {len(board_gated)} jobs...",
+    })
+
+    sem = asyncio.Semaphore(3)
+
+    async def _process(job: JobListing) -> None:
+        async with sem:
+            page = await context.new_page()
+            try:
+                await page.goto(job.url, wait_until="domcontentloaded", timeout=20000)
+                await page.wait_for_timeout(2000)
+                ats_url = await _find_ats_link_on_page(page)
+                if ats_url:
+                    job.external_apply_url = ats_url
+                    logger.info(
+                        "External URL for '%s': %s", job.title, ats_url[:80],
+                    )
+            except Exception:
+                logger.debug("Failed to extract external URL for '%s'", job.title)
+            finally:
+                await page.close()
+
+    await asyncio.gather(*[_process(j) for j in board_gated])
 
 # Board name -> scraper function
 _BOARD_SCRAPERS = {
@@ -78,6 +252,24 @@ async def _scrape_board(
             timeout=timeout,
         )
         logger.info("Direct scrape of %s: %d raw jobs", board, len(listings))
+
+        # Extract external ATS URLs from board-gated job detail pages.
+        # This turns board URLs (linkedin.com/jobs/view/X) into direct
+        # ATS URLs (boards.greenhouse.io/company/jobs/Y) so the applier
+        # can skip the board login wall entirely.
+        if listings:
+            try:
+                await _extract_external_urls(context, listings, session_id)
+                ext_count = sum(1 for j in listings if j.external_apply_url)
+                logger.info(
+                    "%s: extracted %d/%d external apply URLs",
+                    board, ext_count, len(listings),
+                )
+            except Exception:
+                logger.warning(
+                    "External URL extraction failed for %s (non-fatal)", board,
+                    exc_info=True,
+                )
 
         # LLM-rank and return top N per board
         if listings:
