@@ -169,31 +169,40 @@ async def _extract_external_urls(
     """Visit each board-gated job's detail page and extract external ATS URLs.
 
     Modifies listings in-place by setting ``external_apply_url`` when found.
-    Processes up to 3 concurrently to avoid triggering rate limits.
+    Only processes LinkedIn jobs — Indeed/Glassdoor rarely expose external
+    links without login.  Runs up to 8 concurrent page visits with a 3-minute
+    overall timeout to avoid blocking discovery.
     """
-    board_gated = [j for j in listings if _is_board_gated(j.url)]
+    # Only LinkedIn exposes external ATS links on public detail pages
+    board_gated = [
+        j for j in listings
+        if _is_board_gated(j.url) and "linkedin.com" in (j.url or "").lower()
+    ]
     if not board_gated:
         return
 
     logger.info(
-        "Extracting external apply URLs for %d board-gated jobs", len(board_gated),
+        "Extracting external apply URLs for %d LinkedIn jobs", len(board_gated),
     )
     await emit_agent_event(session_id, "discovery_progress", {
-        "board": "all",
-        "step": f"Extracting direct apply links for {len(board_gated)} jobs...",
+        "board": "linkedin",
+        "step": f"Extracting direct apply links for {len(board_gated)} LinkedIn jobs...",
     })
 
-    sem = asyncio.Semaphore(3)
+    sem = asyncio.Semaphore(8)
+    found_count = 0
 
     async def _process(job: JobListing) -> None:
+        nonlocal found_count
         async with sem:
             page = await context.new_page()
             try:
-                await page.goto(job.url, wait_until="domcontentloaded", timeout=20000)
-                await page.wait_for_timeout(2000)
+                await page.goto(job.url, wait_until="domcontentloaded", timeout=12000)
+                await page.wait_for_timeout(1000)
                 ats_url = await _find_ats_link_on_page(page)
                 if ats_url:
                     job.external_apply_url = ats_url
+                    found_count += 1
                     logger.info(
                         "External URL for '%s': %s", job.title, ats_url[:80],
                     )
@@ -202,7 +211,22 @@ async def _extract_external_urls(
             finally:
                 await page.close()
 
-    await asyncio.gather(*[_process(j) for j in board_gated])
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*[_process(j) for j in board_gated]),
+            timeout=180,  # 3 minute max for entire extraction phase
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "External URL extraction timed out after 180s (found %d so far)",
+            found_count,
+        )
+
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": "linkedin",
+        "step": f"Found {found_count} direct apply links from {len(board_gated)} LinkedIn jobs",
+        "count": found_count,
+    })
 
 # Board name -> scraper function
 _BOARD_SCRAPERS = {
