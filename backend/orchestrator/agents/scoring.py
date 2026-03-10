@@ -334,8 +334,8 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # On backfill rounds, merge new scores with previously scored jobs
         if state.get("backfill_rounds", 0) > 0:
             prev_scored = list(state.get("scored_jobs") or [])
-            new_ids = {sj.job_id for sj in scored_jobs}
-            merged = [sj for sj in prev_scored if sj.job_id not in new_ids] + scored_jobs
+            new_ids = {str(sj.job.id) for sj in scored_jobs}
+            merged = [sj for sj in prev_scored if str(sj.job.id) not in new_ids] + scored_jobs
             merged.sort(key=lambda sj: sj.score, reverse=True)
             scored_jobs = merged
             logger.info(

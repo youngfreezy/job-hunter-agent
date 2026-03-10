@@ -280,8 +280,8 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
             )
         top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)
         approved_ids = [
-            sj.job_id for sj in top_scored
-            if sj.job_id not in done_ids
+            str(sj.job.id) for sj in top_scored
+            if str(sj.job.id) not in done_ids
         ][:MAX_APPLICATION_JOBS]
         label = "backfill" if is_backfill else "autopilot"
         logger.info(
