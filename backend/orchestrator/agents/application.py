@@ -1242,6 +1242,25 @@ async def run_application_agent(state: JobHunterState) -> dict:
         except Exception:
             pass
 
+    # Feed anonymized results to Moltbook performance tracker
+    try:
+        from backend.moltbook.feedback_loop import record_application_result
+        for r in submitted:
+            record_application_result(
+                board=getattr(r, "board", "") or "",
+                ats_type=getattr(r, "ats_type", "") or "",
+                success=True,
+            )
+        for r in failed:
+            record_application_result(
+                board=getattr(r, "board", "") or "",
+                ats_type=getattr(r, "ats_type", "") or "",
+                success=False,
+                blocker=getattr(r, "error_category", "") or "",
+            )
+    except Exception:
+        pass  # Moltbook feedback is best-effort
+
     return {
         "applications_submitted": submitted,
         "applications_failed": failed,

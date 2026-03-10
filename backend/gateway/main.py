@@ -151,6 +151,14 @@ async def lifespan(app: FastAPI):
             channel="autopilot_schedules_changed",
             fallback_interval_seconds=300,
         )
+
+        # Schedule Moltbook self-improvement loop (every 30 min)
+        if settings.MOLTBOOK_ENABLED and settings.MOLTBOOK_API_KEY:
+            from backend.moltbook.cron import run as moltbook_run
+            schedule_seconds("moltbook-cron", moltbook_run, interval_seconds=1800)
+            logger.info("Moltbook cron scheduled (every 30 min)")
+        else:
+            logger.info("Moltbook integration disabled (MOLTBOOK_ENABLED=%s)", settings.MOLTBOOK_ENABLED)
     except Exception as exc:
         logger.warning(
             "Postgres checkpointer unavailable (%s); falling back to MemorySaver",
