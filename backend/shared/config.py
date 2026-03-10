@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     SKYVERN_API_URL: str = "http://localhost:8080/api/v1"
     SKYVERN_API_KEY: Optional[str] = None  # Required for cloud; optional for self-hosted
     SKYVERN_ENABLED: bool = False  # Feature flag to enable Skyvern applier
-    SKYVERN_TASK_TIMEOUT: int = 900  # Max seconds to wait for a task to complete (15 min)
+    SKYVERN_TASK_TIMEOUT: int = 1800  # Max seconds to wait for a task to complete (30 min)
 
     model_config = {
         "env_file": (
