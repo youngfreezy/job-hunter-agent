@@ -95,7 +95,7 @@ const pricingPacks = [
     price: 99.99,
     priceLabel: "$99.99",
     perApp: "$2.00",
-    perDay: "$3.33/day",
+    perDay: "$6.67/day",
     summary: "Best value for serious job searches.",
     features: [
       "50 application credits",
