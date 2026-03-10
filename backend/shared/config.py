@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     BRIGHT_DATA_API_TOKEN: Optional[str] = None
     BRIGHT_DATA_DISCOVERY_ENABLED: bool = False
 
+    # --- Bright Data MCP (agentic discovery) ---
+    BRIGHT_DATA_MCP_TOKEN: Optional[str] = None
+
     # --- Skyvern (AI browser agent for job applications) ---
     SKYVERN_API_URL: str = "http://localhost:8080/api/v1"
     SKYVERN_API_KEY: Optional[str] = None  # Required for cloud; optional for self-hosted
