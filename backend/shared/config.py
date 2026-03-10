@@ -117,7 +117,7 @@ class Settings(BaseSettings):
 # ---------------------------------------------------------------------------
 # Pipeline constants
 # ---------------------------------------------------------------------------
-MAX_APPLICATION_JOBS = 20  # Max jobs shown/approved/tailored per session
+MAX_APPLICATION_JOBS = 5  # Max jobs shown/approved/tailored per session
 
 # Singleton – import this everywhere instead of re-instantiating.
 settings = Settings()  # type: ignore[call-arg]
