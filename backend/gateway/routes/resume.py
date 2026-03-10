@@ -67,7 +67,7 @@ async def analyze_resume(body: ResumeAnalyzeRequest, request: Request):
         raise HTTPException(status_code=400, detail="Resume text is too short to analyze")
 
     try:
-        llm = build_llm(model=light_model(), max_tokens=1024, temperature=0.0)
+        llm = build_llm(model=light_model(), max_tokens=4096, temperature=0.0)
         structured_llm = llm.with_structured_output(SearchConfig)
 
         messages = [
