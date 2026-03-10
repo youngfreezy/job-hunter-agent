@@ -26,7 +26,6 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
 from backend.orchestrator.pipeline.state import JobHunterState
@@ -239,109 +238,94 @@ async def _stream_graph(
 
     Returns the interrupt stage name (e.g. "coach_review") if the graph
     paused at an interrupt, or None if it ran to completion/failure.
+
+    Uses LangGraph v2 streaming — interrupts arrive as data in the stream
+    chunk (``chunk["interrupts"]``) instead of raising ``GraphInterrupt``.
     """
-    last_status = "unknown"
+    async for chunk in graph.astream(input_state, config=config, stream_mode="values", version="v2"):
+        # Yield to the event loop so health checks / SSE / API calls aren't starved
+        await asyncio.sleep(0)
 
-    try:
-        async for state_snapshot in graph.astream(input_state, config=config, stream_mode="values"):
-            # Yield to the event loop so health checks / SSE / API calls aren't starved
-            await asyncio.sleep(0)
+        state_snapshot = chunk["data"]
+        interrupts = chunk.get("interrupts", ())
 
-            status = state_snapshot.get("status", "unknown")
-            last_status = status
+        status = state_snapshot.get("status", "unknown")
 
-            # Update registry status
-            _set_session_status(session_id, status)
+        # Update registry status
+        _set_session_status(session_id, status)
 
-            # Emit agent-specific events based on current pipeline status
-            if status == "coaching" and state_snapshot.get("coach_output"):
-                await _emit(session_id, "coaching", {
-                    "status": "coaching",
-                    "coach_output": _serialize(state_snapshot["coach_output"]),
-                })
-
-            if status == "discovering":
-                await _emit(session_id, "discovery", {
-                    "status": "discovering",
-                    "jobs_found": len(state_snapshot.get("discovered_jobs", [])),
-                })
-
-            if status == "scoring" and state_snapshot.get("scored_jobs"):
-                await _emit(session_id, "scoring", {
-                    "status": "scoring",
-                    "scored_count": len(state_snapshot["scored_jobs"]),
-                    "top_score": max(
-                        (j.score for j in state_snapshot["scored_jobs"]),
-                        default=0,
-                    ),
-                })
-
-            if status == "awaiting_review":
-                all_scored = state_snapshot.get("scored_jobs", [])
-                top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
-                shortlist = [_serialize(sj) for sj in top_scored]
-                await _emit(session_id, "hitl", {
-                    "status": "awaiting_review",
-                    "shortlist": shortlist,
-                    "message": "Your top matches are ready — select the jobs you'd like to apply to.",
-                })
-
-            # Generic status update for every snapshot
-            await _emit(session_id, "status", {
-                "status": status,
-                "message": STATUS_MESSAGES.get(status, status),
-                "agent_statuses": state_snapshot.get("agent_statuses", {}),
+        # Emit agent-specific events based on current pipeline status
+        if status == "coaching" and state_snapshot.get("coach_output"):
+            await _emit(session_id, "coaching", {
+                "status": "coaching",
+                "coach_output": _serialize(state_snapshot["coach_output"]),
             })
 
-            # Agent completion signals
-            agent_statuses = state_snapshot.get("agent_statuses", {})
-            for agent_name, agent_status in agent_statuses.items():
-                if agent_status == "done":
-                    await _emit(session_id, "agent_complete", {
-                        "agent": agent_name,
-                        "status": "done",
-                    })
+        if status == "discovering":
+            await _emit(session_id, "discovery", {
+                "status": "discovering",
+                "jobs_found": len(state_snapshot.get("discovered_jobs", [])),
+            })
 
-            # Track application counts in registry + Postgres
-            _set_session_counts(
-                session_id,
-                len(state_snapshot.get("applications_submitted", [])),
-                len(state_snapshot.get("applications_failed", [])),
-            )
+        if status == "scoring" and state_snapshot.get("scored_jobs"):
+            await _emit(session_id, "scoring", {
+                "status": "scoring",
+                "scored_count": len(state_snapshot["scored_jobs"]),
+                "top_score": max(
+                    (j.score for j in state_snapshot["scored_jobs"]),
+                    default=0,
+                ),
+            })
 
-            if status in ("completed", "failed"):
-                summary = _serialize(state_snapshot.get("session_summary"))
-                await _emit(session_id, "done", {
-                    "status": status,
-                    "session_summary": summary,
+        if status == "awaiting_review":
+            all_scored = state_snapshot.get("scored_jobs", [])
+            top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
+            shortlist = [_serialize(sj) for sj in top_scored]
+            await _emit(session_id, "hitl", {
+                "status": "awaiting_review",
+                "shortlist": shortlist,
+                "message": "Your top matches are ready — select the jobs you'd like to apply to.",
+            })
+
+        # Generic status update for every snapshot
+        await _emit(session_id, "status", {
+            "status": status,
+            "message": STATUS_MESSAGES.get(status, status),
+            "agent_statuses": state_snapshot.get("agent_statuses", {}),
+        })
+
+        # Agent completion signals
+        agent_statuses = state_snapshot.get("agent_statuses", {})
+        for agent_name, agent_status in agent_statuses.items():
+            if agent_status == "done":
+                await _emit(session_id, "agent_complete", {
+                    "agent": agent_name,
+                    "status": "done",
                 })
-                return None  # Terminal — no interrupt
-    except GraphInterrupt:
-        # LangGraph raised GraphInterrupt — the pipeline paused at a HITL gate.
-        # Fall through to the state check below to identify which interrupt.
-        logger.info("GraphInterrupt caught during streaming for session %s", session_id)
 
-    # Stream ended without terminal status — check for interrupt
-    if last_status not in ("completed", "failed"):
-        try:
-            graph_state = await graph.aget_state(config)
-            # LangGraph stores pending tasks/interrupts in the state
-            next_nodes = getattr(graph_state, "next", ()) or ()
-            if next_nodes:
-                logger.info(
-                    "Pipeline paused at interrupt for session %s, next=%s",
-                    session_id,
-                    next_nodes,
-                )
-                # Determine which interrupt we're at
-                if "coach_review" in next_nodes:
-                    return "coach_review"
-                elif "shortlist_review" in next_nodes:
-                    return "shortlist_review"
-                else:
-                    return str(next_nodes[0]) if next_nodes else None
-        except Exception:
-            logger.exception("Failed to check graph state for session %s", session_id)
+        # Track application counts in registry + Postgres
+        _set_session_counts(
+            session_id,
+            len(state_snapshot.get("applications_submitted", [])),
+            len(state_snapshot.get("applications_failed", [])),
+        )
+
+        if status in ("completed", "failed"):
+            summary = _serialize(state_snapshot.get("session_summary"))
+            await _emit(session_id, "done", {
+                "status": status,
+                "session_summary": summary,
+            })
+            return None  # Terminal — no interrupt
+
+        # v2 streaming: interrupts arrive as data, not exceptions
+        if interrupts:
+            for intr in interrupts:
+                stage = intr.value.get("stage") if isinstance(intr.value, dict) else None
+                if stage:
+                    logger.info("Pipeline paused at interrupt '%s' for session %s", stage, session_id)
+                    return stage
+            return "unknown_interrupt"
 
     return None
 
@@ -586,18 +570,6 @@ async def _resume_pipeline(
         if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
             unregister_emitter(session_id)
 
-    except GraphInterrupt:
-        # Safety net: GraphInterrupt leaked past _stream_graph — treat as pause
-        logger.info("GraphInterrupt caught in _resume_pipeline for session %s — checking state", session_id)
-        try:
-            graph_state = await graph.aget_state(config)
-            next_nodes = getattr(graph_state, "next", ()) or ()
-            if "shortlist_review" in next_nodes:
-                await _handle_shortlist_interrupt(session_id, graph, config)
-            elif next_nodes:
-                logger.info("Pipeline paused at %s for session %s", next_nodes, session_id)
-        except Exception:
-            logger.exception("Failed to check graph state after GraphInterrupt for %s", session_id)
     except Exception as exc:
         logger.exception("Pipeline resume error for session %s", session_id)
         _set_session_status(session_id, "failed")
@@ -640,28 +612,6 @@ async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) ->
             await _handle_shortlist_interrupt(session_id, graph, config)
             return
 
-    except GraphInterrupt:
-        # Safety net: GraphInterrupt leaked past _stream_graph — treat as pause
-        logger.info("GraphInterrupt caught in _resume_stalled_pipeline for session %s", session_id)
-        try:
-            graph_state = await graph.aget_state(config)
-            next_nodes = getattr(graph_state, "next", ()) or ()
-            if "coach_review" in next_nodes:
-                vals = graph_state.values
-                _set_session_status(session_id, "awaiting_coach_review")
-                await _emit(session_id, "coach_review", {
-                    "status": "awaiting_coach_review",
-                    "coach_output": _serialize(vals.get("coach_output")),
-                    "coached_resume": vals.get("coached_resume", ""),
-                    "coach_chat_history": _serialize(vals.get("coach_chat_history", [])),
-                    "message": "Your coached resume is ready for review.",
-                })
-            elif "shortlist_review" in next_nodes:
-                await _handle_shortlist_interrupt(session_id, graph, config)
-            elif next_nodes:
-                logger.info("Pipeline paused at %s for session %s", next_nodes, session_id)
-        except Exception:
-            logger.exception("Failed to check graph state after GraphInterrupt for %s", session_id)
     except Exception as exc:
         logger.exception("Stalled pipeline resume failed for session %s", session_id)
         _set_session_status(session_id, "failed")
