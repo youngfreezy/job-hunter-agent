@@ -108,6 +108,8 @@ class StrategyState:
     human_review_needed: bool = False
     last_updated: float = 0.0
 
+    dream_log: List[Dict[str, Any]] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "board_priorities": self.board_priorities,
@@ -117,6 +119,7 @@ class StrategyState:
             "auto_adjustment_count": self.auto_adjustment_count,
             "human_review_needed": self.human_review_needed,
             "last_updated": self.last_updated,
+            "dream_log": self.dream_log,
         }
 
     @classmethod
@@ -129,6 +132,7 @@ class StrategyState:
             auto_adjustment_count=data.get("auto_adjustment_count", 0),
             human_review_needed=data.get("human_review_needed", False),
             last_updated=data.get("last_updated", 0.0),
+            dream_log=data.get("dream_log", []),
         )
 
 
@@ -335,6 +339,16 @@ class StrategyManager:
             for key, desc in state.known_blockers.items():
                 lines.append(f"- {key}: {desc}")
 
+        # Dream insights (consolidated learnings)
+        if state.dream_log:
+            latest_dream = state.dream_log[-1]
+            insights = latest_dream.get("insights", [])
+            if insights:
+                lines.append("\n## Consolidated Insights")
+                lines.append("(Durable learnings from periodic deep reflection on agent performance.)\n")
+                for i, insight in enumerate(insights, 1):
+                    lines.append(f"{i}. {insight}")
+
         return "\n".join(lines)
 
     def acknowledge_review(self) -> None:
@@ -364,3 +378,12 @@ def get_strategy_manager() -> StrategyManager:
 def get_strategy_patches() -> str:
     """Convenience: get formatted patches from the global manager."""
     return get_strategy_manager().get_strategy_patches()
+
+
+def get_dream_insights() -> List[str]:
+    """Convenience: get latest dream insights from the global manager."""
+    try:
+        from backend.moltbook.dream import get_dream_insights as _get
+        return _get()
+    except Exception:
+        return []
