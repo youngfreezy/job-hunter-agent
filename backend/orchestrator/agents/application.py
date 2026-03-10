@@ -515,6 +515,11 @@ async def _extract_user_profile(state: JobHunterState) -> Dict[str, str]:
     if loc_match:
         profile["location"] = loc_match.group(1)
 
+    # Salary expectation from session config
+    salary_min = state.get("salary_min")
+    if salary_min:
+        profile["salary_expectation"] = f"${salary_min:,}"
+
     return profile
 
 
@@ -1241,6 +1246,25 @@ async def run_application_agent(state: JobHunterState) -> dict:
             _cleanup_login(session_id)
         except Exception:
             pass
+
+    # Feed anonymized results to Moltbook performance tracker
+    try:
+        from backend.moltbook.feedback_loop import record_application_result
+        for r in submitted:
+            record_application_result(
+                board=getattr(r, "board", "") or "",
+                ats_type=getattr(r, "ats_type", "") or "",
+                success=True,
+            )
+        for r in failed:
+            record_application_result(
+                board=getattr(r, "board", "") or "",
+                ats_type=getattr(r, "ats_type", "") or "",
+                success=False,
+                blocker=getattr(r, "error_category", "") or "",
+            )
+    except Exception:
+        pass  # Moltbook feedback is best-effort
 
     return {
         "applications_submitted": submitted,

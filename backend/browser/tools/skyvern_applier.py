@@ -94,6 +94,14 @@ def _build_navigation_goal(
         "After filling all required fields, click the Submit/Apply button."
     )
     parts.append(
+        "IMPORTANT: For any required field where you do not have the user's "
+        "data, use a reasonable default — for salary fields enter the "
+        "salary_expectation from the provided data or 'Negotiable', for "
+        "start dates enter 'Immediately', for yes/no authorization questions "
+        "select 'Yes', for other free-text fields write a brief plausible "
+        "answer. NEVER leave a required field empty or produce a null value."
+    )
+    parts.append(
         "If the page asks you to create an account or log in, STOP and report "
         "'auth_required' as the failure reason."
     )
@@ -101,6 +109,20 @@ def _build_navigation_goal(
         "If the job listing is expired or no longer available, STOP and report "
         "'job_expired' as the failure reason."
     )
+
+    # Inject ATS-specific strategy tips from the application feedback loop
+    ats_type = getattr(job, "ats_type", None)
+    if ats_type:
+        try:
+            from backend.optimization.application_feedback import get_ats_tips
+            ats_val = str(ats_type.value) if hasattr(ats_type, "value") else str(ats_type)
+            tips = get_ats_tips(ats_val)
+            if tips:
+                parts.append(f"ATS-specific guidance for {ats_val} forms: {tips}")
+                logger.debug("Injected ATS tips for %s into navigation goal", ats_val)
+        except Exception:
+            pass  # Don't block applications if feedback lookup fails
+
     return " ".join(parts)
 
 
@@ -126,6 +148,8 @@ def _build_navigation_payload(
         payload["phone"] = user_profile["phone"]
     if user_profile.get("location"):
         payload["location"] = user_profile["location"]
+    if user_profile.get("salary_expectation"):
+        payload["salary_expectation"] = user_profile["salary_expectation"]
 
     if resume_text:
         # Truncate for payload size limits (Skyvern sends this to LLM)

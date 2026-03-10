@@ -69,6 +69,21 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
     boards = configured_boards or ["greenhouse", "lever", "ashby", "workday"]
 
+    # Inject Moltbook strategy patches: reorder boards by community-informed priority
+    try:
+        from backend.moltbook.strategies import get_strategy_manager
+        mgr = get_strategy_manager()
+        strategy_state = mgr.get_state()
+        if strategy_state.board_priorities and not strategy_state.human_review_needed:
+            boards = sorted(
+                boards,
+                key=lambda b: strategy_state.board_priorities.get(b, 0.5),
+                reverse=True,
+            )
+            logger.info("Moltbook strategy: reordered boards to %s", boards)
+    except Exception as exc:
+        logger.debug("Moltbook strategy injection skipped: %s", exc)
+
     logger.info(
         "Discovery agent starting -- keywords=%s, locations=%s",
         search_config.keywords,

@@ -804,6 +804,7 @@ export default function SessionPage() {
       setSession((prev) => (prev ? { ...prev, status: "discovering" } : prev));
     } catch (e) {
       console.error("Failed to submit coach review:", e);
+    } finally {
       setCoachReviewSubmitting(false);
     }
   };
@@ -999,7 +1000,7 @@ export default function SessionPage() {
   return (
     <>
       {/* Sticky Subheader — status, latest message, tip */}
-      <div className="sticky top-[49px] z-40 border-b border-border/50 bg-background/95 supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-sm">
+      <div className="shrink-0 z-40 border-b border-border/50 bg-background/95 supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-2 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Badge
@@ -1250,9 +1251,9 @@ export default function SessionPage() {
       )}
 
       {/* Main content */}
-      <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-5">
-          <Card className="flex min-h-[700px] max-h-[1000px] flex-col overflow-hidden">
+      <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px] overflow-hidden">
+        <div className="min-h-0 flex flex-col">
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-2">
               <div className="flex items-center justify-between">
                 <div>
@@ -1365,7 +1366,7 @@ export default function SessionPage() {
           </Card>
         </div>
 
-        <div className="space-y-4 overflow-y-auto overflow-x-hidden min-w-0 border-l border-border/50 bg-card/30 px-5 pb-5 pt-0">
+        <div className="space-y-4 overflow-y-auto overflow-x-hidden min-w-0 min-h-0 border-l border-border/50 bg-card/30 px-5 pb-5 pt-0">
           <Card className="border-blue-100 bg-gradient-to-br from-blue-50 to-sky-50 dark:border-blue-900 dark:from-blue-950/50 dark:to-sky-950/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
