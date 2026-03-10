@@ -419,6 +419,19 @@ async def _run_pipeline(
     register_emitter(session_id, _emit)
 
     try:
+        # Persist encrypted resume to Postgres so it survives Railway deploys
+        if request_body.resume_file_path:
+            try:
+                import os
+                from backend.shared.resume_store import save_resume as _save_resume_db
+                enc_path = request_body.resume_file_path
+                if os.path.exists(enc_path):
+                    with open(enc_path, "rb") as ef:
+                        ext = os.path.splitext(enc_path.removesuffix(".enc"))[1] or ".pdf"
+                        _save_resume_db(session_id, ef.read(), ext)
+            except Exception:
+                logger.warning("Failed to persist resume to DB", exc_info=True)
+
         # Build the initial state
         initial_state: Dict[str, Any] = {
             "session_id": session_id,
@@ -2004,11 +2017,12 @@ async def parse_resume(request: Request, file: UploadFile = File(...)):
     if not text:
         raise HTTPException(status_code=422, detail="Could not extract any text from the file")
 
-    # Save the resume file encrypted at rest
+    # Save the resume file encrypted at rest (filesystem + DB for persistence)
     import tempfile
     import os
     import uuid
     from backend.shared.resume_crypto import encrypt_and_save
+    from backend.shared.resume_store import save_resume as _save_resume_db
 
     resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
     os.makedirs(resume_dir, exist_ok=True)
@@ -2109,32 +2123,49 @@ async def serve_resume_file(session_id: str, request: Request, token: str = ""):
     except (ValueError, IndexError):
         raise HTTPException(status_code=403, detail="Malformed token")
 
-    # Look up resume path from Redis (set by application agent)
+    # Try Redis first (fast path), then fall back to Postgres (survives deploys)
     r = redis_client.client
     resume_path = await r.get(f"resume_serve:{session_id}")
-    if not resume_path:
-        raise HTTPException(status_code=404, detail="No resume file registered")
-    resume_path = resume_path if isinstance(resume_path, str) else resume_path.decode()
+    if resume_path:
+        resume_path = resume_path if isinstance(resume_path, str) else resume_path.decode()
 
-    if not os.path.exists(resume_path):
-        raise HTTPException(status_code=404, detail="Resume file missing from disk")
+    # If file exists on disk, serve it directly
+    if resume_path and os.path.exists(resume_path):
+        if resume_path.endswith(".enc"):
+            from backend.shared.resume_crypto import decrypt_to_bytes
 
-    if resume_path.endswith(".enc"):
-        from backend.shared.resume_crypto import decrypt_to_bytes
+            data = decrypt_to_bytes(resume_path)
+            ext = os.path.splitext(resume_path.removesuffix(".enc"))[1] or ".pdf"
+            fd, tmp = tempfile.mkstemp(suffix=ext)
+            os.write(fd, data)
+            os.close(fd)
+            return FileResponse(
+                tmp,
+                media_type="application/pdf",
+                filename=f"resume{ext}",
+                background=BackgroundTask(os.remove, tmp),
+            )
+        return FileResponse(resume_path, media_type="application/pdf", filename="resume.pdf")
 
-        data = decrypt_to_bytes(resume_path)
-        ext = os.path.splitext(resume_path.removesuffix(".enc"))[1] or ".pdf"
-        fd, tmp = tempfile.mkstemp(suffix=ext)
-        os.write(fd, data)
-        os.close(fd)
-        return FileResponse(
-            tmp,
-            media_type="application/pdf",
-            filename=f"resume{ext}",
-            background=BackgroundTask(os.remove, tmp),
-        )
+    # Fall back to Postgres (file lost after deploy)
+    from backend.shared.resume_store import get_resume as _get_resume_db
+    from backend.shared.resume_crypto import _get_fernet
 
-    return FileResponse(resume_path, media_type="application/pdf", filename="resume.pdf")
+    db_result = _get_resume_db(session_id)
+    if not db_result:
+        raise HTTPException(status_code=404, detail="No resume file found")
+
+    encrypted_data, ext = db_result
+    data = _get_fernet().decrypt(encrypted_data)
+    fd, tmp = tempfile.mkstemp(suffix=ext)
+    os.write(fd, data)
+    os.close(fd)
+    return FileResponse(
+        tmp,
+        media_type="application/pdf",
+        filename=f"resume{ext}",
+        background=BackgroundTask(os.remove, tmp),
+    )
 
 
 # ---------------------------------------------------------------------------
