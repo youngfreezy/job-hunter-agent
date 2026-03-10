@@ -2163,3 +2163,37 @@ async def store_gmail_token_endpoint(session_id: str, request: Request):
         client_secret=body.get("client_secret"),
     )
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# TOTP verification code endpoint (called by Skyvern)
+# ---------------------------------------------------------------------------
+
+@router.post("/{session_id}/totp-code")
+async def get_totp_code(session_id: str, request: Request):
+    """Return a verification code extracted from the user's Gmail.
+
+    Skyvern calls this URL when it encounters a TOTP/2FA challenge.
+    We poll Gmail for recent verification emails and return the code.
+    No auth required — Skyvern uses internal Railway network.
+    """
+    body = await request.json()
+    task_id = body.get("task_id", "")
+    logger.info("TOTP code request for session %s (task %s)", session_id, task_id)
+
+    from backend.shared.gmail_client import poll_for_verification_code
+
+    code = await poll_for_verification_code(
+        session_id=session_id,
+        company="",
+        platform="",
+        max_wait=90,
+        poll_interval=8,
+    )
+
+    if code:
+        logger.info("TOTP code found for session %s: %s***", session_id, code[:2])
+        return {"verification_code": code}
+
+    logger.warning("No TOTP code found for session %s", session_id)
+    return {"verification_code": None}

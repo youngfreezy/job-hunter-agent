@@ -196,6 +196,17 @@ async def apply_with_skyvern(
         "proxy_location": "RESIDENTIAL",
     }
 
+    # Wire up TOTP verification URL so Skyvern can auto-retrieve
+    # verification codes from the user's Gmail
+    skyvern_url = settings.SKYVERN_API_URL
+    if "railway.internal" in skyvern_url:
+        totp_base = "http://backend.railway.internal:8000"
+    else:
+        totp_base = "http://localhost:8000"
+    task_body["totp_verification_url"] = (
+        f"{totp_base}/api/sessions/{session_id}/totp-code"
+    )
+
     logger.info(
         "Skyvern: creating task for %s @ %s — url=%s",
         job.title, job.company, job.url,
