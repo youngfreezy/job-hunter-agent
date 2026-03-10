@@ -55,7 +55,8 @@ async def _run_freelance_pipeline(session_id: str, graph, config, initial_state)
     """Run the freelance matchmaker graph in the background."""
     try:
         _emit_fl(session_id, "status", {"status": "starting", "message": "Starting freelance gig search..."})
-        async for snapshot in graph.astream(initial_state, config, stream_mode="values"):
+        async for chunk in graph.astream(initial_state, config, stream_mode="values", version="v2"):
+            snapshot = chunk["data"]
             status = snapshot.get("status", "")
             if status:
                 messages = {

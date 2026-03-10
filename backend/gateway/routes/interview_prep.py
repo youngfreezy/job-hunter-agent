@@ -65,7 +65,8 @@ async def _run_prep_pipeline(session_id: str, graph, config, initial_state):
     """Run the interview prep graph in the background."""
     try:
         _emit_prep(session_id, "status", {"status": "researching", "message": "Researching company..."})
-        async for snapshot in graph.astream(initial_state, config, stream_mode="values"):
+        async for chunk in graph.astream(initial_state, config, stream_mode="values", version="v2"):
+            snapshot = chunk["data"]
             status = snapshot.get("status", "")
             if status:
                 messages = {
