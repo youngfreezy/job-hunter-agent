@@ -2104,7 +2104,7 @@ async def serve_resume_file(session_id: str, request: Request, token: str = ""):
         if not hmac.compare_digest(sig, expected):
             raise HTTPException(status_code=403, detail="Invalid token")
         _sid, ts_str = payload.rsplit(":", 1)
-        if time.time() - int(ts_str) > 600:
+        if time.time() - int(ts_str) > 3600:
             raise HTTPException(status_code=403, detail="Token expired")
     except (ValueError, IndexError):
         raise HTTPException(status_code=403, detail="Malformed token")
