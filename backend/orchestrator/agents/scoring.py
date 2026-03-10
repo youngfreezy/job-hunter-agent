@@ -209,7 +209,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         )
         structured_llm = llm.with_structured_output(ScoringBatchResult)
 
-        # Inject Moltbook strategy patches into scoring context (if available)
+        # Inject Moltbook strategy patches + dream insights into scoring context (if available)
         _strategy_context = ""
         try:
             from backend.moltbook.strategies import get_strategy_patches
@@ -218,6 +218,9 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 logger.info("Injecting %d chars of Moltbook strategy context into scoring", len(_strategy_context))
         except Exception as _strat_exc:
             logger.debug("Moltbook strategy injection skipped: %s", _strat_exc)
+
+        # Dream insights are already included in get_strategy_patches() output
+        # via the Consolidated Insights section, so no separate injection needed
 
         async def _score_batch(batch_idx: int, batch_jobs: List[JobListing]) -> List[dict]:
             """Score a single batch via LLM."""

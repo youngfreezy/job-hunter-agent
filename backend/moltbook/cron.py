@@ -48,12 +48,18 @@ logger = logging.getLogger(__name__)
 
 CRON_INTERVAL_SECONDS = 30 * 60  # 30 minutes
 
+# Dream cycle interval (every Nth cron cycle)
+DREAM_CYCLE_INTERVAL = 5
+
 # Max comments per cron cycle (be a good citizen)
 MAX_COMMENTS_PER_CYCLE = 5
 
 # Track our own post IDs to check engagement later
 _our_post_ids: List[str] = []
 _MAX_TRACKED_POSTS = 50
+
+# Cycle counter for dream triggering
+_cycle_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +385,28 @@ async def run_cycle() -> None:
 
         # Step 7: Update strategy
         await _step_update_strategy()
+
+        # Step 8: Track cycle count and trigger dream cycle every 5th cycle
+        global _cycle_count
+        _cycle_count += 1
+
+        if _cycle_count % DREAM_CYCLE_INTERVAL == 0:
+            logger.info(
+                "Step 8: Cycle %d -- entering dream cycle (sleep-time compute)...",
+                _cycle_count,
+            )
+            try:
+                from backend.moltbook.dream import run_dream_cycle
+                await run_dream_cycle()
+                logger.info("Dream cycle complete")
+            except Exception as dream_exc:
+                logger.error("Dream cycle failed: %s", dream_exc)
+        else:
+            logger.info(
+                "Cycle %d -- next dream in %d cycles",
+                _cycle_count,
+                DREAM_CYCLE_INTERVAL - (_cycle_count % DREAM_CYCLE_INTERVAL),
+            )
 
         elapsed = time.time() - start
         logger.info("=== Moltbook cron cycle complete (%.1fs) ===", elapsed)
