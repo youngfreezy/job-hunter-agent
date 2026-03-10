@@ -66,6 +66,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        # Skip validation for Skyvern-facing endpoints (service-to-service,
+        # no browser cookies). These use HMAC signature verification instead.
+        if path.endswith("/totp-code") or "/resume-file" in path:
+            response = await call_next(request)
+            return response
+
         # If the request was authenticated via JWT (Bearer token), skip CSRF
         # validation. Bearer tokens are not auto-attached by the browser, so
         # they inherently prevent CSRF (attacker can't forge the Authorization
