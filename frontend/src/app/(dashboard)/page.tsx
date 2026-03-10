@@ -150,13 +150,13 @@ const jsonLd = {
     },
     {
       "@type": "Offer",
-      price: "29.99",
+      price: "24.99",
       priceCurrency: "USD",
-      description: "20 credit pack",
+      description: "10 credit pack",
     },
     {
       "@type": "Offer",
-      price: "64.99",
+      price: "99.99",
       priceCurrency: "USD",
       description: "50 credit pack",
     },
