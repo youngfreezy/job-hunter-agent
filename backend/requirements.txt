@@ -72,3 +72,7 @@ croniter>=2.0.1
 
 # SMS notifications
 twilio>=9.0.0
+
+# Self-improvement loop (prompt optimization)
+evoagentx>=0.1.0
+litellm>=1.55.0

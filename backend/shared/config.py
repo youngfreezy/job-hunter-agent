@@ -98,11 +98,19 @@ class Settings(BaseSettings):
     # --- Bright Data MCP (agentic discovery) ---
     BRIGHT_DATA_MCP_TOKEN: Optional[str] = None
 
+    # --- Self-improvement loop (EvoAgentX) ---
+    EVOAGENTX_ENABLED: bool = True
+    EVOAGENTX_OPTIMIZE_EVERY_N: int = 10  # Run optimization after every N sessions
+
     # --- Skyvern (AI browser agent for job applications) ---
     SKYVERN_API_URL: str = "http://localhost:8080/api/v1"
     SKYVERN_API_KEY: Optional[str] = None  # Required for cloud; optional for self-hosted
     SKYVERN_ENABLED: bool = False  # Feature flag to enable Skyvern applier
     SKYVERN_TASK_TIMEOUT: int = 1800  # Max seconds to wait for a task to complete (30 min)
+
+    # --- Moltbook (agent social network) ---
+    MOLTBOOK_API_KEY: Optional[str] = None
+    MOLTBOOK_ENABLED: bool = False  # Feature flag for Moltbook integration
 
     model_config = {
         "env_file": (
