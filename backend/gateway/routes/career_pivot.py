@@ -52,7 +52,8 @@ async def _run_pivot_pipeline(session_id: str, graph, config, initial_state):
     """Run the career pivot graph in the background."""
     try:
         _emit_pivot(session_id, "status", {"status": "parsing_skills", "message": "Analyzing your resume..."})
-        async for snapshot in graph.astream(initial_state, config, stream_mode="values"):
+        async for chunk in graph.astream(initial_state, config, stream_mode="values", version="v2"):
+            snapshot = chunk["data"]
             status = snapshot.get("status", "")
             if status:
                 messages = {
