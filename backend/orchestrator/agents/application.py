@@ -813,9 +813,19 @@ async def _apply_to_job(
                 )
                 cover_letter_text = cover_letter.text
 
-            # --- Step 3: Extract user profile ---
+            # --- Step 3: Extract user profile + board credentials ---
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
+
+            # Fetch saved board credentials for this user (if any)
+            board_credentials: Dict[str, Dict[str, str]] = {}
+            try:
+                from backend.shared.credential_store import get_credentials
+                uid = state.get("user_id", "")
+                if uid:
+                    board_credentials = get_credentials(uid)
+            except Exception as cred_err:
+                logger.debug("Could not fetch board credentials: %s", cred_err)
 
             # --- Step 4: Apply via Skyvern AI agent ---
             # Skyvern handles ATS detection, form filling, and submission
@@ -839,6 +849,7 @@ async def _apply_to_job(
                 cover_letter=cover_letter_text,
                 resume_file_path=resume_file,
                 session_id=session_id,
+                board_credentials=board_credentials,
             )
 
         finally:

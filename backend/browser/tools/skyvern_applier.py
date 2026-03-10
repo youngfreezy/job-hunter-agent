@@ -36,6 +36,7 @@ def _build_navigation_goal(
     job: JobListing,
     user_profile: Dict[str, str],
     cover_letter: str,
+    has_credentials: bool = False,
 ) -> str:
     """Build a natural-language navigation goal for Skyvern."""
     parts = [
@@ -49,10 +50,16 @@ def _build_navigation_goal(
     parts.append(
         "After filling all required fields, click the Submit/Apply button."
     )
-    parts.append(
-        "If the page asks you to create an account or log in, STOP and report "
-        "'auth_required' as the failure reason."
-    )
+    if has_credentials:
+        parts.append(
+            "If the page asks you to log in, use the provided board_username and "
+            "board_password credentials to sign in, then continue with the application."
+        )
+    else:
+        parts.append(
+            "If the page asks you to create an account or log in, STOP and report "
+            "'auth_required' as the failure reason."
+        )
     parts.append(
         "If the job listing is expired or no longer available, STOP and report "
         "'job_expired' as the failure reason."
@@ -101,6 +108,7 @@ async def apply_with_skyvern(
     cover_letter: str,
     resume_file_path: Optional[str],
     session_id: str,
+    board_credentials: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> ApplicationResult:
     """Apply to a job using Skyvern's visual AI agent.
 
@@ -116,14 +124,25 @@ async def apply_with_skyvern(
     if settings.SKYVERN_API_KEY:
         headers["x-api-key"] = settings.SKYVERN_API_KEY
 
+    # Check for saved credentials for this job's board
+    board_name = job.board.value if hasattr(job.board, "value") else str(job.board)
+    board_creds = (board_credentials or {}).get(board_name)
+    has_credentials = bool(board_creds)
+
     # Build task request
-    navigation_goal = _build_navigation_goal(job, user_profile, cover_letter)
+    navigation_goal = _build_navigation_goal(job, user_profile, cover_letter, has_credentials=has_credentials)
     navigation_payload = _build_navigation_payload(
         user_profile=user_profile,
         resume_text=resume_text,
         cover_letter=cover_letter,
         resume_file_url=None,  # TODO: serve resume via signed URL
     )
+
+    # Add board login credentials to payload if available
+    if board_creds:
+        navigation_payload["board_username"] = board_creds.get("username", "")
+        navigation_payload["board_password"] = board_creds.get("password", "")
+        logger.info("Skyvern: including %s credentials for authentication", board_name)
 
     task_body = {
         "url": job.url,
