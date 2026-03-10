@@ -10,7 +10,10 @@ upload files, and submit applications on any ATS platform.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import logging
+import time
 from typing import Any, Dict, Optional
 
 import httpx
@@ -23,6 +26,47 @@ from backend.shared.models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _generate_resume_url(session_id: str, resume_file_path: str) -> Optional[str]:
+    """Generate a signed URL for Skyvern to download the resume.
+
+    Stores the resume file path in Redis and returns an internal URL
+    with an HMAC-signed token that expires in 10 minutes.
+    """
+    try:
+        from backend.shared.redis_client import redis_client
+
+        settings = get_settings()
+        secret = (settings.NEXTAUTH_SECRET or "").encode()
+        if not secret:
+            logger.warning("No NEXTAUTH_SECRET — cannot generate signed resume URL")
+            return None
+
+        # Store the resume path in Redis (10 min TTL)
+        r = redis_client.client
+        await r.set(f"resume_serve:{session_id}", resume_file_path, ex=600)
+
+        # Generate signed token
+        ts = str(int(time.time()))
+        payload = f"{session_id}:{ts}"
+        sig = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()[:32]
+        token = f"{payload}.{sig}"
+
+        # Use internal Railway URL (Skyvern is on the same network)
+        # Fall back to localhost for local dev
+        skyvern_url = settings.SKYVERN_API_URL
+        if "railway.internal" in skyvern_url:
+            base = "http://backend.railway.internal:8000"
+        else:
+            base = "http://localhost:8000"
+
+        url = f"{base}/api/sessions/{session_id}/resume-file?token={token}"
+        logger.info("Generated resume URL for Skyvern: %s", url[:80])
+        return url
+    except Exception:
+        logger.warning("Failed to generate resume URL", exc_info=True)
+        return None
 
 # Terminal statuses from Skyvern API
 _TERMINAL_STATUSES = {"completed", "failed", "terminated", "canceled", "timed_out"}
@@ -116,13 +160,18 @@ async def apply_with_skyvern(
     if settings.SKYVERN_API_KEY:
         headers["x-api-key"] = settings.SKYVERN_API_KEY
 
+    # Generate a signed resume download URL for Skyvern
+    resume_file_url = None
+    if resume_file_path:
+        resume_file_url = await _generate_resume_url(session_id, resume_file_path)
+
     # Build task request
     navigation_goal = _build_navigation_goal(job, user_profile, cover_letter)
     navigation_payload = _build_navigation_payload(
         user_profile=user_profile,
         resume_text=resume_text,
         cover_letter=cover_letter,
-        resume_file_url=None,  # TODO: serve resume via signed URL
+        resume_file_url=resume_file_url,
     )
 
     task_body = {
