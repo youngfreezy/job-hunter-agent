@@ -12,6 +12,7 @@ import { API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
 interface BoardCredential {
   board: string;
   has_credentials: boolean;
+  verified?: boolean | null; // null = not checked, true = valid, false = invalid
 }
 
 const BOARD_LABELS: Record<string, string> = {
@@ -62,6 +63,7 @@ export default function SettingsPage() {
   const [credUsername, setCredUsername] = useState("");
   const [credPassword, setCredPassword] = useState("");
   const [savingCred, setSavingCred] = useState(false);
+  const [validatingBoard, setValidatingBoard] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -163,6 +165,41 @@ export default function SettingsPage() {
     }
   }
 
+  async function validateCredential(board: string) {
+    setValidatingBoard(board);
+    setBoardCreds((prev) =>
+      prev.map((c) => (c.board === board ? { ...c, verified: null } : c))
+    );
+    try {
+      const auth = await getAuthHeaders();
+      const res = await apiFetch(`${API_BASE}/api/credentials/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...auth },
+        body: JSON.stringify({ board }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBoardCreds((prev) =>
+          prev.map((c) => (c.board === board ? { ...c, verified: data.valid } : c))
+        );
+        if (data.valid) {
+          toast.success(`${BOARD_LABELS[board] || board} login verified`);
+        } else {
+          toast.error(`${BOARD_LABELS[board] || board}: ${data.error || "Login failed"}`);
+        }
+      } else {
+        // Validation service unavailable — don't mark as failed
+        setBoardCreds((prev) =>
+          prev.map((c) => (c.board === board ? { ...c, verified: null } : c))
+        );
+      }
+    } catch {
+      // Network error — don't mark as failed
+    } finally {
+      setValidatingBoard(null);
+    }
+  }
+
   async function handleSaveCredential(board: string) {
     if (!credUsername.trim() || !credPassword.trim()) return;
     setSavingCred(true);
@@ -180,7 +217,9 @@ export default function SettingsPage() {
         setEditingBoard(null);
         setCredUsername("");
         setCredPassword("");
-        toast.success(`${BOARD_LABELS[board] || board} credentials saved`);
+        toast.success(`${BOARD_LABELS[board] || board} credentials saved. Verifying login...`);
+        // Kick off validation in the background
+        validateCredential(board);
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.detail || "Failed to save credentials");
@@ -359,11 +398,30 @@ export default function SettingsPage() {
                   <CardTitle className="text-base">
                     {BOARD_LABELS[cred.board] || cred.board}
                   </CardTitle>
-                  {cred.has_credentials && (
+                  {cred.has_credentials && validatingBoard === cred.board && (
+                    <Badge variant="secondary" className="animate-pulse">Verifying...</Badge>
+                  )}
+                  {cred.has_credentials && validatingBoard !== cred.board && cred.verified === true && (
+                    <Badge variant="default" className="bg-green-600">Verified</Badge>
+                  )}
+                  {cred.has_credentials && validatingBoard !== cred.board && cred.verified === false && (
+                    <Badge variant="destructive">Login Failed</Badge>
+                  )}
+                  {cred.has_credentials && validatingBoard !== cred.board && cred.verified == null && (
                     <Badge variant="default">Connected</Badge>
                   )}
                 </div>
                 <div className="flex gap-2">
+                  {cred.has_credentials && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => validateCredential(cred.board)}
+                      disabled={validatingBoard === cred.board}
+                    >
+                      {validatingBoard === cred.board ? "Verifying..." : "Verify"}
+                    </Button>
+                  )}
                   {cred.has_credentials && (
                     <Button
                       variant="outline"
