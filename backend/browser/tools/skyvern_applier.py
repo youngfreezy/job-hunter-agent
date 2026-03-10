@@ -109,6 +109,20 @@ def _build_navigation_goal(
         "If the job listing is expired or no longer available, STOP and report "
         "'job_expired' as the failure reason."
     )
+
+    # Inject ATS-specific strategy tips from the application feedback loop
+    ats_type = getattr(job, "ats_type", None)
+    if ats_type:
+        try:
+            from backend.optimization.application_feedback import get_ats_tips
+            ats_val = str(ats_type.value) if hasattr(ats_type, "value") else str(ats_type)
+            tips = get_ats_tips(ats_val)
+            if tips:
+                parts.append(f"ATS-specific guidance for {ats_val} forms: {tips}")
+                logger.debug("Injected ATS tips for %s into navigation goal", ats_val)
+        except Exception:
+            pass  # Don't block applications if feedback lookup fails
+
     return " ".join(parts)
 
 
