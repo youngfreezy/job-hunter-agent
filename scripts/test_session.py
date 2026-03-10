@@ -36,12 +36,12 @@ from cryptography.hazmat.primitives import hashes
 
 ENVS = {
     "production": {
-        "api": "https://backend-production-cf19.up.railway.app",
-        "secret": "QQD7SGSZkKqJM9b4Lr1weNwI69eZ5VkdnYDg",
+        "api": "https://api.jobhunteragent.com",
+        "secret": "QQD7SGSZkKqJM9b4Lr1weNwI69eZ5VkdnYDg3G/R8XI=",
     },
     "staging": {
         "api": "https://backend-staging-a1c9.up.railway.app",
-        "secret": "QQD7SGSZkKqJM9b4Lr1weNwI69eZ5VkdnYDg",
+        "secret": "QQD7SGSZkKqJM9b4Lr1weNwI69eZ5VkdnYDg3G/R8XI=",
     },
     "local": {
         "api": "http://localhost:8000",
@@ -254,6 +254,10 @@ def monitor_session(
                     data = json.loads(raw_data)
                 except (json.JSONDecodeError, ValueError):
                     data = {"raw": raw_data}
+
+                # Skip non-dict data (e.g. plain string SSE payloads)
+                if not isinstance(data, dict):
+                    data = {"raw": str(data)}
 
                 ts = datetime.now().strftime("%H:%M:%S")
                 _print_event(ts, event_type, data)
