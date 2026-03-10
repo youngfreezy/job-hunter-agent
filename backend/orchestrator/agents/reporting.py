@@ -199,6 +199,64 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
             f"avg fit {avg_fit_score}, {duration_minutes}m elapsed"
         )
 
+        # --- Record outcome for self-improvement loop ---
+        try:
+            from backend.shared.outcome_store import record_outcome, get_outcome_count
+
+            # Build error category breakdown from failed applications
+            error_cats: dict[str, int] = {}
+            for app in failed:
+                cat = getattr(app, "error_category", "unknown") or "unknown"
+                error_cats[cat] = error_cats.get(cat, 0) + 1
+
+            # Build ATS breakdown
+            ats_breakdown: dict[str, dict] = {}
+            for app in submitted:
+                ats = getattr(app, "ats_type", "unknown") or "unknown"
+                ats_breakdown.setdefault(ats, {"submitted": 0, "failed": 0})
+                ats_breakdown[ats]["submitted"] += 1
+            for app in failed:
+                ats = getattr(app, "ats_type", "unknown") or "unknown"
+                ats_breakdown.setdefault(ats, {"submitted": 0, "failed": 0})
+                ats_breakdown[ats]["failed"] += 1
+
+            session_config = state.get("session_config", {})
+            search_config = {}
+            if hasattr(session_config, "model_dump"):
+                search_config = session_config.model_dump()
+            elif isinstance(session_config, dict):
+                search_config = session_config
+
+            record_outcome(session_id, {
+                "discovery_count": total_discovered,
+                "scored_count": total_scored,
+                "submitted_count": total_applied,
+                "failed_count": total_failed,
+                "skipped_count": total_skipped,
+                "avg_fit_score": avg_fit_score,
+                "error_categories": error_cats,
+                "ats_breakdown": ats_breakdown,
+                "search_config": search_config,
+            })
+
+            # Trigger optimization every N sessions (if enabled)
+            from backend.shared.config import get_settings
+            settings = get_settings()
+            outcome_count = get_outcome_count()
+            n = settings.EVOAGENTX_OPTIMIZE_EVERY_N
+            if settings.EVOAGENTX_ENABLED and outcome_count > 0 and outcome_count % n == 0:
+                logger.info("Triggering prompt optimization (session count: %d)", outcome_count)
+                try:
+                    import asyncio
+                    from backend.optimization.evolve import run_all_optimizations
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, run_all_optimizations)
+                except Exception:
+                    logger.warning("Prompt optimization trigger failed", exc_info=True)
+
+        except Exception:
+            logger.warning("Failed to record session outcome", exc_info=True)
+
     except Exception as exc:
         logger.exception("Reporting agent failed")
         errors.append(f"Reporting agent error: {exc}")

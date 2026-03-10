@@ -24,6 +24,7 @@ from backend.browser.tools.mcp_client import mcp_search, mcp_session
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.llm import build_llm, HAIKU_MODEL
 from backend.shared.models.schemas import ATSType, JobBoard, JobListing, SearchConfig
+from backend.shared.prompt_registry import get_active_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,9 @@ async def _generate_search_queries(
     """Use LLM to generate smart search queries targeting ATS sites."""
     llm = build_llm(model=HAIKU_MODEL, max_tokens=1024, temperature=0.3)
 
-    prompt = _SEARCH_QUERY_PROMPT.format(
+    # Load optimized prompt from registry, fall back to hardcoded default
+    active_prompt = get_active_prompt("discovery_search_query") or _SEARCH_QUERY_PROMPT
+    prompt = active_prompt.format(
         num_queries=num_queries,
         keywords=", ".join(search_config.keywords),
         remote_only=search_config.remote_only,

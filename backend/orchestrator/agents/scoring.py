@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from backend.shared.llm import build_llm, default_model, invoke_with_retry
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
+from backend.shared.prompt_registry import get_active_prompt
     JobListing,
     ScoredJob,
 )
@@ -208,6 +209,16 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         )
         structured_llm = llm.with_structured_output(ScoringBatchResult)
 
+        # Inject Moltbook strategy patches into scoring context (if available)
+        _strategy_context = ""
+        try:
+            from backend.moltbook.strategies import get_strategy_patches
+            _strategy_context = get_strategy_patches()
+            if _strategy_context:
+                logger.info("Injecting %d chars of Moltbook strategy context into scoring", len(_strategy_context))
+        except Exception as _strat_exc:
+            logger.debug("Moltbook strategy injection skipped: %s", _strat_exc)
+
         async def _score_batch(batch_idx: int, batch_jobs: List[JobListing]) -> List[dict]:
             """Score a single batch via LLM."""
 
@@ -215,11 +226,13 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
             user_prompt = (
                 f"## Candidate Resume\n\n{resume}\n\n"
                 f"## Job Listings (batch {batch_idx + 1}/{total_batches})\n\n{jobs_text}\n\n"
-                "Score each job."
             )
+            if _strategy_context:
+                user_prompt += f"\n{_strategy_context}\n\n"
+            user_prompt += "Score each job."
 
             messages = [
-                SystemMessage(content=SCORING_SYSTEM_PROMPT),
+                SystemMessage(content=get_active_prompt("scoring_system") or SCORING_SYSTEM_PROMPT),
                 HumanMessage(content=user_prompt),
             ]
             # Retry up to 2 times if structured output returns invalid/empty data
