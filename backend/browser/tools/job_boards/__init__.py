@@ -1,16 +1,7 @@
-"""Job board scrapers for Indeed, LinkedIn, Glassdoor, and Google Jobs.
+"""Job board utilities -- ranking and Greenhouse API scraper.
 
-Each scraper follows the same interface::
-
-    async def scrape_<board>(
-        context: BrowserContext,
-        search_config: SearchConfig,
-        *,
-        max_results: int = ...,
-    ) -> list[JobListing]
-
-The *context* should be an isolated Playwright BrowserContext obtained from
-:class:`~backend.browser.manager.BrowserManager`.
+Legacy per-board Playwright scrapers have been removed in favour of
+MCP-based agentic discovery (see ``backend.browser.tools.mcp_discovery``).
 """
 
 from __future__ import annotations
@@ -19,21 +10,11 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-from backend.browser.tools.job_boards.glassdoor import scrape_glassdoor
-from backend.browser.tools.job_boards.google_jobs import scrape_google_jobs
-from backend.browser.tools.job_boards.indeed import scrape_indeed
-from backend.browser.tools.job_boards.linkedin import scrape_linkedin
-from backend.browser.tools.job_boards.ziprecruiter import scrape_ziprecruiter
 from backend.shared.llm import get_llm_provider
 from backend.shared.models.schemas import JobListing
 
 __all__ = [
     "rank_by_relevance",
-    "scrape_glassdoor",
-    "scrape_google_jobs",
-    "scrape_indeed",
-    "scrape_linkedin",
-    "scrape_ziprecruiter",
 ]
 
 

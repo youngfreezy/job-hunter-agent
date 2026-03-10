@@ -1,9 +1,10 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Discovery Agent -- single browser-use agent searches all job boards.
+"""Discovery Agent -- MCP-based agentic discovery.
 
-One agent, one browser, all boards sequentially in the same Chrome session.
-No per-board restarts, no competing resources. Results are deduplicated.
+Uses Bright Data MCP ``search_engine`` to find jobs directly on ATS
+platforms (Greenhouse, Lever, Ashby, Workday, etc.) plus the free
+Greenhouse public API.  No browser required, no auth-wall issues.
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PER_BOARD_MAX = 20
-_SKIP_BOARDS = {JobBoard.GOOGLE_JOBS.value}
 
 
 # ---------------------------------------------------------------------------
@@ -54,48 +54,25 @@ def _dedup_key(job: JobListing) -> str:
 # ---------------------------------------------------------------------------
 
 async def run_discovery_agent(state: Dict[str, Any]) -> dict:
-    """Discover job listings: Bright Data API first, Playwright fallback."""
-    from backend.shared.config import settings
+    """Discover job listings via MCP search + Greenhouse API."""
+    from backend.browser.tools.mcp_discovery import discover_all_boards
 
     session_id: str = state.get("session_id", "")
     search_config = _get_search_config(state)
 
-    # Use Bright Data Datasets API when enabled (no browser needed)
-    if settings.BRIGHT_DATA_DISCOVERY_ENABLED and settings.BRIGHT_DATA_API_TOKEN:
-        from backend.browser.tools.brightdata_discovery import (
-            discover_all_boards,
-        )
-        _BOARD_ORDER = ["linkedin", "indeed", "glassdoor", "greenhouse_lever"]
-    else:
-        from backend.browser.tools.direct_discovery import discover_all_boards
-        _BOARD_ORDER = ["linkedin", "indeed", "glassdoor", "greenhouse_lever"]
-
-    # Respect job_boards from session config if provided
+    # boards param is accepted for interface compat but ignored by MCP discovery
     session_config = state.get("session_config")
     configured_boards: list | None = None
     if session_config:
         cfg = session_config if isinstance(session_config, dict) else (session_config.model_dump() if hasattr(session_config, "model_dump") else {})
         configured_boards = cfg.get("job_boards")
 
-    # Boards that are always included (free API, direct ATS URLs, no auth walls)
-    _ALWAYS_INCLUDE = {"greenhouse_lever"}
-
-    if configured_boards:
-        # Map frontend board names to internal names
-        _BOARD_NAME_MAP = {"linkedin": "linkedin", "indeed": "indeed", "glassdoor": "glassdoor", "ziprecruiter": "ziprecruiter", "greenhouse_lever": "greenhouse_lever"}
-        allowed = {_BOARD_NAME_MAP.get(b, b) for b in configured_boards} | _ALWAYS_INCLUDE
-        boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS and b in allowed]
-        if not boards:
-            # Fallback to all boards if user config results in empty list
-            boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS]
-    else:
-        boards = [b for b in _BOARD_ORDER if b not in _SKIP_BOARDS]
+    boards = configured_boards or ["greenhouse", "lever", "ashby", "workday"]
 
     logger.info(
-        "Discovery agent starting -- keywords=%s, locations=%s, boards=%s",
+        "Discovery agent starting -- keywords=%s, locations=%s",
         search_config.keywords,
         search_config.locations,
-        boards,
     )
 
     # Use max_jobs from session config if set, otherwise PER_BOARD_MAX
