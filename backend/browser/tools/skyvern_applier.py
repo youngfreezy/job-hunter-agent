@@ -32,7 +32,7 @@ async def _generate_resume_url(session_id: str, resume_file_path: str) -> Option
     """Generate a signed URL for Skyvern to download the resume.
 
     Stores the resume file path in Redis and returns an internal URL
-    with an HMAC-signed token that expires in 10 minutes.
+    with an HMAC-signed token that expires in 60 minutes.
     """
     try:
         from backend.shared.redis_client import redis_client
@@ -43,9 +43,9 @@ async def _generate_resume_url(session_id: str, resume_file_path: str) -> Option
             logger.warning("No NEXTAUTH_SECRET — cannot generate signed resume URL")
             return None
 
-        # Store the resume path in Redis (10 min TTL)
+        # Store the resume path in Redis (60 min TTL — must outlast SKYVERN_TASK_TIMEOUT)
         r = redis_client.client
-        await r.set(f"resume_serve:{session_id}", resume_file_path, ex=600)
+        await r.set(f"resume_serve:{session_id}", resume_file_path, ex=3600)
 
         # Generate signed token
         ts = str(int(time.time()))
