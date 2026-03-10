@@ -19,10 +19,10 @@ from pydantic import BaseModel, Field
 from backend.shared.llm import build_llm, default_model, invoke_with_retry
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
-from backend.shared.prompt_registry import get_active_prompt
     JobListing,
     ScoredJob,
 )
+from backend.shared.prompt_registry import get_active_prompt
 
 logger = logging.getLogger(__name__)
 
