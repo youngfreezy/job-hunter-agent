@@ -207,7 +207,8 @@ export function buildResumePdf(rawText: string): jsPDF {
     doc.setFontSize(BODY_FONT);
 
     for (const line of section.lines) {
-      const trimmed = line.trim();
+      // Normalize double-dash and em dash to colon separator
+      const trimmed = line.trim().replace(/ -- /g, ": ").replace(/ \u2014 /g, ": ");
       if (!trimmed) {
         my += BLANK_LINE_H;
         continue;
@@ -320,7 +321,8 @@ export function buildCoverLetterPdf(text: string, company: string, position: str
 
   const paragraphs = text.replace(/\r\n/g, "\n").split("\n");
   for (const para of paragraphs) {
-    const trimmed = para.trim();
+    // Normalize double-dash and em dash to colon separator
+    const trimmed = para.trim().replace(/ -- /g, ": ").replace(/ \u2014 /g, ": ");
     if (!trimmed) {
       y += 4;
       continue;

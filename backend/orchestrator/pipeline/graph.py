@@ -33,6 +33,7 @@ from backend.orchestrator.agents import (
     career_coach,
     discovery,
     intake,
+    qa,
     reporting,
     resume_tailor,
     scoring,
@@ -427,6 +428,7 @@ def route_after_pause_gate(
         "shortlist_review",
         "application",
         "verification",
+        "qa",
         "backfill_prep",
         "reporting",
     }
@@ -444,6 +446,11 @@ def route_after_pause_gate(
 async def verification_node(state: JobHunterState) -> dict:
     """Verify submitted applications (confirmation e-mails, status pages)."""
     return await verification.run(state)
+
+
+async def qa_node(state: JobHunterState) -> dict:
+    """Quality assurance: analyse failures and gate backfill decisions."""
+    return await qa.run(state)
 
 
 async def reporting_node(state: JobHunterState) -> dict:
@@ -477,14 +484,27 @@ async def backfill_prep_node(state: JobHunterState) -> dict:
     # Collect all job IDs we've already seen (for dedup in next discovery)
     seen_ids = [str(job.id) for job in (state.get("discovered_jobs") or [])]
 
+    # Apply QA insights: remove boards that consistently fail
+    qa_analysis = state.get("qa_analysis")
+    boards_to_skip = []
+    if qa_analysis and isinstance(qa_analysis, dict):
+        boards_to_skip = qa_analysis.get("boards_to_skip", [])
+
+    step_msg = f"Backfill round {rounds + 1}: need {deficit} more applications"
+    if boards_to_skip:
+        step_msg += f" (skipping: {', '.join(boards_to_skip)})"
+        logger.info("QA boards_to_skip applied: %s", boards_to_skip)
+
     await emit_agent_event(state["session_id"], "backfill_progress", {
-        "step": f"Backfill round {rounds + 1}: need {deficit} more applications",
+        "step": step_msg,
         "submitted": submitted,
         "target": max_jobs,
         "round": rounds + 1,
+        "boards_to_skip": boards_to_skip,
     })
 
-    return {
+    # Update session config to exclude problematic boards
+    updates: dict = {
         "backfill_rounds": rounds + 1,
         "discovered_job_ids_seen": seen_ids,
         "_prev_backfill_submitted": submitted,
@@ -492,9 +512,40 @@ async def backfill_prep_node(state: JobHunterState) -> dict:
         "status": "discovering",
     }
 
+    if boards_to_skip:
+        config = state.get("session_config")
+        if config:
+            cfg = config if isinstance(config, dict) else config.model_dump()
+            current_boards = cfg.get("job_boards", [])
+            filtered = [b for b in current_boards if b not in boards_to_skip]
+            if filtered and len(filtered) < len(current_boards):
+                from backend.shared.models.schemas import SessionConfig
+                new_cfg = {**cfg, "job_boards": filtered}
+                updates["session_config"] = SessionConfig(**new_cfg)
+                logger.info("Backfill: filtered boards %s -> %s", current_boards, filtered)
 
-def route_after_verification(state: JobHunterState) -> str:
-    """After verification, check if we need more applications (backfill)."""
+    return updates
+
+
+def _continue_after_verification(state: JobHunterState) -> str:
+    return "qa"
+
+
+def route_after_supervise_after_verification(state: JobHunterState) -> str:
+    if state.get("pause_requested"):
+        return "pause_gate"
+    return "qa"
+
+
+def route_after_qa(state: JobHunterState) -> str:
+    """After QA, check analysis decision and backfill eligibility."""
+    qa_analysis = state.get("qa_analysis")
+    if qa_analysis and isinstance(qa_analysis, dict):
+        if qa_analysis.get("decision") == "halt":
+            logger.info("QA decision=halt — skipping backfill, routing to reporting")
+            return "reporting"
+
+    # Standard backfill check
     submitted = len(state.get("applications_submitted") or [])
     max_jobs = _get_max_jobs(state)
 
@@ -507,14 +558,14 @@ def route_after_verification(state: JobHunterState) -> str:
     return "reporting"
 
 
-def route_after_supervise_after_verification(state: JobHunterState) -> str:
+def _continue_after_qa(state: JobHunterState) -> str:
+    return route_after_qa(state)
+
+
+def route_after_supervise_after_qa(state: JobHunterState) -> str:
     if state.get("pause_requested"):
         return "pause_gate"
-    return route_after_verification(state)
-
-
-def _continue_after_verification(state: JobHunterState) -> str:
-    return route_after_verification(state)
+    return route_after_qa(state)
 
 
 # ===================================================================
@@ -557,6 +608,8 @@ def build_graph(checkpointer=None):
     g.add_node("supervise_after_application", make_workflow_supervisor_node(_continue_after_application))
     g.add_node("verification", verification_node)
     g.add_node("supervise_after_verification", make_workflow_supervisor_node(_continue_after_verification))
+    g.add_node("qa", qa_node)
+    g.add_node("supervise_after_qa", make_workflow_supervisor_node(_continue_after_qa))
     g.add_node("backfill_prep", backfill_prep_node)
     g.add_node("pause_gate", pause_gate_node)
     g.add_node("supervise_after_pause", make_workflow_supervisor_node(_continue_after_pause))
@@ -646,11 +699,17 @@ def build_graph(checkpointer=None):
     )
     g.add_edge("application", "supervise_after_application")
 
-    # 10. verification -> reporting OR backfill_prep (self-correcting loop)
+    # 10. verification -> QA -> reporting OR backfill_prep (self-correcting loop)
     g.add_edge("verification", "supervise_after_verification")
     g.add_conditional_edges(
         "supervise_after_verification",
         route_after_supervise_after_verification,
+        {"qa": "qa", "pause_gate": "pause_gate"},
+    )
+    g.add_edge("qa", "supervise_after_qa")
+    g.add_conditional_edges(
+        "supervise_after_qa",
+        route_after_supervise_after_qa,
         {"reporting": "reporting", "backfill_prep": "backfill_prep", "pause_gate": "pause_gate"},
     )
     g.add_edge("backfill_prep", "discovery")
@@ -668,6 +727,7 @@ def build_graph(checkpointer=None):
             "shortlist_review": "shortlist_review",
             "application": "application",
             "verification": "verification",
+            "qa": "qa",
             "backfill_prep": "backfill_prep",
             "reporting": "reporting",
         },

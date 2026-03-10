@@ -9,6 +9,41 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
 
+interface BoardCredential {
+  board: string;
+  has_credentials: boolean;
+}
+
+const BOARD_LABELS: Record<string, string> = {
+  linkedin: "LinkedIn",
+  indeed: "Indeed",
+  glassdoor: "Glassdoor",
+  ziprecruiter: "ZipRecruiter",
+};
+
+const BOARD_INFO: Record<string, { description: string; usernamePlaceholder: string; usernameLabel: string }> = {
+  linkedin: {
+    description: "Your LinkedIn email and password. Required for LinkedIn Easy Apply and jobs behind the login wall.",
+    usernamePlaceholder: "your.email@example.com",
+    usernameLabel: "LinkedIn Email",
+  },
+  indeed: {
+    description: "Your Indeed account email and password. Required for Indeed applications that need sign-in.",
+    usernamePlaceholder: "your.email@example.com",
+    usernameLabel: "Indeed Email",
+  },
+  glassdoor: {
+    description: "Your Glassdoor account email and password. Required for Glassdoor Easy Apply and authenticated listings.",
+    usernamePlaceholder: "your.email@example.com",
+    usernameLabel: "Glassdoor Email",
+  },
+  ziprecruiter: {
+    description: "Your ZipRecruiter account email and password. Required for one-click apply and authenticated applications.",
+    usernamePlaceholder: "your.email@example.com",
+    usernameLabel: "ZipRecruiter Email",
+  },
+};
+
 export default function SettingsPage() {
   const [phone, setPhone] = useState("");
   const [phoneVerified, setPhoneVerified] = useState(false);
@@ -20,6 +55,13 @@ export default function SettingsPage() {
   const [confirming, setConfirming] = useState(false);
   const [savingChannel, setSavingChannel] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Board credentials
+  const [boardCreds, setBoardCreds] = useState<BoardCredential[]>([]);
+  const [editingBoard, setEditingBoard] = useState<string | null>(null);
+  const [credUsername, setCredUsername] = useState("");
+  const [credPassword, setCredPassword] = useState("");
+  const [savingCred, setSavingCred] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -38,9 +80,20 @@ export default function SettingsPage() {
         }
       } catch {
         console.error("Failed to load user settings");
-      } finally {
-        setLoading(false);
       }
+
+      // Load board credentials
+      try {
+        const auth = await getAuthHeaders();
+        const credRes = await apiFetch(`${API_BASE}/api/credentials`, { headers: auth });
+        if (credRes.ok) {
+          setBoardCreds(await credRes.json());
+        }
+      } catch {
+        console.error("Failed to load board credentials");
+      }
+
+      setLoading(false);
     }
     load();
   }, []);
@@ -107,6 +160,53 @@ export default function SettingsPage() {
       console.error("Failed to save notification preference");
     } finally {
       setSavingChannel(false);
+    }
+  }
+
+  async function handleSaveCredential(board: string) {
+    if (!credUsername.trim() || !credPassword.trim()) return;
+    setSavingCred(true);
+    try {
+      const auth = await getAuthHeaders();
+      const res = await apiFetch(`${API_BASE}/api/credentials`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...auth },
+        body: JSON.stringify({ board, username: credUsername, password: credPassword }),
+      });
+      if (res.ok) {
+        setBoardCreds((prev) =>
+          prev.map((c) => (c.board === board ? { ...c, has_credentials: true } : c))
+        );
+        setEditingBoard(null);
+        setCredUsername("");
+        setCredPassword("");
+        toast.success(`${BOARD_LABELS[board] || board} credentials saved`);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.detail || "Failed to save credentials");
+      }
+    } catch {
+      toast.error("Failed to save credentials");
+    } finally {
+      setSavingCred(false);
+    }
+  }
+
+  async function handleDeleteCredential(board: string) {
+    try {
+      const auth = await getAuthHeaders();
+      const res = await apiFetch(`${API_BASE}/api/credentials/${board}`, {
+        method: "DELETE",
+        headers: auth,
+      });
+      if (res.ok) {
+        setBoardCreds((prev) =>
+          prev.map((c) => (c.board === board ? { ...c, has_credentials: false } : c))
+        );
+        toast.success(`${BOARD_LABELS[board] || board} credentials removed`);
+      }
+    } catch {
+      toast.error("Failed to remove credentials");
     }
   }
 
@@ -230,6 +330,118 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Board Credentials */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Job Board Credentials</CardTitle>
+          <CardDescription>
+            Save your login credentials so the AI agent can authenticate on job boards
+            that require sign-in before applying. Credentials are encrypted at rest.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {boardCreds.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No job boards configured. Board credentials will appear here once the backend is connected.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {boardCreds.map((cred) => {
+        const info = BOARD_INFO[cred.board];
+        return (
+          <Card key={cred.board}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">
+                    {BOARD_LABELS[cred.board] || cred.board}
+                  </CardTitle>
+                  {cred.has_credentials && (
+                    <Badge variant="default">Connected</Badge>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {cred.has_credentials && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteCredential(cred.board)}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                  <Button
+                    variant={cred.has_credentials ? "outline" : "default"}
+                    size="sm"
+                    onClick={() => {
+                      setEditingBoard(editingBoard === cred.board ? null : cred.board);
+                      setCredUsername("");
+                      setCredPassword("");
+                    }}
+                  >
+                    {cred.has_credentials ? "Update" : "Connect"}
+                  </Button>
+                </div>
+              </div>
+              <CardDescription>
+                {info?.description || "Save your credentials for this job board."}
+              </CardDescription>
+            </CardHeader>
+
+            {editingBoard === cred.board && (
+              <CardContent className="space-y-3 pt-0">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    {info?.usernameLabel || "Email"}
+                  </label>
+                  <input
+                    type="email"
+                    value={credUsername}
+                    onChange={(e) => setCredUsername(e.target.value)}
+                    placeholder={info?.usernamePlaceholder || "your.email@example.com"}
+                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={credPassword}
+                    onChange={(e) => setCredPassword(e.target.value)}
+                    placeholder="Your password"
+                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleSaveCredential(cred.board)}
+                    disabled={savingCred || !credUsername.trim() || !credPassword.trim()}
+                  >
+                    {savingCred ? "Saving..." : "Save Credentials"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingBoard(null);
+                      setCredUsername("");
+                      setCredPassword("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        );
+      })}
 
       {/* SMS Commands reference */}
       {phoneVerified && (

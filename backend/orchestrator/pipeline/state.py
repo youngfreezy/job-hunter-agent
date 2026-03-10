@@ -125,6 +125,9 @@ class JobHunterState(TypedDict):
     discovered_job_ids_seen: Annotated[List[str], operator.add]  # All job IDs ever discovered
     _prev_backfill_submitted: int  # Submitted count before last backfill round (stall detection)
 
+    # --- QA analysis ---
+    qa_analysis: Optional[Dict[str, Any]]
+
     # --- Billing ---
     session_start_time: Optional[str]
     applications_used: int
