@@ -804,6 +804,7 @@ export default function SessionPage() {
       setSession((prev) => (prev ? { ...prev, status: "discovering" } : prev));
     } catch (e) {
       console.error("Failed to submit coach review:", e);
+    } finally {
       setCoachReviewSubmitting(false);
     }
   };
