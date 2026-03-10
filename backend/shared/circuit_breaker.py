@@ -119,9 +119,27 @@ class CircuitBreaker:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
             self.record_success()
+        elif _is_content_error(exc_val):
+            # Content-related errors (token limit, parsing) are not service
+            # outages — don't count them toward the circuit breaker.
+            pass
         else:
             self.record_failure()
         return False  # Don't suppress exceptions
+
+
+def _is_content_error(exc: Exception | None) -> bool:
+    """Return True if the error is content-related, not a service outage."""
+    if exc is None:
+        return False
+    err_str = str(exc).lower()
+    # LengthFinishReasonError — response was too long, not a service failure
+    if "length" in err_str and ("limit" in err_str or "finish" in err_str):
+        return True
+    # Parsing errors from structured output
+    if "could not parse" in err_str and "length" in err_str:
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------

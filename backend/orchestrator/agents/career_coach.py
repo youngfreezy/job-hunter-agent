@@ -119,7 +119,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
             ai_temp = config.ai_temperature if hasattr(config, "ai_temperature") else (config.get("ai_temperature", 0.0) if isinstance(config, dict) else 0.0)
         llm = build_llm(
             model=premium_model(),
-            max_tokens=6000,
+            max_tokens=10000,
             temperature=ai_temp,
             timeout=180,
         ).with_structured_output(CoachOutput)
