@@ -135,7 +135,7 @@ async def lifespan(app: FastAPI):
 
 
         # Schedule daily selector health-check
-        from backend.shared.scheduler import schedule, schedule_with_notify
+        from backend.shared.scheduler import schedule, schedule_seconds, schedule_with_notify
         from backend.shared.selector_health import run_selector_health_check
         schedule("selector-health-check", run_selector_health_check, interval_hours=24.0)
 
