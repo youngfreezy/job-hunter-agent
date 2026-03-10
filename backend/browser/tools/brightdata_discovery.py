@@ -4,6 +4,9 @@
 
 Uses Bright Data's pre-built web scrapers via their Datasets API v3.
 No browser needed -- just HTTP API calls that return structured job data.
+
+The API returns an ``apply_link`` field with the direct ATS application URL
+(Greenhouse, Lever, Workday, etc.) so the applier can skip board login walls.
 """
 
 from __future__ import annotations
@@ -125,13 +128,22 @@ def _parse_job(raw: Dict[str, Any], board: str) -> Optional[JobListing]:
             return None
 
         salary = raw.get("salary") or raw.get("salary_range") or raw.get("compensation")
-        description = raw.get("description") or raw.get("job_description") or raw.get("snippet", "")
-        posted = raw.get("posted_date") or raw.get("date_posted") or raw.get("posted_at")
+        # LinkedIn dataset uses job_base_pay_range
+        if not salary:
+            salary = raw.get("job_base_pay_range")
+        description = raw.get("description") or raw.get("job_description") or raw.get("job_description_formatted") or raw.get("snippet", "")
+        posted = raw.get("posted_date") or raw.get("date_posted") or raw.get("posted_at") or raw.get("job_posted_date")
         is_remote = bool(
             raw.get("is_remote")
             or "remote" in location.lower()
             or raw.get("remote") == "Remote"
         )
+
+        # The API returns apply_link with the direct ATS application URL
+        apply_link = raw.get("apply_link") or None
+        # Only use as external URL if it's not the same board domain
+        if apply_link and any(d in apply_link.lower() for d in ("linkedin.com", "indeed.com", "glassdoor.com")):
+            apply_link = None
 
         return JobListing(
             id=str(uuid4()),
@@ -144,6 +156,7 @@ def _parse_job(raw: Dict[str, Any], board: str) -> Optional[JobListing]:
             description_snippet=description[:500] if description else None,
             posted_date=str(posted) if posted else None,
             is_remote=is_remote,
+            external_apply_url=apply_link,
             discovered_at=datetime.utcnow(),
         )
     except Exception:
@@ -341,9 +354,36 @@ async def discover_all_boards(
                     "error": True,
                 })
 
+    # Log external apply URL stats
+    ext_count = sum(1 for j in all_jobs if j.external_apply_url)
+    if ext_count:
+        logger.info(
+            "Bright Data API returned %d/%d jobs with external apply URLs",
+            ext_count, len(all_jobs),
+        )
+
+    # Handle unsupported boards (e.g. greenhouse_lever) via direct scrapers
+    if unsupported:
+        try:
+            from backend.browser.tools.direct_discovery import (
+                discover_all_boards as direct_discover,
+            )
+            direct_jobs = await direct_discover(
+                boards=unsupported,
+                search_config=search_config,
+                session_id=session_id,
+                max_per_board=max_per_board,
+            )
+            all_jobs.extend(direct_jobs)
+        except Exception:
+            logger.warning(
+                "Direct discovery fallback failed for %s", unsupported,
+                exc_info=True,
+            )
+
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "all",
-        "step": f"Discovery complete: {len(all_jobs)} jobs from Bright Data",
+        "step": f"Discovery complete: {len(all_jobs)} jobs found",
         "count": len(all_jobs),
         "progress": 100,
     })
