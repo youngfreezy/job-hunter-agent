@@ -118,15 +118,6 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
                 before_backfill, len(deduped), before_backfill - len(deduped),
             )
 
-    # Check which boards returned results
-    boards_with_results = {
-        (job.board.value if hasattr(job.board, "value") else job.board)
-        for job in deduped
-    }
-    for board in boards:
-        if board not in boards_with_results:
-            errors.append(f"{board.title()} returned no results")
-
     logger.info(
         "Discovery complete -- %d total jobs (%d after dedup), errors=%s",
         len(all_jobs), len(deduped), errors,
