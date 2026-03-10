@@ -1,16 +1,16 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Application Agent -- submits job applications via direct Playwright + LLM form analysis.
+"""Application Agent -- submits job applications via Skyvern AI browser agent.
 
-Uses platform-specific Playwright appliers for known boards/ATS platforms,
-with browser-use as a fallback for truly unknown forms.
+Uses Skyvern's visual AI (no hardcoded selectors) to navigate forms, fill
+fields, upload files, and submit applications on any ATS platform.
 
 For each job in the queue:
-1. Generate a tailored cover letter
-2. Extract user profile from resume
-3. Detect ATS type → dispatch to appropriate applier
-4. Fill forms via LLM analysis (1-3 calls instead of 30)
-5. Record the result to Neo4j
+1. Pre-flight checks (credits, dedup, rate limits)
+2. Navigate to job URL, detect auth walls / expired pages
+3. Generate a tailored cover letter
+4. Hand off to Skyvern for form filling + submission
+5. Record the result to DB + Neo4j
 """
 
 from __future__ import annotations
@@ -21,8 +21,6 @@ import time
 from typing import Any, Dict, List, Optional
 
 from backend.browser.manager import BrowserManager, apply_stealth
-from backend.browser.tools.ats_detector import detect_ats_type
-from backend.browser.tools.appliers import get_applier
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.application_store import (
     check_already_applied,
@@ -33,6 +31,7 @@ from backend.shared.billing_store import check_sufficient_credits, debit_wallet
 from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
+    ApplicationErrorCategory,
     ApplicationResult,
     ApplicationStatus,
     JobListing,
@@ -121,6 +120,36 @@ logger = logging.getLogger(__name__)
 
 # Circuit-breaker threshold
 MAX_CONSECUTIVE_FAILURES = 3
+
+
+def _infer_error_category(error_message: str | None) -> ApplicationErrorCategory | None:
+    """Infer a structured error category from a free-text error message."""
+    if not error_message:
+        return None
+    msg = error_message.lower()
+    if any(kw in msg for kw in ["auth", "login", "sign in", "easy apply", "sign_in"]):
+        return ApplicationErrorCategory.AUTH_REQUIRED
+    if any(kw in msg for kw in ["expired", "removed", "no longer", "404", "not found", "job_expired"]):
+        return ApplicationErrorCategory.JOB_EXPIRED
+    if any(kw in msg for kw in ["captcha", "recaptcha"]):
+        return ApplicationErrorCategory.CAPTCHA
+    if any(kw in msg for kw in ["timeout", "timed out"]):
+        return ApplicationErrorCategory.TIMEOUT
+    if any(kw in msg for kw in ["insufficient_credits", "credit"]):
+        return ApplicationErrorCategory.CREDIT_INSUFFICIENT
+    if any(kw in msg for kw in ["duplicate", "already applied"]):
+        return ApplicationErrorCategory.DUPLICATE
+    if any(kw in msg for kw in ["rate limit", "rate_limit"]):
+        return ApplicationErrorCategory.RATE_LIMITED
+    if any(kw in msg for kw in ["confirmation", "no_confirmation"]):
+        return ApplicationErrorCategory.NO_CONFIRMATION
+    if any(kw in msg for kw in ["submit", "button"]):
+        return ApplicationErrorCategory.SUBMIT_FAILED
+    if any(kw in msg for kw in ["form", "field", "fill"]):
+        return ApplicationErrorCategory.FORM_FILL_ERROR
+    if any(kw in msg for kw in ["navigate", "navigation", "element", "selector"]):
+        return ApplicationErrorCategory.FORM_NAVIGATION
+    return ApplicationErrorCategory.UNKNOWN
 
 
 # ---------------------------------------------------------------------------
@@ -788,101 +817,29 @@ async def _apply_to_job(
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
 
-            # --- Step 4: Detect ATS type ---
-            ats_type = await detect_ats_type(page)
-            detected_ats = ats_type.value
-            logger.info("ATS detected: %s for %s", detected_ats, page.url)
-
-            # --- Step 5: Get appropriate applier ---
-            applier = get_applier(job.board.value, ats_type, page, session_id)
-            logger.info("Using %s applier for %s", applier.PLATFORM, job.title)
+            # --- Step 4: Apply via Skyvern AI agent ---
+            # Skyvern handles ATS detection, form filling, and submission
+            # visually — no hardcoded selectors or per-board dispatch needed.
+            await page.close()
+            page = None  # Skyvern manages its own browser
 
             await emit_agent_event(session_id, "application_progress", {
                 "job_id": job_id,
-                "step": f"Filling application form ({applier.PLATFORM}) for {job.title}...",
+                "step": f"Filling application form (AI agent) for {job.title}...",
                 "current": _app_idx + 1,
                 "total": _total_q,
                 "progress": _pct,
             })
 
-            # --- Step 6: Run application ---
-            result = await applier.run(
+            from backend.browser.tools.skyvern_applier import apply_with_skyvern
+            result = await apply_with_skyvern(
                 job=job,
                 user_profile=user_profile,
                 resume_text=resume_text,
                 cover_letter=cover_letter_text,
                 resume_file_path=resume_file,
+                session_id=session_id,
             )
-
-            # --- Step 6b: Handle external redirect from LinkedIn applier ---
-            # When LinkedIn applier finds an external ATS link instead of
-            # Easy Apply, it returns a special error_message starting with
-            # "external_redirect:" followed by the URL.
-            if (
-                result.status == ApplicationStatus.SKIPPED
-                and result.error_message
-                and result.error_message.startswith("external_redirect:")
-            ):
-                external_url = result.error_message.split("external_redirect:", 1)[1]
-                logger.info(
-                    "Following external redirect for %s: %s",
-                    job.title, external_url,
-                )
-                await emit_agent_event(session_id, "application_progress", {
-                    "job_id": job_id,
-                    "step": f"Following external apply link...",
-                })
-                await page.goto(external_url, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(1)
-
-                # Re-detect ATS and use appropriate applier
-                ats_type = await detect_ats_type(page)
-                logger.info("External ATS detected: %s for %s", ats_type.value, page.url)
-                applier = get_applier(job.board.value, ats_type, page, session_id)
-                logger.info("Using %s applier (external) for %s", applier.PLATFORM, job.title)
-                await emit_agent_event(session_id, "application_progress", {
-                    "job_id": job_id,
-                    "step": f"Filling application form ({applier.PLATFORM}) for {job.title}...",
-                    "current": _app_idx + 1,
-                    "total": _total_q,
-                    "progress": _pct,
-                })
-                result = await applier.run(
-                    job=job,
-                    user_profile=user_profile,
-                    resume_text=resume_text,
-                    cover_letter=cover_letter_text,
-                    resume_file_path=resume_file,
-                )
-
-            # --- Step 7: Fallback to browser-use if SKIPPED ---
-            # Only fall back for non-auth skips (e.g., complex form).
-            # Auth-related skips are hopeless — browser-use can't log in either.
-            skip_reason = (result.error_message or "").lower()
-            auth_skip = any(kw in skip_reason for kw in [
-                "auth", "login", "sign in", "easy apply",
-            ])
-            if result.status == ApplicationStatus.SKIPPED and not auth_skip:
-                logger.warning(
-                    "Applier returned SKIPPED for %s — falling back to browser-use",
-                    job.title,
-                )
-                await emit_agent_event(session_id, "application_progress", {
-                    "job_id": job_id,
-                    "step": "Using AI agent (fallback) for complex form...",
-                })
-                await page.close()
-                page = None
-
-                from backend.browser.tools.browser_use_applier import apply_with_browser_use
-                result = await apply_with_browser_use(
-                    job=job,
-                    resume_text=resume_text,
-                    cover_letter=cover_letter_text,
-                    user_profile=user_profile,
-                    session_id=session_id,
-                    resume_file_path=resume_file,
-                )
 
         finally:
             if page and not page.is_closed():
@@ -913,6 +870,11 @@ async def _apply_to_job(
         _tailored_text = None
         if _tailored:
             _tailored_text = _tailored.tailored_text if hasattr(_tailored, "tailored_text") else _tailored.get("tailored_text")
+        # Infer error category from result
+        _error_cat = (
+            result.error_category.value if result.error_category
+            else (_infer_error_category(result.error_message).value if _infer_error_category(result.error_message) else None)
+        )
         _db_record_result(
             session_id=session_id,
             job_id=job_id,
@@ -923,6 +885,9 @@ async def _apply_to_job(
             job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
             job_location=job.location or "",
             error_message=result.error_message,
+            error_category=_error_cat,
+            ats_type=result.ats_type,
+            failure_step=result.failure_step,
             cover_letter=result.cover_letter_used or cover_letter_text,
             tailored_resume_text=_tailored_text,
             duration_seconds=result.duration_seconds,
@@ -955,6 +920,7 @@ async def _apply_to_job(
             "error": str(exc),
         })
 
+        _exc_category = _infer_error_category(str(exc))
         _db_record_result(
             session_id=session_id,
             job_id=job_id,
@@ -965,6 +931,7 @@ async def _apply_to_job(
             job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
             job_location=job.location or "",
             error_message=str(exc),
+            error_category=_exc_category.value if _exc_category else None,
             duration_seconds=duration,
             user_id=user_id,
         )
@@ -1008,10 +975,9 @@ async def _apply_to_job(
 async def run_application_agent(state: JobHunterState) -> dict:
     """Process the next pending application in the queue.
 
-    Uses BrowserManager (Patchright) with platform-specific Playwright
-    appliers. Falls back to browser-use for unknown forms. The graph loops
-    this node between jobs so the workflow supervisor can authoritatively
-    steer the run after every application attempt.
+    Uses Skyvern AI browser agent for form filling and submission.
+    The graph loops this node between jobs so the workflow supervisor
+    can authoritatively steer the run after every application attempt.
 
     Returns
     -------

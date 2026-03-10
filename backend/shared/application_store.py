@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS application_results (
     job_board TEXT,
     job_location TEXT,
     error_message TEXT,
+    error_category TEXT,
+    ats_type TEXT,
+    failure_step TEXT,
     cover_letter TEXT,
     tailored_resume_text TEXT,
     duration_seconds INT,
@@ -52,7 +55,7 @@ async def ensure_table() -> None:
     try:
         with _connect() as conn:
             conn.execute(_CREATE_TABLE)
-            # Migration: add screenshot_path column if missing
+            # Migrations: add columns if missing
             conn.execute("""
                 ALTER TABLE application_results
                 ADD COLUMN IF NOT EXISTS screenshot_path TEXT
@@ -60,6 +63,18 @@ async def ensure_table() -> None:
             conn.execute("""
                 ALTER TABLE application_results
                 ADD COLUMN IF NOT EXISTS user_id UUID
+            """)
+            conn.execute("""
+                ALTER TABLE application_results
+                ADD COLUMN IF NOT EXISTS error_category TEXT
+            """)
+            conn.execute("""
+                ALTER TABLE application_results
+                ADD COLUMN IF NOT EXISTS ats_type TEXT
+            """)
+            conn.execute("""
+                ALTER TABLE application_results
+                ADD COLUMN IF NOT EXISTS failure_step TEXT
             """)
             conn.commit()
             logger.info("application_results table ensured")
@@ -77,6 +92,9 @@ def record_result(
     job_board: str = "",
     job_location: str = "",
     error_message: Optional[str] = None,
+    error_category: Optional[str] = None,
+    ats_type: Optional[str] = None,
+    failure_step: Optional[str] = None,
     cover_letter: Optional[str] = None,
     tailored_resume_text: Optional[str] = None,
     duration_seconds: Optional[int] = None,
@@ -90,13 +108,15 @@ def record_result(
                 """
                 INSERT INTO application_results
                     (session_id, user_id, job_id, status, job_title, job_company, job_url,
-                     job_board, job_location, error_message, cover_letter,
-                     tailored_resume_text, duration_seconds, screenshot_path)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     job_board, job_location, error_message, error_category, ats_type,
+                     failure_step, cover_letter, tailored_resume_text, duration_seconds,
+                     screenshot_path)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (session_id, user_id, job_id, status, job_title, job_company, job_url,
-                 job_board, job_location, error_message, cover_letter,
-                 tailored_resume_text, duration_seconds, screenshot_path),
+                 job_board, job_location, error_message, error_category, ats_type,
+                 failure_step, cover_letter, tailored_resume_text, duration_seconds,
+                 screenshot_path),
             )
             conn.commit()
     except Exception:
