@@ -570,27 +570,35 @@ async def _apply_to_job(
             duration_seconds=int(time.monotonic() - start_time),
         )
 
-    # Pre-flight: skip jobs hosted on board domains (require login to apply)
-    # Discovery finds these jobs but the apply URL points to the board itself,
-    # not an external ATS. These boards block automated login attempts.
+    # Pre-flight: skip jobs hosted on board domains UNLESS discovery found
+    # an external ATS URL (e.g. Greenhouse/Lever). If we have an external URL,
+    # swap it in so we go straight to the ATS form.
     _BOARD_GATED_DOMAINS = {"linkedin.com", "indeed.com", "glassdoor.com"}
     try:
         from urllib.parse import urlparse as _urlparse
         _host = _urlparse(job.url).hostname or ""
         if any(_host == d or _host.endswith(f".{d}") for d in _BOARD_GATED_DOMAINS):
-            _board_label = next((d.split(".")[0].title() for d in _BOARD_GATED_DOMAINS if _host.endswith(d)), "Board")
-            logger.info("Board-gated URL — skipping %s (%s requires login)", job.title, _board_label)
-            await emit_agent_event(session_id, "application_progress", {
-                "job_id": job_id,
-                "step": f"Skipped — {_board_label} requires login (no external apply link)",
-            })
-            return ApplicationResult(
-                job_id=job_id,
-                status=ApplicationStatus.SKIPPED,
-                error_message="auth_required",
-                error_category=ApplicationErrorCategory.AUTH_REQUIRED,
-                duration_seconds=int(time.monotonic() - start_time),
-            )
+            if getattr(job, "external_apply_url", None):
+                # Use the direct ATS URL instead of the board URL
+                logger.info(
+                    "Using external ATS URL for %s: %s → %s",
+                    job.title, job.url[:60], job.external_apply_url[:60],
+                )
+                job.url = job.external_apply_url
+            else:
+                _board_label = next((d.split(".")[0].title() for d in _BOARD_GATED_DOMAINS if _host.endswith(d)), "Board")
+                logger.info("Board-gated URL — skipping %s (%s requires login, no external link)", job.title, _board_label)
+                await emit_agent_event(session_id, "application_progress", {
+                    "job_id": job_id,
+                    "step": f"Skipped — {_board_label} requires login (no external apply link)",
+                })
+                return ApplicationResult(
+                    job_id=job_id,
+                    status=ApplicationStatus.SKIPPED,
+                    error_message="auth_required",
+                    error_category=ApplicationErrorCategory.AUTH_REQUIRED,
+                    duration_seconds=int(time.monotonic() - start_time),
+                )
     except Exception:
         pass  # Don't block on URL parse errors
 
