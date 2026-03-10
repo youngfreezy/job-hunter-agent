@@ -1252,7 +1252,7 @@ export default function SessionPage() {
       {/* Main content */}
       <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-5">
-          <Card className="flex min-h-[420px] max-h-[600px] flex-col overflow-hidden">
+          <Card className="flex min-h-[700px] max-h-[1000px] flex-col overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-2">
               <div className="flex items-center justify-between">
                 <div>
