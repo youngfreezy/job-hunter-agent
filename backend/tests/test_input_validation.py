@@ -32,7 +32,7 @@ class TestSessionConfig:
 
     def test_defaults(self):
         c = SessionConfig()
-        assert c.max_jobs == 20
+        assert c.max_jobs == 5
         assert c.generate_cover_letters is True
 
 
