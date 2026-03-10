@@ -277,10 +277,10 @@ export default function BillingPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-bold">$99.99</p>
+            <p className="text-2xl font-bold">$149.99</p>
             <span className="text-sm text-zinc-500">/month</span>
           </div>
-          <p className="text-xs text-emerald-600 font-medium mt-0.5">That&apos;s just $3.33/day</p>
+          <p className="text-xs text-emerald-600 font-medium mt-0.5">That&apos;s just $5.00/day</p>
           <p className="text-xs text-zinc-500 mt-1">
             Up to 100 applications/month. Cancel anytime.
           </p>
