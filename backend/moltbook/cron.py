@@ -355,15 +355,62 @@ async def _step_update_strategy() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _cron_log_start() -> int | None:
+    """Insert a 'running' row into cron_log and return its id."""
+    try:
+        from backend.shared.db import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cron_log (
+                    id SERIAL PRIMARY KEY,
+                    cron_name TEXT NOT NULL,
+                    started_at TIMESTAMPTZ DEFAULT NOW(),
+                    completed_at TIMESTAMPTZ,
+                    status TEXT DEFAULT 'running',
+                    details TEXT
+                )
+                """
+            )
+            row = conn.execute(
+                "INSERT INTO cron_log (cron_name) VALUES ('moltbook') RETURNING id",
+            ).fetchone()
+            conn.commit()
+            return row[0] if row else None
+    except Exception as exc:
+        logger.warning("cron_log insert failed: %s", exc)
+        return None
+
+
+def _cron_log_finish(log_id: int | None, status: str, details: str | None = None) -> None:
+    """Update a cron_log row with final status."""
+    if log_id is None:
+        return
+    try:
+        from backend.shared.db import get_connection
+
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE cron_log SET completed_at = NOW(), status = %s, details = %s WHERE id = %s",
+                (status, details, log_id),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("cron_log update failed: %s", exc)
+
+
 async def run_cycle() -> None:
     """Execute one full Moltbook cron cycle."""
     logger.info("=== Moltbook cron cycle starting ===")
     start = time.time()
     client = MoltbookClient()
+    log_id = _cron_log_start()
 
     try:
         # Step 1: Heartbeat
         if not await _step_heartbeat(client):
+            _cron_log_finish(log_id, "skipped", "heartbeat failed")
             return
 
         # Load fresh performance data
@@ -410,9 +457,11 @@ async def run_cycle() -> None:
 
         elapsed = time.time() - start
         logger.info("=== Moltbook cron cycle complete (%.1fs) ===", elapsed)
+        _cron_log_finish(log_id, "completed", f"{elapsed:.1f}s")
 
     except Exception as exc:
         logger.exception("Moltbook cron cycle failed: %s", exc)
+        _cron_log_finish(log_id, "failed", str(exc))
     finally:
         await client.close()
 
