@@ -162,7 +162,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
 
         # On backfill rounds, only score newly discovered jobs (not re-score old ones)
         if state.get("backfill_rounds", 0) > 0:
-            already_scored_ids = {sj.job_id for sj in (state.get("scored_jobs") or [])}
+            already_scored_ids = {str(sj.job.id) for sj in (state.get("scored_jobs") or [])}
             before = len(discovered_jobs)
             discovered_jobs = [j for j in discovered_jobs if str(j.id) not in already_scored_ids]
             logger.info(
