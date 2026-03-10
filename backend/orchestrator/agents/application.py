@@ -570,6 +570,30 @@ async def _apply_to_job(
             duration_seconds=int(time.monotonic() - start_time),
         )
 
+    # Pre-flight: skip jobs hosted on board domains (require login to apply)
+    # Discovery finds these jobs but the apply URL points to the board itself,
+    # not an external ATS. These boards block automated login attempts.
+    _BOARD_GATED_DOMAINS = {"linkedin.com", "indeed.com", "glassdoor.com"}
+    try:
+        from urllib.parse import urlparse as _urlparse
+        _host = _urlparse(job.url).hostname or ""
+        if any(_host == d or _host.endswith(f".{d}") for d in _BOARD_GATED_DOMAINS):
+            _board_label = next((d.split(".")[0].title() for d in _BOARD_GATED_DOMAINS if _host.endswith(d)), "Board")
+            logger.info("Board-gated URL — skipping %s (%s requires login)", job.title, _board_label)
+            await emit_agent_event(session_id, "application_progress", {
+                "job_id": job_id,
+                "step": f"Skipped — {_board_label} requires login (no external apply link)",
+            })
+            return ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.SKIPPED,
+                error_message="auth_required",
+                error_category=ApplicationErrorCategory.AUTH_REQUIRED,
+                duration_seconds=int(time.monotonic() - start_time),
+            )
+    except Exception:
+        pass  # Don't block on URL parse errors
+
     # Pre-flight: skip jobs already submitted by this user
     prior = check_already_applied(job_id, user_id=user_id)
     if prior:
@@ -813,19 +837,9 @@ async def _apply_to_job(
                 )
                 cover_letter_text = cover_letter.text
 
-            # --- Step 3: Extract user profile + board credentials ---
+            # --- Step 3: Extract user profile ---
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
-
-            # Fetch saved board credentials for this user (if any)
-            board_credentials: Dict[str, Dict[str, str]] = {}
-            try:
-                from backend.shared.credential_store import get_credentials
-                uid = state.get("user_id", "")
-                if uid:
-                    board_credentials = get_credentials(uid)
-            except Exception as cred_err:
-                logger.debug("Could not fetch board credentials: %s", cred_err)
 
             # --- Step 4: Apply via Skyvern AI agent ---
             # Skyvern handles ATS detection, form filling, and submission
@@ -849,7 +863,6 @@ async def _apply_to_job(
                 cover_letter=cover_letter_text,
                 resume_file_path=resume_file,
                 session_id=session_id,
-                board_credentials=board_credentials,
             )
 
         finally:

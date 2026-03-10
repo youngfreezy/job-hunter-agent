@@ -133,8 +133,6 @@ async def lifespan(app: FastAPI):
         from backend.shared.autopilot_store import ensure_autopilot_tables
         await ensure_autopilot_tables()
 
-        from backend.shared.credential_store import ensure_table as ensure_cred_table
-        await ensure_cred_table()
 
         # Schedule daily selector health-check
         from backend.shared.scheduler import schedule, schedule_with_notify
@@ -326,7 +324,6 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.resume import router as resume_router
     from backend.gateway.routes.autopilot import router as autopilot_router
     from backend.gateway.routes.sms import router as sms_router
-    from backend.gateway.routes.credentials import router as credentials_router
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
@@ -339,7 +336,6 @@ def create_app() -> FastAPI:
     app.include_router(resume_router)
     app.include_router(autopilot_router)
     app.include_router(sms_router)
-    app.include_router(credentials_router)
 
     return app
 
