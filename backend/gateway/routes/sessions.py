@@ -2227,4 +2227,11 @@ async def get_totp_code(session_id: str, request: Request):
         return {"verification_code": code}
 
     logger.warning("No TOTP code found for session %s", session_id)
+
+    # Emit SSE event so the user sees the failure in the Live Status card
+    await _emit(session_id, "verification_progress", {
+        "agent": "applier",
+        "message": "Could not extract verification code from Gmail — the code may have expired or no matching email was found.",
+    })
+
     return {"verification_code": None}

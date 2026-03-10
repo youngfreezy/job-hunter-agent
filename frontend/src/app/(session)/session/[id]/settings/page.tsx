@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   scoring_strictness: 0.5,
   generate_cover_letters: true,
   job_boards: ["indeed", "linkedin", "glassdoor", "ziprecruiter"],
-  max_jobs: 20,
+  max_jobs: 5,
   application_mode: "auto_apply",
 };
 

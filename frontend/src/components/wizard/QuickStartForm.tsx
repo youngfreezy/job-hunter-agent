@@ -133,7 +133,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
         linkedin_url: null,
         preferences: {},
         config: {
-          max_jobs: (savedSettings.max_jobs as number) ?? 20,
+          max_jobs: (savedSettings.max_jobs as number) ?? 5,
           tailoring_quality: "standard",
           application_mode: (savedSettings.application_mode as string) ?? "auto_apply",
           generate_cover_letters: (savedSettings.generate_cover_letters as boolean) ?? true,
@@ -265,7 +265,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
             </div>
 
             <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-500 dark:bg-zinc-900/60">
-              Defaults: 20 jobs, auto-apply, all job boards, standard tailoring.
+              Defaults: 5 jobs, auto-apply, all job boards, standard tailoring.
             </div>
           </CardContent>
         </Card>

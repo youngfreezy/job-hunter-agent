@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       access_token: googleAccessToken,
       refresh_token: (token.googleRefreshToken as string) || undefined,
+      client_id: process.env.GOOGLE_CLIENT_ID || undefined,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET || undefined,
     }),
   });
 

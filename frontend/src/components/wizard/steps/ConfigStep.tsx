@@ -14,16 +14,16 @@ const BOARDS = [
 ];
 
 const COST_ESTIMATES: Record<string, number> = {
-  "auto_apply+standard": 80,
-  "auto_apply+premium": 100,
-  "materials_only+standard": 50,
-  "materials_only+premium": 60,
+  "auto_apply+standard": 20,
+  "auto_apply+premium": 25,
+  "materials_only+standard": 13,
+  "materials_only+premium": 15,
 };
 
 function estimateCredits(values: SessionFormValues): number {
   const key = `${values.applicationMode}+${values.tailoringQuality}`;
   const base = COST_ESTIMATES[key] ?? 80;
-  const jobRatio = (values.maxJobs ?? 20) / 20;
+  const jobRatio = (values.maxJobs ?? 5) / 5;
   return Math.round(base * jobRatio);
 }
 
@@ -44,14 +44,14 @@ export function ConfigStep() {
           <div>
             <label className="text-sm font-medium">
               Maximum jobs to process:{" "}
-              <span className="text-blue-600 font-bold">{values.maxJobs ?? 20}</span>
+              <span className="text-blue-600 font-bold">{values.maxJobs ?? 5}</span>
             </label>
             <input
               type="range"
               min={5}
               max={50}
               step={5}
-              value={values.maxJobs ?? 20}
+              value={values.maxJobs ?? 5}
               onChange={(e) => setFieldValue("maxJobs", parseInt(e.target.value))}
               className="w-full mt-2 accent-blue-600"
             />

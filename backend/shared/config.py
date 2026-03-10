@@ -110,7 +110,7 @@ class Settings(BaseSettings):
 
     # --- Moltbook (agent social network) ---
     MOLTBOOK_API_KEY: Optional[str] = None
-    MOLTBOOK_ENABLED: bool = False  # Feature flag for Moltbook integration
+    MOLTBOOK_ENABLED: bool = True  # Feature flag for Moltbook integration
 
     model_config = {
         "env_file": (

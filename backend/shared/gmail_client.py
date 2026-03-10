@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Redis-backed token store  (key: gmail_token:{session_id})
 # ---------------------------------------------------------------------------
 
-_GMAIL_TOKEN_TTL = 7200  # 2 hours
+_GMAIL_TOKEN_TTL = 28800  # 8 hours
 
 
 async def store_gmail_token(
@@ -59,12 +59,17 @@ def _build_gmail_service(creds):
 
 
 async def _get_service(session_id: str):
-    """Return a Gmail API service for *session_id*, or None."""
+    """Return a Gmail API service for *session_id*, or None.
+
+    If the access token is expired and a refresh token + client credentials
+    are available, attempts an automatic refresh and updates Redis.
+    """
     data = await redis_client.get_json(f"gmail_token:{session_id}")
     if not data:
         return None
     try:
         from google.oauth2.credentials import Credentials
+        import google.auth.transport.requests  # noqa: E402
 
         creds = Credentials(
             token=data["access_token"],
@@ -73,15 +78,33 @@ async def _get_service(session_id: str):
             client_id=data.get("client_id"),
             client_secret=data.get("client_secret"),
         )
+
+        # Attempt refresh if token is expired and we have credentials to do so
+        if creds.expired and creds.refresh_token and creds.client_id and creds.client_secret:
+            logger.info("Gmail token expired for session %s — refreshing", session_id)
+            creds.refresh(google.auth.transport.requests.Request())
+            # Persist the refreshed token back to Redis
+            await store_gmail_token(
+                session_id=session_id,
+                access_token=creds.token,
+                refresh_token=creds.refresh_token,
+                client_id=creds.client_id,
+                client_secret=creds.client_secret,
+            )
+            logger.info("Gmail token refreshed successfully for session %s", session_id)
+
         return _build_gmail_service(creds)
     except Exception:
-        logger.exception("Failed to build Gmail service for %s", session_id)
+        logger.exception("Failed to build/refresh Gmail service for %s", session_id)
         return None
 
 
 # ---------------------------------------------------------------------------
 # Code extraction
 # ---------------------------------------------------------------------------
+
+# Years and other common false positives to exclude from catch-all
+_FALSE_POSITIVE_CODES = {"2024", "2025", "2026", "2027", "2028", "2029", "2030"}
 
 # Patterns ordered from most specific to least specific
 _CODE_PATTERNS = [
@@ -91,9 +114,24 @@ _CODE_PATTERNS = [
     re.compile(r"\bcode[\s:]+(\d{4,8})\b", re.I),
     # "Enter 123456 to verify"
     re.compile(r"\benter\s+(\d{4,8})\s+to\s+verify", re.I),
-    # Standalone 4-8 digit number (last resort)
-    re.compile(r"\b(\d{4,8})\b"),
+    # "Your code is: 123456" (with "is" before the code)
+    re.compile(r"\bis[\s:]+(\d{4,8})\b", re.I),
 ]
+
+
+def _extract_code_fallback(text: str) -> Optional[str]:
+    """Last-resort extraction: find standalone 6-8 digit numbers (skip 4-digit years)."""
+    # Prefer longer codes first (6-8 digits are almost always real codes)
+    for m in re.finditer(r"\b(\d{6,8})\b", text):
+        candidate = m.group(1)
+        if candidate not in _FALSE_POSITIVE_CODES:
+            return candidate
+    # Fall back to 4-5 digit codes, but skip years
+    for m in re.finditer(r"\b(\d{4,5})\b", text):
+        candidate = m.group(1)
+        if candidate not in _FALSE_POSITIVE_CODES:
+            return candidate
+    return None
 
 
 def _extract_code(text: str) -> Optional[str]:
@@ -101,8 +139,11 @@ def _extract_code(text: str) -> Optional[str]:
     for pattern in _CODE_PATTERNS:
         m = pattern.search(text)
         if m:
-            return m.group(1)
-    return None
+            code = m.group(1)
+            if code not in _FALSE_POSITIVE_CODES:
+                return code
+    # Last resort: find standalone digit sequences, prefer 6-8 digits
+    return _extract_code_fallback(text)
 
 
 def _strip_html(html: str) -> str:
@@ -174,7 +215,12 @@ async def poll_for_verification_code(
     """
     service = await _get_service(session_id)
     if not service:
-        logger.warning("No Gmail token for session %s — skipping auto-extraction", session_id)
+        # Check if there's no token at all vs a broken one
+        data = await redis_client.get_json(f"gmail_token:{session_id}")
+        if not data:
+            logger.warning("No Gmail token for session %s — user may not have signed in with Google", session_id)
+        else:
+            logger.warning("Gmail token exists but service build failed for session %s — token may be expired/invalid", session_id)
         return None
 
     # Build search query — look for recent verification/confirmation emails
