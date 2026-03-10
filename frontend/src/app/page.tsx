@@ -74,10 +74,10 @@ const pricingPacks = [
   {
     name: "10 Credits",
     apps: 10,
-    price: 14.99,
-    priceLabel: "$14.99",
-    perApp: "$1.50",
-    perDay: "$0.50/day",
+    price: 24.99,
+    priceLabel: "$24.99",
+    perApp: "$2.50",
+    perDay: "$0.83/day",
     summary: "Perfect first purchase after free trial.",
     features: [
       "10 application credits",
@@ -92,10 +92,10 @@ const pricingPacks = [
   {
     name: "50 Credits",
     apps: 50,
-    price: 59.99,
-    priceLabel: "$59.99",
-    perApp: "$1.20",
-    perDay: "$2.00/day",
+    price: 99.99,
+    priceLabel: "$99.99",
+    perApp: "$2.00",
+    perDay: "$3.33/day",
     summary: "Best value for serious job searches.",
     features: [
       "50 application credits",
@@ -110,10 +110,10 @@ const pricingPacks = [
   {
     name: "Unlimited Monthly",
     apps: -1,
-    price: 99.99,
-    priceLabel: "$99.99",
+    price: 149.99,
+    priceLabel: "$149.99",
     perApp: "unlimited",
-    perDay: "$3.33/day",
+    perDay: "$5.00/day",
     summary: "Unlimited applications for active searchers.",
     features: [
       "Up to 100 applications/month",
@@ -196,11 +196,11 @@ const jsonLd = {
       priceCurrency: "USD",
       description: "3 free application credits",
     },
-    { "@type": "Offer", price: "14.99", priceCurrency: "USD", description: "10 credit pack" },
-    { "@type": "Offer", price: "59.99", priceCurrency: "USD", description: "50 credit pack" },
+    { "@type": "Offer", price: "24.99", priceCurrency: "USD", description: "10 credit pack" },
+    { "@type": "Offer", price: "99.99", priceCurrency: "USD", description: "50 credit pack" },
     {
       "@type": "Offer",
-      price: "99.99",
+      price: "149.99",
       priceCurrency: "USD",
       description: "Unlimited monthly subscription",
     },
@@ -234,7 +234,7 @@ function ROICalculator() {
 
   const weeklyHoursSaved = appsPerWeek * hoursPerApp;
   const weeklyCostManual = weeklyHoursSaved * hourlyRate;
-  const creditCost = appsPerWeek <= 10 ? 14.99 : appsPerWeek <= 50 ? 59.99 : 99.99;
+  const creditCost = appsPerWeek <= 10 ? 24.99 : appsPerWeek <= 50 ? 99.99 : 149.99;
   const savings = weeklyCostManual - creditCost;
   const roi = Math.round((savings / creditCost) * 100);
 
@@ -406,7 +406,7 @@ export default function Home() {
               <div className="mt-10 grid gap-6 sm:grid-cols-3">
                 {[
                   { value: "5 job boards", label: "Searched simultaneously" },
-                  { value: "3 free credits", label: "Then from $1.50/app" },
+                  { value: "3 free credits", label: "Then from $2.00/app" },
                   { value: "2 approval steps", label: "You control everything" },
                 ].map((s) => (
                   <div key={s.value}>
@@ -1204,7 +1204,7 @@ export default function Home() {
           </p>
 
           <p className="mt-3 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            Also available: 100 credits for $109.99 ($1.10/credit). Need more?{" "}
+            Also available: 100 credits for $179.99 ($1.80/credit). Need more?{" "}
             <a
               href="mailto:support@jobhunteragent.com"
               className="underline hover:text-zinc-900 dark:hover:text-white"

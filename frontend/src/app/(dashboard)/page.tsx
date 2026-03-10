@@ -71,32 +71,32 @@ const pricingPacks = [
     popular: false,
   },
   {
-    name: "20 Credits",
-    apps: 20,
-    price: 29.99,
-    priceLabel: "$29.99",
-    perApp: "$1.50",
+    name: "10 Credits",
+    apps: 10,
+    price: 24.99,
+    priceLabel: "$24.99",
+    perApp: "$2.50",
     summary: "Best for focused job searches.",
     features: [
-      "20 application credits",
+      "10 application credits",
       "Partial attempts only cost 0.5 credits",
       "Cover letter + resume tailored per role",
       "Real-time progress tracking",
       "Full application history",
     ],
-    cta: "Get 20 Credits",
+    cta: "Get 10 Credits",
     popular: false,
   },
   {
     name: "50 Credits",
     apps: 50,
-    price: 64.99,
-    priceLabel: "$64.99",
-    perApp: "$1.30",
+    price: 99.99,
+    priceLabel: "$99.99",
+    perApp: "$2.00",
     summary: "Maximum coverage for serious searchers.",
     features: [
       "50 application credits",
-      "Everything in 20 Credits pack",
+      "Everything in 10 Credits pack",
       "Priority application processing",
       "Direct browser control for complex sites",
       "Best value for most job seekers",
@@ -253,7 +253,7 @@ export default function Home() {
               <div className="mt-10 grid gap-6 sm:grid-cols-3">
                 {[
                   { value: "5 job boards", label: "Searched simultaneously" },
-                  { value: "3 free credits", label: "Then from $1.20/app" },
+                  { value: "3 free credits", label: "Then from $2.00/app" },
                   { value: "2 approval steps", label: "You control everything" },
                 ].map((s) => (
                   <div key={s.value}>
@@ -500,7 +500,7 @@ export default function Home() {
           </div>
 
           <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-            Also available: 100 credits for $119.99 ($1.20/credit). Need more?{" "}
+            Also available: 100 credits for $179.99 ($1.80/credit). Need more?{" "}
             <a
               href="mailto:support@jobhunteragent.com"
               className="underline hover:text-zinc-900 dark:hover:text-white"

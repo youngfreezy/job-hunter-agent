@@ -7,8 +7,8 @@ Pricing (credit-based):
   - Partial attempt (work done, form didn't complete): 0.5 credits
   - Skipped (duplicate, rate-limited, no work done): 0 credits
   - 3 free applications for new users
-  - Packs: 10 credits ($14.99), 50 credits ($59.99), 100 credits ($109.99)
-  - Unlimited: $99.99/month (100 apps/month cap)
+  - Packs: 10 credits ($24.99), 50 credits ($99.99), 100 credits ($179.99)
+  - Unlimited: $149.99/month (100 apps/month cap)
 """
 
 from __future__ import annotations
@@ -36,17 +36,17 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 # Pack definitions (credit-based)
 PACKS = {
-    "10": {"label": "10 Credits", "price_dollars": 14.99, "credit_amount": 10},
-    "50": {"label": "50 Credits", "price_dollars": 59.99, "credit_amount": 50},
-    "100": {"label": "100 Credits", "price_dollars": 109.99, "credit_amount": 100},
-    "top_up_5": {"label": "5 Credits", "price_dollars": 7.99, "credit_amount": 5},
-    "top_up_10": {"label": "10 Credits", "price_dollars": 14.99, "credit_amount": 10},
-    "top_up_25": {"label": "25 Credits", "price_dollars": 34.99, "credit_amount": 25},
+    "10": {"label": "10 Credits", "price_dollars": 24.99, "credit_amount": 10},
+    "50": {"label": "50 Credits", "price_dollars": 99.99, "credit_amount": 50},
+    "100": {"label": "100 Credits", "price_dollars": 179.99, "credit_amount": 100},
+    "top_up_5": {"label": "5 Credits", "price_dollars": 12.99, "credit_amount": 5},
+    "top_up_10": {"label": "10 Credits", "price_dollars": 24.99, "credit_amount": 10},
+    "top_up_25": {"label": "25 Credits", "price_dollars": 54.99, "credit_amount": 25},
 }
 
 # Unlimited subscription plan
 UNLIMITED_PLAN = {
-    "price_dollars": 99.99,
+    "price_dollars": 149.99,
     "monthly_cap": 100,
     "label": "Unlimited Monthly",
 }
