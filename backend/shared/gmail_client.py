@@ -103,6 +103,9 @@ async def _get_service(session_id: str):
 # Code extraction
 # ---------------------------------------------------------------------------
 
+# Years and other common false positives to exclude from catch-all
+_FALSE_POSITIVE_CODES = {"2024", "2025", "2026", "2027", "2028", "2029", "2030"}
+
 # Patterns ordered from most specific to least specific
 _CODE_PATTERNS = [
     # "Your verification code is 123456"
@@ -111,9 +114,24 @@ _CODE_PATTERNS = [
     re.compile(r"\bcode[\s:]+(\d{4,8})\b", re.I),
     # "Enter 123456 to verify"
     re.compile(r"\benter\s+(\d{4,8})\s+to\s+verify", re.I),
-    # Standalone 4-8 digit number (last resort)
-    re.compile(r"\b(\d{4,8})\b"),
+    # "Your code is: 123456" (with "is" before the code)
+    re.compile(r"\bis[\s:]+(\d{4,8})\b", re.I),
 ]
+
+
+def _extract_code_fallback(text: str) -> Optional[str]:
+    """Last-resort extraction: find standalone 6-8 digit numbers (skip 4-digit years)."""
+    # Prefer longer codes first (6-8 digits are almost always real codes)
+    for m in re.finditer(r"\b(\d{6,8})\b", text):
+        candidate = m.group(1)
+        if candidate not in _FALSE_POSITIVE_CODES:
+            return candidate
+    # Fall back to 4-5 digit codes, but skip years
+    for m in re.finditer(r"\b(\d{4,5})\b", text):
+        candidate = m.group(1)
+        if candidate not in _FALSE_POSITIVE_CODES:
+            return candidate
+    return None
 
 
 def _extract_code(text: str) -> Optional[str]:
@@ -121,8 +139,11 @@ def _extract_code(text: str) -> Optional[str]:
     for pattern in _CODE_PATTERNS:
         m = pattern.search(text)
         if m:
-            return m.group(1)
-    return None
+            code = m.group(1)
+            if code not in _FALSE_POSITIVE_CODES:
+                return code
+    # Last resort: find standalone digit sequences, prefer 6-8 digits
+    return _extract_code_fallback(text)
 
 
 def _strip_html(html: str) -> str:
