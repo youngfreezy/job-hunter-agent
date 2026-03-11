@@ -221,6 +221,7 @@ export async function startSession(params: {
   search_radius?: number;
   resume_text: string | null;
   resume_file_path: string | null;
+  resume_uuid: string | null;
   linkedin_url: string | null;
   preferences: Record<string, unknown>;
   config?: {
@@ -648,7 +649,7 @@ export function connectSSE(
 
 export async function parseResume(
   file: File
-): Promise<{ text: string; filename: string; file_path?: string }> {
+): Promise<{ text: string; filename: string; file_path?: string; resume_uuid?: string }> {
   const auth = await getAuthHeaders();
   const form = new FormData();
   form.append("file", file);

@@ -269,7 +269,8 @@ class StartSessionRequest(BaseModel):
             raise ValueError("JobHunter is currently available in the United States only")
         return v.upper()
     resume_text: Optional[str] = None
-    resume_file_path: Optional[str] = None
+    resume_file_path: Optional[str] = None  # Legacy — prefer resume_uuid
+    resume_uuid: Optional[str] = None  # UUID from parse-resume response
     linkedin_url: Optional[str] = None
     preferences: Dict[str, Any] = Field(default_factory=dict)
     config: Optional[SessionConfig] = None

@@ -40,6 +40,7 @@ export const resumeProfileSchema = Yup.object({
     ),
   resumeFileName: Yup.string().default(""),
   resumeFilePath: Yup.string().default(""),
+  resumeFileUuid: Yup.string().default(""),
   linkedinUrl: Yup.string()
     .default("")
     .test(
@@ -88,6 +89,7 @@ export const sessionInitialValues: SessionFormValues = {
   resumeText: "",
   resumeFileName: "",
   resumeFilePath: "",
+  resumeFileUuid: "",
   linkedinUrl: "",
   maxJobs: 5,
   tailoringQuality: "standard",
