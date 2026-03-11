@@ -2292,3 +2292,15 @@ async def get_screenshot(session_id: str, screenshot_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Screenshot not found")
     image_data, content_type = result
     return Response(content=image_data, media_type=content_type)
+
+
+@router.get("/{session_id}/artifacts")
+async def list_artifacts(session_id: str, request: Request):
+    """List all persisted Skyvern task artifacts for a session.
+
+    Each artifact contains the full task result: status, failure_reason,
+    extracted_information, screenshot URLs, and timestamps.
+    """
+    from backend.shared.screenshot_store import get_artifacts_for_session
+    artifacts = get_artifacts_for_session(session_id)
+    return {"artifacts": artifacts}
