@@ -341,15 +341,18 @@ export default function AutopilotPage() {
                     ))}
                   </select>
                   <span className="text-muted-foreground">:</span>
-                  <select
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
                     value={customMinute}
-                    onChange={(e) => setCustomMinute(e.target.value)}
-                    className="rounded-md border px-2 py-1.5 text-sm bg-background"
-                  >
-                    {["00", "15", "30", "45"].map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "").slice(0, 2);
+                      const n = Math.min(59, Math.max(0, Number(v)));
+                      setCustomMinute(String(n).padStart(2, "0"));
+                    }}
+                    className="rounded-md border px-2 py-1.5 text-sm bg-background w-14 text-center tabular-nums"
+                  />
                   <span className="text-xs text-muted-foreground ml-1">(your local time)</span>
                 </div>
                 <div className="flex items-center gap-2">

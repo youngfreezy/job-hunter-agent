@@ -90,6 +90,12 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         search_config.locations,
     )
 
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": "all",
+        "step": f"Searching for {', '.join(search_config.keywords[:3])} jobs...",
+        "total": 0,
+    })
+
     # Use max_jobs from session config if set, otherwise PER_BOARD_MAX
     total_max = PER_BOARD_MAX
     if session_config:
@@ -109,6 +115,12 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         logger.exception("Discovery failed entirely: %s", exc)
         errors.append(f"Discovery failed: {exc}")
         all_jobs = []
+
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": "all",
+        "step": f"Found {len(all_jobs)} jobs, filtering duplicates...",
+        "total": len(all_jobs),
+    })
 
     # Deduplicate within this batch
     seen_keys: set[str] = set()
@@ -171,12 +183,12 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             job.title, job.company, job.url[:120],
         )
 
-    if not deduped:
-        await emit_agent_event(session_id, "discovery_progress", {
-            "board": "all",
-            "step": "No jobs found across any board",
-            "error": True,
-        })
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": "all",
+        "step": f"{len(deduped)} jobs ready for scoring" if deduped else "No jobs found across any board",
+        "total": len(deduped),
+        "error": not deduped,
+    })
 
     return {
         "discovered_jobs": deduped,
