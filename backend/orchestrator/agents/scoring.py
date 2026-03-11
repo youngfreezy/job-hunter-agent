@@ -181,27 +181,31 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # Step 1: Deduplicate
         unique_jobs = _deduplicate_jobs(discovered_jobs)
 
-        # Step 1b: Filter out jobs the user already applied to in previous sessions
+        # Step 1b: Filter out jobs the user already applied to or companies at rate limit
         user_id = state.get("user_id", "")
         if user_id:
             try:
-                from backend.shared.application_store import get_previously_applied_urls
+                from backend.shared.application_store import get_previously_applied_urls, get_rate_limited_companies
                 applied_urls = get_previously_applied_urls(user_id)
-                if applied_urls:
-                    before_dedup = len(unique_jobs)
-                    unique_jobs = [j for j in unique_jobs if j.url not in applied_urls]
-                    excluded = before_dedup - len(unique_jobs)
-                    if excluded:
-                        logger.info(
-                            "Cross-session dedup: excluded %d jobs already applied to by user %s",
-                            excluded, user_id,
-                        )
-                        session_id_for_event = state.get("session_id", "")
-                        if session_id_for_event:
-                            from backend.shared.event_bus import emit_agent_event
-                            await emit_agent_event(session_id_for_event, "scoring_progress", {
-                                "step": f"Filtered out {excluded} jobs you already applied to",
-                            })
+                blocked_companies = get_rate_limited_companies(user_id)
+                before_filter = len(unique_jobs)
+                unique_jobs = [
+                    j for j in unique_jobs
+                    if j.url not in applied_urls
+                    and j.company.lower().strip() not in blocked_companies
+                ]
+                excluded = before_filter - len(unique_jobs)
+                if excluded:
+                    logger.info(
+                        "Cross-session filter: excluded %d jobs (applied URLs: %d, rate-limited companies: %s) for user %s",
+                        excluded, len(applied_urls), blocked_companies or "none", user_id,
+                    )
+                    session_id_for_event = state.get("session_id", "")
+                    if session_id_for_event:
+                        from backend.shared.event_bus import emit_agent_event
+                        await emit_agent_event(session_id_for_event, "scoring_progress", {
+                            "step": f"Filtered out {excluded} jobs (already applied or company limit reached)",
+                        })
             except Exception:
                 logger.warning("Cross-session dedup failed", exc_info=True)
 

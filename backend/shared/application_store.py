@@ -219,6 +219,34 @@ def get_previously_applied_urls(user_id: str) -> set[str]:
         return set()
 
 
+def get_rate_limited_companies(
+    user_id: str, max_applications: int = 2, window_days: int = 14
+) -> set[str]:
+    """Return set of company names (lowered) that have hit the rate limit.
+
+    Used at the scoring stage to exclude companies the user has already
+    applied to enough times recently.
+    """
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT LOWER(job_company), COUNT(*)
+                FROM application_results
+                WHERE user_id = %s AND status = 'submitted'
+                  AND created_at > NOW() - INTERVAL '%s days'
+                  AND job_company != ''
+                GROUP BY LOWER(job_company)
+                HAVING COUNT(*) >= %s
+                """,
+                (user_id, window_days, max_applications),
+            )
+            return {row[0] for row in cur.fetchall()}
+    except Exception:
+        logger.warning("Failed to fetch rate-limited companies for user %s", user_id, exc_info=True)
+        return set()
+
+
 def check_company_rate_limit(
     company: str,
     user_id: Optional[str] = None,
