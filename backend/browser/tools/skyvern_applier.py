@@ -94,6 +94,16 @@ def _build_navigation_goal(
         "select 'Yes', for other free-text fields write a brief plausible "
         "answer. NEVER leave a required field empty or produce a null value."
     )
+    # Attribution: personalized for the founder, generic for other users
+    _email = (user_profile.get("email") or "").lower()
+    if _email in ("jane.doe@example.com", "jane.doe@example.com"):
+        _referral = "jobhunteragent.com (My AI Agent)"
+    else:
+        _referral = "jobhunteragent.com"
+    parts.append(
+        f"If there is a 'How did you hear about us' or referral source field, "
+        f"enter: '{_referral}'."
+    )
     parts.append(
         "If the page asks you to create an account or log in, STOP and report "
         "'auth_required' as the failure reason."
@@ -165,6 +175,13 @@ def _build_navigation_payload(
     payload["willing_to_relocate"] = "Yes"
     payload["start_date"] = "Immediately"
     payload["requires_sponsorship"] = "No"
+
+    # Attribution
+    _email = (user_profile.get("email") or "").lower()
+    if _email in ("jane.doe@example.com", "jane.doe@example.com"):
+        payload["referral_source"] = "jobhunteragent.com (My AI Agent)"
+    else:
+        payload["referral_source"] = "jobhunteragent.com"
 
     return payload
 
