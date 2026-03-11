@@ -106,43 +106,76 @@ async def _get_service(session_id: str):
 # Years and other common false positives to exclude from catch-all
 _FALSE_POSITIVE_CODES = {"2024", "2025", "2026", "2027", "2028", "2029", "2030"}
 
-# Patterns ordered from most specific to least specific
+# Senders that are almost certainly verification emails (prioritize these)
+_VERIFICATION_SENDERS = {
+    "greenhouse", "lever", "workday", "icims", "taleo", "smartrecruiters",
+    "jobvite", "ashby", "noreply", "no-reply", "verify", "security",
+    "confirmation", "do-not-reply", "donotreply",
+}
+
+# Patterns ordered from most specific to least specific.
+# Support both numeric (123456) and alphanumeric (fdxaqwTh) codes.
 _CODE_PATTERNS = [
-    # "Your verification code is 123456"
-    re.compile(r"(?:verification|security|confirmation|one[- ]?time|otp)\s*(?:code|pin|number)?[\s:]+(\d{4,8})", re.I),
-    # "Code: 123456" or "code 123456"
-    re.compile(r"\bcode[\s:]+(\d{4,8})\b", re.I),
-    # "Enter 123456 to verify"
-    re.compile(r"\benter\s+(\d{4,8})\s+to\s+verify", re.I),
-    # "Your code is: 123456" (with "is" before the code)
-    re.compile(r"\bis[\s:]+(\d{4,8})\b", re.I),
+    # "Your verification/security code is ABC123" or "...code is: fdxaqwTh"
+    # Requires "code/pin/number" followed by separator (is/:/whitespace) then the value
+    re.compile(
+        r"(?:verification|security|confirmation|one[- ]?time|otp)\s+"
+        r"(?:code|pin|number)\s*(?:is)?[\s:]+([A-Za-z0-9]{4,10})",
+        re.I,
+    ),
+    # "Code: ABC123" or "code is ABC123" or "code: fdxaqwTh"
+    re.compile(r"\bcode\s*(?:is)?[\s:]+([A-Za-z0-9]{4,10})\b", re.I),
+    # "Enter ABC123 to verify"
+    re.compile(r"\benter\s+([A-Za-z0-9]{4,10})\s+to\s+verify", re.I),
+    # "Copy and paste this code into the security code field...{newline}fdxaqwTh"
+    # Greenhouse-style: instruction text followed by a standalone code on its own line
+    re.compile(
+        r"(?:copy\s+and\s+paste|enter|use)\s+this\s+code.*?\n\s*([A-Za-z0-9]{4,10})\b",
+        re.I | re.S,
+    ),
 ]
+
+# Standalone alphanumeric codes are too ambiguous — only match if the email
+# is clearly a verification email (determined by sender/subject scoring).
+_DIGIT_ONLY_FALLBACK = [
+    # 6-8 digit codes (very likely real)
+    re.compile(r"\b(\d{6,8})\b"),
+    # 4-5 digit codes (less certain)
+    re.compile(r"\b(\d{4,5})\b"),
+]
+
+
+def _is_common_word(candidate: str) -> bool:
+    """Return True if the candidate looks like a common English word, not a code."""
+    # Pure lowercase words >= 4 chars are likely prose, not codes
+    # Real codes are typically mixed-case, all-upper, or contain digits
+    if candidate.isalpha() and candidate.islower() and len(candidate) <= 6:
+        return True
+    return False
 
 
 def _extract_code_fallback(text: str) -> Optional[str]:
     """Last-resort extraction: find standalone 6-8 digit numbers (skip 4-digit years)."""
-    # Prefer longer codes first (6-8 digits are almost always real codes)
-    for m in re.finditer(r"\b(\d{6,8})\b", text):
-        candidate = m.group(1)
-        if candidate not in _FALSE_POSITIVE_CODES:
-            return candidate
-    # Fall back to 4-5 digit codes, but skip years
-    for m in re.finditer(r"\b(\d{4,5})\b", text):
-        candidate = m.group(1)
-        if candidate not in _FALSE_POSITIVE_CODES:
-            return candidate
+    for pattern in _DIGIT_ONLY_FALLBACK:
+        for m in pattern.finditer(text):
+            candidate = m.group(1)
+            if candidate not in _FALSE_POSITIVE_CODES:
+                return candidate
     return None
 
 
 def _extract_code(text: str) -> Optional[str]:
-    """Extract a verification code from email body text."""
+    """Extract a verification code from email body text.
+
+    Supports both numeric (123456) and alphanumeric (fdxaqwTh) codes.
+    """
     for pattern in _CODE_PATTERNS:
         m = pattern.search(text)
         if m:
             code = m.group(1)
-            if code not in _FALSE_POSITIVE_CODES:
+            if code not in _FALSE_POSITIVE_CODES and not _is_common_word(code):
                 return code
-    # Last resort: find standalone digit sequences, prefer 6-8 digits
+    # Last resort: digit-only sequences
     return _extract_code_fallback(text)
 
 
@@ -266,22 +299,44 @@ async def poll_for_verification_code(
                 payload = msg.get("payload", {})
                 body_text = _decode_body(payload)
 
-                # Log subject for debugging
+                # Log subject and sender for debugging
                 headers = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
                 subject = headers.get("subject", "(no subject)")
-                logger.info("Gmail: processing email subject=%r, body_len=%d, snippet_len=%d",
-                            subject, len(body_text), len(snippet))
+                sender = headers.get("from", "")
+                logger.info("Gmail: processing email subject=%r, from=%r, body_len=%d",
+                            subject, sender, len(body_text))
 
                 code = _extract_code(body_text) or _extract_code(snippet)
                 if not code:
                     logger.info("Gmail: no code pattern matched in email %r", subject)
                     continue
 
-                # Score: +10 for each context keyword found in subject/snippet/body
+                # Score: prefer verification emails over marketing noise
                 combined = (snippet + " " + body_text).lower()
-                score = sum(10 for kw in context_keywords if kw in combined)
-                # Boost emails that arrived very recently (snippet has them first anyway)
-                score += 1  # baseline so any code beats no code
+                sender_lower = sender.lower()
+                score = 1  # baseline so any code beats no code
+
+                # +10 for each context keyword (company/platform) in content
+                score += sum(10 for kw in context_keywords if kw in combined)
+
+                # +20 if sender looks like a verification/ATS system
+                if any(kw in sender_lower for kw in _VERIFICATION_SENDERS):
+                    score += 20
+
+                # +15 if subject contains verification-related keywords
+                subject_lower = subject.lower()
+                if any(kw in subject_lower for kw in (
+                    "verification", "security code", "confirm", "one-time",
+                    "otp", "verify", "access code",
+                )):
+                    score += 15
+
+                # -10 penalty if sender looks like marketing/newsletter
+                if any(kw in sender_lower for kw in (
+                    "newsletter", "marketing", "promo", "offer", "deals",
+                    "digest", "updates@", "news@",
+                )):
+                    score -= 10
 
                 if score > best_score:
                     best_score = score
@@ -289,8 +344,8 @@ async def poll_for_verification_code(
 
             if best_code:
                 logger.info(
-                    "Gmail: extracted verification code (attempt %d/%d, score=%d)",
-                    attempt + 1, attempts, best_score,
+                    "Gmail: extracted verification code len=%d (attempt %d/%d, score=%d)",
+                    len(best_code), attempt + 1, attempts, best_score,
                 )
                 return best_code
 

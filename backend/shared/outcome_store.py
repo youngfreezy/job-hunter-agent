@@ -29,10 +29,15 @@ CREATE TABLE IF NOT EXISTS session_outcomes (
     avg_fit_score FLOAT DEFAULT 0.0,
     error_categories JSONB,
     ats_breakdown JSONB,
+    failure_details JSONB,
     prompts_used JSONB,
     search_config JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+"""
+
+_ADD_FAILURE_DETAILS_SQL = """
+ALTER TABLE session_outcomes ADD COLUMN IF NOT EXISTS failure_details JSONB;
 """
 
 _INDEX_SQL = """
@@ -51,6 +56,7 @@ def _ensure_table() -> None:
     with pool.connection() as conn:
         conn.execute(_TABLE_SQL)
         conn.execute(_INDEX_SQL)
+        conn.execute(_ADD_FAILURE_DETAILS_SQL)
         conn.commit()
     _ensured = True
 
@@ -72,8 +78,9 @@ def record_outcome(session_id: str, metrics: Dict[str, Any]) -> None:
                 session_id, discovery_count, scored_count,
                 submitted_count, failed_count, skipped_count,
                 success_rate, avg_fit_score,
-                error_categories, ats_breakdown, prompts_used, search_config
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                error_categories, ats_breakdown, failure_details,
+                prompts_used, search_config
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 session_id,
@@ -86,6 +93,7 @@ def record_outcome(session_id: str, metrics: Dict[str, Any]) -> None:
                 metrics.get("avg_fit_score", 0.0),
                 json.dumps(metrics.get("error_categories", {})),
                 json.dumps(metrics.get("ats_breakdown", {})),
+                json.dumps(metrics.get("failure_details", [])),
                 json.dumps(metrics.get("prompts_used", {})),
                 json.dumps(metrics.get("search_config", {})),
             ),
@@ -114,7 +122,8 @@ def get_outcomes_for_optimization(min_sessions: int = 10) -> List[Dict[str, Any]
             """SELECT session_id, discovery_count, scored_count,
                       submitted_count, failed_count, skipped_count,
                       success_rate, avg_fit_score,
-                      error_categories, ats_breakdown, prompts_used, search_config,
+                      error_categories, ats_breakdown, failure_details,
+                      prompts_used, search_config,
                       created_at
                FROM session_outcomes
                ORDER BY created_at DESC
@@ -133,9 +142,10 @@ def get_outcomes_for_optimization(min_sessions: int = 10) -> List[Dict[str, Any]
             "avg_fit_score": r[7],
             "error_categories": r[8] if isinstance(r[8], dict) else json.loads(r[8] or "{}"),
             "ats_breakdown": r[9] if isinstance(r[9], dict) else json.loads(r[9] or "{}"),
-            "prompts_used": r[10] if isinstance(r[10], dict) else json.loads(r[10] or "{}"),
-            "search_config": r[11] if isinstance(r[11], dict) else json.loads(r[11] or "{}"),
-            "created_at": r[12].isoformat() if r[12] else None,
+            "failure_details": r[10] if isinstance(r[10], list) else json.loads(r[10] or "[]"),
+            "prompts_used": r[11] if isinstance(r[11], dict) else json.loads(r[11] or "{}"),
+            "search_config": r[12] if isinstance(r[12], dict) else json.loads(r[12] or "{}"),
+            "created_at": r[13].isoformat() if r[13] else None,
         }
         for r in rows
     ]
