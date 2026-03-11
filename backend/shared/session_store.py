@@ -106,7 +106,7 @@ def get_sessions_for_user(user_id: str) -> List[Dict[str, Any]]:
                           salary_min, resume_text_snippet, linkedin_url,
                           applications_submitted, applications_failed, created_at
                    FROM sessions
-                   WHERE user_id = %s::uuid
+                   WHERE user_id::text = %s
                    ORDER BY created_at DESC""",
                 (str(user_id),),
             )
@@ -265,7 +265,7 @@ def delete_sessions_for_user(user_id: str) -> bool:
     """Delete all sessions for a user (GDPR)."""
     with _connect() as conn:
         try:
-            conn.execute("DELETE FROM sessions WHERE user_id = %s::uuid", (str(user_id),))
+            conn.execute("DELETE FROM sessions WHERE user_id::text = %s", (str(user_id),))
             conn.commit()
             return True
         except Exception:
