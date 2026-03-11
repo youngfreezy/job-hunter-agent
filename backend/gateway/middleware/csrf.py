@@ -67,6 +67,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        # Skip validation for exempt prefixes
+        if path.startswith(_EXEMPT_PREFIXES):
+            response = await call_next(request)
+            return response
+
         # Skip validation for Skyvern-facing endpoints (service-to-service,
         # no browser cookies). These use HMAC signature verification instead.
         if path.endswith("/totp-code") or "/resume-file" in path:
