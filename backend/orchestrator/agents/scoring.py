@@ -181,6 +181,30 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # Step 1: Deduplicate
         unique_jobs = _deduplicate_jobs(discovered_jobs)
 
+        # Step 1b: Filter out jobs the user already applied to in previous sessions
+        user_id = state.get("user_id", "")
+        if user_id:
+            try:
+                from backend.shared.application_store import get_previously_applied_urls
+                applied_urls = get_previously_applied_urls(user_id)
+                if applied_urls:
+                    before_dedup = len(unique_jobs)
+                    unique_jobs = [j for j in unique_jobs if j.url not in applied_urls]
+                    excluded = before_dedup - len(unique_jobs)
+                    if excluded:
+                        logger.info(
+                            "Cross-session dedup: excluded %d jobs already applied to by user %s",
+                            excluded, user_id,
+                        )
+                        session_id_for_event = state.get("session_id", "")
+                        if session_id_for_event:
+                            from backend.shared.event_bus import emit_agent_event
+                            await emit_agent_event(session_id_for_event, "scoring_progress", {
+                                "step": f"Filtered out {excluded} jobs you already applied to",
+                            })
+            except Exception:
+                logger.warning("Cross-session dedup failed", exc_info=True)
+
         logger.info(
             "Scoring agent starting -- %d unique jobs to score",
             len(unique_jobs),
