@@ -1,21 +1,21 @@
 # Remaining Tasks
 
 ## Stripe: Test → Live
-- [] Activate Stripe account (complete onboarding — business details, bank account, etc.)
-- [ ] Swap keys on Railway backend: `STRIPE_SECRET_KEY` → `sk_live_...`
-- [ ] Swap keys on Railway frontend: `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` → `pk_live_...`
-- [ ] Create new **live mode** webhook in Stripe Dashboard (same URL: `https://api.jobhunteragent.com/api/billing/webhook`, event: `checkout.session.completed`)
-- [ ] Update `STRIPE_WEBHOOK_SECRET` on Railway backend with new live `whsec_...`
-- [ ] Redeploy frontend (required — `NEXT_PUBLIC_*` vars are build-time)
+- [x] Activate Stripe account (complete onboarding — business details, bank account, etc.)
+- [x] Swap keys on Railway backend: `STRIPE_SECRET_KEY` → `sk_live_...`
+- [x] Swap keys on Railway frontend: `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` → `pk_live_...`
+- [x] Create new **live mode** webhook in Stripe Dashboard (same URL: `https://api.jobhunteragent.com/api/billing/webhook`, event: `checkout.session.completed`)
+- [x] Update `STRIPE_WEBHOOK_SECRET` on Railway backend with new live `whsec_...`
+- [x] Redeploy frontend (required — `NEXT_PUBLIC_*` vars are build-time)
 
 ## Post-Deploy: Autopilot + SMS
-- [ ] Install `croniter` and `twilio` in backend venv (`pip install croniter twilio`)
-- [ ] Run Alembic migrations (`alembic upgrade head`) — creates `autopilot_schedules` table + adds phone columns to `users`
-- [ ] Set Twilio env vars on Railway: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
-- [ ] Configure Twilio webhook URL: `https://api.jobhunteragent.com/api/sms/webhook` (POST)
-- [ ] Run k6 load tests against Railway to establish baselines
-- [ ] E2E test: create autopilot schedule → verify cron fires → session runs → email received
-- [ ] E2E test: send SMS command → verify response
+- [x] Install `croniter` and `twilio` in backend venv (`pip install croniter twilio`)
+- [x] Run Alembic migrations (`alembic upgrade head`) — creates `autopilot_schedules` table + adds phone columns to `users`
+- [x] Set Twilio env vars on Railway: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
+- [x] Configure Twilio webhook URL: `https://api.jobhunteragent.com/api/sms/webhook` (POST)
+- [x] Run k6 load tests against Railway to establish baselines
+- [x] E2E test: create autopilot schedule → verify cron fires → session runs → email received
+- [x] E2E test: send SMS command → verify response
 
 ## Future Features (after 90%+ application success rate)
 
