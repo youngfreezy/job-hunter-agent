@@ -14,6 +14,7 @@ class TestGetCurrentUser:
     def _make_request(self, email: str | None = None) -> MagicMock:
         req = MagicMock()
         req.state.user_email = email
+        req.state.trial_user_id = None
         return req
 
     def test_valid_email_returns_user(self):

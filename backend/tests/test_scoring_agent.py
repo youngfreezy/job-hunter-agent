@@ -17,7 +17,7 @@ def _job(job_id: str) -> JobListing:
     return JobListing(
         id=job_id,
         title=f"Backend Engineer {job_id}",
-        company="Example",
+        company=f"Example {job_id}",
         location="Remote",
         url=f"https://example.com/{job_id}",
         board=JobBoard.LINKEDIN,

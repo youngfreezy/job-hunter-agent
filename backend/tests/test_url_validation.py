@@ -39,14 +39,16 @@ class TestValidateJobUrls:
             "https://example.com/job/2": 404,
         }
 
-        async def mock_head(url, **kwargs):
+        async def mock_get(url, **kwargs):
             resp = MagicMock()
             resp.status_code = mock_responses.get(url, 200)
+            resp.url = url
+            resp.text = "Some job listing content"
             return resp
 
         with patch("backend.orchestrator.pipeline.graph.httpx.AsyncClient") as MockClient:
             client_instance = AsyncMock()
-            client_instance.head = mock_head
+            client_instance.get = mock_get
             client_instance.__aenter__ = AsyncMock(return_value=client_instance)
             client_instance.__aexit__ = AsyncMock(return_value=False)
             MockClient.return_value = client_instance
@@ -61,16 +63,18 @@ class TestValidateJobUrls:
         sj_good = _make_scored_job("https://example.com/job/1")
         sj_unreachable = _make_scored_job("https://dead-host.invalid/job/2")
 
-        async def mock_head(url, **kwargs):
+        async def mock_get(url, **kwargs):
             if "dead-host" in url:
                 raise ConnectionError("DNS resolution failed")
             resp = MagicMock()
             resp.status_code = 200
+            resp.url = url
+            resp.text = "Some job listing content"
             return resp
 
         with patch("backend.orchestrator.pipeline.graph.httpx.AsyncClient") as MockClient:
             client_instance = AsyncMock()
-            client_instance.head = mock_head
+            client_instance.get = mock_get
             client_instance.__aenter__ = AsyncMock(return_value=client_instance)
             client_instance.__aexit__ = AsyncMock(return_value=False)
             MockClient.return_value = client_instance
@@ -82,7 +86,8 @@ class TestValidateJobUrls:
 
     @pytest.mark.asyncio
     async def test_falls_back_to_get_on_405(self):
-        sj = _make_scored_job("https://example.com/job/1")
+        # Use a skip-content-check domain (HEAD first, GET fallback on 405)
+        sj = _make_scored_job("https://linkedin.com/jobs/view/123")
 
         call_count = {"head": 0, "get": 0}
 
@@ -116,14 +121,16 @@ class TestValidateJobUrls:
     async def test_keeps_all_valid_urls(self):
         jobs = [_make_scored_job(f"https://example.com/job/{i}") for i in range(5)]
 
-        async def mock_head(url, **kwargs):
+        async def mock_get(url, **kwargs):
             resp = MagicMock()
             resp.status_code = 200
+            resp.url = url
+            resp.text = "Some job listing content"
             return resp
 
         with patch("backend.orchestrator.pipeline.graph.httpx.AsyncClient") as MockClient:
             client_instance = AsyncMock()
-            client_instance.head = mock_head
+            client_instance.get = mock_get
             client_instance.__aenter__ = AsyncMock(return_value=client_instance)
             client_instance.__aexit__ = AsyncMock(return_value=False)
             MockClient.return_value = client_instance
