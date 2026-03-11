@@ -129,8 +129,41 @@ def get_sessions_for_user(user_id: str) -> List[Dict[str, Any]]:
                 for r in rows
             ]
         except Exception:
-            logger.warning("Failed to load sessions for user %s", user_id, exc_info=True)
+            logger.error("Failed to load sessions for user %s", user_id, exc_info=True)
             return []
+
+
+def get_session_by_id(session_id: str) -> Optional[Dict[str, Any]]:
+    """Load a single session by ID from Postgres."""
+    with _connect() as conn:
+        try:
+            cur = conn.execute(
+                """SELECT id, user_id, status, keywords, locations, remote_only,
+                          salary_min, resume_text_snippet, linkedin_url,
+                          applications_submitted, applications_failed, created_at
+                   FROM sessions WHERE id = %s""",
+                (session_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return {
+                "session_id": r[0],
+                "user_id": r[1],
+                "status": r[2],
+                "keywords": r[3] if isinstance(r[3], list) else (json.loads(r[3]) if r[3] else []),
+                "locations": r[4] if isinstance(r[4], list) else (json.loads(r[4]) if r[4] else []),
+                "remote_only": r[5],
+                "salary_min": r[6],
+                "resume_text_snippet": r[7] or "",
+                "linkedin_url": r[8],
+                "applications_submitted": r[9] or 0,
+                "applications_failed": r[10] or 0,
+                "created_at": r[11].isoformat() if r[11] else "",
+            }
+        except Exception:
+            logger.error("Failed to load session %s", session_id, exc_info=True)
+            return None
 
 
 def get_interrupted_sessions(max_age_hours: int = 2) -> List[Dict[str, Any]]:

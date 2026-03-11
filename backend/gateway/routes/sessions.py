@@ -1366,8 +1366,13 @@ async def stream_session(session_id: str, request: Request):
             cv = state.checkpoint.get("channel_values", {}) if isinstance(state.checkpoint, dict) else {}
         elif isinstance(state, dict):
             cv = state.get("channel_values", state)
+        # Load user_id and metadata from DB (survives restarts)
+        from backend.shared.session_store import get_session_by_id
+        db_row = get_session_by_id(session_id)
+
         session_registry[session_id] = {
             "session_id": session_id,
+            "user_id": db_row["user_id"] if db_row else cv.get("user_id", ""),
             "status": cv.get("status", "unknown"),
             "keywords": cv.get("keywords", []),
             "locations": cv.get("locations", []),
@@ -1377,9 +1382,10 @@ async def stream_session(session_id: str, request: Request):
             "linkedin_url": cv.get("linkedin_url"),
             "applications_submitted": len(cv.get("applications_submitted", [])),
             "applications_failed": len(cv.get("applications_failed", [])),
-            "created_at": cv.get("created_at", ""),
+            "created_at": db_row["created_at"] if db_row else cv.get("created_at", ""),
         }
-        logger.info("Recovered session %s from checkpointer (status=%s)", session_id, cv.get("status"))
+        logger.info("Recovered session %s from checkpointer (status=%s, user_id=%s)",
+                     session_id, cv.get("status"), session_registry[session_id].get("user_id", "?"))
 
     # Ensure event log and subscriber list exist
     if session_id not in event_logs:
