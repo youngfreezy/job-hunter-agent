@@ -1350,7 +1350,26 @@ async def run_application_agent(state: JobHunterState) -> dict:
 
         # Process API jobs in parallel (no browser needed)
         if api_jobs:
-            batch = api_jobs[:settings.API_APPLY_BATCH_SIZE]
+            # Deduplicate: at most one job per company in each batch to avoid
+            # TOCTOU race in the per-company rate limit check during gather().
+            seen_companies: set[str] = set()
+            deduped_batch: list[tuple] = []
+            deferred_batch: list[tuple] = []
+            for jid, j in api_jobs[:settings.API_APPLY_BATCH_SIZE]:
+                company_key = j.company.lower().strip()
+                if company_key in seen_companies:
+                    deferred_batch.append((jid, j))
+                else:
+                    seen_companies.add(company_key)
+                    deduped_batch.append((jid, j))
+            batch = deduped_batch
+            # Put deferred same-company jobs back for next iteration
+            if deferred_batch:
+                logger.info(
+                    "Deferred %d jobs to avoid same-company race condition in batch",
+                    len(deferred_batch),
+                )
+                skyvern_jobs.extend(deferred_batch)
             logger.info(
                 "Batching %d API-eligible jobs in parallel (Greenhouse/Lever)",
                 len(batch),
@@ -1381,7 +1400,15 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     consecutive_failures = 0
 
         # Process Skyvern jobs (browser automation)
-        skyvern_batch = skyvern_jobs[:settings.SKYVERN_CONCURRENCY]
+        # Deduplicate: at most one job per company to avoid rate limit race
+        seen_skyvern_companies: set[str] = set()
+        deduped_skyvern: list[tuple] = []
+        for jid, j in skyvern_jobs[:settings.SKYVERN_CONCURRENCY]:
+            company_key = j.company.lower().strip()
+            if company_key not in seen_skyvern_companies:
+                seen_skyvern_companies.add(company_key)
+                deduped_skyvern.append((jid, j))
+        skyvern_batch = deduped_skyvern
         if skyvern_batch:
             job_id = skyvern_batch[0][0]
             job = skyvern_batch[0][1]
