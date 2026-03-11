@@ -22,7 +22,9 @@ const COST_ESTIMATES: Record<string, number> = {
 
 function estimateCredits(values: SessionFormValues): number {
   const key = `${values.applicationMode}+${values.tailoringQuality}`;
-  return COST_ESTIMATES[key] ?? 20;
+  const base = COST_ESTIMATES[key] ?? 20;
+  const jobRatio = (values.maxJobs ?? 5) / 5;
+  return Math.round(base * jobRatio);
 }
 
 export function ConfigStep() {
@@ -42,11 +44,22 @@ export function ConfigStep() {
           <div>
             <label className="text-sm font-medium">
               Jobs to apply to:{" "}
-              <span className="text-blue-600 font-bold">{Math.min(values.maxJobs ?? 5, 5)}</span>
+              <span className="text-blue-600 font-bold">{values.maxJobs ?? 5}</span>
             </label>
-            <p className="text-xs text-zinc-500 mt-1">
-              Up to 5 applications per session
-            </p>
+            <input
+              type="range"
+              min={3}
+              max={10}
+              step={1}
+              value={values.maxJobs ?? 5}
+              onChange={(e) => setFieldValue("maxJobs", parseInt(e.target.value))}
+              className="w-full mt-2 accent-blue-600"
+            />
+            <div className="flex justify-between text-xs text-zinc-400 mt-1">
+              <span>3</span>
+              <span>5</span>
+              <span>10</span>
+            </div>
           </div>
 
           {/* Tailoring Quality */}
