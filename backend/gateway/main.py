@@ -143,6 +143,10 @@ async def lifespan(app: FastAPI):
         from backend.shared.session_store import cleanup_old_data
         schedule("data-cleanup", cleanup_old_data, interval_hours=24.0)
 
+        # Schedule daily cleanup of stale anonymous users (30-day TTL)
+        from backend.shared.billing_store import cleanup_anonymous_users
+        schedule("anonymous-user-cleanup", cleanup_anonymous_users, interval_hours=24.0)
+
         # Schedule autopilot checker (LISTEN/NOTIFY + 5min fallback)
         from backend.shared.autopilot_runner import check_and_run_due_schedules
         schedule_with_notify(

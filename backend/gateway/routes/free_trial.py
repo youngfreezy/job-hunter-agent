@@ -49,7 +49,16 @@ def _extract_name_from_text(text: str) -> Optional[str]:
 
 
 async def _check_rate_limits(email: str, client_ip: str) -> None:
-    """Enforce rate limits: 2 per IP/day, 50 global/day."""
+    """Enforce rate limits: 2 per IP/day, 50 global/day.
+
+    Premium emails (PREMIUM_EMAILS env var) are exempt for testing.
+    """
+    # Premium emails bypass all rate limits
+    settings = get_settings()
+    premium_emails = [e.strip().lower() for e in settings.PREMIUM_EMAILS.split(",") if e.strip()]
+    if email.lower() in premium_emails:
+        return
+
     try:
         # IP rate limit
         ip_key = f"free_trial:ip:{client_ip}"
@@ -189,17 +198,24 @@ async def free_trial_start(body: StartSessionRequest, request: Request):
 
     name = _extract_name_from_text(body.resume_text)
 
-    # Rate limit by IP
+    # Rate limit by IP (premium emails are exempt)
     client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown").split(",")[0].strip()
     await _check_rate_limits(email, client_ip)
 
-    # Create anonymous user (or get existing anonymous user with remaining credits)
-    anon_user = create_anonymous_user(email, name)
-    if anon_user is None:
-        raise HTTPException(
-            status_code=409,
-            detail="An account with this email already exists or the free trial has been used. Please sign in to continue.",
-        )
+    # Premium emails bypass anonymous user creation — use real account
+    settings = get_settings()
+    premium_emails = [e.strip().lower() for e in settings.PREMIUM_EMAILS.split(",") if e.strip()]
+    if email.lower() in premium_emails:
+        from backend.shared.billing_store import get_or_create_user
+        anon_user = get_or_create_user(email)
+    else:
+        # Create anonymous user (or get existing anonymous user with remaining credits)
+        anon_user = create_anonymous_user(email, name)
+        if anon_user is None:
+            raise HTTPException(
+                status_code=409,
+                detail="An account with this email already exists or the free trial has been used. Please sign in to continue.",
+            )
 
     user_id = anon_user["id"]
 

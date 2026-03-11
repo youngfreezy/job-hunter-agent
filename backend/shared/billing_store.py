@@ -673,3 +673,46 @@ def convert_anonymous_user(
             "name": name,
             "auth_provider": auth_provider,
         }
+
+
+async def cleanup_anonymous_users(max_age_days: int = 30) -> int:
+    """Delete anonymous users (and their transactions) older than max_age_days.
+
+    Returns the number of users deleted.
+    """
+    with _connect() as conn:
+        try:
+            # Find stale anonymous users
+            cur = conn.execute(
+                """SELECT id FROM users
+                   WHERE is_anonymous = TRUE
+                     AND created_at < NOW() - INTERVAL '%s days'""",
+                (max_age_days,),
+            )
+            stale_ids = [str(row[0]) for row in cur.fetchall()]
+            if not stale_ids:
+                return 0
+
+            # Delete their transactions first (FK constraint)
+            conn.execute(
+                "DELETE FROM wallet_transactions WHERE user_id = ANY(%s::uuid[])",
+                (stale_ids,),
+            )
+            # Delete their sessions
+            conn.execute(
+                "DELETE FROM sessions WHERE user_id = ANY(%s)",
+                (stale_ids,),
+            )
+            # Delete the users
+            cur = conn.execute(
+                "DELETE FROM users WHERE id = ANY(%s::uuid[]) RETURNING id",
+                (stale_ids,),
+            )
+            deleted = cur.rowcount
+            conn.commit()
+            logger.info("Cleaned up %d anonymous users older than %d days", deleted, max_age_days)
+            return deleted
+        except Exception:
+            conn.rollback()
+            logger.exception("Failed to clean up anonymous users")
+            return 0
