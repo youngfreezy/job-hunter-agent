@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     EVOAGENTX_ENABLED: bool = True
     EVOAGENTX_OPTIMIZE_EVERY_N: int = 10  # Run optimization after every N sessions
 
+    # --- Backend public URL (for external callbacks, e.g. Skyvern Cloud) ---
+    BACKEND_PUBLIC_URL: Optional[str] = None  # e.g. https://backend-production-cf43.up.railway.app
+
     # --- Skyvern (AI browser agent for job applications) ---
     SKYVERN_API_URL: str = "http://localhost:8080/api/v1"
     SKYVERN_API_KEY: Optional[str] = None  # Required for cloud; optional for self-hosted

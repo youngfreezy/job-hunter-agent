@@ -48,10 +48,9 @@ async def _generate_resume_url(session_id: str, resume_file_path: str = "") -> O
         sig = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()[:32]
         token = f"{payload}.{sig}"
 
-        # Use internal Railway URL (Skyvern is on the same network)
-        skyvern_url = settings.SKYVERN_API_URL
-        if "railway.internal" in skyvern_url:
-            base = "http://backend.railway.internal:8000"
+        # Use public URL so Skyvern Cloud can reach us; fall back for local dev
+        if settings.BACKEND_PUBLIC_URL:
+            base = settings.BACKEND_PUBLIC_URL.rstrip("/")
         else:
             base = "http://localhost:8000"
 
@@ -238,9 +237,8 @@ async def apply_with_skyvern(
 
     # Wire up TOTP verification URL so Skyvern can auto-retrieve
     # verification codes from the user's Gmail
-    skyvern_url = settings.SKYVERN_API_URL
-    if "railway.internal" in skyvern_url:
-        totp_base = "http://backend.railway.internal:8000"
+    if settings.BACKEND_PUBLIC_URL:
+        totp_base = settings.BACKEND_PUBLIC_URL.rstrip("/")
     else:
         totp_base = "http://localhost:8000"
     task_body["totp_verification_url"] = (
