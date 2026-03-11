@@ -200,67 +200,20 @@ def _mock_session(get_responses=None, post_responses=None):
 
 
 class TestGreenhouseApi:
-    @pytest.mark.asyncio
-    @patch("backend.browser.tools.api_applier.aiohttp.ClientSession")
-    async def test_success_200(self, mock_cls):
-        """Greenhouse API returns 200 — application submitted."""
-        mock_cls.return_value = _mock_session(
-            get_responses=[_mock_aiohttp_response(200, json_data={"questions": []})],
-            post_responses=[_mock_aiohttp_response(200, text_data='{"success": true}')],
-        )()
+    """Greenhouse API handlers are disabled (_ATS_HANDLERS is empty) because
+    the POST endpoint requires per-company HTTP Basic Auth keys that we don't
+    have. All Greenhouse jobs go straight to Skyvern now. These tests verify
+    that apply_via_api correctly returns None for Greenhouse jobs."""
 
+    @pytest.mark.asyncio
+    async def test_greenhouse_returns_none(self):
+        """Greenhouse job returns None — handler disabled, falls through to Skyvern."""
         job = _make_job(ATSType.GREENHOUSE, url="https://boards.greenhouse.io/anthropic/jobs/12345")
         result = await apply_via_api(
             job, {"name": "Test User", "email": "test@test.com"},
             "Resume text", "Cover letter", None, "session-1",
         )
-        assert result is not None
-        assert result.status == ApplicationStatus.SUBMITTED
-        assert result.ats_type == "greenhouse_api"
-
-    @pytest.mark.asyncio
-    @patch("backend.browser.tools.api_applier.aiohttp.ClientSession")
-    async def test_recaptcha_428_returns_none(self, mock_cls):
-        """Greenhouse API returns 428 (reCAPTCHA) — should return None for Skyvern fallback."""
-        mock_cls.return_value = _mock_session(
-            get_responses=[_mock_aiohttp_response(200, json_data={"questions": []})],
-            post_responses=[_mock_aiohttp_response(428, text_data="reCAPTCHA required")],
-        )()
-
-        job = _make_job(ATSType.GREENHOUSE, url="https://boards.greenhouse.io/stripe/jobs/67890")
-        result = await apply_via_api(
-            job, {"name": "Test"}, "", "", None, "session-1",
-        )
         assert result is None
-
-    @pytest.mark.asyncio
-    @patch("backend.browser.tools.api_applier.aiohttp.ClientSession")
-    async def test_validation_422_returns_failed(self, mock_cls):
-        """Greenhouse API returns 422 — definitive failure, no fallback."""
-        mock_cls.return_value = _mock_session(
-            get_responses=[_mock_aiohttp_response(200, json_data={"questions": []})],
-            post_responses=[_mock_aiohttp_response(422, text_data='{"errors": ["email required"]}')],
-        )()
-
-        job = _make_job(ATSType.GREENHOUSE, url="https://boards.greenhouse.io/acme/jobs/99999")
-        result = await apply_via_api(job, {}, "", "", None, "session-1")
-        assert result is not None
-        assert result.status == ApplicationStatus.FAILED
-        assert "validation error" in result.error_message.lower()
-
-    @pytest.mark.asyncio
-    @patch("backend.browser.tools.api_applier.aiohttp.ClientSession")
-    async def test_job_not_found_404(self, mock_cls):
-        """Greenhouse API returns 404 for job schema — job expired."""
-        mock_cls.return_value = _mock_session(
-            get_responses=[_mock_aiohttp_response(404)],
-        )()
-
-        job = _make_job(ATSType.GREENHOUSE, url="https://boards.greenhouse.io/gone/jobs/11111")
-        result = await apply_via_api(job, {}, "", "", None, "session-1")
-        assert result is not None
-        assert result.status == ApplicationStatus.FAILED
-        assert "not found" in result.error_message.lower()
 
     @pytest.mark.asyncio
     async def test_unparseable_url_returns_none(self):
@@ -271,51 +224,21 @@ class TestGreenhouseApi:
 
 
 # ---------------------------------------------------------------------------
-# Lever API tests (mocked HTTP)
+# Lever API tests — handler disabled (same reason as Greenhouse)
 # ---------------------------------------------------------------------------
 
 
 class TestLeverApi:
-    @pytest.mark.asyncio
-    @patch("backend.browser.tools.api_applier.aiohttp.ClientSession")
-    async def test_success_200(self, mock_cls):
-        """Lever API returns 200 — application submitted."""
-        mock_cls.return_value = _mock_session(
-            post_responses=[_mock_aiohttp_response(200, text_data='{"ok": true}')],
-        )()
+    """Lever API handlers are disabled. All Lever jobs go to Skyvern."""
 
+    @pytest.mark.asyncio
+    async def test_lever_returns_none(self):
+        """Lever job returns None — handler disabled, falls through to Skyvern."""
         job = _make_job(ATSType.LEVER, url="https://jobs.lever.co/openai/abc-def-123")
         result = await apply_via_api(
             job, {"name": "Test User", "email": "test@test.com"},
             "Resume text", "Cover letter", None, "session-1",
         )
-        assert result is not None
-        assert result.status == ApplicationStatus.SUBMITTED
-        assert result.ats_type == "lever_api"
-
-    @pytest.mark.asyncio
-    @patch("backend.browser.tools.api_applier.aiohttp.ClientSession")
-    async def test_404_returns_failed(self, mock_cls):
-        """Lever API returns 404 — job expired."""
-        mock_cls.return_value = _mock_session(
-            post_responses=[_mock_aiohttp_response(404, text_data="Not found")],
-        )()
-
-        job = _make_job(ATSType.LEVER, url="https://jobs.lever.co/oldcompany/dead-uuid")
-        result = await apply_via_api(job, {}, "", "", None, "session-1")
-        assert result is not None
-        assert result.status == ApplicationStatus.FAILED
-
-    @pytest.mark.asyncio
-    @patch("backend.browser.tools.api_applier.aiohttp.ClientSession")
-    async def test_500_returns_none_for_fallback(self, mock_cls):
-        """Lever API returns 500 — return None for Skyvern fallback."""
-        mock_cls.return_value = _mock_session(
-            post_responses=[_mock_aiohttp_response(500, text_data="Internal error")],
-        )()
-
-        job = _make_job(ATSType.LEVER, url="https://jobs.lever.co/buggy/abc-123")
-        result = await apply_via_api(job, {}, "", "", None, "session-1")
         assert result is None
 
     @pytest.mark.asyncio
