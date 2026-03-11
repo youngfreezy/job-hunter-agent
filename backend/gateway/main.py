@@ -133,6 +133,15 @@ async def lifespan(app: FastAPI):
         from backend.shared.autopilot_store import ensure_autopilot_tables
         await ensure_autopilot_tables()
 
+        from backend.shared.agent_store import ensure_agent_tables, seed_builtin_agents
+        await ensure_agent_tables()
+        seed_builtin_agents()
+
+        try:
+            from backend.shared.webhook_store import _ensure_webhook_tables
+            _ensure_webhook_tables()
+        except Exception as wh_exc:
+            logger.warning("Webhook tables setup failed (non-fatal): %s", wh_exc)
 
         # Schedule daily selector health-check
         from backend.shared.scheduler import schedule, schedule_seconds, schedule_with_notify
@@ -337,6 +346,8 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.autopilot import router as autopilot_router
     from backend.gateway.routes.sms import router as sms_router
     from backend.gateway.routes.free_trial import router as free_trial_router
+    from backend.gateway.routes.marketplace import router as marketplace_router
+    from backend.gateway.routes.developer import router as developer_router
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
@@ -350,6 +361,8 @@ def create_app() -> FastAPI:
     app.include_router(autopilot_router)
     app.include_router(sms_router)
     app.include_router(free_trial_router)
+    app.include_router(marketplace_router)
+    app.include_router(developer_router)
 
     return app
 
