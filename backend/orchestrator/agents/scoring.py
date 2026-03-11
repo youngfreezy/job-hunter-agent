@@ -60,19 +60,30 @@ MAX_DESCRIPTION_CHARS = 320
 # ---------------------------------------------------------------------------
 
 SCORING_SYSTEM_PROMPT = """\
-You are an expert career-matching engine. Given a candidate's resume and a batch
-of job listings, score each job on how well the candidate fits.
+You are an expert career-matching engine. Given a candidate's resume, their
+SEARCH KEYWORDS (the roles they are actively looking for), and a batch of job
+listings, score each job on how well the candidate fits.
 
 For EACH job, produce a score with breakdown and reasons.
 
 Scoring guidelines:
-- keyword_match: Count overlapping skills, technologies, and domain keywords.
+- keyword_match: This is the MOST IMPORTANT dimension. Evaluate TWO things:
+  1. JOB TITLE ALIGNMENT with the candidate's search keywords. If the job title
+     is a fundamentally different role than what the candidate searched for
+     (e.g. "Data Scientist" when searching for "Full Stack Engineer"), the
+     keyword_match MUST be 30 or below regardless of skill overlap.
+  2. Skills/technologies overlap between the job description and resume.
+  Title alignment should account for ~60% of keyword_match, skills overlap ~40%.
 - location_match: 100 for exact match or remote; 50 for same state; 20 for relocation needed.
 - salary_match: 100 if within resume's implied range; 50 if salary not listed; lower if clearly mismatched.
 - experience_match: 100 if years of experience align; lower for over/under-qualified.
 - overall score should be a weighted average: keyword 40%, experience 30%, location 15%, salary 15%.
 - reasons: exactly 2 short bullet points, each under 12 words.
 - fit_summary: 2-3 sentences explaining why this candidate is a strong fit for the role, referencing specific skills, experiences, or qualifications from their resume that match the job requirements. Write in second person ("You have...", "Your experience in...").
+
+CRITICAL: A job whose title does not match the candidate's search keywords should
+score LOW overall (typically under 50), even if the candidate has transferable
+skills. The candidate chose specific keywords for a reason — respect their intent.
 """
 
 
@@ -249,12 +260,31 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         # Dream insights are already included in get_strategy_patches() output
         # via the Consolidated Insights section, so no separate injection needed
 
+        # Extract search keywords for title-alignment scoring
+        search_config = state.get("search_config")
+        _search_keywords: List[str] = []
+        if search_config:
+            _search_keywords = (
+                search_config.keywords
+                if hasattr(search_config, "keywords")
+                else (search_config.get("keywords", []) if isinstance(search_config, dict) else [])
+            )
+
         async def _score_batch(batch_idx: int, batch_jobs: List[JobListing]) -> List[dict]:
             """Score a single batch via LLM."""
 
             jobs_text = _jobs_to_prompt_text(batch_jobs)
+            keywords_section = ""
+            if _search_keywords:
+                keywords_section = (
+                    f"## Candidate's Search Keywords\n\n"
+                    f"The candidate is searching for: {', '.join(_search_keywords)}\n"
+                    f"Jobs whose titles do not align with these keywords should receive "
+                    f"a LOW keyword_match score (30 or below).\n\n"
+                )
             user_prompt = (
                 f"## Candidate Resume\n\n{resume}\n\n"
+                f"{keywords_section}"
                 f"## Job Listings (batch {batch_idx + 1}/{total_batches})\n\n{jobs_text}\n\n"
             )
             if _strategy_context:
@@ -348,6 +378,21 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
 
         # Sort descending by score
         scored_jobs.sort(key=lambda sj: sj.score, reverse=True)
+
+        # Step 4b: Per-company dedup — keep only the highest-scored job per company
+        # to avoid wasting application queue slots on duplicate companies
+        company_best: dict[str, ScoredJob] = {}
+        for sj in scored_jobs:
+            company_key = sj.job.company.lower().strip()
+            if company_key not in company_best or sj.score > company_best[company_key].score:
+                company_best[company_key] = sj
+        before_company_dedup = len(scored_jobs)
+        scored_jobs = sorted(company_best.values(), key=lambda sj: sj.score, reverse=True)
+        if len(scored_jobs) < before_company_dedup:
+            logger.info(
+                "Per-company dedup: %d -> %d jobs (removed %d duplicate companies)",
+                before_company_dedup, len(scored_jobs), before_company_dedup - len(scored_jobs),
+            )
 
         # Apply scoring_strictness as a minimum score threshold
         # 0.0 = lenient (min 30), 0.5 = moderate (min 50), 1.0 = strict (min 70)

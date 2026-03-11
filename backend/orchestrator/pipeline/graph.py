@@ -281,10 +281,14 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
                 | set(state.get("applications_skipped") or [])
             )
         top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)
-        approved_ids = [
-            str(sj.job.id) for sj in top_scored
-            if str(sj.job.id) not in done_ids
-        ][:MAX_APPLICATION_JOBS]
+        candidates = [sj for sj in top_scored if str(sj.job.id) not in done_ids]
+
+        # Validate URLs for auto-approved jobs (shortlist_review is skipped,
+        # so we must catch expired/dead links here instead)
+        session_id = state.get("session_id", "")
+        candidates = await _validate_job_urls(candidates, session_id)
+
+        approved_ids = [str(sj.job.id) for sj in candidates][:MAX_APPLICATION_JOBS]
         label = "backfill" if is_backfill else "autopilot"
         logger.info(
             "Auto-approve gate (%s): approving %d jobs",
@@ -312,6 +316,12 @@ _EXPIRED_PAGE_INDICATORS = [
     # Additional indicators that application.py catches but discovery missed
     "page not found", "this page could not be found",
     "job posting has been removed",
+    # Common SPA / JS-rendered indicators (often in <noscript> or meta tags)
+    "404", "not found",
+    "this role has been closed", "role is no longer available",
+    "opportunity is no longer available", "job is closed",
+    "application closed", "applications are closed",
+    "this position has been closed", "no longer listed",
 ]
 
 # Many ATS platforms return 200 for expired/error pages (not just Greenhouse/Lever).
@@ -360,15 +370,33 @@ async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
                     return (sj, False)
                 # Content-based expired check
                 if not skip_content and alive:
-                    body = resp.text[:3000].lower()
+                    body = resp.text[:5000].lower()
                     # Also catch redirect-to-error pages (e.g. greenhouse.io?error=true)
                     final_url = str(resp.url).lower()
+                    original_url = url.lower()
                     if "error=true" in final_url or "error=404" in final_url:
                         logger.info(
                             "URL validation: %s (%s) redirected to error page — removing",
                             url, title,
                         )
                         return (sj, False)
+                    # Detect redirect-away: original URL was a specific job page but
+                    # final URL is a generic jobs listing / homepage (expired redirect)
+                    if final_url != original_url:
+                        from urllib.parse import urlparse
+                        orig_path = urlparse(original_url).path.rstrip("/")
+                        final_path = urlparse(final_url).path.rstrip("/")
+                        # If original had a specific job path (longer) but redirected
+                        # to a shorter generic path, it's likely expired
+                        if (
+                            len(orig_path) > len(final_path) + 5
+                            and final_path in ("", "/jobs", "/careers", "/openings", "/positions", "/open-roles")
+                        ):
+                            logger.info(
+                                "URL validation: %s (%s) redirected to generic page %s — removing expired job",
+                                url, title, final_url,
+                            )
+                            return (sj, False)
                     for indicator in _EXPIRED_PAGE_INDICATORS:
                         if indicator in body:
                             logger.info(
@@ -650,14 +678,17 @@ def route_after_qa(state: JobHunterState) -> str:
             logger.info("QA decision=halt — skipping backfill, routing to reporting")
             return "reporting"
 
-    # Standard backfill check
+    # Standard backfill check — count all *attempted* jobs, not just successful
     submitted = len(state.get("applications_submitted") or [])
+    failed = len(state.get("applications_failed") or [])
+    skipped = len(state.get("applications_skipped") or [])
+    attempted = submitted + failed + skipped
     max_jobs = _get_max_jobs(state)
 
-    if should_backfill(state, submitted, max_jobs):
+    if should_backfill(state, attempted, max_jobs):
         logger.info(
-            "Backfill: %d/%d submitted, round %d — routing to backfill_prep",
-            submitted, max_jobs, state.get("backfill_rounds", 0),
+            "Backfill: %d/%d attempted (%d submitted, %d failed, %d skipped), round %d — routing to backfill_prep",
+            attempted, max_jobs, submitted, failed, skipped, state.get("backfill_rounds", 0),
         )
         return "backfill_prep"
     return "reporting"

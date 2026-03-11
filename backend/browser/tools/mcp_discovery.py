@@ -198,19 +198,45 @@ async def _parse_search_results(raw_results: str) -> List[Dict[str, Any]]:
             pass  # non-JSON chunk, skip
 
     if jobs_direct:
+        import re
+
+        _ROLE_WORDS = {"engineer", "developer", "designer", "manager", "analyst",
+                       "scientist", "architect", "lead", "director", "specialist",
+                       "fullstack", "full-stack", "backend", "frontend", "devops",
+                       "sre", "intern", "coordinator", "consultant", "associate",
+                       "senior", "junior", "staff", "principal", "software",
+                       "data", "full", "stack", "node", "remote", "python",
+                       "react", "java", "golang", "rust", "applied"}
+
+        def _looks_like_role(text: str) -> bool:
+            """Return True if *text* looks like a job title rather than a company."""
+            words = set(text.lower().split())
+            return bool(words & _ROLE_WORDS)
+
         # Try to extract company from title (common patterns: "Title - Company" or "Title | Company")
+        # Prefer " | " over " - " since pipes are more commonly the title/company delimiter
+        # in Google search results (Lever uses "Title | Company", Greenhouse uses "Title - Company")
         for job in jobs_direct:
             title = job["title"]
-            for sep in [" - ", " | ", " — ", " at "]:
+            for sep in [" | ", " - ", " — ", " at "]:
                 if sep in title:
                     parts = title.rsplit(sep, 1)
-                    job["title"] = parts[0].strip()
-                    job["company"] = parts[1].strip().removeprefix("Careers @ ").removeprefix("Jobs at ")
+                    left, right = parts[0].strip(), parts[1].strip().removeprefix("Careers @ ").removeprefix("Jobs at ")
+                    left_is_role = _looks_like_role(left)
+                    right_is_role = _looks_like_role(right)
+                    # Case 1: left is a number/ID (e.g. "1008 - Senior Fullstack Engineer")
+                    # or left is company name and right is role → swap
+                    if left.isdigit() or (not left_is_role and right_is_role):
+                        job["title"] = right
+                        job["company"] = left if not left.isdigit() else ""
+                        break
+                    # Case 2: normal "Title - Company" pattern
+                    job["title"] = left
+                    job["company"] = right
                     break
             if not job["company"]:
-                # Extract company from greenhouse URL pattern: /boards.greenhouse.io/{company}/
-                import re
-                m = re.search(r'greenhouse\.io/(\w+)/', job["url"])
+                # Extract company from greenhouse/ashby URL patterns
+                m = re.search(r'(?:greenhouse\.io|jobs\.ashbyhq\.com)/(\w[\w-]*)/', job["url"])
                 if m:
                     job["company"] = m.group(1).replace("-", " ").title()
         logger.info("Direct JSON extraction: %d jobs from search results", len(jobs_direct))
@@ -306,6 +332,38 @@ async def _mcp_discover(
         company = raw.get("company", "").strip()
         if not title or not company:
             continue
+
+        # Skip generic page titles that aren't actual job listings
+        _GENERIC_TITLES = {
+            "careers", "jobs", "open positions", "openings", "job openings",
+            "work with us", "join us", "join our team", "career opportunities",
+            "job application", "apply",
+        }
+        if title.lower() in _GENERIC_TITLES:
+            logger.debug("Skipping generic title '%s' from %s", title, url)
+            continue
+
+        # Skip titles that are just numbers (IDs, not real job titles)
+        if title.isdigit():
+            logger.debug("Skipping numeric title '%s' from %s", title, url)
+            continue
+
+        # Clean common ATS title prefixes
+        for prefix in ["Job Application for ", "Apply for "]:
+            if title.startswith(prefix):
+                title = title[len(prefix):]
+
+        # If company is a location string (e.g. "(Remote)"), try to extract
+        # real company from URL, otherwise skip
+        _LOCATION_COMPANIES = {"remote", "(remote)", "remote)", "worldwide", "global"}
+        if company.lower().strip("() ") in _LOCATION_COMPANIES or company.startswith("("):
+            import re as _re
+            m = _re.search(r'(?:greenhouse\.io|jobs\.ashbyhq\.com|jobs\.lever\.co)/(\w[\w-]*)/', url)
+            if m:
+                company = m.group(1).replace("-", " ").title()
+            else:
+                logger.debug("Skipping job with location-as-company '%s': %s", company, url)
+                continue
 
         location = raw.get("location", "Remote").strip()
         is_remote = raw.get("is_remote", False) or "remote" in location.lower()
