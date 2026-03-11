@@ -1442,7 +1442,14 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         consecutive_failures = 0
                     elif result.status == ApplicationStatus.FAILED:
                         failed.append(result)
-                        consecutive_failures += 1
+                        # Don't count site-specific blockers (reCAPTCHA, anti-bot) toward
+                        # circuit breaker — they're not systemic failures.
+                        is_site_blocker = result.error_category in (
+                            ApplicationErrorCategory.CAPTCHA,
+                            ApplicationErrorCategory.AUTH_REQUIRED,
+                        )
+                        if not is_site_blocker:
+                            consecutive_failures += 1
                         if result.error_message:
                             errors.append(f"Application failed for {job_id}: {result.error_message}")
                     else:
@@ -1491,7 +1498,12 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         consecutive_failures = 0
                     elif res.status == ApplicationStatus.FAILED:
                         failed.append(res)
-                        consecutive_failures += 1
+                        is_site_blocker = res.error_category in (
+                            ApplicationErrorCategory.CAPTCHA,
+                            ApplicationErrorCategory.AUTH_REQUIRED,
+                        )
+                        if not is_site_blocker:
+                            consecutive_failures += 1
                         if res.error_message:
                             errors.append(f"Application failed for {jid}: {res.error_message}")
                     else:
