@@ -1364,22 +1364,18 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 jid = batch[i][0]
                 j = batch[i][1]
                 if isinstance(res, Exception):
-                    logger.error("API batch job %s failed: %s", jid, res)
-                    fail_result = ApplicationResult(
-                        job_id=jid, status=ApplicationStatus.FAILED,
-                        error_message=str(res),
-                    )
-                    failed.append(fail_result)
-                    consecutive_failures += 1
-                    errors.append(f"Application failed for {jid}: {res}")
+                    logger.warning("API batch job %s failed — re-queuing for Skyvern: %s", jid, res)
+                    skyvern_jobs.append((jid, j))
                 elif res.status == ApplicationStatus.SUBMITTED:
                     submitted.append(res)
                     consecutive_failures = 0
                 elif res.status == ApplicationStatus.FAILED:
-                    failed.append(res)
-                    consecutive_failures += 1
-                    if res.error_message:
-                        errors.append(f"Application failed for {jid}: {res.error_message}")
+                    # API failed (401, blocked, etc.) — re-queue for Skyvern browser fallback
+                    logger.info(
+                        "API submission failed for %s at %s — re-queuing for Skyvern",
+                        j.title, j.company,
+                    )
+                    skyvern_jobs.append((jid, j))
                 else:
                     skipped.append(res)
                     consecutive_failures = 0
