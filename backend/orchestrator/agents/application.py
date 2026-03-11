@@ -899,6 +899,13 @@ async def _apply_to_job(
                 "job_title": job.title,
                 "company": job.company,
                 "error": result.error_message or "Application did not complete",
+                "screenshot_url": result.screenshot_url,
+                "error_category": (
+                    result.error_category.value if result.error_category
+                    else (_infer_error_category(result.error_message).value
+                          if _infer_error_category(result.error_message) else None)
+                ),
+                "duration_seconds": result.duration_seconds,
             })
 
         # Persist to DB immediately (survives restarts)

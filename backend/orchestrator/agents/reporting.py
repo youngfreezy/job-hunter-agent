@@ -209,6 +209,40 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
                 cat = getattr(app, "error_category", "unknown") or "unknown"
                 error_cats[cat] = error_cats.get(cat, 0) + 1
 
+            # Build per-failure detail records for the feedback loop
+            failure_details: list[dict] = []
+            for app in failed:
+                job_id = getattr(app, "job_id", "unknown")
+                job_info = job_company_map.get(job_id, "Unknown")
+                detail = {
+                    "job_id": job_id,
+                    "company": job_info,
+                    "error_message": getattr(app, "error_message", None),
+                    "error_category": (
+                        getattr(app, "error_category", None)
+                        or "unknown"
+                    ),
+                    "screenshot_url": getattr(app, "screenshot_url", None),
+                    "ats_type": getattr(app, "ats_type", None),
+                    "duration_seconds": getattr(app, "duration_seconds", None),
+                }
+                failure_details.append(detail)
+            # Include skipped-with-reason (job_expired, auth_required)
+            for app in state.get("applications_skipped_results", []):
+                if hasattr(app, "error_message"):
+                    failure_details.append({
+                        "job_id": getattr(app, "job_id", "unknown"),
+                        "company": job_company_map.get(getattr(app, "job_id", ""), "Unknown"),
+                        "error_message": app.error_message,
+                        "error_category": (
+                            getattr(app, "error_category", None)
+                            or "unknown"
+                        ),
+                        "screenshot_url": getattr(app, "screenshot_url", None),
+                        "ats_type": getattr(app, "ats_type", None),
+                        "duration_seconds": getattr(app, "duration_seconds", None),
+                    })
+
             # Build ATS breakdown
             ats_breakdown: dict[str, dict] = {}
             for app in submitted:
@@ -236,6 +270,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
                 "avg_fit_score": avg_fit_score,
                 "error_categories": error_cats,
                 "ats_breakdown": ats_breakdown,
+                "failure_details": failure_details,
                 "search_config": search_config,
             })
 

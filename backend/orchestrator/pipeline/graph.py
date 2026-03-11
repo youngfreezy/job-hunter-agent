@@ -17,9 +17,11 @@ scoring → tailoring → application → verification again, up to 3 rounds.
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Callable, Literal
+from typing import Callable, List, Literal
 
+import httpx
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
@@ -302,6 +304,62 @@ def _route_after_auto_approve_gate(state: JobHunterState) -> str:
     return "shortlist_review"
 
 
+async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
+    """Validate job URLs via HTTP HEAD and filter out dead links.
+
+    Returns only scored jobs whose URLs return a 2xx/3xx status.
+    Jobs with unreachable or 4xx/5xx URLs are dropped and logged.
+    """
+    if not scored_jobs:
+        return scored_jobs
+
+    async def _check_url(sj) -> tuple:
+        """Returns (scored_job, is_alive)."""
+        url = sj.job.url if hasattr(sj.job, "url") else sj.get("job", {}).get("url", "")
+        if not url:
+            return (sj, False)
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=10.0,
+                headers={"User-Agent": "Mozilla/5.0 (JobHunterAgent URL Validator)"},
+            ) as client:
+                resp = await client.head(url)
+                # Some sites block HEAD — fall back to GET
+                if resp.status_code == 405:
+                    resp = await client.get(url)
+                alive = resp.status_code < 400
+                if not alive:
+                    title = sj.job.title if hasattr(sj.job, "title") else "unknown"
+                    logger.info(
+                        "URL validation: %s (%s) returned %d — removing from shortlist",
+                        url, title, resp.status_code,
+                    )
+                return (sj, alive)
+        except Exception as exc:
+            title = sj.job.title if hasattr(sj.job, "title") else "unknown"
+            logger.info(
+                "URL validation: %s (%s) unreachable (%s) — removing from shortlist",
+                url, title, exc,
+            )
+            return (sj, False)
+
+    results = await asyncio.gather(*[_check_url(sj) for sj in scored_jobs])
+    valid = [sj for sj, alive in results if alive]
+    removed = len(scored_jobs) - len(valid)
+    if removed:
+        logger.info(
+            "URL validation removed %d/%d dead links for session %s",
+            removed, len(scored_jobs), session_id,
+        )
+        if session_id:
+            await emit_agent_event(session_id, "url_validation", {
+                "total": len(scored_jobs),
+                "valid": len(valid),
+                "removed": removed,
+            })
+    return valid
+
+
 async def shortlist_review_gate(state: JobHunterState) -> dict:
     """Suspend execution so the user can review the shortlist.
 
@@ -311,6 +369,13 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     # Only show the top scored jobs (sorted by score desc) to the user.
     all_scored = state.get("scored_jobs") or []
     top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
+
+    # Validate URLs — remove dead/expired links before showing to user
+    session_id = state.get("session_id", "")
+    top_scored = await _validate_job_urls(top_scored, session_id)
+
+    # Re-rank after filtering (already sorted, but re-slice to MAX)
+    top_scored = top_scored[:MAX_APPLICATION_JOBS]
 
     human_input = interrupt(
         {
