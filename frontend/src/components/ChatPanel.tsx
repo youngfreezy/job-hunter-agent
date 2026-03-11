@@ -17,9 +17,10 @@ interface ChatPanelProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  isLoading?: boolean;
 }
 
-export function ChatPanel({ messages, onSend, disabled, placeholder }: ChatPanelProps) {
+export function ChatPanel({ messages, onSend, disabled, placeholder, isLoading }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +64,16 @@ export function ChatPanel({ messages, onSend, disabled, placeholder }: ChatPanel
             {msg.text}
           </div>
         ))}
+        {isLoading && (
+          <div className="bg-zinc-100 dark:bg-zinc-800 text-sm rounded-lg px-3 py-2 max-w-[85%]">
+            <span className="font-medium text-xs block mb-0.5">Agent</span>
+            <span className="inline-flex gap-1">
+              <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:0ms]" />
+              <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:150ms]" />
+              <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:300ms]" />
+            </span>
+          </div>
+        )}
         <div />
       </div>
       <div className="border-t border-zinc-200 dark:border-zinc-800 p-3 flex gap-2">
