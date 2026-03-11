@@ -2,8 +2,11 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useFormikContext } from "formik";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getWallet } from "@/lib/api";
 import type { SessionFormValues } from "@/lib/schemas/session";
 
 const BOARDS = [
@@ -29,9 +32,17 @@ function estimateCredits(values: SessionFormValues): number {
 
 export function ConfigStep() {
   const { values, setFieldValue } = useFormikContext<SessionFormValues>();
+  const [balance, setBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    getWallet()
+      .then((w) => setBalance(w.balance + (w.free_remaining ?? 0)))
+      .catch(() => setBalance(null));
+  }, []);
 
   const boards = values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"];
   const credits = estimateCredits(values);
+  const insufficientCredits = balance !== null && credits > balance;
 
   return (
     <>
@@ -46,15 +57,38 @@ export function ConfigStep() {
               Jobs to apply to:{" "}
               <span className="text-blue-600 font-bold">{values.maxJobs ?? 5}</span>
             </label>
-            <input
-              type="range"
-              min={3}
-              max={10}
-              step={1}
-              value={values.maxJobs ?? 5}
-              onChange={(e) => setFieldValue("maxJobs", parseInt(e.target.value))}
-              className="w-full mt-2 accent-blue-600"
-            />
+            <div className="relative group">
+              <input
+                type="range"
+                min={3}
+                max={10}
+                step={1}
+                value={values.maxJobs ?? 5}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value);
+                  const costForV = Math.round(
+                    (COST_ESTIMATES[`${values.applicationMode}+${values.tailoringQuality}`] ?? 20) *
+                      (v / 5)
+                  );
+                  if (balance !== null && costForV > balance) return;
+                  setFieldValue("maxJobs", v);
+                }}
+                disabled={balance !== null && balance <= 0}
+                className={`w-full mt-2 accent-blue-600 ${
+                  balance !== null && balance <= 0 ? "opacity-40 cursor-not-allowed" : ""
+                }`}
+              />
+              {balance !== null && balance <= 0 && (
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 hidden group-hover:block z-10">
+                  <div className="bg-zinc-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
+                    No credits remaining.{" "}
+                    <Link href="/billing" className="underline text-blue-300">
+                      Buy more credits
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex justify-between text-xs text-zinc-400 mt-1">
               <span>3</span>
               <span>5</span>
@@ -170,19 +204,44 @@ export function ConfigStep() {
       </Card>
 
       {/* Cost Estimate */}
-      <Card className="border-green-200 bg-green-50/60 dark:border-green-900 dark:bg-green-950/20">
+      <Card
+        className={
+          insufficientCredits
+            ? "border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20"
+            : "border-green-200 bg-green-50/60 dark:border-green-900 dark:bg-green-950/20"
+        }
+      >
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Estimated cost</p>
-              <p className="text-xs text-zinc-500 mt-1">Based on your configuration</p>
+              <p className="text-xs text-zinc-500 mt-1">
+                {balance !== null
+                  ? `You have ${balance.toFixed(0)} credits`
+                  : "Based on your configuration"}
+              </p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+              <p
+                className={`text-2xl font-bold ${
+                  insufficientCredits
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-green-700 dark:text-green-400"
+                }`}
+              >
                 ~{credits} credits
               </p>
             </div>
           </div>
+          {insufficientCredits && (
+            <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+              Not enough credits.{" "}
+              <Link href="/billing" className="underline font-medium">
+                Buy more credits
+              </Link>{" "}
+              or reduce jobs to lower the cost.
+            </p>
+          )}
         </CardContent>
       </Card>
     </>
