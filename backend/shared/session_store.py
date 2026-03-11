@@ -106,9 +106,9 @@ def get_sessions_for_user(user_id: str) -> List[Dict[str, Any]]:
                           salary_min, resume_text_snippet, linkedin_url,
                           applications_submitted, applications_failed, created_at
                    FROM sessions
-                   WHERE user_id = %s
+                   WHERE user_id = %s::text
                    ORDER BY created_at DESC""",
-                (user_id,),
+                (str(user_id),),
             )
             rows = cur.fetchall()
             return [
