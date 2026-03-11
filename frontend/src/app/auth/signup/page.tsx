@@ -2,17 +2,15 @@
 
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { Formik, Form } from "formik";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FormikInput } from "@/components/forms/FormikInput";
-import { signupSchema, signupInitialValues } from "@/lib/schemas/auth";
 
 export default function SignupPage() {
-  const [error, setError] = useState("");
+  const searchParams = useSearchParams();
+  const error = searchParams.get("error");
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center px-4">
@@ -24,9 +22,15 @@ export default function SignupPage() {
           <CardTitle className="text-lg">Create your account</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {error && (
+            <p className="text-sm text-red-500 text-center">
+              Something went wrong. Please try again.
+            </p>
+          )}
+
           <Button
             variant="outline"
-            className="w-full"
+            className="w-full h-11 text-base"
             onClick={() => {
               window.umami?.track("signup-google-clicked");
               signIn("google", { callbackUrl: "/session/new" });
@@ -53,78 +57,12 @@ export default function SignupPage() {
             Continue with Google
           </Button>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-white dark:bg-zinc-950 px-2 text-zinc-500">or</span>
-            </div>
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 px-4 py-3">
+            <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+              <span className="font-semibold">Why Google?</span> We use Gmail access to automatically
+              read and enter verification codes that job sites send during applications.
+            </p>
           </div>
-
-          <Formik
-            initialValues={signupInitialValues}
-            validationSchema={signupSchema}
-            onSubmit={async (values, { setSubmitting }) => {
-              setError("");
-              const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-              // 1. Register with the backend
-              const regRes = await fetch(`${apiUrl}/api/auth/register`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  name: values.name,
-                  email: values.email,
-                  password: values.password,
-                }),
-              });
-
-              if (!regRes.ok) {
-                const data = await regRes.json().catch(() => ({}));
-                const msg = data.detail || "Failed to create account. Please try again.";
-                window.umami?.track("signup-error", { error: msg });
-                setError(msg);
-                setSubmitting(false);
-                return;
-              }
-
-              // 2. Sign in via NextAuth credentials
-              const result = await signIn("credentials", {
-                email: values.email,
-                password: values.password,
-                redirect: false,
-              });
-
-              if (result?.error) {
-                // Register returns 200 for anti-enumeration even if
-                // account already exists. If signIn fails, the account
-                // likely already existed — redirect to login.
-                window.umami?.track("signup-existing-redirect");
-                window.location.href = "/auth/login?existing=1";
-                return;
-              } else {
-                window.umami?.track("signup-complete", { method: "email" });
-                window.location.href = "/session/new";
-              }
-            }}
-          >
-            {({ isSubmitting }) => (
-              <Form className="space-y-3">
-                <FormikInput name="name" placeholder="Full name" />
-                <FormikInput name="email" type="email" placeholder="Email" />
-                <FormikInput
-                  name="password"
-                  type="password"
-                  placeholder="Password (min 8 characters)"
-                />
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
-                  {isSubmitting ? "Creating account..." : "Create Account"}
-                </Button>
-              </Form>
-            )}
-          </Formik>
 
           <p className="text-center text-sm text-zinc-500">
             Already have an account?{" "}
