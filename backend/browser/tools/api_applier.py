@@ -481,10 +481,11 @@ async def _apply_lever(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
-_ATS_HANDLERS = {
-    ATSType.GREENHOUSE: _apply_greenhouse,
-    ATSType.LEVER: _apply_lever,
-}
+# Greenhouse and Lever POST endpoints require per-company HTTP Basic Auth
+# API keys. These are issued to the hiring company, not to third-party
+# applicants, so we cannot use the API path. All jobs go straight to Skyvern.
+# Keeping the handler functions above in case we obtain keys in the future.
+_ATS_HANDLERS: dict = {}
 
 
 async def apply_via_api(
