@@ -309,18 +309,24 @@ _EXPIRED_PAGE_INDICATORS = [
     "job has expired", "position has been filled", "job has been removed",
     "this listing has expired", "posting has been removed",
     "this job is no longer available", "this position is no longer available",
+    # Additional indicators that application.py catches but discovery missed
+    "page not found", "this page could not be found",
+    "job posting has been removed",
 ]
 
-# ATS domains where pages return 200 for expired jobs (need GET + content check)
-_NEEDS_CONTENT_CHECK = ("greenhouse.io", "job-boards.greenhouse.io", "lever.co")
+# Many ATS platforms return 200 for expired/error pages (not just Greenhouse/Lever).
+# We now do a GET + content check for all job URLs to catch JS-rendered error pages.
+_SKIP_CONTENT_CHECK = (
+    "linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com",
+)
 
 
 async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
-    """Validate job URLs via HTTP HEAD and filter out dead links.
+    """Validate job URLs via HTTP GET and filter out dead links.
 
     Returns only scored jobs whose URLs return a 2xx/3xx status.
-    For Greenhouse/Lever URLs, also does a GET and checks page content for
-    expired-job indicators (these sites return 200 for expired pages).
+    Also checks page content for expired-job indicators — many ATS platforms
+    return 200 for expired pages (Greenhouse, Lever, Workday, Myworkday, etc.).
     """
     if not scored_jobs:
         return scored_jobs
@@ -332,18 +338,19 @@ async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
             return (sj, False)
         title = sj.job.title if hasattr(sj.job, "title") else "unknown"
         try:
-            needs_content = any(domain in url for domain in _NEEDS_CONTENT_CHECK)
+            skip_content = any(domain in url for domain in _SKIP_CONTENT_CHECK)
             async with httpx.AsyncClient(
                 follow_redirects=True, timeout=10.0,
                 headers={"User-Agent": "Mozilla/5.0 (JobHunterAgent URL Validator)"},
             ) as client:
-                if needs_content:
-                    # GET for ATS pages that return 200 for expired jobs
-                    resp = await client.get(url)
-                else:
+                if skip_content:
+                    # Major boards handle expiry via redirects/status codes
                     resp = await client.head(url)
                     if resp.status_code == 405:
                         resp = await client.get(url)
+                else:
+                    # GET for all ATS / career pages — check content for expiry text
+                    resp = await client.get(url)
                 alive = resp.status_code < 400
                 if not alive:
                     logger.info(
@@ -351,9 +358,17 @@ async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
                         url, title, resp.status_code,
                     )
                     return (sj, False)
-                # Content-based expired check for ATS pages
-                if needs_content and alive:
-                    body = resp.text[:2000].lower()
+                # Content-based expired check
+                if not skip_content and alive:
+                    body = resp.text[:3000].lower()
+                    # Also catch redirect-to-error pages (e.g. greenhouse.io?error=true)
+                    final_url = str(resp.url).lower()
+                    if "error=true" in final_url or "error=404" in final_url:
+                        logger.info(
+                            "URL validation: %s (%s) redirected to error page — removing",
+                            url, title,
+                        )
+                        return (sj, False)
                     for indicator in _EXPIRED_PAGE_INDICATORS:
                         if indicator in body:
                             logger.info(

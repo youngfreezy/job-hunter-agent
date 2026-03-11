@@ -122,6 +122,38 @@ logger = logging.getLogger(__name__)
 # Circuit-breaker threshold
 MAX_CONSECUTIVE_FAILURES = 3
 
+# Track whether we've already sent a Skyvern credits alert this process lifetime
+_skyvern_credits_alerted = False
+
+
+async def _alert_skyvern_credits_exhausted(session_id: str) -> None:
+    """Send an SMS alert when Skyvern credits are exhausted. Fires once."""
+    global _skyvern_credits_alerted
+    if _skyvern_credits_alerted:
+        return
+    _skyvern_credits_alerted = True
+
+    logger.critical("Skyvern credits exhausted — aborting remaining applications for session %s", session_id)
+
+    # Emit SSE so the user sees it in the UI
+    await emit_agent_event(session_id, "system_alert", {
+        "message": "Skyvern credits exhausted. Remaining applications aborted. Top up at https://app.skyvern.com",
+        "severity": "critical",
+    })
+
+    # SMS alert to admin
+    settings = get_settings()
+    if settings.ADMIN_PHONE:
+        try:
+            from backend.shared.sms import send_sms
+            await send_sms(
+                settings.ADMIN_PHONE,
+                f"[JobHunter] Skyvern credits exhausted! Session {session_id[:8]}… "
+                f"aborted remaining applications. Top up at https://app.skyvern.com",
+            )
+        except Exception as exc:
+            logger.warning("Failed to send Skyvern alert SMS: %s", exc)
+
 
 def _infer_error_category(error_message: str | None) -> ApplicationErrorCategory | None:
     """Infer a structured error category from a free-text error message."""
@@ -1445,6 +1477,19 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         consecutive_failures = 0
                     elif result.status == ApplicationStatus.FAILED:
                         failed.append(result)
+                        # Skyvern credits exhausted — abort immediately, no point retrying
+                        if result.error_message == "skyvern_credits_exhausted":
+                            await _alert_skyvern_credits_exhausted(session_id)
+                            return {
+                                "applications_submitted": submitted,
+                                "applications_failed": failed,
+                                "applications_skipped": skipped,
+                                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
+                                "status": "paused",
+                                "agent_statuses": {"application": "aborted — Skyvern credits exhausted"},
+                                "errors": ["Skyvern credits exhausted. Top up at https://app.skyvern.com"],
+                                "skip_next_job_requested": False,
+                            }
                         # Don't count site-specific blockers (reCAPTCHA, anti-bot) toward
                         # circuit breaker — they're not systemic failures.
                         is_site_blocker = result.error_category in (
@@ -1501,6 +1546,18 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         consecutive_failures = 0
                     elif res.status == ApplicationStatus.FAILED:
                         failed.append(res)
+                        if res.error_message == "skyvern_credits_exhausted":
+                            await _alert_skyvern_credits_exhausted(session_id)
+                            return {
+                                "applications_submitted": submitted,
+                                "applications_failed": failed,
+                                "applications_skipped": skipped,
+                                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
+                                "status": "paused",
+                                "agent_statuses": {"application": "aborted — Skyvern credits exhausted"},
+                                "errors": ["Skyvern credits exhausted. Top up at https://app.skyvern.com"],
+                                "skip_next_job_requested": False,
+                            }
                         is_site_blocker = res.error_category in (
                             ApplicationErrorCategory.CAPTCHA,
                             ApplicationErrorCategory.AUTH_REQUIRED,
