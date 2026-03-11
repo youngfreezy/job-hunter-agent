@@ -968,14 +968,18 @@ async def start_session(body: StartSessionRequest, request: Request):
     upsert_session(session_id, session_meta)
 
     # Re-key the resume from the parse-time file UUID to this session_id.
-    # parse-resume already saved to Postgres keyed by file UUID.
-    if body.resume_file_path:
+    # parse-resume saved to Postgres keyed by file UUID; we copy it under session_id.
+    file_uuid = body.resume_uuid  # Preferred: explicit UUID from parse-resume response
+    if not file_uuid and body.resume_file_path:
+        # Legacy fallback: extract UUID from file path
+        import os
+        basename = os.path.basename(body.resume_file_path)
+        file_uuid = basename.split(".")[0]
+        logger.info("Using legacy resume_file_path to extract UUID: %s", file_uuid)
+
+    if file_uuid:
         try:
-            import os
             from backend.shared.resume_store import save_resume as _save_resume_db, get_resume as _get_resume_db
-            # Extract file UUID from path (e.g. /tmp/.../abc123def.pdf.enc -> abc123def)
-            basename = os.path.basename(body.resume_file_path)
-            file_uuid = basename.split(".")[0]
             row = _get_resume_db(file_uuid)
             if row:
                 enc_data, ext = row
@@ -2085,7 +2089,7 @@ async def parse_resume(request: Request, file: UploadFile = File(...)):
     except Exception:
         logger.warning("Failed to persist resume to Postgres in parse-resume", exc_info=True)
 
-    return {"text": text, "filename": file.filename, "file_path": enc_path}
+    return {"text": text, "filename": file.filename, "file_path": enc_path, "resume_uuid": file_uuid}
 
 
 # ---------------------------------------------------------------------------

@@ -130,6 +130,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
         salary_min: null,
         resume_text: values.resumeText,
         resume_file_path: values.resumeFilePath || null,
+        resume_uuid: values.resumeFileUuid || null,
         linkedin_url: null,
         preferences: {},
         config: {
