@@ -37,6 +37,13 @@ export function usePersistedFormik<T extends FormikValues>({
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<T>;
+        // Clamp maxJobs to valid range (stale localStorage may have old uncapped values)
+        if ("maxJobs" in parsed && typeof (parsed as Record<string, unknown>).maxJobs === "number") {
+          (parsed as Record<string, unknown>).maxJobs = Math.min(
+            Math.max((parsed as Record<string, unknown>).maxJobs as number, 3),
+            10,
+          );
+        }
         const merged = { ...initialValues, ...parsed };
         formik.resetForm({ values: merged });
       }
