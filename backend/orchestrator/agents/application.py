@@ -1097,8 +1097,25 @@ async def _apply_to_job(
                 "duration_seconds": result.duration_seconds,
             })
 
-        # Clear pending record before inserting final result
-        clear_pending(session_id, job_id)
+        # Clear pending record before inserting final result — BUT keep pending
+        # for ambiguous Skyvern API/connection errors where the form may have
+        # actually been submitted despite the error response. This prevents
+        # retries from double-submitting.
+        _is_ambiguous_skyvern_error = (
+            result.status == ApplicationStatus.FAILED
+            and result.error_message
+            and any(kw in result.error_message.lower() for kw in (
+                "skyvern api error", "skyvern connection error",
+                "skyvern returned no task id", "skyvern task timed out",
+            ))
+        )
+        if not _is_ambiguous_skyvern_error:
+            clear_pending(session_id, job_id)
+        else:
+            logger.warning(
+                "Keeping pending record for %s — Skyvern error is ambiguous, form may have been submitted",
+                job_id,
+            )
 
         # Persist to DB immediately (survives restarts)
         # Always store the cover letter and tailored resume regardless of success/failure
@@ -1156,8 +1173,15 @@ async def _apply_to_job(
             "error": str(exc),
         })
 
-        # Clear pending record before inserting final result
-        clear_pending(session_id, job_id)
+        # Keep pending for ambiguous Skyvern errors (form may have been submitted)
+        _exc_str = str(exc).lower()
+        _is_ambiguous = any(kw in _exc_str for kw in (
+            "skyvern", "httpstatuserror", "connecterror", "timeout",
+        ))
+        if not _is_ambiguous:
+            clear_pending(session_id, job_id)
+        else:
+            logger.warning("Keeping pending record for %s — exception may indicate partial submission", job_id)
 
         _exc_category = _infer_error_category(str(exc))
         _db_record_result(
