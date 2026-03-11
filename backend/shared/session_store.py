@@ -97,16 +97,18 @@ def update_session_counts(
             logger.error("Failed to update session counts %s", session_id, exc_info=True)
 
 
-def get_sessions_for_user(user_id: str) -> List[Dict[str, Any]]:
+def get_sessions_for_user(user_id: str, include_archived: bool = False) -> List[Dict[str, Any]]:
     """Load all sessions for a user from Postgres."""
     with _connect() as conn:
         try:
+            archive_filter = "" if include_archived else "AND archived_at IS NULL"
             cur = conn.execute(
-                """SELECT id, user_id, status, keywords, locations, remote_only,
+                f"""SELECT id, user_id, status, keywords, locations, remote_only,
                           salary_min, resume_text_snippet, linkedin_url,
-                          applications_submitted, applications_failed, created_at
+                          applications_submitted, applications_failed, created_at,
+                          archived_at
                    FROM sessions
-                   WHERE user_id::text = %s
+                   WHERE user_id::text = %s {archive_filter}
                    ORDER BY created_at DESC""",
                 (str(user_id),),
             )
@@ -125,6 +127,7 @@ def get_sessions_for_user(user_id: str) -> List[Dict[str, Any]]:
                     "applications_submitted": r[9] or 0,
                     "applications_failed": r[10] or 0,
                     "created_at": r[11].isoformat() if r[11] else "",
+                    "archived_at": r[12].isoformat() if r[12] else None,
                 }
                 for r in rows
             ]
@@ -164,6 +167,65 @@ def get_session_by_id(session_id: str) -> Optional[Dict[str, Any]]:
         except Exception:
             logger.error("Failed to load session %s", session_id, exc_info=True)
             return None
+
+
+def archive_session(session_id: str, user_id: str) -> bool:
+    """Soft-archive a session (set archived_at timestamp)."""
+    with _connect() as conn:
+        try:
+            cur = conn.execute(
+                "UPDATE sessions SET archived_at = NOW(), updated_at = NOW() WHERE id = %s AND user_id::text = %s",
+                (session_id, str(user_id)),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        except Exception:
+            conn.rollback()
+            logger.error("Failed to archive session %s", session_id, exc_info=True)
+            return False
+
+
+def unarchive_session(session_id: str, user_id: str) -> bool:
+    """Restore an archived session."""
+    with _connect() as conn:
+        try:
+            cur = conn.execute(
+                "UPDATE sessions SET archived_at = NULL, updated_at = NOW() WHERE id = %s AND user_id::text = %s",
+                (session_id, str(user_id)),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        except Exception:
+            conn.rollback()
+            logger.error("Failed to unarchive session %s", session_id, exc_info=True)
+            return False
+
+
+def delete_session(session_id: str, user_id: str) -> bool:
+    """Permanently delete a session and all associated data."""
+    with _connect() as conn:
+        try:
+            # Delete resume file
+            conn.execute("DELETE FROM resume_files WHERE session_id = %s", (session_id,))
+
+            # Clean up LangGraph checkpoints (no FK cascade)
+            for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
+                try:
+                    conn.execute(f"DELETE FROM {table} WHERE thread_id = %s", (session_id,))
+                except Exception:
+                    logger.debug("Checkpoint table %s cleanup skipped", table)
+
+            # Delete session row (CASCADE handles application_results, dead_letter_queue)
+            cur = conn.execute(
+                "DELETE FROM sessions WHERE id = %s AND user_id::text = %s",
+                (session_id, str(user_id)),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        except Exception:
+            conn.rollback()
+            logger.error("Failed to delete session %s", session_id, exc_info=True)
+            return False
 
 
 def get_interrupted_sessions(max_age_hours: int = 2) -> List[Dict[str, Any]]:
