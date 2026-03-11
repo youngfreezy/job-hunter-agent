@@ -141,6 +141,17 @@ def _extract_email(request: Request) -> Optional[str]:
     if not token:
         return None
 
+    # Check for API key auth (jh_live_*)
+    if token.startswith("jh_live_"):
+        try:
+            from backend.shared.api_key_store import validate_api_key
+            result = validate_api_key(token)
+            if result:
+                return result["email"]
+        except Exception as exc:
+            logger.debug("API key validation failed: %s", exc)
+        return None
+
     secret = get_settings().NEXTAUTH_SECRET
     if not secret:
         logger.error("NEXTAUTH_SECRET not configured — cannot validate JWTs")
