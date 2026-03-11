@@ -626,8 +626,8 @@ async def _apply_to_job(
     except Exception:
         pass  # Don't block on URL parse errors
 
-    # Pre-flight: skip jobs already submitted by this user
-    prior = check_already_applied(job_id, user_id=user_id)
+    # Pre-flight: skip jobs already submitted by this user (checks by ID and URL)
+    prior = check_already_applied(job_id, user_id=user_id, job_url=job.url)
     if prior:
         applied_at = prior.get("applied_at", "unknown date")
         msg = f"Already applied on {applied_at}"
