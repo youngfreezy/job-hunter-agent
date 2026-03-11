@@ -1,7 +1,7 @@
 # Remaining Tasks
 
 ## Stripe: Test → Live
-- [ ] Activate Stripe account (complete onboarding — business details, bank account, etc.)
+- [] Activate Stripe account (complete onboarding — business details, bank account, etc.)
 - [ ] Swap keys on Railway backend: `STRIPE_SECRET_KEY` → `sk_live_...`
 - [ ] Swap keys on Railway frontend: `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` → `pk_live_...`
 - [ ] Create new **live mode** webhook in Stripe Dashboard (same URL: `https://api.jobhunteragent.com/api/billing/webhook`, event: `checkout.session.completed`)

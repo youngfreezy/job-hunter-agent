@@ -159,6 +159,20 @@ def _build_navigation_payload(
     if resume_file_url:
         payload["resume_url"] = resume_file_url
 
+    # URLs from resume
+    if user_profile.get("linkedin_url"):
+        payload["linkedin_url"] = user_profile["linkedin_url"]
+    if user_profile.get("github_url"):
+        payload["github_url"] = user_profile["github_url"]
+    if user_profile.get("portfolio_url"):
+        payload["portfolio_url"] = user_profile["portfolio_url"]
+
+    # Common form field defaults
+    payload["work_authorization"] = "Yes"
+    payload["willing_to_relocate"] = "Yes"
+    payload["start_date"] = "Immediately"
+    payload["requires_sponsorship"] = "No"
+
     return payload
 
 

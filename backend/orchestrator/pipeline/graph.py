@@ -5,7 +5,7 @@
 Pipeline stages:
     intake -> career_coach -> [HITL: review coached resume]
            -> discovery (sequential, single browser) -> scoring
-           -> resume_tailor -> [HITL: review shortlist]
+           -> [HITL: review shortlist] -> resume_tailor
            -> application (loop with circuit breaker) -> verification
            -> backfill_prep (if submitted < max_jobs) -> discovery (loop)
            -> reporting
@@ -246,11 +246,11 @@ async def resume_tailor_node(state: JobHunterState) -> dict:
 
 
 def route_after_scoring(state: JobHunterState) -> str:
-    """After scoring, proceed to resume tailoring."""
+    """After scoring, proceed to auto-approve gate (then shortlist review)."""
     if not state.get("scored_jobs"):
         logger.warning("No scored jobs -- routing to reporting.")
         return "reporting"
-    return "resume_tailor"
+    return "auto_approve_gate"
 
 
 def route_after_supervise_after_scoring(state: JobHunterState) -> str:
@@ -382,10 +382,6 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
             "session_id": state["session_id"],
             "stage": "shortlist_review",
             "scored_jobs": [sj.model_dump() for sj in top_scored],
-            "tailored_resumes": {
-                jid: tr.model_dump()
-                for jid, tr in (state.get("tailored_resumes") or {}).items()
-            },
             "message": (
                 "Review the shortlist below.  Select jobs to apply to, "
                 "or provide feedback to refine the results."
@@ -717,41 +713,48 @@ def build_graph(checkpointer=None):
     )
     g.add_edge("discovery", "supervise_after_discovery")
 
-    # 6. scoring -> resume_tailor (conditional in case 0 scored)
+    # 6. scoring -> auto_approve_gate -> shortlist_review (conditional in case 0 scored)
     g.add_conditional_edges(
         "supervise_after_scoring",
         route_after_supervise_after_scoring,
-        {"resume_tailor": "resume_tailor", "reporting": "reporting", "pause_gate": "pause_gate"},
+        {"auto_approve_gate": "auto_approve_gate", "reporting": "reporting", "pause_gate": "pause_gate"},
     )
     g.add_edge("scoring", "supervise_after_scoring")
 
-    # 7. resume_tailor -> auto_approve_gate -> shortlist_review or application
-    g.add_edge("resume_tailor", "supervise_after_tailor")
-    g.add_conditional_edges(
-        "supervise_after_tailor",
-        lambda state: route_after_supervise_after_simple_stage(state, default_next="auto_approve_gate"),
-        {"auto_approve_gate": "auto_approve_gate", "pause_gate": "pause_gate"},
-    )
+    # 7. auto_approve_gate -> shortlist_review or straight to resume_tailor (autopilot)
     g.add_conditional_edges(
         "auto_approve_gate",
         _route_after_auto_approve_gate,
         {"supervise_after_shortlist": "supervise_after_shortlist", "shortlist_review": "shortlist_review"},
     )
 
-    # 8. shortlist_review -> first application
+    # 8. shortlist_review -> resume_tailor (only tailor approved jobs)
     g.add_edge("shortlist_review", "supervise_after_shortlist")
     def _route_after_shortlist_supervise(state: JobHunterState) -> str:
+        if state.get("pause_requested"):
+            return "pause_gate"
+        return "resume_tailor"
+
+    g.add_conditional_edges(
+        "supervise_after_shortlist",
+        _route_after_shortlist_supervise,
+        {"resume_tailor": "resume_tailor", "pause_gate": "pause_gate"},
+    )
+
+    # 9. resume_tailor -> application (or reporting for materials_only mode)
+    g.add_edge("resume_tailor", "supervise_after_tailor")
+    def _route_after_tailor_supervise(state: JobHunterState) -> str:
         if state.get("pause_requested"):
             return "pause_gate"
         return _continue_to_application(state)
 
     g.add_conditional_edges(
-        "supervise_after_shortlist",
-        _route_after_shortlist_supervise,
+        "supervise_after_tailor",
+        _route_after_tailor_supervise,
         {"application": "application", "reporting": "reporting", "pause_gate": "pause_gate"},
     )
 
-    # 9. application loop with circuit breaker (retries go back to HITL gate)
+    # 10. application loop with circuit breaker (retries go back to HITL gate)
     g.add_conditional_edges(
         "supervise_after_application",
         route_after_supervise_after_application,
@@ -764,7 +767,7 @@ def build_graph(checkpointer=None):
     )
     g.add_edge("application", "supervise_after_application")
 
-    # 10. verification -> QA -> reporting OR backfill_prep (self-correcting loop)
+    # 11. verification -> QA -> reporting OR backfill_prep (self-correcting loop)
     g.add_edge("verification", "supervise_after_verification")
     g.add_conditional_edges(
         "supervise_after_verification",
@@ -798,7 +801,7 @@ def build_graph(checkpointer=None):
         },
     )
 
-    # 11. reporting -> END
+    # 12. reporting -> END
     g.add_edge("reporting", END)
 
     return g.compile(checkpointer=checkpointer)
