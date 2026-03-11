@@ -28,24 +28,18 @@ from backend.shared.models.schemas import (
 logger = logging.getLogger(__name__)
 
 
-async def _generate_resume_url(session_id: str, resume_file_path: str) -> Optional[str]:
+async def _generate_resume_url(session_id: str, resume_file_path: str = "") -> Optional[str]:
     """Generate a signed URL for Skyvern to download the resume.
 
-    Stores the resume file path in Redis and returns an internal URL
-    with an HMAC-signed token that expires in 60 minutes.
+    The serve endpoint reads directly from Postgres — no Redis or /tmp needed.
+    resume_file_path is kept in the signature for backward compat but unused.
     """
     try:
-        from backend.shared.redis_client import redis_client
-
         settings = get_settings()
         secret = (settings.NEXTAUTH_SECRET or "").encode()
         if not secret:
             logger.warning("No NEXTAUTH_SECRET — cannot generate signed resume URL")
             return None
-
-        # Store the resume path in Redis (60 min TTL — must outlast SKYVERN_TASK_TIMEOUT)
-        r = redis_client.client
-        await r.set(f"resume_serve:{session_id}", resume_file_path, ex=3600)
 
         # Generate signed token
         ts = str(int(time.time()))
@@ -54,7 +48,6 @@ async def _generate_resume_url(session_id: str, resume_file_path: str) -> Option
         token = f"{payload}.{sig}"
 
         # Use internal Railway URL (Skyvern is on the same network)
-        # Fall back to localhost for local dev
         skyvern_url = settings.SKYVERN_API_URL
         if "railway.internal" in skyvern_url:
             base = "http://backend.railway.internal:8000"

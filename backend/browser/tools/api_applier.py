@@ -71,57 +71,18 @@ def _parse_lever_url(url: str) -> Optional[tuple[str, str]]:
 # Resume file helper
 # ---------------------------------------------------------------------------
 
-def _read_resume_bytes(
-    resume_file_path: Optional[str],
-    session_id: Optional[str] = None,
-) -> Optional[tuple[bytes, str]]:
-    """Read resume file, decrypting if needed. Returns (bytes, filename) or None.
-
-    Falls back to Postgres resume_files table when the local file is missing
-    (e.g. after a Railway deploy wipes /tmp).
-    """
-    if not resume_file_path:
-        return None
+def _read_resume_bytes(session_id: str) -> Optional[tuple[bytes, str]]:
+    """Read decrypted resume bytes from Postgres. Returns (bytes, filename) or None."""
     try:
-        if resume_file_path.endswith(".enc"):
-            from backend.shared.resume_crypto import decrypted_tempfile
-            with decrypted_tempfile(resume_file_path) as tmp_path:
-                with open(tmp_path, "rb") as f:
-                    data = f.read()
-                return data, "resume.pdf"
-        else:
-            with open(resume_file_path, "rb") as f:
-                data = f.read()
-            return data, resume_file_path.rsplit("/", 1)[-1]
-    except FileNotFoundError:
-        logger.warning("Resume file missing on disk: %s — trying Postgres fallback", resume_file_path)
-        if session_id:
-            try:
-                from backend.shared.resume_store import get_resume
-                from backend.shared.resume_crypto import _get_fernet
-                row = get_resume(session_id)
-                if row:
-                    enc_data, ext = row
-                    data = _get_fernet().decrypt(enc_data)
-                    logger.info("Resume recovered from Postgres for session %s", session_id)
-                    return data, f"resume{ext}"
-            except Exception:
-                logger.warning("Postgres resume fallback failed for session %s", session_id, exc_info=True)
+        from backend.shared.resume_store import get_resume_bytes
+        result = get_resume_bytes(session_id)
+        if result:
+            data, ext = result
+            return data, f"resume{ext}"
+        logger.warning("No resume found in Postgres for session %s", session_id)
         return None
     except Exception:
-        logger.warning("Failed to read resume file %s — trying Postgres fallback", resume_file_path, exc_info=True)
-        if session_id:
-            try:
-                from backend.shared.resume_store import get_resume
-                from backend.shared.resume_crypto import _get_fernet
-                row = get_resume(session_id)
-                if row:
-                    enc_data, ext = row
-                    data = _get_fernet().decrypt(enc_data)
-                    logger.info("Resume recovered from Postgres for session %s", session_id)
-                    return data, f"resume{ext}"
-            except Exception:
-                logger.warning("Postgres resume fallback also failed for session %s", session_id, exc_info=True)
+        logger.warning("Failed to read resume for session %s", session_id, exc_info=True)
         return None
 
 
@@ -283,7 +244,7 @@ async def _apply_greenhouse(
     user_profile: Dict[str, str],
     resume_text: str,
     cover_letter: str,
-    resume_file_path: Optional[str],
+    resume_file_path: Optional[str],  # unused — kept for signature compat
     session_id: str,
 ) -> Optional[ApplicationResult]:
     """Submit application via Greenhouse Job Board API.
@@ -346,7 +307,7 @@ async def _apply_greenhouse(
             form.add_field("phone", user_profile["phone"])
 
         # Resume file
-        resume_data = _read_resume_bytes(resume_file_path, session_id=session_id)
+        resume_data = _read_resume_bytes(session_id)
         if resume_data:
             data, filename = resume_data
             form.add_field("resume", data, filename=filename, content_type="application/pdf")
@@ -460,7 +421,7 @@ async def _apply_lever(
         if cover_letter:
             form.add_field("comments", cover_letter)
 
-        resume_data = _read_resume_bytes(resume_file_path, session_id=session_id)
+        resume_data = _read_resume_bytes(session_id)
         if resume_data:
             data, filename = resume_data
             form.add_field("resume", data, filename=filename, content_type="application/pdf")

@@ -967,36 +967,24 @@ async def start_session(body: StartSessionRequest, request: Request):
     session_registry[session_id] = session_meta
     upsert_session(session_id, session_meta)
 
-    # Persist encrypted resume to Postgres keyed by session_id.
-    # If the /tmp file is gone (post-deploy), recover from the parse-resume DB entry.
+    # Re-key the resume from the parse-time file UUID to this session_id.
+    # parse-resume already saved to Postgres keyed by file UUID.
     if body.resume_file_path:
         try:
             import os
-            import re as _re
             from backend.shared.resume_store import save_resume as _save_resume_db, get_resume as _get_resume_db
-            enc_path = body.resume_file_path
-            if os.path.exists(enc_path):
-                with open(enc_path, "rb") as ef:
-                    ext = os.path.splitext(enc_path.removesuffix(".enc"))[1] or ".pdf"
-                    _save_resume_db(session_id, ef.read(), ext)
+            # Extract file UUID from path (e.g. /tmp/.../abc123def.pdf.enc -> abc123def)
+            basename = os.path.basename(body.resume_file_path)
+            file_uuid = basename.split(".")[0]
+            row = _get_resume_db(file_uuid)
+            if row:
+                enc_data, ext = row
+                _save_resume_db(session_id, enc_data, ext)
+                logger.info("Resume re-keyed from %s to session %s", file_uuid, session_id)
             else:
-                # /tmp wiped by deploy — recover from parse-resume's Postgres entry.
-                # Extract the file UUID from the path (e.g. /tmp/.../abc123def.pdf.enc -> abc123def)
-                basename = os.path.basename(enc_path)  # abc123def.pdf.enc
-                file_uuid = basename.split(".")[0]      # abc123def
-                row = _get_resume_db(file_uuid)
-                if row:
-                    enc_data, ext = row
-                    _save_resume_db(session_id, enc_data, ext)
-                    # Restore /tmp file so pipeline can use it normally
-                    os.makedirs(os.path.dirname(enc_path), exist_ok=True)
-                    with open(enc_path, "wb") as ef:
-                        ef.write(enc_data)
-                    logger.info("Resume recovered from Postgres for session %s (was %s)", session_id, file_uuid)
-                else:
-                    logger.error("Resume file missing from both disk and Postgres: %s", enc_path)
+                logger.error("No resume in Postgres for file_uuid %s — parse-resume may not have saved it", file_uuid)
         except Exception:
-            logger.warning("Failed to persist resume to Postgres in start_session", exc_info=True)
+            logger.warning("Failed to re-key resume in start_session", exc_info=True)
 
     # Launch the pipeline as a background coroutine
     _spawn_background(_run_pipeline(session_id, body, graph, user_id=user_id))
@@ -2190,40 +2178,14 @@ async def serve_resume_file(session_id: str, request: Request, token: str = ""):
     except (ValueError, IndexError):
         raise HTTPException(status_code=403, detail="Malformed token")
 
-    # Try Redis first (fast path), then fall back to Postgres (survives deploys)
-    r = redis_client.client
-    resume_path = await r.get(f"resume_serve:{session_id}")
-    if resume_path:
-        resume_path = resume_path if isinstance(resume_path, str) else resume_path.decode()
+    # Always read from Postgres — the single source of truth.
+    from backend.shared.resume_store import get_resume_bytes
 
-    # If file exists on disk, serve it directly
-    if resume_path and os.path.exists(resume_path):
-        if resume_path.endswith(".enc"):
-            from backend.shared.resume_crypto import decrypt_to_bytes
-
-            data = decrypt_to_bytes(resume_path)
-            ext = os.path.splitext(resume_path.removesuffix(".enc"))[1] or ".pdf"
-            fd, tmp = tempfile.mkstemp(suffix=ext)
-            os.write(fd, data)
-            os.close(fd)
-            return FileResponse(
-                tmp,
-                media_type="application/pdf",
-                filename=f"resume{ext}",
-                background=BackgroundTask(os.remove, tmp),
-            )
-        return FileResponse(resume_path, media_type="application/pdf", filename="resume.pdf")
-
-    # Fall back to Postgres (file lost after deploy)
-    from backend.shared.resume_store import get_resume as _get_resume_db
-    from backend.shared.resume_crypto import _get_fernet
-
-    db_result = _get_resume_db(session_id)
-    if not db_result:
+    result = get_resume_bytes(session_id)
+    if not result:
         raise HTTPException(status_code=404, detail="No resume file found")
 
-    encrypted_data, ext = db_result
-    data = _get_fernet().decrypt(encrypted_data)
+    data, ext = result
     fd, tmp = tempfile.mkstemp(suffix=ext)
     os.write(fd, data)
     os.close(fd)

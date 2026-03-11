@@ -225,6 +225,7 @@ class BaseApplier(ABC):
             page=self.page,
             instructions=instructions,
             resume_file_path=resume_file_path,
+            session_id=self.session_id,
         )
 
         logger.info("Form fill: %d filled, %d skipped, %d errors",
