@@ -9,14 +9,22 @@ Verifies that:
 4. The full lifecycle: pending → clear → final record works correctly
 """
 
+import asyncio
 import uuid
 import pytest
 from backend.shared.application_store import (
     check_already_applied,
     clear_pending,
+    ensure_table,
     record_result,
 )
 from backend.shared.db import get_connection
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _ensure_schema():
+    """Create application_results table in CI's fresh Postgres."""
+    asyncio.get_event_loop().run_until_complete(ensure_table())
 
 
 @pytest.fixture()
