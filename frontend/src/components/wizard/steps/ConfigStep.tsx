@@ -33,16 +33,20 @@ function estimateCredits(values: SessionFormValues): number {
 export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: (v: boolean) => void }) {
   const { values, setFieldValue } = useFormikContext<SessionFormValues>();
   const [balance, setBalance] = useState<number | null>(null);
+  const [isPremium, setIsPremium] = useState(false);
 
   useEffect(() => {
     getWallet()
-      .then((w) => setBalance(w.balance + (w.free_remaining ?? 0)))
+      .then((w) => {
+        setBalance(w.balance + (w.free_remaining ?? 0));
+        setIsPremium(w.is_premium ?? false);
+      })
       .catch(() => setBalance(null));
   }, []);
 
   const boards = values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"];
   const credits = estimateCredits(values);
-  const insufficientCredits = balance !== null && credits > balance;
+  const insufficientCredits = !isPremium && balance !== null && credits > balance;
 
   useEffect(() => {
     onInsufficientCredits?.(insufficientCredits);
