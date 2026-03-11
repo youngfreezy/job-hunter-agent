@@ -345,6 +345,19 @@ export default function SessionPage() {
   const [shortlistJobs, setShortlistJobs] = useState<ScoredJobData[]>([]);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [shortlistSubmitting, setShortlistSubmitting] = useState(false);
+
+  // Derived: count selected jobs per company for duplicate warning
+  const selectedCompanyCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    shortlistJobs.forEach((sj) => {
+      if (selectedJobIds.has(sj.job.id)) {
+        const key = sj.job.company.toLowerCase().trim();
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+    });
+    return counts;
+  }, [shortlistJobs, selectedJobIds]);
+
   const [stepProgress, setStepProgress] = useState(0);
   const [sessionSummary, setSessionSummary] = useState<SessionSummaryData | null>(null);
   const [interventionData, setInterventionData] = useState<{
@@ -1938,16 +1951,7 @@ export default function SessionPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 max-h-[55vh] overflow-y-auto">
-            {(() => {
-              // Count selected jobs per company for duplicate warning
-              const selectedCompanyCounts = new Map<string, number>();
-              shortlistJobs.forEach((sj) => {
-                if (selectedJobIds.has(sj.job.id)) {
-                  const key = sj.job.company.toLowerCase().trim();
-                  selectedCompanyCounts.set(key, (selectedCompanyCounts.get(key) || 0) + 1);
-                }
-              });
-              return shortlistJobs.map((sj) => {
+            {shortlistJobs.map((sj) => {
               const selected = selectedJobIds.has(sj.job.id);
               const companyKey = sj.job.company.toLowerCase().trim();
               const isDuplicateCompany = selected && (selectedCompanyCounts.get(companyKey) || 0) > 1;
@@ -2020,8 +2024,7 @@ export default function SessionPage() {
                   </div>
                 </div>
               );
-            });
-            })()}
+            })}
           </div>
           <DialogFooter className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
