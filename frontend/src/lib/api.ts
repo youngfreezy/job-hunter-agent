@@ -862,11 +862,6 @@ export function clearTrialData(): void {
   localStorage.removeItem(TRIAL_EMAIL_KEY);
 }
 
-function trialHeaders(): Record<string, string> {
-  const token = getTrialToken();
-  return token ? { Authorization: `Bearer ${token}`, ...csrfHeaders() } : csrfHeaders();
-}
-
 export async function parseResumeTrial(
   file: File
 ): Promise<{ text: string; filename: string; file_path?: string; resume_uuid?: string }> {
@@ -1006,4 +1001,189 @@ export async function convertTrialAccount(params: {
     throw new Error(detail || `Request failed (${res.status})`);
   }
   return res.json();
+}
+
+// ---------- Marketplace ----------
+
+export interface MarketplaceAgent {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  long_description: string | null;
+  icon: string;
+  category: string;
+  credit_cost: number;
+  is_builtin: boolean;
+  total_uses: number;
+  avg_rating: number;
+  rating_count: number;
+  frontend_path: string;
+  stages: { name: string; description: string }[];
+  created_at: string;
+}
+
+export interface AgentReview {
+  id: string;
+  rating: number;
+  review_text: string | null;
+  user_name: string;
+  created_at: string;
+}
+
+export async function listMarketplaceAgents(
+  category?: string
+): Promise<MarketplaceAgent[]> {
+  const params = category ? `?category=${encodeURIComponent(category)}` : "";
+  const res = await apiFetch(`${API_BASE}/api/marketplace/agents${params}`);
+  if (!res.ok) throw new Error("Failed to load agents");
+  const data = await res.json();
+  return data.agents;
+}
+
+export async function getMarketplaceAgent(
+  slug: string
+): Promise<{ agent: MarketplaceAgent; reviews: AgentReview[] }> {
+  const res = await apiFetch(`${API_BASE}/api/marketplace/agents/${slug}`);
+  if (!res.ok) throw new Error("Agent not found");
+  return res.json();
+}
+
+export async function submitAgentReview(
+  slug: string,
+  rating: number,
+  reviewText?: string,
+  sessionId?: string
+): Promise<void> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/marketplace/agents/${slug}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({
+      rating,
+      review_text: reviewText || null,
+      session_id: sessionId || null,
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to submit review");
+}
+
+export async function listAgentReviews(
+  slug: string,
+  limit = 20,
+  offset = 0
+): Promise<AgentReview[]> {
+  const res = await apiFetch(
+    `${API_BASE}/api/marketplace/agents/${slug}/reviews?limit=${limit}&offset=${offset}`
+  );
+  if (!res.ok) throw new Error("Failed to load reviews");
+  const data = await res.json();
+  return data.reviews;
+}
+
+// ---------- Developer Platform ----------
+
+export interface ApiKey {
+  id: string;
+  key?: string; // Only present on creation
+  key_prefix: string;
+  name: string;
+  is_active: boolean;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  secret: string;
+  events: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  response_status: number | null;
+  response_body: string | null;
+  success: boolean;
+  delivered_at: string;
+}
+
+export async function createApiKey(name: string): Promise<ApiKey> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/developer/api-keys`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to create API key");
+  const data = await res.json();
+  return data.api_key;
+}
+
+export async function listApiKeys(): Promise<ApiKey[]> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/developer/api-keys`, { headers: auth });
+  if (!res.ok) throw new Error("Failed to load API keys");
+  const data = await res.json();
+  return data.api_keys;
+}
+
+export async function revokeApiKey(keyId: string): Promise<void> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/developer/api-keys/${keyId}`, {
+    method: "DELETE",
+    headers: auth,
+  });
+  if (!res.ok) throw new Error("Failed to revoke API key");
+}
+
+export async function createWebhook(
+  url: string,
+  events: string[]
+): Promise<Webhook> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/developer/webhooks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({ url, events }),
+  });
+  if (!res.ok) throw new Error("Failed to create webhook");
+  const data = await res.json();
+  return data.webhook;
+}
+
+export async function listWebhooks(): Promise<Webhook[]> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/developer/webhooks`, { headers: auth });
+  if (!res.ok) throw new Error("Failed to load webhooks");
+  const data = await res.json();
+  return data.webhooks;
+}
+
+export async function deleteWebhook(webhookId: string): Promise<void> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/developer/webhooks/${webhookId}`, {
+    method: "DELETE",
+    headers: auth,
+  });
+  if (!res.ok) throw new Error("Failed to delete webhook");
+}
+
+export async function listWebhookDeliveries(
+  webhookId: string,
+  limit = 20
+): Promise<WebhookDelivery[]> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(
+    `${API_BASE}/api/developer/webhooks/${webhookId}/deliveries?limit=${limit}`,
+    { headers: auth }
+  );
+  if (!res.ok) throw new Error("Failed to load deliveries");
+  const data = await res.json();
+  return data.deliveries;
 }

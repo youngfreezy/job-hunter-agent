@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Formik, Form, FormikProvider } from "formik";
@@ -42,8 +42,11 @@ const step3Schema = Yup.object({});
 
 const stepSchemas = [step1Schema, step2Schema, step3Schema];
 
-const fullSchema = step1Schema.concat(step2Schema);
-type FormValues = Yup.InferType<typeof fullSchema> & {
+type FormValues = {
+  keywords: string;
+  locations: string;
+  remoteOnly: boolean;
+  resumeText: string;
   resumeFileName: string;
   resumeFilePath: string;
   resumeFileUuid: string;
