@@ -377,6 +377,7 @@ export default function SessionPage() {
   } | null>(null);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [rewindLoading, setRewindLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
@@ -739,6 +740,7 @@ export default function SessionPage() {
     const isCoachChatMode = coachReviewOpen || latestStatusRef.current === "awaiting_coach_review";
 
     setChatMessages((prev) => [...prev, { role: "user", text: msg }]);
+    setChatLoading(true);
 
     try {
       if (isCoachChatMode) {
@@ -781,6 +783,8 @@ export default function SessionPage() {
         ...prev,
         { role: "system", text: "Could not send message to the agent." },
       ]);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -1494,6 +1498,7 @@ export default function SessionPage() {
                   messages={chatMessages}
                   onSend={handleSendChat}
                   disabled={!isActive}
+                  isLoading={chatLoading}
                   placeholder={
                     coachReviewOpen || latestStatusRef.current === "awaiting_coach_review"
                       ? "Ask the coach to revise your resume or strategy..."
@@ -1903,6 +1908,7 @@ export default function SessionPage() {
                     messages={chatMessages}
                     onSend={handleSendChat}
                     disabled={false}
+                    isLoading={chatLoading}
                     placeholder="Ask the coach to revise your resume or strategy..."
                   />
                 </CardContent>
