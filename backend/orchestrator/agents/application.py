@@ -626,8 +626,8 @@ async def _apply_to_job(
     except Exception:
         pass  # Don't block on URL parse errors
 
-    # Pre-flight: skip jobs already submitted by this user
-    prior = check_already_applied(job_id, user_id=user_id)
+    # Pre-flight: skip jobs already submitted by this user (checks by ID and URL)
+    prior = check_already_applied(job_id, user_id=user_id, job_url=job.url)
     if prior:
         applied_at = prior.get("applied_at", "unknown date")
         msg = f"Already applied on {applied_at}"
@@ -710,9 +710,10 @@ async def _apply_to_job(
             "progress": _pct,
         })
 
-        # --- Fast path: direct API submission (Greenhouse, Lever) ---
+        # --- Fast path: direct API submission (only if handler registered) ---
         settings = get_settings()
-        if settings.API_APPLY_ENABLED and job.ats_type in (ATSType.GREENHOUSE, ATSType.LEVER):
+        from backend.browser.tools.api_applier import _ATS_HANDLERS
+        if settings.API_APPLY_ENABLED and job.ats_type in _ATS_HANDLERS:
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
 
@@ -1336,21 +1337,48 @@ async def run_application_agent(state: JobHunterState) -> dict:
         settings = get_settings()
 
         # --- Batch API-eligible jobs (fast path, ~3s each) ---
-        # Partition remaining into API-eligible and Skyvern-required
+        # Partition remaining into API-eligible and Skyvern-required.
+        # Jobs whose API already failed in a prior iteration go straight to Skyvern.
+        api_failed_ids: set = set(state.get("api_failed_job_ids") or [])
         api_jobs: List[tuple] = []
         skyvern_jobs: List[tuple] = []
+        # Only route to API if there's actually a registered handler
+        from backend.browser.tools.api_applier import _ATS_HANDLERS
         for jid in remaining:
             j = _find_job_in_state(jid, state)
             if j is None:
                 continue
-            if settings.API_APPLY_ENABLED and j.ats_type in (ATSType.GREENHOUSE, ATSType.LEVER):
+            if (
+                settings.API_APPLY_ENABLED
+                and j.ats_type in _ATS_HANDLERS
+                and jid not in api_failed_ids
+            ):
                 api_jobs.append((jid, j))
             else:
                 skyvern_jobs.append((jid, j))
 
         # Process API jobs in parallel (no browser needed)
         if api_jobs:
-            batch = api_jobs[:settings.API_APPLY_BATCH_SIZE]
+            # Deduplicate: at most one job per company in each batch to avoid
+            # TOCTOU race in the per-company rate limit check during gather().
+            seen_companies: set[str] = set()
+            deduped_batch: list[tuple] = []
+            deferred_batch: list[tuple] = []
+            for jid, j in api_jobs[:settings.API_APPLY_BATCH_SIZE]:
+                company_key = j.company.lower().strip()
+                if company_key in seen_companies:
+                    deferred_batch.append((jid, j))
+                else:
+                    seen_companies.add(company_key)
+                    deduped_batch.append((jid, j))
+            batch = deduped_batch
+            # Put deferred same-company jobs back for next iteration
+            if deferred_batch:
+                logger.info(
+                    "Deferred %d jobs to avoid same-company race condition in batch",
+                    len(deferred_batch),
+                )
+                skyvern_jobs.extend(deferred_batch)
             logger.info(
                 "Batching %d API-eligible jobs in parallel (Greenhouse/Lever)",
                 len(batch),
@@ -1364,28 +1392,34 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 jid = batch[i][0]
                 j = batch[i][1]
                 if isinstance(res, Exception):
-                    logger.error("API batch job %s failed: %s", jid, res)
-                    fail_result = ApplicationResult(
-                        job_id=jid, status=ApplicationStatus.FAILED,
-                        error_message=str(res),
-                    )
-                    failed.append(fail_result)
-                    consecutive_failures += 1
-                    errors.append(f"Application failed for {jid}: {res}")
+                    logger.warning("API batch job %s failed — re-queuing for Skyvern: %s", jid, res)
+                    skyvern_jobs.append((jid, j))
+                    api_failed_ids.add(jid)
                 elif res.status == ApplicationStatus.SUBMITTED:
                     submitted.append(res)
                     consecutive_failures = 0
                 elif res.status == ApplicationStatus.FAILED:
-                    failed.append(res)
-                    consecutive_failures += 1
-                    if res.error_message:
-                        errors.append(f"Application failed for {jid}: {res.error_message}")
+                    # API failed (401, blocked, etc.) — re-queue for Skyvern browser fallback
+                    logger.info(
+                        "API submission failed for %s at %s — re-queuing for Skyvern",
+                        j.title, j.company,
+                    )
+                    skyvern_jobs.append((jid, j))
+                    api_failed_ids.add(jid)
                 else:
                     skipped.append(res)
                     consecutive_failures = 0
 
         # Process Skyvern jobs (browser automation)
-        skyvern_batch = skyvern_jobs[:settings.SKYVERN_CONCURRENCY]
+        # Deduplicate: at most one job per company to avoid rate limit race
+        seen_skyvern_companies: set[str] = set()
+        deduped_skyvern: list[tuple] = []
+        for jid, j in skyvern_jobs[:settings.SKYVERN_CONCURRENCY]:
+            company_key = j.company.lower().strip()
+            if company_key not in seen_skyvern_companies:
+                seen_skyvern_companies.add(company_key)
+                deduped_skyvern.append((jid, j))
+        skyvern_batch = deduped_skyvern
         if skyvern_batch:
             job_id = skyvern_batch[0][0]
             job = skyvern_batch[0][1]
@@ -1411,7 +1445,14 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         consecutive_failures = 0
                     elif result.status == ApplicationStatus.FAILED:
                         failed.append(result)
-                        consecutive_failures += 1
+                        # Don't count site-specific blockers (reCAPTCHA, anti-bot) toward
+                        # circuit breaker — they're not systemic failures.
+                        is_site_blocker = result.error_category in (
+                            ApplicationErrorCategory.CAPTCHA,
+                            ApplicationErrorCategory.AUTH_REQUIRED,
+                        )
+                        if not is_site_blocker:
+                            consecutive_failures += 1
                         if result.error_message:
                             errors.append(f"Application failed for {job_id}: {result.error_message}")
                     else:
@@ -1460,7 +1501,12 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         consecutive_failures = 0
                     elif res.status == ApplicationStatus.FAILED:
                         failed.append(res)
-                        consecutive_failures += 1
+                        is_site_blocker = res.error_category in (
+                            ApplicationErrorCategory.CAPTCHA,
+                            ApplicationErrorCategory.AUTH_REQUIRED,
+                        )
+                        if not is_site_blocker:
+                            consecutive_failures += 1
                         if res.error_message:
                             errors.append(f"Application failed for {jid}: {res.error_message}")
                     else:
@@ -1530,6 +1576,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
         "agent_statuses": {"application": agent_status},
         "errors": errors,
         "skip_next_job_requested": False,
+        "api_failed_job_ids": list(api_failed_ids),
     }
 
 

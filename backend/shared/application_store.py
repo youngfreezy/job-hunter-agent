@@ -76,6 +76,11 @@ async def ensure_table() -> None:
                 ALTER TABLE application_results
                 ADD COLUMN IF NOT EXISTS failure_step TEXT
             """)
+            # Index for cross-session URL-based dedup
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_app_results_user_url_status
+                ON application_results(user_id, job_url, status)
+            """)
             conn.commit()
             logger.info("application_results table ensured")
     except Exception:
@@ -123,15 +128,18 @@ def record_result(
         logger.exception("Failed to record application result for %s", job_id)
 
 
-def check_already_applied(job_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def check_already_applied(
+    job_id: str, user_id: Optional[str] = None, job_url: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """Check if this job was already submitted by this user.
 
     Returns the prior application record if found, None otherwise.
     Only ``submitted`` status counts -- failed/skipped don't block re-attempts.
-    When *user_id* is provided, only checks that user's applications.
+    Checks both by job_id and by job_url (for backward compat with old random IDs).
     """
     try:
         with _connect() as conn:
+            # Check by job_id first
             if user_id:
                 cur = conn.execute(
                     """
@@ -162,10 +170,81 @@ def check_already_applied(job_id: str, user_id: Optional[str] = None) -> Optiona
                     "job_company": row[2],
                     "applied_at": row[3].isoformat() if row[3] else None,
                 }
+
+            # Fallback: check by URL (handles old records with random UUIDs)
+            if job_url and user_id:
+                cur = conn.execute(
+                    """
+                    SELECT session_id, job_title, job_company, created_at
+                    FROM application_results
+                    WHERE job_url = %s AND user_id = %s AND status = 'submitted'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (job_url, user_id),
+                )
+                row = cur.fetchone()
+                if row:
+                    return {
+                        "session_id": row[0],
+                        "job_title": row[1],
+                        "job_company": row[2],
+                        "applied_at": row[3].isoformat() if row[3] else None,
+                    }
+
             return None
     except Exception:
         logger.warning("Failed to check duplicate for %s", job_id, exc_info=True)
         return None
+
+
+def get_previously_applied_urls(user_id: str) -> set[str]:
+    """Return set of job URLs the user has already successfully applied to.
+
+    Used at the scoring stage to filter out jobs before they reach the
+    application agent — prevents cross-session duplicate applications.
+    """
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT DISTINCT job_url FROM application_results
+                WHERE user_id = %s AND status = 'submitted' AND job_url != ''
+                """,
+                (user_id,),
+            )
+            return {row[0] for row in cur.fetchall()}
+    except Exception:
+        logger.warning("Failed to fetch previous applications for user %s", user_id, exc_info=True)
+        return set()
+
+
+def get_rate_limited_companies(
+    user_id: str, max_applications: int = 2, window_days: int = 14
+) -> set[str]:
+    """Return set of company names (lowered) that have hit the rate limit.
+
+    Used at the scoring stage to exclude companies the user has already
+    applied to enough times recently.
+    """
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT LOWER(job_company), COUNT(*)
+                FROM application_results
+                WHERE user_id = %s AND status = 'submitted'
+                  AND created_at > NOW() - %s * INTERVAL '1 day'
+                  AND job_company != ''
+                GROUP BY LOWER(job_company)
+                HAVING COUNT(*) >= %s
+                """,
+                (user_id, window_days, max_applications),
+            )
+            return {row[0] for row in cur.fetchall()}
+    except Exception:
+        logger.warning("Failed to fetch rate-limited companies for user %s", user_id, exc_info=True)
+        return set()
 
 
 def check_company_rate_limit(
@@ -190,7 +269,7 @@ def check_company_rate_limit(
                     WHERE LOWER(job_company) = LOWER(%s)
                       AND user_id = %s
                       AND status = 'submitted'
-                      AND created_at > NOW() - INTERVAL '%s days'
+                      AND created_at > NOW() - %s * INTERVAL '1 day'
                     """,
                     (company, user_id, window_days),
                 )
@@ -201,7 +280,7 @@ def check_company_rate_limit(
                     FROM application_results
                     WHERE LOWER(job_company) = LOWER(%s)
                       AND status = 'submitted'
-                      AND created_at > NOW() - INTERVAL '%s days'
+                      AND created_at > NOW() - %s * INTERVAL '1 day'
                     """,
                     (company, window_days),
                 )

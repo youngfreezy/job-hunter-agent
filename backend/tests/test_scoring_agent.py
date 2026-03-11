@@ -61,6 +61,7 @@ async def test_scoring_agent_splits_batches_on_length_limit(monkeypatch):
     monkeypatch.setattr("backend.orchestrator.agents.scoring.build_llm", lambda **_: _FakeLLM())
     monkeypatch.setattr("backend.orchestrator.agents.scoring.invoke_with_retry", fake_invoke)
     monkeypatch.setattr("backend.orchestrator.agents.scoring.emit_agent_event", fake_emit)
+    monkeypatch.setattr("backend.orchestrator.agents.scoring.get_active_prompt", lambda _key: None)
 
     result = await run_scoring_agent(
         {

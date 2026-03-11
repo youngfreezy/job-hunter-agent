@@ -40,6 +40,7 @@ export const resumeProfileSchema = Yup.object({
     ),
   resumeFileName: Yup.string().default(""),
   resumeFilePath: Yup.string().default(""),
+  resumeFileUuid: Yup.string().default(""),
   linkedinUrl: Yup.string()
     .default("")
     .test(
@@ -60,7 +61,7 @@ export const resumeProfileSchema = Yup.object({
 
 // ---------- Step 3: Configuration ----------
 export const configSchema = Yup.object({
-  maxJobs: Yup.number().min(5).max(50).default(5),
+  maxJobs: Yup.number().min(3).max(10).default(5),
   tailoringQuality: Yup.string().oneOf(["standard", "premium"]).default("standard"),
   applicationMode: Yup.string().oneOf(["auto_apply", "materials_only"]).default("auto_apply"),
   generateCoverLetters: Yup.boolean().default(true),
@@ -88,6 +89,7 @@ export const sessionInitialValues: SessionFormValues = {
   resumeText: "",
   resumeFileName: "",
   resumeFilePath: "",
+  resumeFileUuid: "",
   linkedinUrl: "",
   maxJobs: 5,
   tailoringQuality: "standard",

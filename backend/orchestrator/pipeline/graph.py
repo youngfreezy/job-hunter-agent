@@ -304,11 +304,23 @@ def _route_after_auto_approve_gate(state: JobHunterState) -> str:
     return "shortlist_review"
 
 
+_EXPIRED_PAGE_INDICATORS = [
+    "no longer open", "no longer available", "no longer accepting",
+    "job has expired", "position has been filled", "job has been removed",
+    "this listing has expired", "posting has been removed",
+    "this job is no longer available", "this position is no longer available",
+]
+
+# ATS domains where pages return 200 for expired jobs (need GET + content check)
+_NEEDS_CONTENT_CHECK = ("greenhouse.io", "job-boards.greenhouse.io", "lever.co")
+
+
 async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
     """Validate job URLs via HTTP HEAD and filter out dead links.
 
     Returns only scored jobs whose URLs return a 2xx/3xx status.
-    Jobs with unreachable or 4xx/5xx URLs are dropped and logged.
+    For Greenhouse/Lever URLs, also does a GET and checks page content for
+    expired-job indicators (these sites return 200 for expired pages).
     """
     if not scored_jobs:
         return scored_jobs
@@ -318,25 +330,39 @@ async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
         url = sj.job.url if hasattr(sj.job, "url") else sj.get("job", {}).get("url", "")
         if not url:
             return (sj, False)
+        title = sj.job.title if hasattr(sj.job, "title") else "unknown"
         try:
+            needs_content = any(domain in url for domain in _NEEDS_CONTENT_CHECK)
             async with httpx.AsyncClient(
                 follow_redirects=True, timeout=10.0,
                 headers={"User-Agent": "Mozilla/5.0 (JobHunterAgent URL Validator)"},
             ) as client:
-                resp = await client.head(url)
-                # Some sites block HEAD — fall back to GET
-                if resp.status_code == 405:
+                if needs_content:
+                    # GET for ATS pages that return 200 for expired jobs
                     resp = await client.get(url)
+                else:
+                    resp = await client.head(url)
+                    if resp.status_code == 405:
+                        resp = await client.get(url)
                 alive = resp.status_code < 400
                 if not alive:
-                    title = sj.job.title if hasattr(sj.job, "title") else "unknown"
                     logger.info(
                         "URL validation: %s (%s) returned %d — removing from shortlist",
                         url, title, resp.status_code,
                     )
+                    return (sj, False)
+                # Content-based expired check for ATS pages
+                if needs_content and alive:
+                    body = resp.text[:2000].lower()
+                    for indicator in _EXPIRED_PAGE_INDICATORS:
+                        if indicator in body:
+                            logger.info(
+                                "URL validation: %s (%s) page says '%s' — removing expired job",
+                                url, title, indicator,
+                            )
+                            return (sj, False)
                 return (sj, alive)
         except Exception as exc:
-            title = sj.job.title if hasattr(sj.job, "title") else "unknown"
             logger.info(
                 "URL validation: %s (%s) unreachable (%s) — removing from shortlist",
                 url, title, exc,

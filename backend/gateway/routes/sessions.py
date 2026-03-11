@@ -967,19 +967,28 @@ async def start_session(body: StartSessionRequest, request: Request):
     session_registry[session_id] = session_meta
     upsert_session(session_id, session_meta)
 
-    # Persist encrypted resume to Postgres synchronously (survives Railway deploys).
-    # Must happen BEFORE the background pipeline to eliminate race conditions.
-    if body.resume_file_path:
+    # Re-key the resume from the parse-time file UUID to this session_id.
+    # parse-resume saved to Postgres keyed by file UUID; we copy it under session_id.
+    file_uuid = body.resume_uuid  # Preferred: explicit UUID from parse-resume response
+    if not file_uuid and body.resume_file_path:
+        # Legacy fallback: extract UUID from file path
+        import os
+        basename = os.path.basename(body.resume_file_path)
+        file_uuid = basename.split(".")[0]
+        logger.info("Using legacy resume_file_path to extract UUID: %s", file_uuid)
+
+    if file_uuid:
         try:
-            import os
-            from backend.shared.resume_store import save_resume as _save_resume_db
-            enc_path = body.resume_file_path
-            if os.path.exists(enc_path):
-                with open(enc_path, "rb") as ef:
-                    ext = os.path.splitext(enc_path.removesuffix(".enc"))[1] or ".pdf"
-                    _save_resume_db(session_id, ef.read(), ext)
+            from backend.shared.resume_store import save_resume as _save_resume_db, get_resume as _get_resume_db
+            row = _get_resume_db(file_uuid)
+            if row:
+                enc_data, ext = row
+                _save_resume_db(session_id, enc_data, ext)
+                logger.info("Resume re-keyed from %s to session %s", file_uuid, session_id)
+            else:
+                logger.error("No resume in Postgres for file_uuid %s — parse-resume may not have saved it", file_uuid)
         except Exception:
-            logger.warning("Failed to persist resume to Postgres in start_session", exc_info=True)
+            logger.warning("Failed to re-key resume in start_session", exc_info=True)
 
     # Launch the pipeline as a background coroutine
     _spawn_background(_run_pipeline(session_id, body, graph, user_id=user_id))
@@ -2066,11 +2075,21 @@ async def parse_resume(request: Request, file: UploadFile = File(...)):
 
     resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
     os.makedirs(resume_dir, exist_ok=True)
-    plaintext_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}.{suffix}")
+    file_uuid = uuid.uuid4().hex
+    plaintext_path = os.path.join(resume_dir, f"{file_uuid}.{suffix}")
     enc_path = encrypt_and_save(raw, plaintext_path)
     logger.info("Resume encrypted and saved to %s", enc_path)
 
-    return {"text": text, "filename": file.filename, "file_path": enc_path}
+    # Persist to Postgres immediately so resume survives deploys.
+    # Keyed by the file UUID — start_session() will re-key it under the session_id.
+    try:
+        from backend.shared.resume_store import save_resume as _save_resume_db
+        with open(enc_path, "rb") as ef:
+            _save_resume_db(file_uuid, ef.read(), f".{suffix}")
+    except Exception:
+        logger.warning("Failed to persist resume to Postgres in parse-resume", exc_info=True)
+
+    return {"text": text, "filename": file.filename, "file_path": enc_path, "resume_uuid": file_uuid}
 
 
 # ---------------------------------------------------------------------------
@@ -2163,40 +2182,14 @@ async def serve_resume_file(session_id: str, request: Request, token: str = ""):
     except (ValueError, IndexError):
         raise HTTPException(status_code=403, detail="Malformed token")
 
-    # Try Redis first (fast path), then fall back to Postgres (survives deploys)
-    r = redis_client.client
-    resume_path = await r.get(f"resume_serve:{session_id}")
-    if resume_path:
-        resume_path = resume_path if isinstance(resume_path, str) else resume_path.decode()
+    # Always read from Postgres — the single source of truth.
+    from backend.shared.resume_store import get_resume_bytes
 
-    # If file exists on disk, serve it directly
-    if resume_path and os.path.exists(resume_path):
-        if resume_path.endswith(".enc"):
-            from backend.shared.resume_crypto import decrypt_to_bytes
-
-            data = decrypt_to_bytes(resume_path)
-            ext = os.path.splitext(resume_path.removesuffix(".enc"))[1] or ".pdf"
-            fd, tmp = tempfile.mkstemp(suffix=ext)
-            os.write(fd, data)
-            os.close(fd)
-            return FileResponse(
-                tmp,
-                media_type="application/pdf",
-                filename=f"resume{ext}",
-                background=BackgroundTask(os.remove, tmp),
-            )
-        return FileResponse(resume_path, media_type="application/pdf", filename="resume.pdf")
-
-    # Fall back to Postgres (file lost after deploy)
-    from backend.shared.resume_store import get_resume as _get_resume_db
-    from backend.shared.resume_crypto import _get_fernet
-
-    db_result = _get_resume_db(session_id)
-    if not db_result:
+    result = get_resume_bytes(session_id)
+    if not result:
         raise HTTPException(status_code=404, detail="No resume file found")
 
-    encrypted_data, ext = db_result
-    data = _get_fernet().decrypt(encrypted_data)
+    data, ext = result
     fd, tmp = tempfile.mkstemp(suffix=ext)
     os.write(fd, data)
     os.close(fd)
@@ -2299,3 +2292,15 @@ async def get_screenshot(session_id: str, screenshot_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Screenshot not found")
     image_data, content_type = result
     return Response(content=image_data, media_type=content_type)
+
+
+@router.get("/{session_id}/artifacts")
+async def list_artifacts(session_id: str, request: Request):
+    """List all persisted Skyvern task artifacts for a session.
+
+    Each artifact contains the full task result: status, failure_reason,
+    extracted_information, screenshot URLs, and timestamps.
+    """
+    from backend.shared.screenshot_store import get_artifacts_for_session
+    artifacts = get_artifacts_for_session(session_id)
+    return {"artifacts": artifacts}

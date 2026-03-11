@@ -20,6 +20,7 @@ import httpx
 
 from backend.shared.config import get_settings
 from backend.shared.models.schemas import (
+    ApplicationErrorCategory,
     ApplicationResult,
     ApplicationStatus,
     JobListing,
@@ -28,24 +29,18 @@ from backend.shared.models.schemas import (
 logger = logging.getLogger(__name__)
 
 
-async def _generate_resume_url(session_id: str, resume_file_path: str) -> Optional[str]:
+async def _generate_resume_url(session_id: str, resume_file_path: str = "") -> Optional[str]:
     """Generate a signed URL for Skyvern to download the resume.
 
-    Stores the resume file path in Redis and returns an internal URL
-    with an HMAC-signed token that expires in 60 minutes.
+    The serve endpoint reads directly from Postgres — no Redis or /tmp needed.
+    resume_file_path is kept in the signature for backward compat but unused.
     """
     try:
-        from backend.shared.redis_client import redis_client
-
         settings = get_settings()
         secret = (settings.NEXTAUTH_SECRET or "").encode()
         if not secret:
             logger.warning("No NEXTAUTH_SECRET — cannot generate signed resume URL")
             return None
-
-        # Store the resume path in Redis (60 min TTL — must outlast SKYVERN_TASK_TIMEOUT)
-        r = redis_client.client
-        await r.set(f"resume_serve:{session_id}", resume_file_path, ex=3600)
 
         # Generate signed token
         ts = str(int(time.time()))
@@ -53,11 +48,9 @@ async def _generate_resume_url(session_id: str, resume_file_path: str) -> Option
         sig = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()[:32]
         token = f"{payload}.{sig}"
 
-        # Use internal Railway URL (Skyvern is on the same network)
-        # Fall back to localhost for local dev
-        skyvern_url = settings.SKYVERN_API_URL
-        if "railway.internal" in skyvern_url:
-            base = "http://backend.railway.internal:8000"
+        # Use public URL so Skyvern Cloud can reach us; fall back for local dev
+        if settings.BACKEND_PUBLIC_URL:
+            base = settings.BACKEND_PUBLIC_URL.rstrip("/")
         else:
             base = "http://localhost:8000"
 
@@ -231,14 +224,21 @@ async def apply_with_skyvern(
                 "job_expired": {"type": "boolean"},
             },
         },
-        "proxy_location": "RESIDENTIAL",
+        # Static residential ISP proxy — more trusted than rotating residential
+        "proxy_location": "RESIDENTIAL_ISP",
+        # Structured error codes so we don't have to parse free-text failure reasons
+        "error_code_mapping": {
+            "cant_solve_captcha": "A CAPTCHA or bot challenge is blocking the form and could not be solved",
+            "auth_wall": "The site requires login or account creation to apply",
+            "job_closed": "The job listing is expired, closed, or no longer accepting applications",
+            "form_error": "A required form field could not be filled or the form rejected the submission",
+        },
     }
 
     # Wire up TOTP verification URL so Skyvern can auto-retrieve
     # verification codes from the user's Gmail
-    skyvern_url = settings.SKYVERN_API_URL
-    if "railway.internal" in skyvern_url:
-        totp_base = "http://backend.railway.internal:8000"
+    if settings.BACKEND_PUBLIC_URL:
+        totp_base = settings.BACKEND_PUBLIC_URL.rstrip("/")
     else:
         totp_base = "http://localhost:8000"
     task_body["totp_verification_url"] = (
@@ -323,19 +323,36 @@ async def apply_with_skyvern(
 
         extracted = result_data.get("extracted_information") or {}
         failure_reason = result_data.get("failure_reason") or ""
-        screenshot_urls = result_data.get("screenshot_urls") or []
-        last_screenshot = screenshot_urls[-1] if screenshot_urls else None
 
-        # Persist screenshot to Postgres for the feedback loop (fire-and-forget).
-        # Save on failures and skips (auth_required, job_expired) — not clean successes.
-        is_failure = status not in _SUCCESS_STATUSES
-        is_skip = extracted.get("auth_required") or extracted.get("job_expired")
-        if last_screenshot and (is_failure or is_skip):
-            try:
-                from backend.shared.screenshot_store import download_and_store
+        # Skyvern returns screenshot_url (singular) for final screenshot
+        # and action_screenshot_urls (list) for per-action screenshots.
+        last_screenshot = result_data.get("screenshot_url")
+        action_screenshots = result_data.get("action_screenshot_urls") or []
+        if not last_screenshot and action_screenshots:
+            last_screenshot = action_screenshots[-1]
+
+        # Persist artifacts to Postgres so we can debug against real evidence.
+        # Store for ALL outcomes (success, failure, skip) — not just failures.
+        try:
+            from backend.shared.screenshot_store import (
+                download_and_store,
+                store_task_artifact,
+            )
+            if last_screenshot:
                 await download_and_store(session_id, str(job.id), last_screenshot)
-            except Exception as ss_exc:
-                logger.debug("Screenshot persistence failed (non-critical): %s", ss_exc)
+            # Store the full Skyvern response for debugging
+            await store_task_artifact(
+                session_id=session_id,
+                job_id=str(job.id),
+                task_id=task_id,
+                skyvern_status=status,
+                failure_reason=failure_reason,
+                extracted_information=extracted,
+                screenshot_url=last_screenshot,
+                action_screenshot_urls=action_screenshots,
+            )
+        except Exception as ss_exc:
+            logger.warning("Artifact persistence failed (non-critical): %s", ss_exc)
 
         if status in _SUCCESS_STATUSES:
             # Check extracted data for false positives
@@ -379,15 +396,34 @@ async def apply_with_skyvern(
         else:
             # Failed/terminated/canceled
             error_msg = failure_reason or extracted.get("error_message") or f"Skyvern status: {status}"
+            # Use structured error_code from error_code_mapping when available
+            error_code = (result_data.get("output") or {}).get("error") or ""
             logger.warning(
-                "Skyvern task %s failed (job=%s, company=%s): %s | screenshot: %s",
-                task_id, job.title, job.company, error_msg[:300],
-                last_screenshot or "(none)",
+                "Skyvern task %s failed (job=%s, company=%s): error_code=%s msg=%s | screenshot: %s",
+                task_id, job.title, job.company, error_code or "(none)",
+                error_msg[:300], last_screenshot or "(none)",
             )
+            # Map structured error codes to categories
+            error_category = None
+            if error_code == "cant_solve_captcha":
+                error_category = ApplicationErrorCategory.CAPTCHA
+            elif error_code == "auth_wall":
+                error_category = ApplicationErrorCategory.AUTH_REQUIRED
+            elif error_code == "job_closed":
+                error_category = ApplicationErrorCategory.JOB_EXPIRED
+            elif error_code == "form_error":
+                error_category = ApplicationErrorCategory.FORM_FILL_ERROR
+            else:
+                # Fallback: detect from free text if no structured code
+                error_lower = error_msg.lower()
+                if any(kw in error_lower for kw in ("recaptcha", "captcha", "spam", "bot detection", "blocked")):
+                    error_category = ApplicationErrorCategory.CAPTCHA
+
             return ApplicationResult(
                 job_id=str(job.id),
                 status=ApplicationStatus.FAILED,
                 error_message=error_msg[:500],
+                error_category=error_category,
                 screenshot_url=last_screenshot,
                 duration_seconds=elapsed,
             )
