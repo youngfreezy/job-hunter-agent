@@ -967,17 +967,34 @@ async def start_session(body: StartSessionRequest, request: Request):
     session_registry[session_id] = session_meta
     upsert_session(session_id, session_meta)
 
-    # Persist encrypted resume to Postgres synchronously (survives Railway deploys).
-    # Must happen BEFORE the background pipeline to eliminate race conditions.
+    # Persist encrypted resume to Postgres keyed by session_id.
+    # If the /tmp file is gone (post-deploy), recover from the parse-resume DB entry.
     if body.resume_file_path:
         try:
             import os
-            from backend.shared.resume_store import save_resume as _save_resume_db
+            import re as _re
+            from backend.shared.resume_store import save_resume as _save_resume_db, get_resume as _get_resume_db
             enc_path = body.resume_file_path
             if os.path.exists(enc_path):
                 with open(enc_path, "rb") as ef:
                     ext = os.path.splitext(enc_path.removesuffix(".enc"))[1] or ".pdf"
                     _save_resume_db(session_id, ef.read(), ext)
+            else:
+                # /tmp wiped by deploy — recover from parse-resume's Postgres entry.
+                # Extract the file UUID from the path (e.g. /tmp/.../abc123def.pdf.enc -> abc123def)
+                basename = os.path.basename(enc_path)  # abc123def.pdf.enc
+                file_uuid = basename.split(".")[0]      # abc123def
+                row = _get_resume_db(file_uuid)
+                if row:
+                    enc_data, ext = row
+                    _save_resume_db(session_id, enc_data, ext)
+                    # Restore /tmp file so pipeline can use it normally
+                    os.makedirs(os.path.dirname(enc_path), exist_ok=True)
+                    with open(enc_path, "wb") as ef:
+                        ef.write(enc_data)
+                    logger.info("Resume recovered from Postgres for session %s (was %s)", session_id, file_uuid)
+                else:
+                    logger.error("Resume file missing from both disk and Postgres: %s", enc_path)
         except Exception:
             logger.warning("Failed to persist resume to Postgres in start_session", exc_info=True)
 
@@ -2066,9 +2083,19 @@ async def parse_resume(request: Request, file: UploadFile = File(...)):
 
     resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
     os.makedirs(resume_dir, exist_ok=True)
-    plaintext_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}.{suffix}")
+    file_uuid = uuid.uuid4().hex
+    plaintext_path = os.path.join(resume_dir, f"{file_uuid}.{suffix}")
     enc_path = encrypt_and_save(raw, plaintext_path)
     logger.info("Resume encrypted and saved to %s", enc_path)
+
+    # Persist to Postgres immediately so resume survives deploys.
+    # Keyed by the file UUID — start_session() will re-key it under the session_id.
+    try:
+        from backend.shared.resume_store import save_resume as _save_resume_db
+        with open(enc_path, "rb") as ef:
+            _save_resume_db(file_uuid, ef.read(), f".{suffix}")
+    except Exception:
+        logger.warning("Failed to persist resume to Postgres in parse-resume", exc_info=True)
 
     return {"text": text, "filename": file.filename, "file_path": enc_path}
 
