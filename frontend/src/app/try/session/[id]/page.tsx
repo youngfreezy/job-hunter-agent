@@ -41,6 +41,16 @@ const STATUS_LABELS: Record<string, string> = {
   error: "Error",
 };
 
+const STEP_LABELS: Record<string, string> = {
+  intake: "Setup",
+  coaching: "Analyze",
+  discovering: "Search",
+  scoring: "Rank",
+  tailoring: "Tailor",
+  applying: "Apply",
+  done: "Done",
+};
+
 const STATUS_ORDER = ["intake", "coaching", "discovering", "scoring", "tailoring", "applying", "done"];
 
 export default function TrialSessionPage() {
@@ -157,26 +167,57 @@ export default function TrialSessionPage() {
         </h1>
 
         {/* Progress pipeline */}
-        <div className="flex items-center gap-1 mb-8 overflow-x-auto">
-          {STATUS_ORDER.filter((s) => s !== "done").map((s, i) => {
-            const active = i <= currentStepIdx;
-            const current = s === status;
+        <div className="flex items-center gap-0.5 mb-8">
+          {STATUS_ORDER.map((step, i) => {
+            const isCompleted = i < currentStepIdx;
+            const isCurrent = step === status;
+            const isFailed = status === "error" && isCurrent;
             return (
-              <div key={s} className="flex items-center flex-1 min-w-0">
+              <div key={step} className="flex items-center flex-1 last:flex-none">
+                {/* Step pill */}
                 <div
-                  className={`flex-shrink-0 w-3 h-3 rounded-full ${
-                    current
-                      ? "bg-blue-600 ring-4 ring-blue-100 dark:ring-blue-900/40"
-                      : active
-                      ? "bg-blue-600"
-                      : "bg-zinc-200 dark:bg-zinc-800"
-                  }`}
-                />
-                <span className={`ml-1.5 text-xs whitespace-nowrap ${active ? "text-zinc-900 dark:text-white font-medium" : "text-zinc-400"}`}>
-                  {STATUS_LABELS[s] || s}
-                </span>
-                {i < STATUS_ORDER.length - 2 && (
-                  <div className={`flex-1 h-0.5 mx-2 ${active && i < currentStepIdx ? "bg-blue-600" : "bg-zinc-200 dark:bg-zinc-800"}`} />
+                  className={`
+                    relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-500 whitespace-nowrap overflow-hidden
+                    ${
+                      isCompleted
+                        ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
+                        : isFailed
+                        ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                        : isCurrent
+                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
+                        : "text-zinc-400 dark:text-zinc-500"
+                    }
+                  `}
+                >
+                  {isCurrent && !isFailed && (
+                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[gradient-shift_2s_ease_infinite] bg-[length:200%_100%]" />
+                  )}
+                  {isCompleted ? (
+                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : isCurrent && !isFailed ? (
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                    </span>
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-current opacity-30 shrink-0" />
+                  )}
+                  <span className="relative z-10">{STEP_LABELS[step] || step}</span>
+                </div>
+                {/* Connector */}
+                {i < STATUS_ORDER.length - 1 && (
+                  <div className="flex-1 mx-0.5">
+                    <div className="h-0.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ease-out ${
+                          isFailed ? "bg-red-400" : "bg-blue-500"
+                        }`}
+                        style={{ width: isCompleted ? "100%" : isCurrent ? "50%" : "0%" }}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             );
@@ -347,7 +388,8 @@ function formatEvent(e: EventEntry): string {
     return `${e.status}: ${company}`;
   }
   if (e.event === "coaching_progress") return String(e.message || "Analyzing resume...");
+  if (e.event === "agent_complete") return "Agent step complete";
   if (e.event === "done") return "Session complete!";
   if (e.event === "error") return String(e.message || e.error || "An error occurred");
-  return String(e.message || e.event);
+  return String(e.message || e.event.replace(/_/g, " "));
 }
