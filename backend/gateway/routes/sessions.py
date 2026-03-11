@@ -863,7 +863,7 @@ async def list_sessions(request: Request):
     """Return all sessions, merging persisted DB state with in-memory registry."""
     from backend.gateway.deps import get_current_user
     user = get_current_user(request)
-    user_id = user["id"]
+    user_id = str(user["id"])
 
     # Load persisted sessions from the sessions table
     db_sessions = {s["session_id"]: s for s in get_sessions_for_user(user_id)}
@@ -871,9 +871,9 @@ async def list_sessions(request: Request):
     # Merge: in-memory registry takes precedence (has live status updates)
     merged = {**db_sessions, **session_registry}
 
-    # Filter to only this user's sessions
+    # Filter to only this user's sessions (str() ensures UUID vs TEXT comparison works)
     sessions = sorted(
-        [s for s in merged.values() if s.get("user_id") == user_id],
+        [s for s in merged.values() if str(s.get("user_id", "")) == user_id],
         key=lambda s: s.get("created_at", ""),
         reverse=True,
     )
@@ -887,7 +887,7 @@ async def start_session(body: StartSessionRequest, request: Request):
     graph = request.app.state.graph
     from backend.gateway.deps import get_current_user
     user = get_current_user(request)
-    user_id = user["id"]
+    user_id = str(user["id"])  # Ensure string — users.id is UUID, sessions.user_id is TEXT
 
     # Enforce per-user concurrency limits via Redis task queue
     try:
