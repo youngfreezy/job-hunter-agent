@@ -246,7 +246,16 @@ async def delete_user_data(request: Request):
     except Exception:
         logger.exception("Failed to clear rate-limit keys for user %s", user_id)
 
-    # 6. Remove sessions from in-memory registry
+    # 6. Delete failure screenshots for those sessions
+    screenshots_deleted = 0
+    try:
+        from backend.shared.screenshot_store import delete_for_session
+        for sid in user_session_ids:
+            screenshots_deleted += delete_for_session(sid)
+    except Exception:
+        logger.exception("Failed to delete screenshots for user %s", user_id)
+
+    # 7. Remove sessions from in-memory registry
     for sid in user_session_ids:
         session_registry.pop(sid, None)
 

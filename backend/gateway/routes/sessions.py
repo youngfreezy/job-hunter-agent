@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File
 from fastapi.responses import StreamingResponse
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -2225,3 +2225,27 @@ async def get_totp_code(session_id: str, request: Request):
     })
 
     return {"verification_code": None}
+
+
+# ---------------------------------------------------------------------------
+# Failure screenshots
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{session_id}/screenshots")
+async def list_screenshots(session_id: str, request: Request):
+    """List all persisted failure screenshots for a session."""
+    from backend.shared.screenshot_store import get_screenshots_for_session
+    screenshots = get_screenshots_for_session(session_id)
+    return {"screenshots": screenshots}
+
+
+@router.get("/{session_id}/screenshots/{screenshot_id}")
+async def get_screenshot(session_id: str, screenshot_id: int, request: Request):
+    """Serve a persisted failure screenshot by ID."""
+    from backend.shared.screenshot_store import get_screenshot as _get_screenshot
+    result = _get_screenshot(screenshot_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+    image_data, content_type = result
+    return Response(content=image_data, media_type=content_type)
