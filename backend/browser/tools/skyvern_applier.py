@@ -20,6 +20,7 @@ import httpx
 
 from backend.shared.config import get_settings
 from backend.shared.models.schemas import (
+    ApplicationErrorCategory,
     ApplicationResult,
     ApplicationStatus,
     JobListing,
@@ -377,10 +378,14 @@ async def apply_with_skyvern(
                 task_id, job.title, job.company, error_msg[:300],
                 last_screenshot or "(none)",
             )
+            # Detect site-specific blockers (reCAPTCHA, anti-bot, spam flags)
+            error_lower = error_msg.lower()
+            is_captcha = any(kw in error_lower for kw in ("recaptcha", "captcha", "spam", "bot detection", "blocked"))
             return ApplicationResult(
                 job_id=str(job.id),
                 status=ApplicationStatus.FAILED,
                 error_message=error_msg[:500],
+                error_category=ApplicationErrorCategory.CAPTCHA if is_captcha else None,
                 screenshot_url=last_screenshot,
                 duration_seconds=elapsed,
             )
