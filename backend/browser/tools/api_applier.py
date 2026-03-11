@@ -430,15 +430,20 @@ async def _apply_lever(
             "Lever API: submitting to %s/%s (%s at %s)",
             company, posting_id, job.title, job.company,
         )
+        api_url = f"https://api.lever.co/v0/postings/{company}/{posting_id}/apply"
         try:
             async with session.post(
-                f"https://api.lever.co/v0/postings/{company}/{posting_id}/apply",
+                api_url,
                 data=form,
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
                 status = resp.status
                 body = await resp.text()
                 elapsed = int(time.monotonic() - start)
+                logger.info(
+                    "Lever API: response %d for %s (took %ds): %s",
+                    status, job.title, elapsed, body[:300],
+                )
 
                 if status == 200:
                     logger.info(
