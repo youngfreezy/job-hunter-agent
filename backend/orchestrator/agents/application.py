@@ -1192,6 +1192,14 @@ async def run_application_agent(state: JobHunterState) -> dict:
         failed_ids = {r.job_id for r in (state.get("applications_failed") or [])}
         skipped_ids = set(state.get("applications_skipped") or [])
         done_ids = submitted_ids | failed_ids | skipped_ids
+
+        # Track companies already applied to in this session (1 per company)
+        session_applied_companies: set = set()
+        for r in (state.get("applications_submitted") or []):
+            job_for_r = _find_job_in_state(r.job_id, state)
+            if job_for_r:
+                session_applied_companies.add(job_for_r.company.lower().strip())
+
         remaining = [job_id for job_id in application_queue if job_id not in done_ids]
         if not remaining:
             return {
@@ -1256,6 +1264,38 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 "agent_statuses": {"application": f"skipped -- {job_label}"},
                 "errors": [],
                 "skip_next_job_requested": False,
+            }
+
+        # --- Per-session company dedup (1 application per company) ---
+        if job_obj and job_obj.company.lower().strip() in session_applied_companies:
+            company_name = job_obj.company
+            logger.info("Skipping %s — already applied to %s in this session", job_label, company_name)
+            skipped_result = ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.SKIPPED,
+                error_message=f"Already applied to {company_name} in this session",
+                duration_seconds=0,
+            )
+            skipped.append(skipped_result)
+            _db_record_result(
+                session_id=session_id, job_id=job_id, status="skipped",
+                job_title=job_obj.title, job_company=job_obj.company,
+                job_url=job_obj.url,
+                job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
+                job_location=job_obj.location or "",
+                error_message=f"Already applied to {company_name} in this session",
+                user_id=user_id,
+            )
+            await emit_agent_event(session_id, "application_progress", {
+                "step": f"Skipped {job_label} (already applied to {company_name})",
+                "progress": pct, "current": app_idx + 1, "total": total_in_queue,
+            })
+            return {
+                "applications_submitted": [], "applications_failed": [],
+                "applications_skipped": [job_id],
+                "consecutive_failures": 0, "status": "applying",
+                "agent_statuses": {"application": f"skipped -- duplicate company {company_name}"},
+                "errors": [], "skip_next_job_requested": False,
             }
 
         # --- Circuit breaker ---
