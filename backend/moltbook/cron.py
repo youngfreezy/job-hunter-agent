@@ -54,12 +54,48 @@ DREAM_CYCLE_INTERVAL = 5
 # Max comments per cron cycle (be a good citizen)
 MAX_COMMENTS_PER_CYCLE = 5
 
-# Track our own post IDs to check engagement later
-_our_post_ids: List[str] = []
-_MAX_TRACKED_POSTS = 50
-
 # Cycle counter for dream triggering
 _cycle_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Persistent post ID tracking (survives deploys)
+# ---------------------------------------------------------------------------
+
+def _load_our_post_ids() -> List[str]:
+    """Load our Moltbook post IDs from Postgres."""
+    try:
+        from backend.shared.db import get_connection
+        with get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS moltbook_posts (
+                    id SERIAL PRIMARY KEY,
+                    post_id TEXT UNIQUE NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            conn.commit()
+            rows = conn.execute(
+                "SELECT post_id FROM moltbook_posts ORDER BY created_at DESC LIMIT 50"
+            ).fetchall()
+            return [r[0] for r in rows]
+    except Exception as exc:
+        logger.warning("Failed to load moltbook post IDs: %s", exc)
+        return []
+
+
+def _save_post_id(post_id: str) -> None:
+    """Persist a new Moltbook post ID to Postgres."""
+    try:
+        from backend.shared.db import get_connection
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO moltbook_posts (post_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                (post_id,),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("Failed to save moltbook post ID %s: %s", post_id, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +171,7 @@ async def _step_heartbeat(client: MoltbookClient) -> bool:
 
 
 async def _step_post_performance(client: MoltbookClient) -> None:
-    """Step 2: Post anonymized performance update."""
+    """Step 2: Post anonymized performance update + ask for community help."""
     rl = get_rate_limiter()
     if not rl.can_post():
         logger.info(
@@ -149,16 +185,20 @@ async def _step_post_performance(client: MoltbookClient) -> None:
         logger.info("No performance data to share — skipping post")
         return
 
+    # Append a question asking for community help based on current blockers
+    metrics = get_metrics()
+    help_lines = _generate_help_request(metrics)
+    if help_lines:
+        summary += "\n\n" + help_lines
+
     # Sanitize outbound content
-    safe_summary = sanitize_for_posting(summary, max_length=480)
+    safe_summary = sanitize_for_posting(summary, max_length=600)
 
     try:
         result = await client.create_post(safe_summary)
-        post_id = str(result.get("id", ""))
+        post_id = str(result.get("id", result.get("post_id", "")))
         if post_id:
-            _our_post_ids.append(post_id)
-            if len(_our_post_ids) > _MAX_TRACKED_POSTS:
-                _our_post_ids.pop(0)
+            _save_post_id(post_id)
         logger.info("Posted performance update (post_id=%s)", post_id)
     except ValueError as e:
         logger.info("Performance post skipped: %s", e)
@@ -166,11 +206,57 @@ async def _step_post_performance(client: MoltbookClient) -> None:
         logger.warning("Failed to post performance update: %s", exc)
 
 
+def _generate_help_request(metrics: Any) -> str:
+    """Generate a community help request based on current problems.
+
+    SECURITY: Never includes PII, company names, or user data.
+    """
+    if metrics.total_applications == 0:
+        return ""
+
+    lines: List[str] = []
+
+    # Ask about biggest blocker
+    blocker = metrics.biggest_blocker
+    if blocker and blocker != "none":
+        blocker_count = metrics.blocker_counts.get(blocker, 0)
+        lines.append(
+            f"Looking for help: our biggest blocker is '{blocker}' "
+            f"({blocker_count} times this week). Anyone found workarounds?"
+        )
+
+    # Ask about lowest-performing ATS
+    worst_ats = None
+    worst_rate = 1.0
+    for ats, stats in metrics.ats_stats.items():
+        total = stats.get("total", 0)
+        if total >= 3:
+            rate = stats.get("success", 0) / total
+            if rate < worst_rate:
+                worst_rate = rate
+                worst_ats = ats
+    if worst_ats and worst_rate < 0.3:
+        lines.append(
+            f"Struggling with {worst_ats} forms ({worst_rate:.0%} success). "
+            f"Tips on handling {worst_ats} applications?"
+        )
+
+    # General low success rate
+    if not lines and metrics.success_rate < 20:
+        lines.append(
+            f"Overall success rate is {metrics.success_rate:.0f}%. "
+            f"What strategies are other job application agents using to improve?"
+        )
+
+    return "\n".join(lines)
+
+
 async def _step_scan_feed(client: MoltbookClient) -> List[Dict[str, Any]]:
     """Step 4: Scan Moltbook feed for relevant posts."""
     try:
         feed = await client.get_feed(page=1, limit=20)
-        posts = feed.get("posts") or feed.get("data") or []
+        # /feed returns {"success": true, "posts": [...]}
+        posts = feed.get("posts") or []
         if isinstance(posts, list):
             relevant = [p for p in posts if is_relevant_post(p)]
             logger.info(
@@ -292,36 +378,86 @@ def _generate_helpful_comment(content_lower: str, metrics: Any) -> str:
 
 
 async def _step_check_engagement(client: MoltbookClient) -> None:
-    """Step 6: Check engagement on our past posts."""
-    if not _our_post_ids:
+    """Step 6: Check engagement on our past posts via /home + comments API."""
+    # Strategy 1: Use /home activity_on_your_posts for quick overview
+    try:
+        home = await client.get_home()
+        activity = home.get("activity_on_your_posts") or []
+        if activity:
+            logger.info("Home activity: %d items on our posts", len(activity))
+            for item in activity:
+                content = sanitize(
+                    item.get("content", ""),
+                    max_length=500,
+                    context="home_activity",
+                )
+                if content and is_relevant_post({"content": content}):
+                    signals = extract_signals({
+                        "content": content,
+                        "id": f"activity_{item.get('id', '')}",
+                    })
+                    for signal in signals:
+                        from backend.moltbook.feedback_loop import process_signal
+                        process_signal(signal)
+    except Exception as exc:
+        logger.debug("Failed to check /home activity: %s", exc)
+
+    # Strategy 2: Fetch comments on our most recent posts from DB
+    our_post_ids = _load_our_post_ids()
+    if not our_post_ids:
         return
 
-    # Check the last 5 posts
-    for post_id in _our_post_ids[-5:]:
+    for post_id in our_post_ids[:5]:
         try:
-            post_data = await client.get_post(post_id)
-            comments = post_data.get("comments") or []
-            votes = post_data.get("vote_count") or post_data.get("votes", 0)
+            comments_data = await client.get_comments(post_id, limit=20)
+            comments = comments_data.get("comments") or []
+            non_spam = [c for c in comments if not c.get("is_spam", False)]
             logger.info(
-                "Post %s engagement: %d comments, %s votes",
-                post_id, len(comments), votes,
+                "Post %s: %d comments (%d non-spam)",
+                post_id, len(comments), len(non_spam),
             )
 
-            # Process any comments on our posts as potential signals
-            for comment in comments:
+            for comment in non_spam:
                 comment_content = sanitize(
                     comment.get("content", ""),
                     max_length=500,
                     context=f"reply_to_us:{post_id}",
                 )
                 if comment_content and is_relevant_post({"content": comment_content}):
-                    signals = extract_signals({"content": comment_content, "id": f"comment_{comment.get('id', '')}"})
+                    signals = extract_signals({
+                        "content": comment_content,
+                        "id": f"comment_{comment.get('id', '')}",
+                    })
                     for signal in signals:
                         from backend.moltbook.feedback_loop import process_signal
                         process_signal(signal)
 
         except Exception as exc:
-            logger.debug("Failed to check engagement on post %s: %s", post_id, exc)
+            logger.debug("Failed to check comments on post %s: %s", post_id, exc)
+
+    # Strategy 3: Check notifications for replies we may have missed
+    try:
+        notifs = await client.get_notifications(limit=20)
+        notif_list = notifs.get("notifications") or notifs.get("data") or []
+        reply_notifs = [n for n in notif_list if "comment" in n.get("type", "").lower() or "reply" in n.get("type", "").lower()]
+        if reply_notifs:
+            logger.info("Found %d reply notifications", len(reply_notifs))
+            for notif in reply_notifs:
+                content = sanitize(
+                    notif.get("content", notif.get("message", "")),
+                    max_length=500,
+                    context="notification",
+                )
+                if content and is_relevant_post({"content": content}):
+                    signals = extract_signals({
+                        "content": content,
+                        "id": f"notif_{notif.get('id', '')}",
+                    })
+                    for signal in signals:
+                        from backend.moltbook.feedback_loop import process_signal
+                        process_signal(signal)
+    except Exception as exc:
+        logger.debug("Failed to check notifications: %s", exc)
 
 
 async def _step_update_strategy() -> None:

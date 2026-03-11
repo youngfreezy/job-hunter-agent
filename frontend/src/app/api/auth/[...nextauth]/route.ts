@@ -2,9 +2,6 @@
 
 import NextAuth, { type NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import CredentialsProvider from "next-auth/providers/credentials";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const authOptions: NextAuthOptions = {
   providers: [
@@ -19,33 +16,6 @@ const authOptions: NextAuthOptions = {
         },
       },
     }),
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
-
-        const res = await fetch(`${API_URL}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: credentials.email,
-            password: credentials.password,
-          }),
-        });
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || data.detail || "Invalid credentials");
-        }
-
-        const user = await res.json();
-        return { id: user.id, email: user.email, name: user.name };
-      },
-    }),
   ],
   session: {
     strategy: "jwt",
@@ -56,20 +26,6 @@ const authOptions: NextAuthOptions = {
     newUser: "/session/new",
   },
   callbacks: {
-    async signIn({ user, account }) {
-      // When a Google user signs in, link their account if they registered with email
-      if (account?.provider === "google" && user.email) {
-        fetch(`${API_URL}/api/auth/link-google`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: user.email,
-            secret: process.env.NEXTAUTH_SECRET || "",
-          }),
-        }).catch(() => {}); // Fire-and-forget, server-side only
-      }
-      return true;
-    },
     async jwt({ token, user, account }) {
       if (user) {
         token.userId = user.id;

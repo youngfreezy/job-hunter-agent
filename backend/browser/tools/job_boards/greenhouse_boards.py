@@ -15,6 +15,7 @@ import asyncio
 import logging
 import re
 from typing import Any, Dict, List, Optional
+import hashlib
 from uuid import uuid4
 
 import aiohttp
@@ -207,8 +208,10 @@ async def scrape_greenhouse_lever(
                     location and any(t in location.lower() for t in ["remote", "anywhere"])
                 )
 
+                # Deterministic ID from URL so cross-session dedup works
+                job_id = hashlib.sha256(abs_url.encode()).hexdigest()[:16]
                 listing = JobListing(
-                    id=str(uuid4()),
+                    id=job_id,
                     title=title,
                     company=company_name,
                     location=location,

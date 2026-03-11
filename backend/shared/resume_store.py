@@ -77,6 +77,20 @@ def get_resume(session_id: str) -> Optional[tuple[bytes, str]]:
     return None
 
 
+def get_resume_bytes(session_id: str) -> Optional[tuple[bytes, str]]:
+    """Canonical way to get decrypted resume bytes for a session.
+
+    Returns (plaintext_pdf_bytes, extension) or None.
+    Always reads from Postgres — never touches /tmp.
+    """
+    row = get_resume(session_id)
+    if not row:
+        return None
+    encrypted_data, ext = row
+    from backend.shared.resume_crypto import _get_fernet
+    return (_get_fernet().decrypt(encrypted_data), ext)
+
+
 def delete_resume(session_id: str) -> None:
     """Delete a resume from Postgres."""
     _ensure_table()

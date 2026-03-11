@@ -33,6 +33,15 @@
 - [ ] API for programmatic agent creation and management
 - [ ] Developer documentation and example agents
 
+### Microsoft OAuth (Azure AD)
+- [ ] Register app in Azure AD portal (get client ID + secret)
+- [ ] Add `next-auth` `AzureADProvider` (or `MicrosoftProvider` from `next-auth/providers/azure-ad`)
+- [ ] Request `openid email profile Mail.Read` scopes (for verification code reading like Gmail)
+- [ ] Add Microsoft sign-in button to login + signup pages
+- [ ] Store Microsoft OAuth tokens server-side (same pattern as Gmail tokens in Redis)
+- [ ] Backend: add email verification code reader for Outlook/Microsoft Graph API
+- [ ] Set `AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, `AZURE_AD_TENANT_ID` env vars on Railway
+
 ### Other
 - [ ] Proxy rotation for job board scraping (deferred — add when scraper blocks appear)
 

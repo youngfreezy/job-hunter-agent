@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any, Dict, List, Literal, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -509,6 +510,7 @@ async def fill_form(
     page: Any,
     instructions: List[Dict[str, Any]],
     resume_file_path: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute fill instructions on the page.
 
@@ -635,15 +637,27 @@ async def fill_form(
                 filled += 1
 
             elif action == "upload":
-                if resume_file_path:
-                    if resume_file_path.endswith(".enc"):
-                        from backend.shared.resume_crypto import decrypted_tempfile
-                        with decrypted_tempfile(resume_file_path) as tmp:
-                            await el.set_input_files(tmp)
-                    else:
-                        await el.set_input_files(resume_file_path)
-                    filled += 1
-                else:
+                upload_done = False
+                # Prefer Postgres (survives deploys)
+                if session_id:
+                    try:
+                        from backend.shared.resume_store import get_resume_bytes
+                        result = get_resume_bytes(session_id)
+                        if result:
+                            data, ext = result
+                            import tempfile as _tf
+                            fd, tmp = _tf.mkstemp(suffix=ext)
+                            os.write(fd, data)
+                            os.close(fd)
+                            try:
+                                await el.set_input_files(tmp)
+                                filled += 1
+                                upload_done = True
+                            finally:
+                                os.remove(tmp)
+                    except Exception:
+                        pass
+                if not upload_done:
                     skipped += 1
 
             elif action == "react_select":

@@ -96,38 +96,45 @@ export function FormikFileUpload() {
   const [error, setError] = useState<string | null>(null);
   const restoredRef = useRef(false);
 
-  // Restore resume from localStorage on mount if form is empty
+  // Restore resume from localStorage on mount if form is empty,
+  // and ALWAYS re-upload cached bytes to get a fresh server-side UUID.
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
-    if (values.resumeText) return;
 
-    try {
-      const savedText = localStorage.getItem(STORAGE_KEY) || "";
-      const savedName = localStorage.getItem(FILENAME_KEY) || "";
-      if (savedText) {
-        setFieldValue("resumeText", savedText);
-        setFieldValue("resumeFileName", savedName);
+    // Restore text from localStorage if form is empty
+    if (!values.resumeText) {
+      try {
+        const savedText = localStorage.getItem(STORAGE_KEY) || "";
+        const savedName = localStorage.getItem(FILENAME_KEY) || "";
+        if (savedText) {
+          setFieldValue("resumeText", savedText);
+          setFieldValue("resumeFileName", savedName);
+        }
+      } catch {
+        // ignore
       }
+    }
 
-      // If we have cached file bytes, re-upload to get a fresh server path
-      const cached = getCachedResumeBytes();
-      if (cached && savedText) {
-        const file = base64ToFile(cached.bytes, cached.fileName);
-        setParsing(true);
-        parseResume(file)
-          .then((result) => {
-            if (result.file_path) {
-              setFieldValue("resumeFilePath", result.file_path);
-            }
-          })
-          .catch(() => {
-            // Re-upload failed silently — text is still available, just no file for ATS upload
-          })
-          .finally(() => setParsing(false));
-      }
-    } catch {
-      // ignore
+    // Always re-upload cached bytes to get a fresh UUID/path.
+    // Formik persistence may restore a stale resumeFileUuid from a previous session.
+    const cached = getCachedResumeBytes();
+    if (cached) {
+      const file = base64ToFile(cached.bytes, cached.fileName);
+      setParsing(true);
+      parseResume(file)
+        .then((result) => {
+          if (result.file_path) {
+            setFieldValue("resumeFilePath", result.file_path);
+          }
+          if (result.resume_uuid) {
+            setFieldValue("resumeFileUuid", result.resume_uuid);
+          }
+        })
+        .catch(() => {
+          // Re-upload failed — text is still available, just no file for ATS upload
+        })
+        .finally(() => setParsing(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -158,6 +165,9 @@ export function FormikFileUpload() {
       setFieldValue("resumeText", result.text);
       if (result.file_path) {
         setFieldValue("resumeFilePath", result.file_path);
+      }
+      if (result.resume_uuid) {
+        setFieldValue("resumeFileUuid", result.resume_uuid);
       }
       saveResumeToStorage(result.text, file.name, base64);
     } catch (err) {

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { downloadResumePdf, downloadCoverLetterPdf } from "@/lib/pdf";
 import {
   Dialog,
   DialogContent,
@@ -454,61 +455,136 @@ export default function HistoryPage() {
                           {/* Application entries */}
                           {entries.length > 0 ? (
                             <div className="mt-4 space-y-2">
-                              {entries.map((entry, idx) => (
+                              {entries.map((entry, idx) => {
+                                const title = entry.job?.title || "Position";
+                                const company = entry.job?.company || "Company";
+                                return (
                                 <div
                                   key={`${entry.job?.id || idx}`}
-                                  className="flex items-center gap-3 rounded-lg border border-border/50 px-3 py-2.5 text-sm"
+                                  className="rounded-lg border border-border/50 px-3 py-2.5 text-sm"
                                 >
-                                  <Badge
-                                    className={`text-xs shrink-0 ${
-                                      APP_STATUS_COLORS[entry.status] || ""
-                                    }`}
-                                  >
-                                    {entry.status}
-                                  </Badge>
-                                  <div className="min-w-0 flex-1">
-                                    <span className="font-medium truncate block">
-                                      {entry.job?.title || "Position"}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {entry.job?.company || "Company"}
-                                    </span>
-                                  </div>
-                                  {entry.job?.board && (
-                                    <Badge variant="outline" className="text-[10px] py-0 shrink-0">
-                                      {entry.job.board}
-                                    </Badge>
-                                  )}
-                                  {entry.duration != null && (
-                                    <span className="text-xs text-muted-foreground shrink-0">
-                                      {Math.round(entry.duration)}s
-                                    </span>
-                                  )}
-                                  {entry.job?.url && (
-                                    <a
-                                      href={entry.job.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="text-blue-600 hover:text-blue-700 dark:text-blue-400 shrink-0"
+                                  <div className="flex items-center gap-3">
+                                    <Badge
+                                      className={`text-xs shrink-0 ${
+                                        APP_STATUS_COLORS[entry.status] || ""
+                                      }`}
                                     >
-                                      <svg
-                                        className="w-3.5 h-3.5"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                        strokeWidth={2}
+                                      {entry.status}
+                                    </Badge>
+                                    <div className="min-w-0 flex-1">
+                                      <span className="font-medium truncate block">
+                                        {title}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {company}
+                                      </span>
+                                    </div>
+                                    {entry.job?.board && (
+                                      <Badge variant="outline" className="text-[10px] py-0 shrink-0">
+                                        {entry.job.board}
+                                      </Badge>
+                                    )}
+                                    {entry.duration != null && (
+                                      <span className="text-xs text-muted-foreground shrink-0">
+                                        {Math.round(entry.duration)}s
+                                      </span>
+                                    )}
+                                    {entry.job?.url && (
+                                      <a
+                                        href={entry.job.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 shrink-0"
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
-                                        />
-                                      </svg>
-                                    </a>
+                                        <svg
+                                          className="w-3.5 h-3.5"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                          strokeWidth={2}
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                                          />
+                                        </svg>
+                                      </a>
+                                    )}
+                                  </div>
+                                  {(entry.cover_letter || entry.tailored_resume) && (
+                                    <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-border/50">
+                                      {entry.cover_letter && (
+                                        <>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-6 text-[11px] gap-1"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              downloadCoverLetterPdf(entry.cover_letter, company, title, `Cover Letter - ${company} - ${title}`);
+                                            }}
+                                          >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            Cover Letter
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 text-[11px]"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              navigator.clipboard.writeText(entry.cover_letter);
+                                              toast.success("Cover letter copied");
+                                            }}
+                                          >
+                                            Copy
+                                          </Button>
+                                        </>
+                                      )}
+                                      {entry.tailored_resume && (
+                                        <>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-6 text-[11px] gap-1"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              downloadResumePdf(entry.tailored_resume!.tailored_text, `Resume - ${company} - ${title}`);
+                                            }}
+                                          >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            Resume
+                                            {entry.tailored_resume.fit_score > 0 && (
+                                              <Badge variant="secondary" className="ml-0.5 text-[9px] py-0">
+                                                {entry.tailored_resume.fit_score}%
+                                              </Badge>
+                                            )}
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 text-[11px]"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              navigator.clipboard.writeText(entry.tailored_resume!.tailored_text);
+                                              toast.success("Resume copied");
+                                            }}
+                                          >
+                                            Copy
+                                          </Button>
+                                        </>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           ) : (
                             <p className="mt-4 text-sm text-muted-foreground">

@@ -70,6 +70,7 @@ export function SessionWizard() {
           search_radius: values.remoteOnly ? 100 : values.searchRadius,
           resume_text: values.resumeText,
           resume_file_path: values.resumeFilePath || null,
+          resume_uuid: values.resumeFileUuid || null,
           linkedin_url: values.linkedinUrl || null,
           preferences: {},
           config: {

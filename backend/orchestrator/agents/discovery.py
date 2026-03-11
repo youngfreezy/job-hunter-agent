@@ -119,6 +119,33 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             seen_keys.add(key)
             deduped.append(job)
 
+    # Exclude jobs from companies the user has already hit the rate limit for,
+    # and jobs the user has already applied to (by URL). This prevents wasting
+    # discovery slots on jobs that would be filtered out later at scoring/application.
+    user_id = state.get("user_id", "")
+    if user_id:
+        try:
+            from backend.shared.application_store import (
+                get_previously_applied_urls,
+                get_rate_limited_companies,
+            )
+            applied_urls = get_previously_applied_urls(user_id)
+            blocked_companies = get_rate_limited_companies(user_id)
+            before_filter = len(deduped)
+            deduped = [
+                j for j in deduped
+                if j.url not in applied_urls
+                and j.company.lower().strip() not in blocked_companies
+            ]
+            excluded = before_filter - len(deduped)
+            if excluded:
+                logger.info(
+                    "Discovery pre-filter: excluded %d jobs (applied URLs: %d, rate-limited companies: %s) for user %s",
+                    excluded, len(applied_urls), blocked_companies or "none", user_id,
+                )
+        except Exception:
+            logger.warning("Discovery pre-filter failed for user %s", user_id, exc_info=True)
+
     # On backfill rounds, exclude jobs already seen in previous rounds
     # (by title+company since IDs are regenerated each discovery)
     if state.get("backfill_rounds", 0) > 0:
