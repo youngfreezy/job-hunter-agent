@@ -78,12 +78,12 @@ export function ConfigStep() {
                   balance !== null && balance <= 0 ? "opacity-40 cursor-not-allowed" : ""
                 }`}
               />
-              {balance !== null && balance <= 0 && (
+              {balance !== null && insufficientCredits && (
                 <div className="absolute -top-10 left-1/2 -translate-x-1/2 hidden group-hover:block z-10">
                   <div className="bg-zinc-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
-                    No credits remaining.{" "}
+                    Not enough credits.{" "}
                     <Link href="/billing" className="underline text-blue-300">
-                      Buy more credits
+                      Go to billing to buy more
                     </Link>
                   </div>
                 </div>

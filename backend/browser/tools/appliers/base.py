@@ -403,6 +403,23 @@ class BaseApplier(ABC):
             logger.warning("Gmail auto-extraction failed: %s", exc)
 
         # --- Phase 2: Manual fallback ---
+        # Check if Gmail token exists — if not (anonymous/free-trial user), skip
+        # the 120s manual wait since there's no logged-in user to enter codes.
+        from backend.shared.redis_client import redis_client as _redis
+        try:
+            has_gmail = await _redis.get_json(f"gmail_token:{self.session_id}")
+        except Exception:
+            has_gmail = None
+
+        if not has_gmail:
+            await self._emit_step("Verification code required but no email account connected — skipping this application.")
+            await emit_agent_event(self.session_id, "verification_progress", {
+                "agent": "applier",
+                "message": "Skipped — email verification required. Sign up to enable auto-verification.",
+            })
+            logger.info("No Gmail token for session %s — skipping verification wait (anonymous user)", self.session_id)
+            return False
+
         await self._emit_step("Could not auto-extract code — please enter it manually in the browser window.")
         await emit_agent_event(self.session_id, "verification_required", {
             "message": "A verification code was requested. Please check your email and enter the code in the browser window.",

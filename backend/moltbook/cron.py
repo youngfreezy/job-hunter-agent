@@ -283,6 +283,7 @@ async def _step_comment_helpfully(
     rl = get_rate_limiter()
     comments_made = 0
     metrics = get_metrics()
+    our_post_ids = _load_our_post_ids()
 
     for post in relevant_posts:
         if comments_made >= MAX_COMMENTS_PER_CYCLE:
@@ -296,7 +297,7 @@ async def _step_comment_helpfully(
             continue
 
         # Skip our own posts
-        if post_id in _our_post_ids:
+        if post_id in our_post_ids:
             continue
 
         content = sanitize(

@@ -12,13 +12,31 @@ logger = logging.getLogger(__name__)
 
 
 def get_current_user(request: Request) -> dict:
-    """Extract user from JWT-validated email (set by JWTAuthMiddleware)."""
+    """Extract user from JWT-validated email (set by JWTAuthMiddleware).
+
+    Falls back to trial_user_id for anonymous free-trial sessions.
+    """
     email = getattr(request.state, "user_email", None)
 
-    if not email:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    if email:
+        return get_or_create_user(email)
 
-    return get_or_create_user(email)
+    # Fall back to trial token (anonymous free-trial users)
+    trial_uid = getattr(request.state, "trial_user_id", None)
+    if trial_uid:
+        from backend.shared.billing_store import get_user_by_id
+        user = get_user_by_id(trial_uid)
+        if user:
+            return {
+                "id": user["id"],
+                "email": user["email"],
+                "wallet_balance": 0.0,
+                "free_applications_remaining": 3,
+                "is_premium": False,
+                "is_anonymous": True,
+            }
+
+    raise HTTPException(status_code=401, detail="Authentication required")
 
 
 async def verify_session_owner(session_id: str, user: dict, request: Request) -> None:

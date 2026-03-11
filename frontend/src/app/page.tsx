@@ -345,9 +345,9 @@ export default function Home() {
             >
               About
             </a>
-            <Link href="/session/new">
-              <Button size="sm" data-umami-event="cta-get-started" data-umami-event-location="nav">
-                Start Free
+            <Link href="/try">
+              <Button size="sm" data-umami-event="cta-try-free" data-umami-event-location="nav">
+                Try Free
               </Button>
             </Link>
           </div>
@@ -378,18 +378,28 @@ export default function Home() {
                 two approval checkpoints.
               </p>
               <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                <Link href="/try">
+                  <Button
+                    size="lg"
+                    data-umami-event="cta-try-free"
+                    data-umami-event-location="hero"
+                  >
+                    Try Free — No Sign Up
+                  </Button>
+                </Link>
                 <Link href="/session/new">
                   <Button
                     size="lg"
+                    variant="outline"
                     data-umami-event="cta-get-started"
                     data-umami-event-location="hero"
                   >
-                    Start with 3 Free Applications
+                    Sign In to Start
                   </Button>
                 </Link>
               </div>
               <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-                No credit card required. Set up in under 5 minutes.
+                No account or credit card required. Upload your resume and go.
               </p>
               <p className="mt-1 text-sm text-zinc-400 dark:text-zinc-500">
                 Or{" "}
@@ -1605,17 +1615,17 @@ export default function Home() {
             <CardContent className="py-10 text-center">
               <h3 className="text-2xl font-bold">Ready to automate your job search?</h3>
               <p className="mx-auto mt-3 max-w-xl text-sm text-zinc-600 dark:text-zinc-400">
-                Start with 3 free applications. No credit card required. See your tailored resume
-                and matched jobs in under 5 minutes.
+                Try it right now — no account required. Upload your resume and watch the
+                AI apply to jobs in under 5 minutes.
               </p>
-              <div className="mt-6">
-                <Link href="/session/new">
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <Link href="/try">
                   <Button
                     size="lg"
-                    data-umami-event="cta-get-started"
+                    data-umami-event="cta-try-free"
                     data-umami-event-location="bottom"
                   >
-                    Start Free
+                    Try Free — No Sign Up
                   </Button>
                 </Link>
               </div>

@@ -1,0 +1,353 @@
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  connectTrialSSE,
+  getTrialToken,
+  getTrialEmail,
+  convertTrialAccount,
+  clearTrialData,
+} from "@/lib/api";
+
+type EventEntry = {
+  event: string;
+  timestamp: string;
+  [key: string]: unknown;
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  intake: "Starting up...",
+  coaching: "Analyzing your resume",
+  discovering: "Searching job boards",
+  scoring: "Scoring job matches",
+  tailoring: "Tailoring your resume",
+  applying: "Applying to jobs",
+  done: "Complete!",
+  error: "Error",
+};
+
+const STATUS_ORDER = ["intake", "coaching", "discovering", "scoring", "tailoring", "applying", "done"];
+
+export default function TrialSessionPage() {
+  const params = useParams();
+  const router = useRouter();
+  const sessionId = params.id as string;
+
+  const [events, setEvents] = useState<EventEntry[]>([]);
+  const [status, setStatus] = useState("intake");
+  const [connected, setConnected] = useState(false);
+  const [showConvert, setShowConvert] = useState(false);
+  const [convertError, setConvertError] = useState("");
+  const [converting, setConverting] = useState(false);
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+
+  // Stats
+  const [discovered, setDiscovered] = useState(0);
+  const [scored, setScored] = useState(0);
+  const [submitted, setSubmitted] = useState(0);
+  const [failed, setFailed] = useState(0);
+
+  const trialEmail = getTrialEmail();
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const token = getTrialToken();
+    if (!token) {
+      router.replace("/try");
+      return;
+    }
+
+    const cleanup = connectTrialSSE(
+      sessionId,
+      (event) => {
+        const entry = event as EventEntry;
+        setEvents((prev) => [...prev.slice(-100), entry]);
+
+        // Update status
+        if (entry.event === "status" && typeof entry.status === "string") {
+          setStatus(entry.status);
+        }
+        if (entry.event === "done") {
+          setStatus("done");
+          setTimeout(() => setShowConvert(true), 1500);
+        }
+        if (entry.event === "error") {
+          setStatus("error");
+        }
+
+        // Update stats
+        if (entry.event === "discovery_progress" && typeof entry.total === "number") {
+          setDiscovered(entry.total);
+        }
+        if (entry.event === "scoring_progress" && typeof entry.scored === "number") {
+          setScored(entry.scored);
+        }
+        if (entry.event === "application_progress") {
+          if (entry.status === "submitted") setSubmitted((s) => s + 1);
+          if (entry.status === "failed") setFailed((f) => f + 1);
+        }
+      },
+      setConnected,
+    );
+    cleanupRef.current = cleanup;
+
+    return () => {
+      cleanup();
+    };
+  }, [sessionId, router]);
+
+  const currentStepIdx = STATUS_ORDER.indexOf(status);
+
+  const handleConvert = async () => {
+    const token = getTrialToken();
+    if (!token) return;
+    if (password.length < 8) {
+      setConvertError("Password must be at least 8 characters");
+      return;
+    }
+    setConverting(true);
+    setConvertError("");
+    try {
+      await convertTrialAccount({ trial_token: token, password, name: name || undefined });
+      clearTrialData();
+      // Redirect to sign in so they can log in with their new credentials
+      router.push("/auth/signin?converted=true");
+    } catch (err) {
+      setConvertError(err instanceof Error ? err.message : "Conversion failed");
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white dark:bg-zinc-950">
+      <nav className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <Link href="/" className="text-lg font-bold text-zinc-900 dark:text-white">
+            JobHunter Agent
+          </Link>
+          <div className="flex items-center gap-3">
+            <span className="inline-block bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded-full dark:bg-green-900/40 dark:text-green-300">
+              Free Trial
+            </span>
+            <span className={`w-2 h-2 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
+          </div>
+        </div>
+      </nav>
+
+      <div className="max-w-4xl mx-auto px-6 py-10">
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-6">
+          {status === "done" ? "Session Complete!" : "Your trial is running..."}
+        </h1>
+
+        {/* Progress pipeline */}
+        <div className="flex items-center gap-1 mb-8 overflow-x-auto">
+          {STATUS_ORDER.filter((s) => s !== "done").map((s, i) => {
+            const active = i <= currentStepIdx;
+            const current = s === status;
+            return (
+              <div key={s} className="flex items-center flex-1 min-w-0">
+                <div
+                  className={`flex-shrink-0 w-3 h-3 rounded-full ${
+                    current
+                      ? "bg-blue-600 ring-4 ring-blue-100 dark:ring-blue-900/40"
+                      : active
+                      ? "bg-blue-600"
+                      : "bg-zinc-200 dark:bg-zinc-800"
+                  }`}
+                />
+                <span className={`ml-1.5 text-xs whitespace-nowrap ${active ? "text-zinc-900 dark:text-white font-medium" : "text-zinc-400"}`}>
+                  {STATUS_LABELS[s] || s}
+                </span>
+                {i < STATUS_ORDER.length - 2 && (
+                  <div className={`flex-1 h-0.5 mx-2 ${active && i < currentStepIdx ? "bg-blue-600" : "bg-zinc-200 dark:bg-zinc-800"}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Stats cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <StatCard label="Jobs Found" value={discovered} />
+          <StatCard label="Scored" value={scored} />
+          <StatCard label="Applied" value={submitted} color="green" />
+          <StatCard label="Skipped" value={failed} color="red" />
+        </div>
+
+        {/* Event log */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Activity Log</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {events.length === 0 && (
+                <p className="text-sm text-zinc-400">Waiting for events...</p>
+              )}
+              {[...events].reverse().slice(0, 50).map((e, i) => (
+                <div key={i} className="flex items-start gap-3 text-sm">
+                  <span className="text-xs text-zinc-400 mt-0.5 whitespace-nowrap font-mono">
+                    {new Date(e.timestamp).toLocaleTimeString()}
+                  </span>
+                  <EventBadge event={e.event} />
+                  <span className="text-zinc-700 dark:text-zinc-300 min-w-0">
+                    {formatEvent(e)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Conversion prompt (inline, always visible after done) */}
+        {status === "done" && !showConvert && (
+          <div className="mt-6 text-center">
+            <Button onClick={() => setShowConvert(true)} size="lg">
+              Create Account to See Full Results
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Conversion modal */}
+      <Dialog open={showConvert} onOpenChange={setShowConvert}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Your applications are in!</DialogTitle>
+            <DialogDescription>
+              Create an account to track responses, run more sessions, and enable email
+              auto-verification.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-3 text-center">
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{submitted}</p>
+                <p className="text-xs text-green-600 dark:text-green-500">Applied</p>
+              </div>
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-3 text-center">
+                <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{discovered}</p>
+                <p className="text-xs text-blue-600 dark:text-blue-500">Jobs Found</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium block mb-1">Email</label>
+              <input
+                type="email"
+                value={trialEmail || ""}
+                disabled
+                className="w-full px-3 py-2 rounded-lg border bg-zinc-50 text-sm dark:bg-zinc-900 dark:border-zinc-800"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Your name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Jane Doe"
+                className="w-full px-3 py-2 rounded-lg border text-sm dark:bg-zinc-900 dark:border-zinc-800"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Create a password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                className="w-full px-3 py-2 rounded-lg border text-sm dark:bg-zinc-900 dark:border-zinc-800"
+              />
+            </div>
+
+            {convertError && (
+              <p className="text-xs text-red-600">{convertError}</p>
+            )}
+          </div>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button onClick={handleConvert} disabled={converting} className="w-full">
+              {converting ? "Creating account..." : "Create Account"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => setShowConvert(false)}
+              className="text-xs text-zinc-500 hover:text-zinc-700"
+            >
+              Maybe later
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
+  const textColor =
+    color === "green"
+      ? "text-green-700 dark:text-green-400"
+      : color === "red"
+      ? "text-red-600 dark:text-red-400"
+      : "text-zinc-900 dark:text-white";
+
+  return (
+    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 text-center">
+      <p className={`text-2xl font-bold ${textColor}`}>{value}</p>
+      <p className="text-xs text-zinc-500 mt-1">{label}</p>
+    </div>
+  );
+}
+
+function EventBadge({ event }: { event: string }) {
+  const colors: Record<string, string> = {
+    status: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+    discovery_progress: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+    scoring_progress: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+    tailoring_progress: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
+    application_progress: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+    coaching_progress: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+    error: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+    done: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  };
+
+  return (
+    <span className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${colors[event] || "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+      {event.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function formatEvent(e: EventEntry): string {
+  if (e.event === "status") return STATUS_LABELS[e.status as string] || String(e.status);
+  if (e.event === "discovery_progress") return `Found ${e.total} jobs on ${e.board || "job boards"}`;
+  if (e.event === "scoring_progress") return `Scored ${e.scored}/${e.total} jobs`;
+  if (e.event === "tailoring_progress") return `Tailored resume ${e.current}/${e.total}`;
+  if (e.event === "application_progress") {
+    const company = (e.company as string) || (e.job_title as string) || "";
+    if (e.status === "submitted") return `Applied to ${company}`;
+    if (e.status === "failed") return `Skipped ${company}: ${e.error || "verification required"}`;
+    return `${e.status}: ${company}`;
+  }
+  if (e.event === "coaching_progress") return String(e.message || "Analyzing resume...");
+  if (e.event === "done") return "Session complete!";
+  if (e.event === "error") return String(e.message || e.error || "An error occurred");
+  return String(e.message || e.event);
+}
