@@ -225,7 +225,15 @@ async def apply_with_skyvern(
                 "job_expired": {"type": "boolean"},
             },
         },
-        "proxy_location": "RESIDENTIAL",
+        # Static residential ISP proxy — more trusted than rotating residential
+        "proxy_location": "RESIDENTIAL_ISP",
+        # Structured error codes so we don't have to parse free-text failure reasons
+        "error_code_mapping": {
+            "cant_solve_captcha": "A CAPTCHA or bot challenge is blocking the form and could not be solved",
+            "auth_wall": "The site requires login or account creation to apply",
+            "job_closed": "The job listing is expired, closed, or no longer accepting applications",
+            "form_error": "A required form field could not be filled or the form rejected the submission",
+        },
     }
 
     # Wire up TOTP verification URL so Skyvern can auto-retrieve
@@ -390,19 +398,34 @@ async def apply_with_skyvern(
         else:
             # Failed/terminated/canceled
             error_msg = failure_reason or extracted.get("error_message") or f"Skyvern status: {status}"
+            # Use structured error_code from error_code_mapping when available
+            error_code = (result_data.get("output") or {}).get("error") or ""
             logger.warning(
-                "Skyvern task %s failed (job=%s, company=%s): %s | screenshot: %s",
-                task_id, job.title, job.company, error_msg[:300],
-                last_screenshot or "(none)",
+                "Skyvern task %s failed (job=%s, company=%s): error_code=%s msg=%s | screenshot: %s",
+                task_id, job.title, job.company, error_code or "(none)",
+                error_msg[:300], last_screenshot or "(none)",
             )
-            # Detect site-specific blockers (reCAPTCHA, anti-bot, spam flags)
-            error_lower = error_msg.lower()
-            is_captcha = any(kw in error_lower for kw in ("recaptcha", "captcha", "spam", "bot detection", "blocked"))
+            # Map structured error codes to categories
+            error_category = None
+            if error_code == "cant_solve_captcha":
+                error_category = ApplicationErrorCategory.CAPTCHA
+            elif error_code == "auth_wall":
+                error_category = ApplicationErrorCategory.AUTH_REQUIRED
+            elif error_code == "job_closed":
+                error_category = ApplicationErrorCategory.JOB_EXPIRED
+            elif error_code == "form_error":
+                error_category = ApplicationErrorCategory.FORM_FILL_ERROR
+            else:
+                # Fallback: detect from free text if no structured code
+                error_lower = error_msg.lower()
+                if any(kw in error_lower for kw in ("recaptcha", "captcha", "spam", "bot detection", "blocked")):
+                    error_category = ApplicationErrorCategory.CAPTCHA
+
             return ApplicationResult(
                 job_id=str(job.id),
                 status=ApplicationStatus.FAILED,
                 error_message=error_msg[:500],
-                error_category=ApplicationErrorCategory.CAPTCHA if is_captcha else None,
+                error_category=error_category,
                 screenshot_url=last_screenshot,
                 duration_seconds=elapsed,
             )
