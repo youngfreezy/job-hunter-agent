@@ -33,6 +33,7 @@ _EXEMPT_PATHS = {
 }
 _EXEMPT_PREFIXES = (
     "/api/sessions/",  # SSE stream endpoints use GET
+    "/api/free-trial/",  # Unauthenticated trial endpoints (no session to hijack)
 )
 _COOKIE_NAME = "csrf_token"
 _HEADER_NAME = "x-csrf-token"
