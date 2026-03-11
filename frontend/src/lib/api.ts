@@ -693,6 +693,7 @@ export async function getWallet(): Promise<{
   balance: number;
   free_remaining: number;
   application_cost: number;
+  is_premium?: boolean;
 }> {
   const auth = await getAuthHeaders();
   const res = await apiFetch(`${API_BASE}/api/billing/wallet`, { headers: auth });

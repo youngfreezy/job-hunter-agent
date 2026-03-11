@@ -197,7 +197,8 @@ def get_wallet(user_id: str) -> Dict[str, Any]:
     with _connect() as conn:
         cur = conn.execute(
             """SELECT wallet_balance, free_applications_remaining,
-                      auto_refill_enabled, auto_refill_threshold, auto_refill_pack_id
+                      auto_refill_enabled, auto_refill_threshold, auto_refill_pack_id,
+                      is_premium
                FROM users WHERE id = %s""",
             (user_id,),
         )
@@ -205,7 +206,8 @@ def get_wallet(user_id: str) -> Dict[str, Any]:
         if not row:
             return {"balance": 0.0, "free_remaining": 0,
                     "auto_refill_enabled": False, "auto_refill_threshold": 5.0,
-                    "auto_refill_pack_id": "top_up_10", "low_balance": False}
+                    "auto_refill_pack_id": "top_up_10", "low_balance": False,
+                    "is_premium": False}
         balance = float(row[0])
         auto_refill_enabled = bool(row[2]) if row[2] is not None else False
         auto_refill_threshold = float(row[3]) if row[3] is not None else 5.0
@@ -218,6 +220,7 @@ def get_wallet(user_id: str) -> Dict[str, Any]:
             "auto_refill_threshold": auto_refill_threshold,
             "auto_refill_pack_id": auto_refill_pack_id,
             "low_balance": low_balance,
+            "is_premium": bool(row[5]) if row[5] is not None else False,
         }
 
 
