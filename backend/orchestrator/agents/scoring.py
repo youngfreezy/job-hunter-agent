@@ -125,6 +125,23 @@ def _batch(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
+_ENTRY_LEVEL_KEYWORDS = [
+    "new grad", "new graduate", "entry level", "entry-level", "intern ", "internship",
+]
+
+
+def filter_by_experience_level(
+    jobs: List[JobListing], experience_level: str | None
+) -> List[JobListing]:
+    """Remove entry-level jobs when candidate is senior/executive."""
+    if experience_level not in ("senior", "executive"):
+        return jobs
+    return [
+        j for j in jobs
+        if not any(kw in j.title.lower() for kw in _ENTRY_LEVEL_KEYWORDS)
+    ]
+
+
 def _jobs_to_prompt_text(jobs: List[JobListing]) -> str:
     """Serialise a batch of JobListings into a compact text block for the LLM."""
     entries = []
@@ -219,6 +236,22 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
             except Exception:
                 logger.warning("Cross-session dedup failed", exc_info=True)
 
+        # Step 1c: Filter out entry-level jobs when the candidate is senior/executive
+        search_config = state.get("search_config")
+        experience_level = (
+            search_config.experience_level
+            if search_config and hasattr(search_config, "experience_level")
+            else (search_config or {}).get("experience_level")
+        )
+        before_exp = len(unique_jobs)
+        unique_jobs = filter_by_experience_level(unique_jobs, experience_level)
+        _exp_excluded = before_exp - len(unique_jobs)
+        if _exp_excluded:
+            logger.info(
+                "Experience-level filter: excluded %d entry-level jobs for %s candidate",
+                _exp_excluded, experience_level,
+            )
+
         logger.info(
             "Scoring agent starting -- %d unique jobs to score",
             len(unique_jobs),
@@ -282,9 +315,27 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                     f"Jobs whose titles do not align with these keywords should receive "
                     f"a LOW keyword_match score (30 or below).\n\n"
                 )
+            experience_section = ""
+            if experience_level:
+                experience_section = (
+                    f"## Candidate Experience Level\n\n"
+                    f"The candidate is **{experience_level}-level** based on their resume.\n"
+                )
+                if experience_level in ("senior", "executive"):
+                    experience_section += (
+                        "Jobs targeted at entry-level, new grads, interns, or junior candidates "
+                        "are a POOR fit. Score their experience_match at 10 or below and overall "
+                        "score should reflect this mismatch (typically under 40).\n\n"
+                    )
+                elif experience_level == "entry":
+                    experience_section += (
+                        "Jobs requiring 5+ years of experience or senior/staff/principal titles "
+                        "are a POOR fit. Score their experience_match at 20 or below.\n\n"
+                    )
             user_prompt = (
                 f"## Candidate Resume\n\n{resume}\n\n"
                 f"{keywords_section}"
+                f"{experience_section}"
                 f"## Job Listings (batch {batch_idx + 1}/{total_batches})\n\n{jobs_text}\n\n"
             )
             if _strategy_context:

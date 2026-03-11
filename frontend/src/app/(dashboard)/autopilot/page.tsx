@@ -30,6 +30,21 @@ const CRON_PRESETS = [
   { label: "Daily at 8 AM", value: "0 8 * * *" },
   { label: "Monday at 9 AM", value: "0 9 * * 1" },
   { label: "Mon/Wed/Fri at 8 AM", value: "0 8 * * 1,3,5" },
+  { label: "Custom time...", value: "custom" },
+];
+
+/** Build a cron expression for a specific local hour/minute on selected days. */
+function buildCustomCron(hour: number, minute: number, days: string): string {
+  return `${minute} ${hour} * * ${days}`;
+}
+
+const DAY_OPTIONS = [
+  { label: "Every day", value: "*" },
+  { label: "Weekdays (Mon-Fri)", value: "1-5" },
+  { label: "Mon/Wed/Fri", value: "1,3,5" },
+  { label: "Tue/Thu", value: "2,4" },
+  { label: "Monday only", value: "1" },
+  { label: "Weekends", value: "0,6" },
 ];
 
 function cronToLabel(cron: string): string {
@@ -71,6 +86,9 @@ export default function AutopilotPage() {
   const [keywords, setKeywords] = useState("");
   const [locations, setLocations] = useState("Remote");
   const [cronExpression, setCronExpression] = useState("0 8 * * 1-5");
+  const [customHour, setCustomHour] = useState("08");
+  const [customMinute, setCustomMinute] = useState("00");
+  const [customDays, setCustomDays] = useState("1-5");
   const [autoApprove, setAutoApprove] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -93,6 +111,10 @@ export default function AutopilotPage() {
     if (!keywords.trim()) return;
     setCreating(true);
     try {
+      const finalCron =
+        cronExpression === "custom"
+          ? buildCustomCron(parseInt(customHour), parseInt(customMinute), customDays)
+          : cronExpression;
       await createAutopilotSchedule({
         name,
         keywords: keywords
@@ -103,7 +125,8 @@ export default function AutopilotPage() {
           .split(",")
           .map((l) => l.trim())
           .filter(Boolean),
-        cron_expression: cronExpression,
+        cron_expression: finalCron,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         auto_approve: autoApprove,
       });
       setShowCreate(false);
@@ -302,6 +325,47 @@ export default function AutopilotPage() {
                 ))}
               </select>
             </div>
+            {cronExpression === "custom" && (
+              <div className="space-y-3 rounded-md border p-3 bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium w-12">Time</label>
+                  <select
+                    value={customHour}
+                    onChange={(e) => setCustomHour(e.target.value)}
+                    className="rounded-md border px-2 py-1.5 text-sm bg-background"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={String(i).padStart(2, "0")}>
+                        {i === 0 ? "12 AM" : i < 12 ? `${i} AM` : i === 12 ? "12 PM" : `${i - 12} PM`}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-muted-foreground">:</span>
+                  <select
+                    value={customMinute}
+                    onChange={(e) => setCustomMinute(e.target.value)}
+                    className="rounded-md border px-2 py-1.5 text-sm bg-background"
+                  >
+                    {["00", "15", "30", "45"].map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-muted-foreground ml-1">(your local time)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium w-12">Days</label>
+                  <select
+                    value={customDays}
+                    onChange={(e) => setCustomDays(e.target.value)}
+                    className="rounded-md border px-2 py-1.5 text-sm bg-background flex-1"
+                  >
+                    {DAY_OPTIONS.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -311,7 +375,7 @@ export default function AutopilotPage() {
                 className="rounded"
               />
               <label htmlFor="auto-approve" className="text-sm">
-                Auto-approve applications (skip email approval step)
+                Auto-approve applications (skip shortlist review step)
               </label>
             </div>
           </CardContent>

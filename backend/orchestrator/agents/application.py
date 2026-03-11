@@ -25,6 +25,7 @@ from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.application_store import (
     check_already_applied,
     check_company_rate_limit,
+    clear_pending,
     record_result as _db_record_result,
 )
 from backend.shared.billing_store import check_sufficient_credits, debit_wallet
@@ -747,6 +748,20 @@ async def _apply_to_job(
             "progress": _pct,
         })
 
+        # Record "pending" BEFORE any submission attempt so that if the process
+        # is killed mid-Skyvern/API, the auto-resume won't re-submit this job.
+        _db_record_result(
+            session_id=session_id,
+            job_id=job_id,
+            status="pending",
+            job_title=job.title,
+            job_company=job.company,
+            job_url=job.url,
+            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+            job_location=job.location or "",
+            user_id=user_id,
+        )
+
         # --- Fast path: direct API submission (only if handler registered) ---
         settings = get_settings()
         from backend.browser.tools.api_applier import _ATS_HANDLERS
@@ -812,6 +827,9 @@ async def _apply_to_job(
                         "error_category": _cat,
                         "duration_seconds": result.duration_seconds,
                     })
+
+                # Clear pending record before inserting final result
+                clear_pending(session_id, job_id)
 
                 # Persist to DB
                 _tailored = state.get("tailored_resumes", {}).get(job_id)
@@ -1079,6 +1097,9 @@ async def _apply_to_job(
                 "duration_seconds": result.duration_seconds,
             })
 
+        # Clear pending record before inserting final result
+        clear_pending(session_id, job_id)
+
         # Persist to DB immediately (survives restarts)
         # Always store the cover letter and tailored resume regardless of success/failure
         _tailored = state.get("tailored_resumes", {}).get(job_id)
@@ -1134,6 +1155,9 @@ async def _apply_to_job(
             "company": job.company,
             "error": str(exc),
         })
+
+        # Clear pending record before inserting final result
+        clear_pending(session_id, job_id)
 
         _exc_category = _infer_error_category(str(exc))
         _db_record_result(
