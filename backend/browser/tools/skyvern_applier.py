@@ -317,19 +317,36 @@ async def apply_with_skyvern(
 
         extracted = result_data.get("extracted_information") or {}
         failure_reason = result_data.get("failure_reason") or ""
-        screenshot_urls = result_data.get("screenshot_urls") or []
-        last_screenshot = screenshot_urls[-1] if screenshot_urls else None
 
-        # Persist screenshot to Postgres for the feedback loop (fire-and-forget).
-        # Save on failures and skips (auth_required, job_expired) — not clean successes.
-        is_failure = status not in _SUCCESS_STATUSES
-        is_skip = extracted.get("auth_required") or extracted.get("job_expired")
-        if last_screenshot and (is_failure or is_skip):
-            try:
-                from backend.shared.screenshot_store import download_and_store
+        # Skyvern returns screenshot_url (singular) for final screenshot
+        # and action_screenshot_urls (list) for per-action screenshots.
+        last_screenshot = result_data.get("screenshot_url")
+        action_screenshots = result_data.get("action_screenshot_urls") or []
+        if not last_screenshot and action_screenshots:
+            last_screenshot = action_screenshots[-1]
+
+        # Persist artifacts to Postgres so we can debug against real evidence.
+        # Store for ALL outcomes (success, failure, skip) — not just failures.
+        try:
+            from backend.shared.screenshot_store import (
+                download_and_store,
+                store_task_artifact,
+            )
+            if last_screenshot:
                 await download_and_store(session_id, str(job.id), last_screenshot)
-            except Exception as ss_exc:
-                logger.debug("Screenshot persistence failed (non-critical): %s", ss_exc)
+            # Store the full Skyvern response for debugging
+            await store_task_artifact(
+                session_id=session_id,
+                job_id=str(job.id),
+                task_id=task_id,
+                skyvern_status=status,
+                failure_reason=failure_reason,
+                extracted_information=extracted,
+                screenshot_url=last_screenshot,
+                action_screenshot_urls=action_screenshots,
+            )
+        except Exception as ss_exc:
+            logger.warning("Artifact persistence failed (non-critical): %s", ss_exc)
 
         if status in _SUCCESS_STATUSES:
             # Check extracted data for false positives
