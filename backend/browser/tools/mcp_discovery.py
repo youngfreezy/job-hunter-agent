@@ -18,6 +18,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import hashlib
 from uuid import uuid4
 
 from backend.browser.tools.mcp_client import mcp_search, mcp_session
@@ -309,8 +310,10 @@ async def _mcp_discover(
         location = raw.get("location", "Remote").strip()
         is_remote = raw.get("is_remote", False) or "remote" in location.lower()
 
+        # Deterministic ID from URL so cross-session dedup works
+        job_id = hashlib.sha256(url.strip().encode()).hexdigest()[:16]
         listing = JobListing(
-            id=str(uuid4()),
+            id=job_id,
             title=title,
             company=company,
             location=location,

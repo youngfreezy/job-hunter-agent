@@ -168,6 +168,27 @@ def check_already_applied(job_id: str, user_id: Optional[str] = None) -> Optiona
         return None
 
 
+def get_previously_applied_urls(user_id: str) -> set[str]:
+    """Return set of job URLs the user has already successfully applied to.
+
+    Used at the scoring stage to filter out jobs before they reach the
+    application agent — prevents cross-session duplicate applications.
+    """
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT DISTINCT job_url FROM application_results
+                WHERE user_id = %s AND status = 'submitted' AND job_url != ''
+                """,
+                (user_id,),
+            )
+            return {row[0] for row in cur.fetchall()}
+    except Exception:
+        logger.warning("Failed to fetch previous applications for user %s", user_id, exc_info=True)
+        return set()
+
+
 def check_company_rate_limit(
     company: str,
     user_id: Optional[str] = None,
