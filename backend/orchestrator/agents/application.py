@@ -1336,14 +1336,20 @@ async def run_application_agent(state: JobHunterState) -> dict:
         settings = get_settings()
 
         # --- Batch API-eligible jobs (fast path, ~3s each) ---
-        # Partition remaining into API-eligible and Skyvern-required
+        # Partition remaining into API-eligible and Skyvern-required.
+        # Jobs whose API already failed in a prior iteration go straight to Skyvern.
+        api_failed_ids: set = set(state.get("api_failed_job_ids") or [])
         api_jobs: List[tuple] = []
         skyvern_jobs: List[tuple] = []
         for jid in remaining:
             j = _find_job_in_state(jid, state)
             if j is None:
                 continue
-            if settings.API_APPLY_ENABLED and j.ats_type in (ATSType.GREENHOUSE, ATSType.LEVER):
+            if (
+                settings.API_APPLY_ENABLED
+                and j.ats_type in (ATSType.GREENHOUSE, ATSType.LEVER)
+                and jid not in api_failed_ids
+            ):
                 api_jobs.append((jid, j))
             else:
                 skyvern_jobs.append((jid, j))
@@ -1385,6 +1391,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 if isinstance(res, Exception):
                     logger.warning("API batch job %s failed — re-queuing for Skyvern: %s", jid, res)
                     skyvern_jobs.append((jid, j))
+                    api_failed_ids.add(jid)
                 elif res.status == ApplicationStatus.SUBMITTED:
                     submitted.append(res)
                     consecutive_failures = 0
@@ -1395,6 +1402,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         j.title, j.company,
                     )
                     skyvern_jobs.append((jid, j))
+                    api_failed_ids.add(jid)
                 else:
                     skipped.append(res)
                     consecutive_failures = 0
@@ -1553,6 +1561,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
         "agent_statuses": {"application": agent_status},
         "errors": errors,
         "skip_next_job_requested": False,
+        "api_failed_job_ids": list(api_failed_ids),
     }
 
 
