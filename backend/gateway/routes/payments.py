@@ -65,6 +65,7 @@ async def wallet_endpoint(request: Request):
     return {
         "balance": wallet["balance"],
         "free_remaining": wallet["free_remaining"],
+        "is_premium": wallet["is_premium"],
         "credit_cost_submitted": CREDIT_COST_SUBMITTED,
         "credit_cost_partial": CREDIT_COST_PARTIAL,
         "auto_refill_enabled": wallet["auto_refill_enabled"],

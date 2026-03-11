@@ -74,14 +74,16 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
                 value={values.maxJobs ?? 5}
                 onChange={(e) => {
                   const v = parseInt(e.target.value);
-                  const costForV = Math.round(
-                    (COST_ESTIMATES[`${values.applicationMode}+${values.tailoringQuality}`] ?? 20) *
-                      (v / 5)
-                  );
-                  if (balance !== null && costForV > balance) return;
+                  if (!isPremium) {
+                    const costForV = Math.round(
+                      (COST_ESTIMATES[`${values.applicationMode}+${values.tailoringQuality}`] ?? 20) *
+                        (v / 5)
+                    );
+                    if (balance !== null && costForV > balance) return;
+                  }
                   setFieldValue("maxJobs", v);
                 }}
-                disabled={balance !== null && balance <= 0}
+                disabled={!isPremium && balance !== null && balance <= 0}
                 className={`w-full mt-2 accent-blue-600 ${
                   balance !== null && balance <= 0 ? "opacity-40 cursor-not-allowed" : ""
                 }`}
