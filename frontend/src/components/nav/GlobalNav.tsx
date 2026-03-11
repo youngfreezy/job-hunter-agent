@@ -26,11 +26,13 @@ const NAV_LINKS = [
   { href: "/interview-prep", label: "Interview Prep" },
   { href: "/career-pivot", label: "Career Change" },
   { href: "/freelance", label: "Freelance" },
+  { href: "/marketplace", label: "Marketplace" },
   { href: "/autopilot", label: "Autopilot" },
   { href: "/history", label: "History" },
   { href: "/billing", label: "Billing" },
   { href: "/account", label: "Account" },
   { href: "/settings", label: "Settings" },
+  { href: "/developer", label: "Developer" },
 ];
 
 async function handleSignOut() {

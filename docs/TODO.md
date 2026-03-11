@@ -17,33 +17,31 @@
 - [x] E2E test: create autopilot schedule → verify cron fires → session runs → email received
 - [x] E2E test: send SMS command → verify response
 
-## Future Features (after 90%+ application success rate)
+## Future Features
 
 ### Agent Marketplace
-- [ ] Public marketplace where users share and monetize custom agents (resume optimizer, salary negotiator, interview coach)
-- [ ] Agent composer — drag-and-drop pipeline builder for chaining agents
-- [ ] Revenue share model for agent creators
-- [ ] Rating/review system for marketplace agents
-- [ ] Agent analytics dashboard (usage, success rates, revenue)
+- [x] Public marketplace — browse, search, and launch agents with category filters
+- [x] Rating/review system for marketplace agents (1-5 stars, text reviews)
+- [x] Agent usage analytics (total uses, avg rating tracked per agent)
+- [x] Built-in agents seeded on startup (Job Hunter, Career Pivot, Interview Prep, Freelance)
 
 ### Agent SDK / Developer Platform
-- [ ] Open SDK for building custom agents on top of the JobHunter platform
-- [ ] Plugin architecture — hook into any pipeline stage (post-discovery, pre-application, post-verification)
-- [ ] Webhook system for agent events (job found, application submitted, etc.)
-- [ ] API for programmatic agent creation and management
-- [ ] Developer documentation and example agents
-
-### Microsoft OAuth (Azure AD)
-- [ ] Register app in Azure AD portal (get client ID + secret)
-- [ ] Add `next-auth` `AzureADProvider` (or `MicrosoftProvider` from `next-auth/providers/azure-ad`)
-- [ ] Request `openid email profile Mail.Read` scopes (for verification code reading like Gmail)
-- [ ] Add Microsoft sign-in button to login + signup pages
-- [ ] Store Microsoft OAuth tokens server-side (same pattern as Gmail tokens in Redis)
-- [ ] Backend: add email verification code reader for Outlook/Microsoft Graph API
-- [ ] Set `AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, `AZURE_AD_TENANT_ID` env vars on Railway
+- [x] API key authentication (jh_live_* keys, SHA-256 hashed, generate/list/revoke)
+- [x] Webhook system for agent events (agent.started, stage_changed, completed, failed)
+- [x] Webhook delivery with HMAC-SHA256 signing, 3 retries, delivery logs
+- [x] Developer portal with API docs page
+- [x] REST API for webhook and API key management
 
 ### Other
-- [ ] Proxy rotation for job board scraping (deferred — add when scraper blocks appear)
+- [x] ~~Proxy rotation for job board scraping~~ — won't do (Bright Data MCP handles this)
+
+### V2 (Deferred)
+- [ ] Microsoft OAuth (Azure AD) — sign-in, Outlook verification code reader
+- [ ] Drag-and-drop agent composer (visual pipeline builder)
+- [ ] User-submitted agent code execution (sandbox)
+- [ ] Revenue share / payouts for agent creators
+- [ ] Custom LangGraph graph definitions via API
+- [ ] Agent analytics dashboard (detailed success rates, revenue tracking)
 
 ---
 
