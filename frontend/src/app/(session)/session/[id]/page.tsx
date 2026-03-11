@@ -1938,14 +1938,27 @@ export default function SessionPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 max-h-[55vh] overflow-y-auto">
-            {shortlistJobs.map((sj) => {
+            {(() => {
+              // Count selected jobs per company for duplicate warning
+              const selectedCompanyCounts = new Map<string, number>();
+              shortlistJobs.forEach((sj) => {
+                if (selectedJobIds.has(sj.job.id)) {
+                  const key = sj.job.company.toLowerCase().trim();
+                  selectedCompanyCounts.set(key, (selectedCompanyCounts.get(key) || 0) + 1);
+                }
+              });
+              return shortlistJobs.map((sj) => {
               const selected = selectedJobIds.has(sj.job.id);
+              const companyKey = sj.job.company.toLowerCase().trim();
+              const isDuplicateCompany = selected && (selectedCompanyCounts.get(companyKey) || 0) > 1;
               return (
                 <div
                   key={sj.job.id}
                   className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
                     selected
-                      ? "border-blue-300 bg-blue-50/50 dark:bg-blue-950/30 dark:border-blue-700 shadow-sm"
+                      ? isDuplicateCompany
+                        ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/30 dark:border-amber-700 shadow-sm"
+                        : "border-blue-300 bg-blue-50/50 dark:bg-blue-950/30 dark:border-blue-700 shadow-sm"
                       : "border-border hover:border-border/80 opacity-60 hover:opacity-80"
                   }`}
                   onClick={() => toggleJobSelection(sj.job.id)}
@@ -1955,6 +1968,11 @@ export default function SessionPage() {
                       <p className="font-medium text-sm">{sj.job.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {sj.job.company} — {sj.job.location}
+                        {isDuplicateCompany && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                            Only 1 per company will be submitted
+                          </span>
+                        )}
                       </p>
                       {sj.reasons && sj.reasons.length > 0 && (
                         <ul className="mt-2 space-y-0.5">
@@ -2002,7 +2020,8 @@ export default function SessionPage() {
                   </div>
                 </div>
               );
-            })}
+            });
+            })()}
           </div>
           <DialogFooter className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
