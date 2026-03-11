@@ -224,6 +224,8 @@ async def apply_with_skyvern(
                 "job_expired": {"type": "boolean"},
             },
         },
+        # Allow enough steps for complex forms with captchas/TOTP
+        "max_steps_per_run": 25,
         # Static residential ISP proxy — more trusted than rotating residential
         "proxy_location": "RESIDENTIAL_ISP",
         # Structured error codes so we don't have to parse free-text failure reasons
