@@ -87,6 +87,12 @@ async def coach_review_gate(state: JobHunterState) -> dict:
         logger.warning("Coaching failed or no output — skipping coach review")
         return {"status": "discovering"}
 
+    # Free-trial sessions auto-approve (no coach review UI in trial flow)
+    prefs = state.get("preferences") or {}
+    if prefs.get("_skip_coach_review"):
+        logger.info("Auto-approving coach review (free trial / auto-approve flag)")
+        return {"status": "discovering"}
+
     human_input = interrupt(
         {
             "session_id": state["session_id"],

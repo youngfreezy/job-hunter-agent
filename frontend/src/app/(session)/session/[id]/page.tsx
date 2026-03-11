@@ -382,6 +382,7 @@ export default function SessionPage() {
   const [rewindLoading, setRewindLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
   const [sseConnected, setSseConnected] = useState(true);
+  const [sseFailCount, setSseFailCount] = useState(0);
   const [tipDismissed, setTipDismissed] = useState(false);
   const [loginPrompt, setLoginPrompt] = useState<{
     board: string;
@@ -730,7 +731,14 @@ export default function SessionPage() {
         setLoginPrompt(null);
       }
 
-    }, setSseConnected);
+    }, (connected) => {
+      setSseConnected(connected);
+      if (connected) {
+        setSseFailCount(0);
+      } else {
+        setSseFailCount((c) => c + 1);
+      }
+    });
     return cleanup;
   }, [sessionId, sseKey]);
 
@@ -1042,11 +1050,22 @@ export default function SessionPage() {
               </span>
             )}
             {/* SSE disconnected */}
-            {!sseConnected && isActive && (
+            {!sseConnected && isActive && sseFailCount < 5 && (
               <span className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400 shrink-0">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 Reconnecting...
               </span>
+            )}
+            {!sseConnected && isActive && sseFailCount >= 5 && (
+              <div className="flex items-center gap-2 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-3 py-1.5 text-sm text-red-700 dark:text-red-300 shrink-0">
+                Connection lost. Your session is still running in the background.
+                <button
+                  onClick={() => window.location.reload()}
+                  className="ml-1 underline font-medium hover:text-red-900 dark:hover:text-red-100"
+                >
+                  Refresh Page
+                </button>
+              </div>
             )}
           </div>
           {/* Caffeinate tip */}

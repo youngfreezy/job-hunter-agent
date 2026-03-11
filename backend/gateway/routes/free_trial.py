@@ -286,6 +286,11 @@ async def free_trial_start(body: StartSessionRequest, request: Request):
         except Exception:
             logger.warning("Failed to re-key resume in free-trial start", exc_info=True)
 
+    # Auto-approve coach review for trial sessions (no UI for it in trial flow)
+    if body.preferences is None:
+        body.preferences = {}
+    body.preferences["_skip_coach_review"] = True
+
     _spawn_background(_run_pipeline(session_id, body, graph, user_id=user_id))
 
     return {
