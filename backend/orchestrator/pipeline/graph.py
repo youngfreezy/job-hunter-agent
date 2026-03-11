@@ -5,7 +5,7 @@
 Pipeline stages:
     intake -> career_coach -> [HITL: review coached resume]
            -> discovery (sequential, single browser) -> scoring
-           -> resume_tailor -> [HITL: review shortlist]
+           -> [HITL: review shortlist] -> resume_tailor
            -> application (loop with circuit breaker) -> verification
            -> backfill_prep (if submitted < max_jobs) -> discovery (loop)
            -> reporting
@@ -17,9 +17,11 @@ scoring → tailoring → application → verification again, up to 3 rounds.
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Callable, Literal
+from typing import Callable, List, Literal
 
+import httpx
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
@@ -244,11 +246,11 @@ async def resume_tailor_node(state: JobHunterState) -> dict:
 
 
 def route_after_scoring(state: JobHunterState) -> str:
-    """After scoring, proceed to resume tailoring."""
+    """After scoring, proceed to auto-approve gate (then shortlist review)."""
     if not state.get("scored_jobs"):
         logger.warning("No scored jobs -- routing to reporting.")
         return "reporting"
-    return "resume_tailor"
+    return "auto_approve_gate"
 
 
 def route_after_supervise_after_scoring(state: JobHunterState) -> str:
@@ -302,6 +304,62 @@ def _route_after_auto_approve_gate(state: JobHunterState) -> str:
     return "shortlist_review"
 
 
+async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
+    """Validate job URLs via HTTP HEAD and filter out dead links.
+
+    Returns only scored jobs whose URLs return a 2xx/3xx status.
+    Jobs with unreachable or 4xx/5xx URLs are dropped and logged.
+    """
+    if not scored_jobs:
+        return scored_jobs
+
+    async def _check_url(sj) -> tuple:
+        """Returns (scored_job, is_alive)."""
+        url = sj.job.url if hasattr(sj.job, "url") else sj.get("job", {}).get("url", "")
+        if not url:
+            return (sj, False)
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=10.0,
+                headers={"User-Agent": "Mozilla/5.0 (JobHunterAgent URL Validator)"},
+            ) as client:
+                resp = await client.head(url)
+                # Some sites block HEAD — fall back to GET
+                if resp.status_code == 405:
+                    resp = await client.get(url)
+                alive = resp.status_code < 400
+                if not alive:
+                    title = sj.job.title if hasattr(sj.job, "title") else "unknown"
+                    logger.info(
+                        "URL validation: %s (%s) returned %d — removing from shortlist",
+                        url, title, resp.status_code,
+                    )
+                return (sj, alive)
+        except Exception as exc:
+            title = sj.job.title if hasattr(sj.job, "title") else "unknown"
+            logger.info(
+                "URL validation: %s (%s) unreachable (%s) — removing from shortlist",
+                url, title, exc,
+            )
+            return (sj, False)
+
+    results = await asyncio.gather(*[_check_url(sj) for sj in scored_jobs])
+    valid = [sj for sj, alive in results if alive]
+    removed = len(scored_jobs) - len(valid)
+    if removed:
+        logger.info(
+            "URL validation removed %d/%d dead links for session %s",
+            removed, len(scored_jobs), session_id,
+        )
+        if session_id:
+            await emit_agent_event(session_id, "url_validation", {
+                "total": len(scored_jobs),
+                "valid": len(valid),
+                "removed": removed,
+            })
+    return valid
+
+
 async def shortlist_review_gate(state: JobHunterState) -> dict:
     """Suspend execution so the user can review the shortlist.
 
@@ -312,15 +370,18 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     all_scored = state.get("scored_jobs") or []
     top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
 
+    # Validate URLs — remove dead/expired links before showing to user
+    session_id = state.get("session_id", "")
+    top_scored = await _validate_job_urls(top_scored, session_id)
+
+    # Re-rank after filtering (already sorted, but re-slice to MAX)
+    top_scored = top_scored[:MAX_APPLICATION_JOBS]
+
     human_input = interrupt(
         {
             "session_id": state["session_id"],
             "stage": "shortlist_review",
             "scored_jobs": [sj.model_dump() for sj in top_scored],
-            "tailored_resumes": {
-                jid: tr.model_dump()
-                for jid, tr in (state.get("tailored_resumes") or {}).items()
-            },
             "message": (
                 "Review the shortlist below.  Select jobs to apply to, "
                 "or provide feedback to refine the results."
@@ -652,41 +713,48 @@ def build_graph(checkpointer=None):
     )
     g.add_edge("discovery", "supervise_after_discovery")
 
-    # 6. scoring -> resume_tailor (conditional in case 0 scored)
+    # 6. scoring -> auto_approve_gate -> shortlist_review (conditional in case 0 scored)
     g.add_conditional_edges(
         "supervise_after_scoring",
         route_after_supervise_after_scoring,
-        {"resume_tailor": "resume_tailor", "reporting": "reporting", "pause_gate": "pause_gate"},
+        {"auto_approve_gate": "auto_approve_gate", "reporting": "reporting", "pause_gate": "pause_gate"},
     )
     g.add_edge("scoring", "supervise_after_scoring")
 
-    # 7. resume_tailor -> auto_approve_gate -> shortlist_review or application
-    g.add_edge("resume_tailor", "supervise_after_tailor")
-    g.add_conditional_edges(
-        "supervise_after_tailor",
-        lambda state: route_after_supervise_after_simple_stage(state, default_next="auto_approve_gate"),
-        {"auto_approve_gate": "auto_approve_gate", "pause_gate": "pause_gate"},
-    )
+    # 7. auto_approve_gate -> shortlist_review or straight to resume_tailor (autopilot)
     g.add_conditional_edges(
         "auto_approve_gate",
         _route_after_auto_approve_gate,
         {"supervise_after_shortlist": "supervise_after_shortlist", "shortlist_review": "shortlist_review"},
     )
 
-    # 8. shortlist_review -> first application
+    # 8. shortlist_review -> resume_tailor (only tailor approved jobs)
     g.add_edge("shortlist_review", "supervise_after_shortlist")
     def _route_after_shortlist_supervise(state: JobHunterState) -> str:
+        if state.get("pause_requested"):
+            return "pause_gate"
+        return "resume_tailor"
+
+    g.add_conditional_edges(
+        "supervise_after_shortlist",
+        _route_after_shortlist_supervise,
+        {"resume_tailor": "resume_tailor", "pause_gate": "pause_gate"},
+    )
+
+    # 9. resume_tailor -> application (or reporting for materials_only mode)
+    g.add_edge("resume_tailor", "supervise_after_tailor")
+    def _route_after_tailor_supervise(state: JobHunterState) -> str:
         if state.get("pause_requested"):
             return "pause_gate"
         return _continue_to_application(state)
 
     g.add_conditional_edges(
-        "supervise_after_shortlist",
-        _route_after_shortlist_supervise,
+        "supervise_after_tailor",
+        _route_after_tailor_supervise,
         {"application": "application", "reporting": "reporting", "pause_gate": "pause_gate"},
     )
 
-    # 9. application loop with circuit breaker (retries go back to HITL gate)
+    # 10. application loop with circuit breaker (retries go back to HITL gate)
     g.add_conditional_edges(
         "supervise_after_application",
         route_after_supervise_after_application,
@@ -699,7 +767,7 @@ def build_graph(checkpointer=None):
     )
     g.add_edge("application", "supervise_after_application")
 
-    # 10. verification -> QA -> reporting OR backfill_prep (self-correcting loop)
+    # 11. verification -> QA -> reporting OR backfill_prep (self-correcting loop)
     g.add_edge("verification", "supervise_after_verification")
     g.add_conditional_edges(
         "supervise_after_verification",
@@ -733,7 +801,7 @@ def build_graph(checkpointer=None):
         },
     )
 
-    # 11. reporting -> END
+    # 12. reporting -> END
     g.add_edge("reporting", END)
 
     return g.compile(checkpointer=checkpointer)

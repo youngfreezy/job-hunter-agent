@@ -4,6 +4,7 @@
 
 Validates that _extract_code correctly handles:
 - Real verification codes (4-8 digits)
+- Alphanumeric codes (e.g. Greenhouse's fdxaqwTh)
 - False positives like year strings (2026, 2025)
 - Emails with dates alongside real codes
 - Various code formats (OTP, verification, security)
@@ -14,6 +15,7 @@ import pytest
 from backend.shared.gmail_client import (
     _extract_code,
     _extract_code_fallback,
+    _is_common_word,
     _FALSE_POSITIVE_CODES,
 )
 
@@ -102,6 +104,69 @@ class TestExtractCode:
     def test_code_case_insensitive(self):
         text = "YOUR VERIFICATION CODE IS 482910"
         assert _extract_code(text) == "482910"
+
+    # --- Alphanumeric code tests ---
+
+    def test_greenhouse_alphanumeric_code(self):
+        """The real Greenhouse email format that was failing."""
+        text = (
+            "Hi Jane,\n\n"
+            "Copy and paste this code into the security code field on your application:\n\n"
+            "fdxaqwTh\n\n"
+            "After you enter the code, resubmit your application."
+        )
+        assert _extract_code(text) == "fdxaqwTh"
+
+    def test_security_code_alphanumeric(self):
+        text = "Your security code is xK9mPq2R"
+        assert _extract_code(text) == "xK9mPq2R"
+
+    def test_verification_code_mixed_case(self):
+        text = "Your verification code: AbCd1234"
+        assert _extract_code(text) == "AbCd1234"
+
+    def test_code_colon_alphanumeric(self):
+        text = "Code: Hj7kLm9n"
+        assert _extract_code(text) == "Hj7kLm9n"
+
+    def test_enter_alphanumeric_to_verify(self):
+        text = "Enter Rq4Tw8Xz to verify your email"
+        assert _extract_code(text) == "Rq4Tw8Xz"
+
+    def test_rejects_common_lowercase_word(self):
+        """'code' followed by a common word like 'below' should not match."""
+        text = "Enter the code below to continue"
+        # 'below' is a common word — should not be extracted
+        result = _extract_code(text)
+        assert result is None or result != "below"
+
+    def test_alphanumeric_code_with_digits_only_still_works(self):
+        """Numeric codes should still work with the new patterns."""
+        text = "Your security code is 84729301"
+        assert _extract_code(text) == "84729301"
+
+
+class TestIsCommonWord:
+    """Tests for _is_common_word filter."""
+
+    def test_lowercase_short_word(self):
+        assert _is_common_word("below") is True
+
+    def test_lowercase_word_code(self):
+        assert _is_common_word("into") is True
+
+    def test_mixed_case_not_common(self):
+        assert _is_common_word("fdxaqwTh") is False
+
+    def test_all_uppercase_not_common(self):
+        assert _is_common_word("ABCDEF") is False
+
+    def test_contains_digit_not_common(self):
+        assert _is_common_word("abc123") is False
+
+    def test_long_lowercase_not_filtered(self):
+        # 7+ char lowercase could be a code
+        assert _is_common_word("abcdefgh") is False
 
 
 class TestExtractCodeFallback:

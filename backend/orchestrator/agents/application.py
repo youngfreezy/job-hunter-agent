@@ -34,6 +34,7 @@ from backend.shared.models.schemas import (
     ApplicationErrorCategory,
     ApplicationResult,
     ApplicationStatus,
+    ATSType,
     JobListing,
 )
 
@@ -520,6 +521,24 @@ async def _extract_user_profile(state: JobHunterState) -> Dict[str, str]:
     if salary_min:
         profile["salary_expectation"] = f"${salary_min:,}"
 
+    # LinkedIn URL
+    linkedin_match = _re.search(r'linkedin\.com/in/[\w-]+', resume_text)
+    if linkedin_match:
+        profile["linkedin_url"] = "https://www." + linkedin_match.group(0)
+
+    # GitHub URL
+    github_match = _re.search(r'github\.com/[\w-]+', resume_text)
+    if github_match:
+        profile["github_url"] = "https://" + github_match.group(0)
+
+    # Portfolio/website (non-LinkedIn, non-GitHub URLs)
+    portfolio_match = _re.search(
+        r'https?://(?!.*(?:linkedin|github))[\w.-]+\.\w+[/\w.-]*',
+        resume_text,
+    )
+    if portfolio_match:
+        profile["portfolio_url"] = portfolio_match.group(0)
+
     return profile
 
 
@@ -690,6 +709,120 @@ async def _apply_to_job(
             "total": _total_q,
             "progress": _pct,
         })
+
+        # --- Fast path: direct API submission (Greenhouse, Lever) ---
+        settings = get_settings()
+        if settings.API_APPLY_ENABLED and job.ats_type in (ATSType.GREENHOUSE, ATSType.LEVER):
+            user_profile = await _extract_user_profile(state)
+            resume_file = state.get("resume_file_path")
+
+            # Generate cover letter first (needed for API submission)
+            session_config = state.get("session_config")
+            should_generate_cl = True
+            if session_config:
+                _cfg = session_config if isinstance(session_config, dict) else (session_config.model_dump() if hasattr(session_config, "model_dump") else {})
+                should_generate_cl = _cfg.get("generate_cover_letters", True)
+
+            cover_letter_text = ""
+            if should_generate_cl:
+                cover_letter = await generate_cover_letter(
+                    job=job, resume_text=resume_text, template=cover_letter_template,
+                )
+                cover_letter_text = cover_letter.text
+
+            await emit_agent_event(session_id, "application_progress", {
+                "job_id": job_id,
+                "step": f"Submitting via {job.ats_type.value} API for {job.title}...",
+                "current": _app_idx + 1,
+                "total": _total_q,
+                "progress": _pct,
+            })
+
+            from backend.browser.tools.api_applier import apply_via_api
+            api_result = await apply_via_api(
+                job=job,
+                user_profile=user_profile,
+                resume_text=resume_text,
+                cover_letter=cover_letter_text,
+                resume_file_path=resume_file,
+                session_id=session_id,
+            )
+            if api_result is not None:
+                logger.info(
+                    "API submission %s for %s at %s (took %ds)",
+                    api_result.status.value, job.title, job.company,
+                    api_result.duration_seconds or 0,
+                )
+                result = api_result
+                detected_ats = api_result.ats_type or "unknown"
+                result.cover_letter_used = cover_letter_text
+
+                # Record + return — skip browser entirely
+                success = result.status == ApplicationStatus.SUBMITTED
+                await _record_result_to_neo4j(job_id, detected_ats, success=success)
+
+                # SSE event
+                if success:
+                    await emit_agent_event(session_id, "application_submitted", {
+                        "job_id": job_id, "job_title": job.title, "company": job.company,
+                    })
+                else:
+                    _cat = result.error_category.value if result.error_category else None
+                    await emit_agent_event(session_id, "application_failed", {
+                        "job_id": job_id, "job_title": job.title, "company": job.company,
+                        "error": result.error_message or "API submission failed",
+                        "error_category": _cat,
+                        "duration_seconds": result.duration_seconds,
+                    })
+
+                # Persist to DB
+                _tailored = state.get("tailored_resumes", {}).get(job_id)
+                _tailored_text = None
+                if _tailored:
+                    _tailored_text = _tailored.tailored_text if hasattr(_tailored, "tailored_text") else _tailored.get("tailored_text")
+                _error_cat = result.error_category.value if result.error_category else None
+                _db_record_result(
+                    session_id=session_id, job_id=job_id,
+                    status=result.status.value, job_title=job.title,
+                    job_company=job.company, job_url=job.url,
+                    job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+                    job_location=job.location or "", error_message=result.error_message,
+                    error_category=_error_cat, ats_type=result.ats_type,
+                    failure_step=result.failure_step,
+                    cover_letter=cover_letter_text, tailored_resume_text=_tailored_text,
+                    duration_seconds=result.duration_seconds, user_id=user_id,
+                )
+
+                # Billing
+                _charge_for_application(
+                    user_id=user_id, status=result.status.value,
+                    job_title=job.title, job_company=job.company, job_id=job_id,
+                )
+                return result
+            else:
+                logger.info(
+                    "API blocked/unavailable for %s at %s — falling back to Skyvern",
+                    job.title, job.company,
+                )
+                # If no browser context available (API-only batch), can't fall back
+                if context is None:
+                    return ApplicationResult(
+                        job_id=job_id,
+                        status=ApplicationStatus.FAILED,
+                        error_message=f"{job.ats_type.value} API blocked — no browser available for fallback",
+                        error_category=ApplicationErrorCategory.CAPTCHA,
+                        ats_type=f"{job.ats_type.value}_api",
+                        duration_seconds=int(time.monotonic() - start_time),
+                    )
+
+        # If no browser context available (shouldn't happen for non-API jobs, but guard)
+        if context is None:
+            return ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.FAILED,
+                error_message="No browser context available",
+                duration_seconds=int(time.monotonic() - start_time),
+            )
 
         # --- Step 1: Open tab and navigate (before cover letter to save LLM calls) ---
         page = await context.new_page()
@@ -899,6 +1032,13 @@ async def _apply_to_job(
                 "job_title": job.title,
                 "company": job.company,
                 "error": result.error_message or "Application did not complete",
+                "screenshot_url": result.screenshot_url,
+                "error_category": (
+                    result.error_category.value if result.error_category
+                    else (_infer_error_category(result.error_message).value
+                          if _infer_error_category(result.error_message) else None)
+                ),
+                "duration_seconds": result.duration_seconds,
             })
 
         # Persist to DB immediately (survives restarts)
@@ -1052,6 +1192,14 @@ async def run_application_agent(state: JobHunterState) -> dict:
         failed_ids = {r.job_id for r in (state.get("applications_failed") or [])}
         skipped_ids = set(state.get("applications_skipped") or [])
         done_ids = submitted_ids | failed_ids | skipped_ids
+
+        # Track companies already applied to in this session (1 per company)
+        session_applied_companies: set = set()
+        for r in (state.get("applications_submitted") or []):
+            job_for_r = _find_job_in_state(r.job_id, state)
+            if job_for_r:
+                session_applied_companies.add(job_for_r.company.lower().strip())
+
         remaining = [job_id for job_id in application_queue if job_id not in done_ids]
         if not remaining:
             return {
@@ -1118,6 +1266,38 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 "skip_next_job_requested": False,
             }
 
+        # --- Per-session company dedup (1 application per company) ---
+        if job_obj and job_obj.company.lower().strip() in session_applied_companies:
+            company_name = job_obj.company
+            logger.info("Skipping %s — already applied to %s in this session", job_label, company_name)
+            skipped_result = ApplicationResult(
+                job_id=job_id,
+                status=ApplicationStatus.SKIPPED,
+                error_message=f"Already applied to {company_name} in this session",
+                duration_seconds=0,
+            )
+            skipped.append(skipped_result)
+            _db_record_result(
+                session_id=session_id, job_id=job_id, status="skipped",
+                job_title=job_obj.title, job_company=job_obj.company,
+                job_url=job_obj.url,
+                job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
+                job_location=job_obj.location or "",
+                error_message=f"Already applied to {company_name} in this session",
+                user_id=user_id,
+            )
+            await emit_agent_event(session_id, "application_progress", {
+                "step": f"Skipped {job_label} (already applied to {company_name})",
+                "progress": pct, "current": app_idx + 1, "total": total_in_queue,
+            })
+            return {
+                "applications_submitted": [], "applications_failed": [],
+                "applications_skipped": [job_id],
+                "consecutive_failures": 0, "status": "applying",
+                "agent_statuses": {"application": f"skipped -- duplicate company {company_name}"},
+                "errors": [], "skip_next_job_requested": False,
+            }
+
         # --- Circuit breaker ---
         if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
             logger.warning(
@@ -1154,80 +1334,155 @@ async def run_application_agent(state: JobHunterState) -> dict:
         })
 
         settings = get_settings()
-        job = _find_job_in_state(job_id, state)
-        if job is None:
-            raise ValueError(f"Job {job_id} not found in state -- cannot apply")
 
-        manager = BrowserManager()
-        await manager.start_for_task(
-            board=job.board,
-            purpose="apply",
-            headless=settings.BROWSER_HEADLESS,
-        )
-
-        _, context = await manager.new_context()
-
-        try:
-            result = await _apply_to_job(
-                job_id=job_id,
-                job=job,
-                state=state,
-                session_id=session_id,
-                context=context,
-            )
-
-            if result.status == ApplicationStatus.SUBMITTED:
-                submitted.append(result)
-                consecutive_failures = 0
-            elif result.status == ApplicationStatus.FAILED:
-                failed.append(result)
-                consecutive_failures += 1
-                if result.error_message:
-                    errors.append(f"Application failed for {job_id}: {result.error_message}")
+        # --- Batch API-eligible jobs (fast path, ~3s each) ---
+        # Partition remaining into API-eligible and Skyvern-required
+        api_jobs: List[tuple] = []
+        skyvern_jobs: List[tuple] = []
+        for jid in remaining:
+            j = _find_job_in_state(jid, state)
+            if j is None:
+                continue
+            if settings.API_APPLY_ENABLED and j.ats_type in (ATSType.GREENHOUSE, ATSType.LEVER):
+                api_jobs.append((jid, j))
             else:
-                skipped.append(result)
-                consecutive_failures = 0
+                skyvern_jobs.append((jid, j))
 
-            done_pct = int(((app_idx + 1) / total_in_queue) * 100)
-            status_label = (
-                f"{len(submitted)} submitted, {len(failed)} failed"
-                f"{', 1 skipped' if skipped else ''} — {app_idx + 1} of {total_in_queue} processed"
+        # Process API jobs in parallel (no browser needed)
+        if api_jobs:
+            batch = api_jobs[:settings.API_APPLY_BATCH_SIZE]
+            logger.info(
+                "Batching %d API-eligible jobs in parallel (Greenhouse/Lever)",
+                len(batch),
             )
-            await emit_agent_event(session_id, "application_progress", {
-                "step": status_label,
-                "progress": done_pct,
-                "submitted": len(submitted),
-                "failed": len(failed),
-                "skipped": len(skipped),
-            })
-        except Exception as exc:
-            error_msg = f"Application failed for job {job_id}: {exc}"
-            logger.error(error_msg)
-            errors.append(error_msg)
+            api_tasks = [
+                _apply_to_job(jid, j, state, session_id, context=None)
+                for jid, j in batch
+            ]
+            api_results = await asyncio.gather(*api_tasks, return_exceptions=True)
+            for i, res in enumerate(api_results):
+                jid = batch[i][0]
+                j = batch[i][1]
+                if isinstance(res, Exception):
+                    logger.error("API batch job %s failed: %s", jid, res)
+                    fail_result = ApplicationResult(
+                        job_id=jid, status=ApplicationStatus.FAILED,
+                        error_message=str(res),
+                    )
+                    failed.append(fail_result)
+                    consecutive_failures += 1
+                    errors.append(f"Application failed for {jid}: {res}")
+                elif res.status == ApplicationStatus.SUBMITTED:
+                    submitted.append(res)
+                    consecutive_failures = 0
+                elif res.status == ApplicationStatus.FAILED:
+                    failed.append(res)
+                    consecutive_failures += 1
+                    if res.error_message:
+                        errors.append(f"Application failed for {jid}: {res.error_message}")
+                else:
+                    skipped.append(res)
+                    consecutive_failures = 0
 
-            fail_result = ApplicationResult(
-                job_id=job_id,
-                status=ApplicationStatus.FAILED,
-                error_message=str(exc),
+        # Process Skyvern jobs (browser automation)
+        skyvern_batch = skyvern_jobs[:settings.SKYVERN_CONCURRENCY]
+        if skyvern_batch:
+            job_id = skyvern_batch[0][0]
+            job = skyvern_batch[0][1]
+            job_label = f"{job.title} at {job.company}"
+
+            manager = BrowserManager()
+            await manager.start_for_task(
+                board=job.board,
+                purpose="apply",
+                headless=settings.BROWSER_HEADLESS,
             )
-            failed.append(fail_result)
-            consecutive_failures += 1
+            _, context = await manager.new_context()
 
-            if job_obj is not None:
-                _db_record_result(
-                    session_id=session_id,
-                    job_id=job_id,
-                    status="failed",
-                    job_title=job_obj.title,
-                    job_company=job_obj.company,
-                    job_url=job_obj.url,
-                    job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
-                    job_location=job_obj.location or "",
-                    error_message=str(exc),
-                    user_id=user_id,
-                )
+            if len(skyvern_batch) == 1:
+                # Single Skyvern job (common case)
+                try:
+                    result = await _apply_to_job(
+                        job_id=job_id, job=job, state=state,
+                        session_id=session_id, context=context,
+                    )
+                    if result.status == ApplicationStatus.SUBMITTED:
+                        submitted.append(result)
+                        consecutive_failures = 0
+                    elif result.status == ApplicationStatus.FAILED:
+                        failed.append(result)
+                        consecutive_failures += 1
+                        if result.error_message:
+                            errors.append(f"Application failed for {job_id}: {result.error_message}")
+                    else:
+                        skipped.append(result)
+                        consecutive_failures = 0
+                except Exception as exc:
+                    error_msg = f"Application failed for job {job_id}: {exc}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    fail_result = ApplicationResult(
+                        job_id=job_id, status=ApplicationStatus.FAILED,
+                        error_message=str(exc),
+                    )
+                    failed.append(fail_result)
+                    consecutive_failures += 1
+                    if job is not None:
+                        _db_record_result(
+                            session_id=session_id, job_id=job_id,
+                            status="failed", job_title=job.title,
+                            job_company=job.company, job_url=job.url,
+                            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+                            job_location=job.location or "",
+                            error_message=str(exc), user_id=user_id,
+                        )
+            else:
+                # Multiple Skyvern jobs in parallel
+                skyvern_tasks = [
+                    _apply_to_job(jid, j, state, session_id, context=context)
+                    for jid, j in skyvern_batch
+                ]
+                skyvern_results = await asyncio.gather(*skyvern_tasks, return_exceptions=True)
+                for i, res in enumerate(skyvern_results):
+                    jid = skyvern_batch[i][0]
+                    j = skyvern_batch[i][1]
+                    if isinstance(res, Exception):
+                        logger.error("Skyvern job %s failed: %s", jid, res)
+                        fail_result = ApplicationResult(
+                            job_id=jid, status=ApplicationStatus.FAILED,
+                            error_message=str(res),
+                        )
+                        failed.append(fail_result)
+                        consecutive_failures += 1
+                        errors.append(f"Application failed for {jid}: {res}")
+                    elif res.status == ApplicationStatus.SUBMITTED:
+                        submitted.append(res)
+                        consecutive_failures = 0
+                    elif res.status == ApplicationStatus.FAILED:
+                        failed.append(res)
+                        consecutive_failures += 1
+                        if res.error_message:
+                            errors.append(f"Application failed for {jid}: {res.error_message}")
+                    else:
+                        skipped.append(res)
+                        consecutive_failures = 0
 
-        agent_status = f"processed -- {job_label}"
+        # Summary
+        total_processed = len(submitted) + len(failed) + len(skipped)
+        done_pct = int(((processed_count + total_processed) / total_in_queue) * 100) if total_in_queue else 0
+        status_label = (
+            f"{len(submitted)} submitted, {len(failed)} failed"
+            f"{f', {len(skipped)} skipped' if skipped else ''}"
+        )
+        await emit_agent_event(session_id, "application_progress", {
+            "step": status_label,
+            "progress": done_pct,
+            "submitted": len(submitted),
+            "failed": len(failed),
+            "skipped": len(skipped),
+        })
+
+        agent_status = f"processed -- {total_processed} jobs ({status_label})"
 
     except Exception as exc:
         logger.exception("Application agent failed")

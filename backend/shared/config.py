@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     SKYVERN_API_KEY: Optional[str] = None  # Required for cloud; optional for self-hosted
     SKYVERN_ENABLED: bool = False  # Feature flag to enable Skyvern applier
     SKYVERN_TASK_TIMEOUT: int = 1800  # Max seconds to wait for a task to complete (30 min)
+    SKYVERN_CONCURRENCY: int = 2  # Concurrent Skyvern browser tasks
+
+    # --- Smart Apply (direct ATS API submission) ---
+    API_APPLY_ENABLED: bool = True  # Try direct API before Skyvern
+    API_APPLY_BATCH_SIZE: int = 5  # Max API jobs to process per graph iteration
 
     # --- Moltbook (agent social network) ---
     MOLTBOOK_API_KEY: Optional[str] = None

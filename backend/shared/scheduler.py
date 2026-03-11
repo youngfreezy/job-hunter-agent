@@ -23,11 +23,18 @@ logger = logging.getLogger(__name__)
 _tasks: dict[str, asyncio.Task] = {}
 
 
-async def _run_periodic(name: str, coro_factory, interval_seconds: float):
+async def _run_periodic(name: str, coro_factory, interval_seconds: float, *, run_immediately: bool = False):
     """Run *coro_factory()* every *interval_seconds*."""
+    first = True
     while True:
         try:
-            await asyncio.sleep(interval_seconds)
+            if first and run_immediately:
+                first = False
+                # Small delay to let startup complete
+                await asyncio.sleep(10)
+            else:
+                first = False
+                await asyncio.sleep(interval_seconds)
             logger.info("Scheduler: running %s", name)
             await coro_factory()
             logger.info("Scheduler: %s completed", name)
@@ -47,12 +54,12 @@ def schedule(name: str, coro_factory, interval_hours: float = 24.0):
     logger.info("Scheduler: registered %s (every %.1fh)", name, interval_hours)
 
 
-def schedule_seconds(name: str, coro_factory, interval_seconds: float = 60.0):
+def schedule_seconds(name: str, coro_factory, interval_seconds: float = 60.0, *, run_immediately: bool = False):
     """Register a periodic task (seconds). Call during app startup."""
     if name in _tasks:
         logger.warning("Scheduler: %s already registered, skipping", name)
         return
-    task = asyncio.create_task(_run_periodic(name, coro_factory, interval_seconds))
+    task = asyncio.create_task(_run_periodic(name, coro_factory, interval_seconds, run_immediately=run_immediately))
     _tasks[name] = task
     logger.info("Scheduler: registered %s (every %.0fs)", name, interval_seconds)
 

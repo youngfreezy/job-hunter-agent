@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File
 from fastapi.responses import StreamingResponse
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -409,18 +409,8 @@ async def _run_pipeline(
     register_emitter(session_id, _emit)
 
     try:
-        # Persist encrypted resume to Postgres so it survives Railway deploys
-        if request_body.resume_file_path:
-            try:
-                import os
-                from backend.shared.resume_store import save_resume as _save_resume_db
-                enc_path = request_body.resume_file_path
-                if os.path.exists(enc_path):
-                    with open(enc_path, "rb") as ef:
-                        ext = os.path.splitext(enc_path.removesuffix(".enc"))[1] or ".pdf"
-                        _save_resume_db(session_id, ef.read(), ext)
-            except Exception:
-                logger.warning("Failed to persist resume to DB", exc_info=True)
+        # Resume persistence now happens synchronously in start_session()
+        # before spawning this background task (no race condition).
 
         # Build the initial state
         initial_state: Dict[str, Any] = {
@@ -873,7 +863,7 @@ async def list_sessions(request: Request):
     """Return all sessions, merging persisted DB state with in-memory registry."""
     from backend.gateway.deps import get_current_user
     user = get_current_user(request)
-    user_id = user["id"]
+    user_id = str(user["id"])
 
     # Load persisted sessions from the sessions table
     db_sessions = {s["session_id"]: s for s in get_sessions_for_user(user_id)}
@@ -881,9 +871,9 @@ async def list_sessions(request: Request):
     # Merge: in-memory registry takes precedence (has live status updates)
     merged = {**db_sessions, **session_registry}
 
-    # Filter to only this user's sessions
+    # Filter to only this user's sessions (str() ensures UUID vs TEXT comparison works)
     sessions = sorted(
-        [s for s in merged.values() if s.get("user_id") == user_id],
+        [s for s in merged.values() if str(s.get("user_id", "")) == user_id],
         key=lambda s: s.get("created_at", ""),
         reverse=True,
     )
@@ -897,7 +887,7 @@ async def start_session(body: StartSessionRequest, request: Request):
     graph = request.app.state.graph
     from backend.gateway.deps import get_current_user
     user = get_current_user(request)
-    user_id = user["id"]
+    user_id = str(user["id"])  # Ensure string — users.id is UUID, sessions.user_id is TEXT
 
     # Enforce per-user concurrency limits via Redis task queue
     try:
@@ -936,6 +926,20 @@ async def start_session(body: StartSessionRequest, request: Request):
     }
     session_registry[session_id] = session_meta
     upsert_session(session_id, session_meta)
+
+    # Persist encrypted resume to Postgres synchronously (survives Railway deploys).
+    # Must happen BEFORE the background pipeline to eliminate race conditions.
+    if body.resume_file_path:
+        try:
+            import os
+            from backend.shared.resume_store import save_resume as _save_resume_db
+            enc_path = body.resume_file_path
+            if os.path.exists(enc_path):
+                with open(enc_path, "rb") as ef:
+                    ext = os.path.splitext(enc_path.removesuffix(".enc"))[1] or ".pdf"
+                    _save_resume_db(session_id, ef.read(), ext)
+        except Exception:
+            logger.warning("Failed to persist resume to Postgres in start_session", exc_info=True)
 
     # Launch the pipeline as a background coroutine
     _spawn_background(_run_pipeline(session_id, body, graph, user_id=user_id))
@@ -1362,8 +1366,13 @@ async def stream_session(session_id: str, request: Request):
             cv = state.checkpoint.get("channel_values", {}) if isinstance(state.checkpoint, dict) else {}
         elif isinstance(state, dict):
             cv = state.get("channel_values", state)
+        # Load user_id and metadata from DB (survives restarts)
+        from backend.shared.session_store import get_session_by_id
+        db_row = get_session_by_id(session_id)
+
         session_registry[session_id] = {
             "session_id": session_id,
+            "user_id": db_row["user_id"] if db_row else cv.get("user_id", ""),
             "status": cv.get("status", "unknown"),
             "keywords": cv.get("keywords", []),
             "locations": cv.get("locations", []),
@@ -1373,9 +1382,10 @@ async def stream_session(session_id: str, request: Request):
             "linkedin_url": cv.get("linkedin_url"),
             "applications_submitted": len(cv.get("applications_submitted", [])),
             "applications_failed": len(cv.get("applications_failed", [])),
-            "created_at": cv.get("created_at", ""),
+            "created_at": db_row["created_at"] if db_row else cv.get("created_at", ""),
         }
-        logger.info("Recovered session %s from checkpointer (status=%s)", session_id, cv.get("status"))
+        logger.info("Recovered session %s from checkpointer (status=%s, user_id=%s)",
+                     session_id, cv.get("status"), session_registry[session_id].get("user_id", "?"))
 
     # Ensure event log and subscriber list exist
     if session_id not in event_logs:
@@ -2007,12 +2017,12 @@ async def parse_resume(request: Request, file: UploadFile = File(...)):
     if not text:
         raise HTTPException(status_code=422, detail="Could not extract any text from the file")
 
-    # Save the resume file encrypted at rest (filesystem + DB for persistence)
+    # Save the resume file encrypted at rest on the filesystem.
+    # Postgres persistence happens later in start_session() (keyed by session_id).
     import tempfile
     import os
     import uuid
     from backend.shared.resume_crypto import encrypt_and_save
-    from backend.shared.resume_store import save_resume as _save_resume_db
 
     resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
     os.makedirs(resume_dir, exist_ok=True)
@@ -2225,3 +2235,27 @@ async def get_totp_code(session_id: str, request: Request):
     })
 
     return {"verification_code": None}
+
+
+# ---------------------------------------------------------------------------
+# Failure screenshots
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{session_id}/screenshots")
+async def list_screenshots(session_id: str, request: Request):
+    """List all persisted failure screenshots for a session."""
+    from backend.shared.screenshot_store import get_screenshots_for_session
+    screenshots = get_screenshots_for_session(session_id)
+    return {"screenshots": screenshots}
+
+
+@router.get("/{session_id}/screenshots/{screenshot_id}")
+async def get_screenshot(session_id: str, screenshot_id: int, request: Request):
+    """Serve a persisted failure screenshot by ID."""
+    from backend.shared.screenshot_store import get_screenshot as _get_screenshot
+    result = _get_screenshot(screenshot_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+    image_data, content_type = result
+    return Response(content=image_data, media_type=content_type)

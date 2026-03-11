@@ -159,6 +159,20 @@ def _build_navigation_payload(
     if resume_file_url:
         payload["resume_url"] = resume_file_url
 
+    # URLs from resume
+    if user_profile.get("linkedin_url"):
+        payload["linkedin_url"] = user_profile["linkedin_url"]
+    if user_profile.get("github_url"):
+        payload["github_url"] = user_profile["github_url"]
+    if user_profile.get("portfolio_url"):
+        payload["portfolio_url"] = user_profile["portfolio_url"]
+
+    # Common form field defaults
+    payload["work_authorization"] = "Yes"
+    payload["willing_to_relocate"] = "Yes"
+    payload["start_date"] = "Immediately"
+    payload["requires_sponsorship"] = "No"
+
     return payload
 
 
@@ -312,9 +326,24 @@ async def apply_with_skyvern(
         screenshot_urls = result_data.get("screenshot_urls") or []
         last_screenshot = screenshot_urls[-1] if screenshot_urls else None
 
+        # Persist screenshot to Postgres for the feedback loop (fire-and-forget).
+        # Save on failures and skips (auth_required, job_expired) — not clean successes.
+        is_failure = status not in _SUCCESS_STATUSES
+        is_skip = extracted.get("auth_required") or extracted.get("job_expired")
+        if last_screenshot and (is_failure or is_skip):
+            try:
+                from backend.shared.screenshot_store import download_and_store
+                await download_and_store(session_id, str(job.id), last_screenshot)
+            except Exception as ss_exc:
+                logger.debug("Screenshot persistence failed (non-critical): %s", ss_exc)
+
         if status in _SUCCESS_STATUSES:
             # Check extracted data for false positives
             if extracted.get("auth_required"):
+                logger.warning(
+                    "Skyvern task %s: auth_required (job=%s, company=%s) | screenshot: %s",
+                    task_id, job.title, job.company, last_screenshot or "(none)",
+                )
                 return ApplicationResult(
                     job_id=str(job.id),
                     status=ApplicationStatus.SKIPPED,
@@ -323,6 +352,10 @@ async def apply_with_skyvern(
                     duration_seconds=elapsed,
                 )
             if extracted.get("job_expired"):
+                logger.warning(
+                    "Skyvern task %s: job_expired (job=%s, company=%s, url=%s) | screenshot: %s",
+                    task_id, job.title, job.company, job.url, last_screenshot or "(none)",
+                )
                 return ApplicationResult(
                     job_id=str(job.id),
                     status=ApplicationStatus.SKIPPED,
@@ -347,7 +380,9 @@ async def apply_with_skyvern(
             # Failed/terminated/canceled
             error_msg = failure_reason or extracted.get("error_message") or f"Skyvern status: {status}"
             logger.warning(
-                "Skyvern task %s failed: %s", task_id, error_msg[:300],
+                "Skyvern task %s failed (job=%s, company=%s): %s | screenshot: %s",
+                task_id, job.title, job.company, error_msg[:300],
+                last_screenshot or "(none)",
             )
             return ApplicationResult(
                 job_id=str(job.id),

@@ -302,8 +302,20 @@ class MoltbookClient:
 
     # --- Write endpoints ---
 
-    async def create_post(self, content: str) -> Dict[str, Any]:
+    async def create_post(
+        self,
+        content: str,
+        title: str = "",
+        submolt_name: str = "general",
+        post_type: str = "text",
+    ) -> Dict[str, Any]:
         """POST /posts — create a new post.
+
+        Args:
+            content: Body text (max 40,000 chars).
+            title: Post title (max 300 chars). Defaults to first line of content.
+            submolt_name: Target submolt (default "general").
+            post_type: One of "text", "link", "image" (default "text").
 
         Raises ValueError if rate-limited.
         """
@@ -313,8 +325,25 @@ class MoltbookClient:
                 f"Rate limited: cannot post for another {wait:.0f}s"
             )
 
+        # Derive a title from content if none provided
+        if not title:
+            first_line = content.split("\n", 1)[0].strip()
+            title = (first_line[:297] + "...") if len(first_line) > 300 else first_line
+
         client = await self._get_client()
-        resp = await client.post("/posts", json={"content": content})
+        payload = {
+            "submolt_name": submolt_name,
+            "title": title,
+            "content": content,
+            "type": post_type,
+        }
+        resp = await client.post("/posts", json=payload)
+        if resp.status_code >= 400:
+            logger.error(
+                "Moltbook POST /posts failed (HTTP %d): %s",
+                resp.status_code,
+                resp.text,
+            )
         resp.raise_for_status()
         self._rl.record_post()
         logger.info("Created Moltbook post (%d chars)", len(content))
@@ -336,24 +365,32 @@ class MoltbookClient:
             f"/posts/{post_id}/comments",
             json={"content": content},
         )
+        if resp.status_code >= 400:
+            logger.error(
+                "Moltbook POST /posts/%s/comments failed (HTTP %d): %s",
+                post_id, resp.status_code, resp.text,
+            )
         resp.raise_for_status()
         self._rl.record_comment()
         logger.info("Commented on Moltbook post %s (%d chars)", post_id, len(content))
         return resp.json()
 
     async def vote(self, post_id: str, direction: str = "up") -> Dict[str, Any]:
-        """POST /posts/{id}/vote — upvote or downvote a post.
+        """POST /posts/{id}/upvote or /downvote — vote on a post.
 
         Raises ValueError if rate-limited.
         """
         if not self._rl.can_write():
             raise ValueError("Rate limited: too many writes in the last 60s")
 
+        action = "upvote" if direction == "up" else "downvote"
         client = await self._get_client()
-        resp = await client.post(
-            f"/posts/{post_id}/vote",
-            json={"direction": direction},
-        )
+        resp = await client.post(f"/posts/{post_id}/{action}")
+        if resp.status_code >= 400:
+            logger.error(
+                "Moltbook POST /posts/%s/%s failed (HTTP %d): %s",
+                post_id, action, resp.status_code, resp.text,
+            )
         resp.raise_for_status()
         self._rl.record_write()
         logger.info("Voted %s on Moltbook post %s", direction, post_id)
