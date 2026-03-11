@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # --- Premium / paywall bypass ---
     PREMIUM_EMAILS: str = ""  # comma-separated emails that skip interview prep paywall
 
+    # --- System alerts ---
+    ADMIN_PHONE: Optional[str] = None  # phone number for system alerts (Skyvern credits, etc.)
+
     # --- Stripe ---
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None

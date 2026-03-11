@@ -262,10 +262,18 @@ async def apply_with_skyvern(
             task_data = resp.json()
         except httpx.HTTPStatusError as e:
             logger.error("Skyvern task creation failed: %s %s", e.response.status_code, e.response.text[:500])
+            # Surface 402 credits-exhausted as a distinct error so the apply loop
+            # can short-circuit immediately instead of retrying every remaining job.
+            error_msg = f"Skyvern API error: {e.response.status_code}"
+            error_cat = None
+            if e.response.status_code == 402:
+                error_msg = "skyvern_credits_exhausted"
+                error_cat = ApplicationErrorCategory.CREDIT_INSUFFICIENT
             return ApplicationResult(
                 job_id=str(job.id),
                 status=ApplicationStatus.FAILED,
-                error_message=f"Skyvern API error: {e.response.status_code}",
+                error_message=error_msg,
+                error_category=error_cat,
             )
         except httpx.RequestError as e:
             logger.error("Skyvern connection error: %s", e)
