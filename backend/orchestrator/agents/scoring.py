@@ -202,7 +202,6 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                     )
                     session_id_for_event = state.get("session_id", "")
                     if session_id_for_event:
-                        from backend.shared.event_bus import emit_agent_event
                         await emit_agent_event(session_id_for_event, "scoring_progress", {
                             "step": f"Filtered out {excluded} jobs (already applied or company limit reached)",
                         })
