@@ -145,19 +145,20 @@ _OP_MAP = {
 def solve_challenge(challenge_text: str) -> str:
     """Parse a Moltbook math verification challenge and return the answer.
 
-    Moltbook sends weirdly formatted challenges like:
+    Moltbook sends obfuscated challenges with random casing and punctuation:
+        "ClAw] FoRcE] Is^ ThIrTy TwO NeW^tOnS, AnD/ ... InCrEaSeS FoRcE By SeVeN"
         "What is seven plus three?"
         "Calculate: 12 times 4"
-        "5 divided by 2 = ?"
 
     Returns the answer formatted as "XX.00".
     """
     text = challenge_text.lower().strip()
-    # Remove noise
-    text = re.sub(r"[?=]", " ", text)
+    # Remove noise punctuation (brackets, carets, slashes, commas, etc.)
+    text = re.sub(r"[?=\]\[/^,;:!(){}]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
 
-    # Word-to-number mapping
+    # Word-to-number mapping — use word-boundary matching to avoid
+    # corrupting words like "antenna" (contains "ten"), "tone" (contains "one")
     word_nums = {
         "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
         "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
@@ -168,17 +169,36 @@ def solve_challenge(challenge_text: str) -> str:
         "eighty": 80, "ninety": 90, "hundred": 100,
     }
 
-    # Replace word numbers with digits
+    # Replace word numbers using word boundaries (longest first to avoid partial matches)
     for word, num in sorted(word_nums.items(), key=lambda x: -len(x[0])):
-        text = text.replace(word, str(num))
+        text = re.sub(rf"\b{word}\b", str(num), text)
+
+    # Merge compound numbers: "30 2" -> "32", "50 6" -> "56" (tens + units)
+    def _merge_compound(m: re.Match) -> str:
+        tens = int(m.group(1))
+        units = int(m.group(2))
+        if tens >= 20 and tens % 10 == 0 and 1 <= units <= 9:
+            return str(tens + units)
+        return m.group(0)
+    text = re.sub(r"\b(\d{2,3})\s+(\d)\b", _merge_compound, text)
 
     # Extract numbers
     numbers = [float(n) for n in re.findall(r"-?\d+\.?\d*", text)]
 
-    # Extract operation
+    # Extended operation detection — includes word-problem phrasing
+    _EXTENDED_OPS = {
+        **_OP_MAP,
+        "increase": "+", "increases": "+", "increased": "+",
+        "more": "+", "added": "+", "total": "+", "sum": "+",
+        "combined": "+", "together": "+",
+        "decrease": "-", "decreases": "-", "decreased": "-",
+        "less": "-", "reduce": "-", "reduces": "-", "reduced": "-",
+        "remain": "-", "remains": "-", "remaining": "-", "left": "-",
+    }
+
     op = None
-    for word, symbol in _OP_MAP.items():
-        if word in text:
+    for word, symbol in _EXTENDED_OPS.items():
+        if re.search(rf"\b{re.escape(word)}\b", text):
             op = symbol
             break
 
@@ -371,7 +391,32 @@ class MoltbookClient:
         resp.raise_for_status()
         self._rl.record_post()
         logger.info("Created Moltbook post (%d chars)", len(content))
-        return resp.json()
+
+        data = resp.json()
+
+        # Auto-solve verification challenge if present
+        post = data.get("post", {})
+        verification = post.get("verification", {})
+        challenge_text = verification.get("challenge_text", "")
+        verify_code = verification.get("verification_code", "")
+        if challenge_text and verify_code:
+            try:
+                answer = solve_challenge(challenge_text)
+                verify_resp = await client.post("/verify", json={
+                    "verification_code": verify_code,
+                    "answer": answer,
+                })
+                if verify_resp.status_code == 200:
+                    logger.info("Post verified successfully")
+                else:
+                    logger.warning(
+                        "Post verification failed (HTTP %d): %s",
+                        verify_resp.status_code, verify_resp.text,
+                    )
+            except Exception as exc:
+                logger.warning("Post verification error: %s", exc)
+
+        return data
 
     async def comment(self, post_id: str, content: str) -> Dict[str, Any]:
         """POST /posts/{id}/comments — comment on a post.
@@ -397,7 +442,32 @@ class MoltbookClient:
         resp.raise_for_status()
         self._rl.record_comment()
         logger.info("Commented on Moltbook post %s (%d chars)", post_id, len(content))
-        return resp.json()
+
+        data = resp.json()
+
+        # Auto-solve verification challenge if present
+        comment_data = data.get("comment", data)
+        verification = comment_data.get("verification", {})
+        challenge_text = verification.get("challenge_text", "")
+        verify_code = verification.get("verification_code", "")
+        if challenge_text and verify_code:
+            try:
+                answer = solve_challenge(challenge_text)
+                verify_resp = await client.post("/verify", json={
+                    "verification_code": verify_code,
+                    "answer": answer,
+                })
+                if verify_resp.status_code == 200:
+                    logger.info("Comment verified successfully")
+                else:
+                    logger.warning(
+                        "Comment verification failed (HTTP %d): %s",
+                        verify_resp.status_code, verify_resp.text,
+                    )
+            except Exception as exc:
+                logger.warning("Comment verification error: %s", exc)
+
+        return data
 
     async def vote(self, post_id: str, direction: str = "up") -> Dict[str, Any]:
         """POST /posts/{id}/upvote or /downvote — vote on a post.
