@@ -131,10 +131,12 @@ def record_result(
 def check_already_applied(
     job_id: str, user_id: Optional[str] = None, job_url: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
-    """Check if this job was already submitted by this user.
+    """Check if this job was already submitted (or is currently being submitted) by this user.
 
     Returns the prior application record if found, None otherwise.
-    Only ``submitted`` status counts -- failed/skipped don't block re-attempts.
+    Matches ``submitted`` and ``pending`` statuses — pending prevents double-submit
+    when a deploy kills the process mid-Skyvern and the session auto-resumes.
+    Failed/skipped don't block re-attempts.
     Checks both by job_id and by job_url (for backward compat with old random IDs).
     """
     try:
@@ -145,7 +147,7 @@ def check_already_applied(
                     """
                     SELECT session_id, job_title, job_company, created_at
                     FROM application_results
-                    WHERE job_id = %s AND user_id = %s AND status = 'submitted'
+                    WHERE job_id = %s AND user_id = %s AND status IN ('submitted', 'pending')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -156,7 +158,7 @@ def check_already_applied(
                     """
                     SELECT session_id, job_title, job_company, created_at
                     FROM application_results
-                    WHERE job_id = %s AND status = 'submitted'
+                    WHERE job_id = %s AND status IN ('submitted', 'pending')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -177,7 +179,7 @@ def check_already_applied(
                     """
                     SELECT session_id, job_title, job_company, created_at
                     FROM application_results
-                    WHERE job_url = %s AND user_id = %s AND status = 'submitted'
+                    WHERE job_url = %s AND user_id = %s AND status IN ('submitted', 'pending')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -196,6 +198,19 @@ def check_already_applied(
     except Exception:
         logger.warning("Failed to check duplicate for %s", job_id, exc_info=True)
         return None
+
+
+def clear_pending(session_id: str, job_id: str) -> None:
+    """Delete the pending record for a job so the final result can be inserted cleanly."""
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "DELETE FROM application_results WHERE session_id = %s AND job_id = %s AND status = 'pending'",
+                (session_id, job_id),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("Failed to clear pending record for %s/%s", session_id, job_id, exc_info=True)
 
 
 def get_previously_applied_urls(user_id: str) -> set[str]:
