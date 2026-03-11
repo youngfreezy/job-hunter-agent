@@ -409,18 +409,8 @@ async def _run_pipeline(
     register_emitter(session_id, _emit)
 
     try:
-        # Persist encrypted resume to Postgres so it survives Railway deploys
-        if request_body.resume_file_path:
-            try:
-                import os
-                from backend.shared.resume_store import save_resume as _save_resume_db
-                enc_path = request_body.resume_file_path
-                if os.path.exists(enc_path):
-                    with open(enc_path, "rb") as ef:
-                        ext = os.path.splitext(enc_path.removesuffix(".enc"))[1] or ".pdf"
-                        _save_resume_db(session_id, ef.read(), ext)
-            except Exception:
-                logger.warning("Failed to persist resume to DB", exc_info=True)
+        # Resume persistence now happens synchronously in start_session()
+        # before spawning this background task (no race condition).
 
         # Build the initial state
         initial_state: Dict[str, Any] = {
@@ -936,6 +926,20 @@ async def start_session(body: StartSessionRequest, request: Request):
     }
     session_registry[session_id] = session_meta
     upsert_session(session_id, session_meta)
+
+    # Persist encrypted resume to Postgres synchronously (survives Railway deploys).
+    # Must happen BEFORE the background pipeline to eliminate race conditions.
+    if body.resume_file_path:
+        try:
+            import os
+            from backend.shared.resume_store import save_resume as _save_resume_db
+            enc_path = body.resume_file_path
+            if os.path.exists(enc_path):
+                with open(enc_path, "rb") as ef:
+                    ext = os.path.splitext(enc_path.removesuffix(".enc"))[1] or ".pdf"
+                    _save_resume_db(session_id, ef.read(), ext)
+        except Exception:
+            logger.warning("Failed to persist resume to Postgres in start_session", exc_info=True)
 
     # Launch the pipeline as a background coroutine
     _spawn_background(_run_pipeline(session_id, body, graph, user_id=user_id))
@@ -2007,12 +2011,12 @@ async def parse_resume(request: Request, file: UploadFile = File(...)):
     if not text:
         raise HTTPException(status_code=422, detail="Could not extract any text from the file")
 
-    # Save the resume file encrypted at rest (filesystem + DB for persistence)
+    # Save the resume file encrypted at rest on the filesystem.
+    # Postgres persistence happens later in start_session() (keyed by session_id).
     import tempfile
     import os
     import uuid
     from backend.shared.resume_crypto import encrypt_and_save
-    from backend.shared.resume_store import save_resume as _save_resume_db
 
     resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
     os.makedirs(resume_dir, exist_ok=True)
