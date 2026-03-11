@@ -234,7 +234,7 @@ def get_rate_limited_companies(
                 SELECT LOWER(job_company), COUNT(*)
                 FROM application_results
                 WHERE user_id = %s AND status = 'submitted'
-                  AND created_at > NOW() - INTERVAL '%s days'
+                  AND created_at > NOW() - %s * INTERVAL '1 day'
                   AND job_company != ''
                 GROUP BY LOWER(job_company)
                 HAVING COUNT(*) >= %s
@@ -269,7 +269,7 @@ def check_company_rate_limit(
                     WHERE LOWER(job_company) = LOWER(%s)
                       AND user_id = %s
                       AND status = 'submitted'
-                      AND created_at > NOW() - INTERVAL '%s days'
+                      AND created_at > NOW() - %s * INTERVAL '1 day'
                     """,
                     (company, user_id, window_days),
                 )
@@ -280,7 +280,7 @@ def check_company_rate_limit(
                     FROM application_results
                     WHERE LOWER(job_company) = LOWER(%s)
                       AND status = 'submitted'
-                      AND created_at > NOW() - INTERVAL '%s days'
+                      AND created_at > NOW() - %s * INTERVAL '1 day'
                     """,
                     (company, window_days),
                 )
