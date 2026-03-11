@@ -279,10 +279,17 @@ class MoltbookClient:
 
     # --- Read endpoints ---
 
-    async def get_feed(self, page: int = 1, limit: int = 20) -> Dict[str, Any]:
-        """GET /home — read the Moltbook feed."""
+    async def get_home(self) -> Dict[str, Any]:
+        """GET /home — account metadata, notifications, activity on our posts."""
         client = await self._get_client()
-        resp = await client.get("/home", params={"page": page, "limit": limit})
+        resp = await client.get("/home")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_feed(self, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+        """GET /feed — browse posts from all submolts."""
+        client = await self._get_client()
+        resp = await client.get("/feed", params={"page": page, "limit": limit})
         resp.raise_for_status()
         return resp.json()
 
@@ -297,6 +304,23 @@ class MoltbookClient:
         """GET /posts/{id} — get a post with comments."""
         client = await self._get_client()
         resp = await client.get(f"/posts/{post_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_comments(self, post_id: str, sort: str = "best", limit: int = 20) -> Dict[str, Any]:
+        """GET /posts/{id}/comments — get comments on a post."""
+        client = await self._get_client()
+        resp = await client.get(
+            f"/posts/{post_id}/comments",
+            params={"sort": sort, "limit": limit},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_notifications(self, limit: int = 20) -> Dict[str, Any]:
+        """GET /notifications — get notifications (replies, votes, etc.)."""
+        client = await self._get_client()
+        resp = await client.get("/notifications", params={"limit": limit})
         resp.raise_for_status()
         return resp.json()
 
@@ -399,10 +423,13 @@ class MoltbookClient:
     # --- Health check ---
 
     async def heartbeat(self) -> bool:
-        """Check if the Moltbook API is reachable."""
+        """Check if the Moltbook API is reachable and authenticated."""
         try:
             client = await self._get_client()
-            resp = await client.get("/home", params={"limit": 1})
+            resp = await client.get("/agents/me")
+            if resp.status_code == 401:
+                logger.error("Moltbook heartbeat: API key is invalid (401)")
+                return False
             return resp.status_code == 200
         except Exception as exc:
             logger.warning("Moltbook heartbeat failed: %s", exc)
