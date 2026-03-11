@@ -661,7 +661,12 @@ async def _apply_to_job(
     # Pre-flight: skip jobs already submitted by this user (checks by ID and URL)
     prior = check_already_applied(job_id, user_id=user_id, job_url=job.url)
     if prior:
-        applied_at = prior.get("applied_at", "unknown date")
+        raw_at = prior.get("applied_at", "")
+        try:
+            from datetime import datetime as _dt
+            applied_at = _dt.fromisoformat(raw_at).strftime("%b %d, %Y at %I:%M %p")
+        except Exception:
+            applied_at = raw_at or "unknown date"
         msg = f"Already applied on {applied_at}"
         logger.info("Duplicate skipped: %s — %s", job.title, msg)
         await emit_agent_event(session_id, "application_progress", {

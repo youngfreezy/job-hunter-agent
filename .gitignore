@@ -30,6 +30,7 @@ docs/
 
 # Claude Code
 CLAUDE.md
+.claude/
 
 # Logs
 *.log
@@ -47,3 +48,6 @@ eval_results/
 FINAL_STATUS.md
 
 package-lock.json
+
+# CodeYam local files (contains secrets and local database)
+.codeyam
