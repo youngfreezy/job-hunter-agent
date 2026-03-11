@@ -7,6 +7,8 @@ import { useFormikContext } from "formik";
 import type { SessionFormValues } from "@/lib/schemas/session";
 import { parseResume } from "@/lib/api";
 
+type ParseFn = (file: File) => Promise<{ text: string; filename: string; file_path?: string; resume_uuid?: string }>;
+
 const STORAGE_KEY = "jh_resume_text";
 const FILENAME_KEY = "jh_resume_filename";
 const FILE_BYTES_KEY = "jh_resume_bytes";
@@ -90,7 +92,8 @@ const SECTION_PATTERNS = [
   { label: "Projects", pattern: /\b(projects|selected work|portfolio)\b/i },
 ];
 
-export function FormikFileUpload() {
+export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
+  const parse = parseFn || parseResume;
   const { values, setFieldValue } = useFormikContext<SessionFormValues>();
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +125,7 @@ export function FormikFileUpload() {
     if (cached) {
       const file = base64ToFile(cached.bytes, cached.fileName);
       setParsing(true);
-      parseResume(file)
+      parse(file)
         .then((result) => {
           if (result.file_path) {
             setFieldValue("resumeFilePath", result.file_path);
@@ -161,7 +164,7 @@ export function FormikFileUpload() {
     // PDF and DOCX files: send to backend for parsing + cache bytes
     setParsing(true);
     try {
-      const [result, base64] = await Promise.all([parseResume(file), fileToBase64(file)]);
+      const [result, base64] = await Promise.all([parse(file), fileToBase64(file)]);
       setFieldValue("resumeText", result.text);
       if (result.file_path) {
         setFieldValue("resumeFilePath", result.file_path);

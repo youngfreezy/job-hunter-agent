@@ -332,6 +332,7 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.resume import router as resume_router
     from backend.gateway.routes.autopilot import router as autopilot_router
     from backend.gateway.routes.sms import router as sms_router
+    from backend.gateway.routes.free_trial import router as free_trial_router
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
@@ -344,6 +345,7 @@ def create_app() -> FastAPI:
     app.include_router(resume_router)
     app.include_router(autopilot_router)
     app.include_router(sms_router)
+    app.include_router(free_trial_router)
 
     return app
 

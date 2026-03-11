@@ -836,3 +836,174 @@ export async function triggerAutopilotNow(id: string): Promise<{ triggered: bool
   if (!res.ok) throw new Error("Failed to trigger autopilot run");
   return res.json();
 }
+
+// ---------- Free Trial ----------
+
+const TRIAL_TOKEN_KEY = "jh_trial_token";
+const TRIAL_EMAIL_KEY = "jh_trial_email";
+
+export function getTrialToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TRIAL_TOKEN_KEY);
+}
+
+export function setTrialData(token: string, email: string): void {
+  localStorage.setItem(TRIAL_TOKEN_KEY, token);
+  localStorage.setItem(TRIAL_EMAIL_KEY, email);
+}
+
+export function getTrialEmail(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TRIAL_EMAIL_KEY);
+}
+
+export function clearTrialData(): void {
+  localStorage.removeItem(TRIAL_TOKEN_KEY);
+  localStorage.removeItem(TRIAL_EMAIL_KEY);
+}
+
+function trialHeaders(): Record<string, string> {
+  const token = getTrialToken();
+  return token ? { Authorization: `Bearer ${token}`, ...csrfHeaders() } : csrfHeaders();
+}
+
+export async function parseResumeTrial(
+  file: File
+): Promise<{ text: string; filename: string; file_path?: string; resume_uuid?: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch(`${API_BASE}/api/free-trial/parse-resume`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(detail?.detail || `Failed to parse resume: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function startFreeTrialSession(params: {
+  keywords: string[];
+  locations: string[];
+  remote_only: boolean;
+  salary_min: number | null;
+  search_radius?: number;
+  resume_text: string | null;
+  resume_file_path: string | null;
+  resume_uuid: string | null;
+  linkedin_url: string | null;
+  preferences: Record<string, unknown>;
+  config?: {
+    max_jobs: number;
+    tailoring_quality: string;
+    application_mode: string;
+    generate_cover_letters: boolean;
+    job_boards: string[];
+  };
+}): Promise<{ session_id: string; trial_token: string; email: string; name: string | null }> {
+  const res = await apiFetch(`${API_BASE}/api/free-trial/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {}
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  const data = await res.json();
+  setTrialData(data.trial_token, data.email);
+  return data;
+}
+
+export function createTrialSSEConnection(sessionId: string): EventSource {
+  const token = getTrialToken();
+  const sep = token ? `?token=${encodeURIComponent(token)}` : "";
+  return new EventSource(`${API_BASE}/api/sessions/${sessionId}/stream${sep}`);
+}
+
+export function connectTrialSSE(
+  sessionId: string,
+  onEvent: (event: Record<string, unknown>) => void,
+  onConnectionChange?: (connected: boolean) => void
+): () => void {
+  let es: EventSource | null = null;
+  let cancelled = false;
+
+  const EVENT_TYPES: SSEEventType[] = [
+    "status", "coaching", "coach_review", "coaching_progress",
+    "discovery", "discovery_progress", "scoring", "scoring_progress",
+    "tailoring", "tailoring_progress", "shortlist_review", "agent_complete",
+    "hitl", "application_progress", "application_browser_action",
+    "verification_progress", "backfill_progress", "reporting_progress",
+    "needs_intervention", "ready_to_submit", "login_required",
+    "login_complete", "captcha_detected", "done", "error",
+  ];
+
+  const source = createTrialSSEConnection(sessionId);
+  es = source;
+
+  es.onopen = () => onConnectionChange?.(true);
+  es.onerror = () => {
+    if (es?.readyState === EventSource.CLOSED) onConnectionChange?.(false);
+    else if (es?.readyState === EventSource.CONNECTING) onConnectionChange?.(false);
+  };
+
+  for (const eventType of EVENT_TYPES) {
+    es.addEventListener(eventType, (e: Event) => {
+      if (cancelled) return;
+      try {
+        const me = e as MessageEvent;
+        const data = JSON.parse(me.data);
+        onEvent({
+          ...data,
+          event: eventType,
+          timestamp: data.timestamp || new Date().toISOString(),
+        });
+        if (eventType === "done") es?.close();
+      } catch {}
+    });
+  }
+
+  es.onmessage = (e: MessageEvent) => {
+    if (cancelled) return;
+    try {
+      const data = JSON.parse(e.data);
+      onEvent({
+        ...data,
+        event: data.event || "message",
+        timestamp: data.timestamp || new Date().toISOString(),
+      });
+    } catch {}
+  };
+
+  return () => {
+    cancelled = true;
+    es?.close();
+  };
+}
+
+export async function convertTrialAccount(params: {
+  trial_token: string;
+  password: string;
+  name?: string;
+}): Promise<{ status: string; email: string; name: string | null }> {
+  const res = await apiFetch(`${API_BASE}/api/free-trial/convert`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {}
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  return res.json();
+}

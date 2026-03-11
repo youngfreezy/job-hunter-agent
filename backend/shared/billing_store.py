@@ -86,6 +86,12 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+-- Free trial: anonymous user flag
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
@@ -567,3 +573,103 @@ def get_transactions(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
             }
             for row in cur.fetchall()
         ]
+
+
+def create_anonymous_user(email: str, name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Create an anonymous user for a free trial run.
+
+    Returns None if:
+    - email already belongs to a real (non-anonymous) account
+    - email already used its free trial
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT id, is_anonymous, free_applications_remaining, auth_provider FROM users WHERE email = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+        if row:
+            is_anon = row[1]
+            free_remaining = row[2]
+            auth_provider = row[3]
+            if not is_anon:
+                # Real account exists — must sign in
+                return None
+            if auth_provider == "free_trial" and free_remaining <= 0:
+                # Already used free trial
+                return None
+            # Existing anonymous user with credits remaining — return it
+            return {
+                "id": str(row[0]),
+                "email": email,
+                "is_anonymous": True,
+            }
+
+        # Create new anonymous user (no Stripe customer — save API calls)
+        user_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO users (id, email, name, auth_provider, is_anonymous, free_applications_remaining)
+               VALUES (%s, %s, %s, 'free_trial', TRUE, 3)""",
+            (user_id, email, name),
+        )
+        conn.commit()
+        return {
+            "id": user_id,
+            "email": email,
+            "is_anonymous": True,
+        }
+
+
+def convert_anonymous_user(
+    user_id: str,
+    password_hash: Optional[str] = None,
+    name: Optional[str] = None,
+    auth_provider: str = "email",
+) -> Optional[Dict[str, Any]]:
+    """Convert an anonymous free-trial user to a full account.
+
+    Creates Stripe customer and flips is_anonymous to FALSE.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT id, email, is_anonymous FROM users WHERE id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row or not row[2]:
+            return None  # Not found or not anonymous
+
+        email = row[1]
+
+        # Create Stripe customer
+        settings = get_settings()
+        stripe_customer_id = None
+        if settings.STRIPE_SECRET_KEY:
+            try:
+                stripe.api_key = settings.STRIPE_SECRET_KEY
+                customer = stripe.Customer.create(email=email, name=name)
+                stripe_customer_id = customer.id
+            except Exception as e:
+                logger.warning("Failed to create Stripe customer for %s: %s", email, e)
+
+        updates = ["is_anonymous = FALSE", "auth_provider = %s", "stripe_customer_id = %s"]
+        params: list = [auth_provider, stripe_customer_id]
+        if password_hash:
+            updates.append("password_hash = %s")
+            params.append(password_hash)
+        if name:
+            updates.append("name = COALESCE(name, %s)")
+            params.append(name)
+        params.append(user_id)
+
+        conn.execute(
+            f"UPDATE users SET {', '.join(updates)} WHERE id = %s",
+            params,
+        )
+        conn.commit()
+        return {
+            "id": user_id,
+            "email": email,
+            "name": name,
+            "auth_provider": auth_provider,
+        }
