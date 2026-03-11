@@ -710,9 +710,10 @@ async def _apply_to_job(
             "progress": _pct,
         })
 
-        # --- Fast path: direct API submission (Greenhouse, Lever) ---
+        # --- Fast path: direct API submission (only if handler registered) ---
         settings = get_settings()
-        if settings.API_APPLY_ENABLED and job.ats_type in (ATSType.GREENHOUSE, ATSType.LEVER):
+        from backend.browser.tools.api_applier import _ATS_HANDLERS
+        if settings.API_APPLY_ENABLED and job.ats_type in _ATS_HANDLERS:
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
 
@@ -1341,13 +1342,15 @@ async def run_application_agent(state: JobHunterState) -> dict:
         api_failed_ids: set = set(state.get("api_failed_job_ids") or [])
         api_jobs: List[tuple] = []
         skyvern_jobs: List[tuple] = []
+        # Only route to API if there's actually a registered handler
+        from backend.browser.tools.api_applier import _ATS_HANDLERS
         for jid in remaining:
             j = _find_job_in_state(jid, state)
             if j is None:
                 continue
             if (
                 settings.API_APPLY_ENABLED
-                and j.ats_type in (ATSType.GREENHOUSE, ATSType.LEVER)
+                and j.ats_type in _ATS_HANDLERS
                 and jid not in api_failed_ids
             ):
                 api_jobs.append((jid, j))
