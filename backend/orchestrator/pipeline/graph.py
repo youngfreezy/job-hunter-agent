@@ -420,9 +420,22 @@ def route_after_application(
 ) -> Literal["application", "verification", "shortlist_review"]:
     """Decide whether to continue applying, retry, or move to verification.
 
-    Circuit-breaker: if consecutive failures exceed the threshold, return
-    to the shortlist review gate so the user can retry or adjust.
+    Circuit-breaker: if consecutive failures exceed the threshold AND there
+    are remaining jobs, return to shortlist review. If all jobs are done
+    (even if all failed), proceed to verification so the summary is generated.
     """
+    queue = state.get("application_queue", [])
+    submitted = {r.job_id for r in (state.get("applications_submitted") or [])}
+    failed = {r.job_id for r in (state.get("applications_failed") or [])}
+    skipped = set(state.get("applications_skipped") or [])
+    done = submitted | failed | skipped
+
+    remaining = [jid for jid in queue if jid not in done]
+
+    # All jobs processed — always proceed to verification/summary
+    if not remaining:
+        return "verification"
+
     consecutive = state.get("consecutive_failures", 0)
     if consecutive >= MAX_CONSECUTIVE_FAILURES:
         logger.warning(
@@ -432,17 +445,7 @@ def route_after_application(
         )
         return "shortlist_review"
 
-    queue = state.get("application_queue", [])
-    submitted = {r.job_id for r in (state.get("applications_submitted") or [])}
-    failed = {r.job_id for r in (state.get("applications_failed") or [])}
-    skipped = set(state.get("applications_skipped") or [])
-    done = submitted | failed | skipped
-
-    remaining = [jid for jid in queue if jid not in done]
-    if remaining:
-        return "application"
-
-    return "verification"
+    return "application"
 
 
 def route_after_supervise_after_application(

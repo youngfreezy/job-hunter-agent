@@ -19,6 +19,10 @@ import backend.shared.resume_crypto as _crypto
 def _set_nextauth_secret(monkeypatch):
     """Ensure NEXTAUTH_SECRET is set for Fernet key derivation in CI."""
     monkeypatch.setenv("NEXTAUTH_SECRET", "test-secret-for-ci")
+    # Patch the already-instantiated settings singleton (env var alone isn't
+    # enough because Settings() was created at import time).
+    from backend.shared.config import settings
+    monkeypatch.setattr(settings, "NEXTAUTH_SECRET", "test-secret-for-ci")
     # Reset the cached Fernet instance so it re-derives from the new secret
     _crypto._fernet = None
     yield
