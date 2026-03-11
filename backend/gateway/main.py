@@ -312,7 +312,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_origins,
-        allow_origin_regex=r"https://(job-hunter-agent(-[a-z0-9]+)?\.vercel\.app|([a-z]+-)+[a-z0-9]+\.up\.railway\.app|jobhunteragent\.com)",
+        allow_origin_regex=r"https://(job-hunter-agent(-[a-z0-9]+)?\.vercel\.app|([a-z]+-)+[a-z0-9]+\.up\.railway\.app|([a-z]+\.)?jobhunteragent\.com)",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -31,7 +31,7 @@ type EventEntry = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  intake: "Starting up...",
+  intake: "Setting things up",
   coaching: "Analyzing your resume",
   discovering: "Searching job boards",
   scoring: "Scoring job matches",
@@ -39,6 +39,17 @@ const STATUS_LABELS: Record<string, string> = {
   applying: "Applying to jobs",
   done: "Complete!",
   error: "Error",
+};
+
+const STATUS_DESCRIPTIONS: Record<string, string> = {
+  intake: "Preparing your job search profile...",
+  coaching: "Our AI is reviewing your experience and skills to find the best matches.",
+  discovering: "Scanning thousands of listings across top job boards in real time.",
+  scoring: "Ranking every job against your resume for the best fit.",
+  tailoring: "Customizing your resume for each top-scored position.",
+  applying: "Submitting applications to your best-matched jobs.",
+  done: "All done! Your applications have been submitted.",
+  error: "Something went wrong. Please try again.",
 };
 
 const STEP_LABELS: Record<string, string> = {
@@ -102,11 +113,13 @@ export default function TrialSessionPage() {
         }
 
         // Update stats
-        if (entry.event === "discovery_progress" && typeof entry.total === "number") {
-          setDiscovered(entry.total);
+        if (entry.event === "discovery_progress") {
+          const t = entry.total as number;
+          if (typeof t === "number" && t > 0) setDiscovered(t);
         }
-        if (entry.event === "scoring_progress" && typeof entry.scored === "number") {
-          setScored(entry.scored);
+        if (entry.event === "scoring_progress") {
+          const s = (entry.scored as number) ?? (entry.scored_so_far as number);
+          if (typeof s === "number") setScored(s);
         }
         if (entry.event === "application_progress") {
           if (entry.status === "submitted") setSubmitted((s) => s + 1);
@@ -162,9 +175,15 @@ export default function TrialSessionPage() {
       </nav>
 
       <div className="max-w-4xl mx-auto px-6 py-10">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-6">
-          {status === "done" ? "Session Complete!" : "Your trial is running..."}
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-1">
+          {status === "done" ? "Session Complete!" : "Your AI Job Hunt is in Progress"}
         </h1>
+        {status !== "done" && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
+            {STATUS_DESCRIPTIONS[status] || "Working on it..."}
+          </p>
+        )}
+        {status === "done" && <div className="mb-6" />}
 
         {/* Progress pipeline */}
         <div className="flex items-center gap-0.5 mb-8">
@@ -242,7 +261,7 @@ export default function TrialSessionPage() {
               {events.length === 0 && (
                 <p className="text-sm text-zinc-400">Waiting for events...</p>
               )}
-              {[...events].reverse().slice(0, 50).map((e, i) => (
+              {[...events].reverse().filter((e) => e.event !== "agent_complete").slice(0, 50).map((e, i) => (
                 <div key={i} className="flex items-start gap-3 text-sm">
                   <span className="text-xs text-zinc-400 mt-0.5 whitespace-nowrap font-mono">
                     {new Date(e.timestamp).toLocaleTimeString()}
@@ -378,8 +397,8 @@ function EventBadge({ event }: { event: string }) {
 
 function formatEvent(e: EventEntry): string {
   if (e.event === "status") return STATUS_LABELS[e.status as string] || String(e.status);
-  if (e.event === "discovery_progress") return `Found ${e.total} jobs on ${e.board || "job boards"}`;
-  if (e.event === "scoring_progress") return `Scored ${e.scored}/${e.total} jobs`;
+  if (e.event === "discovery_progress") return (e.step as string) || `Found ${e.total} jobs on ${e.board || "job boards"}`;
+  if (e.event === "scoring_progress") return (e.step as string) || `Scored ${e.scored_so_far ?? e.scored ?? "?"} jobs`;
   if (e.event === "tailoring_progress") return `Tailored resume ${e.current}/${e.total}`;
   if (e.event === "application_progress") {
     const company = (e.company as string) || (e.job_title as string) || "";

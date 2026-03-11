@@ -271,12 +271,13 @@ def route_after_supervise_after_scoring(state: JobHunterState) -> str:
 
 
 async def auto_approve_gate(state: JobHunterState) -> dict:
-    """If autopilot or backfill round, populate application_queue and skip shortlist review."""
+    """If autopilot, free trial, or backfill round, populate application_queue and skip shortlist review."""
     prefs = state.get("preferences") or {}
     is_autopilot = isinstance(prefs, dict) and prefs.get("_autopilot_auto_approve")
+    is_free_trial = isinstance(prefs, dict) and prefs.get("_skip_coach_review")
     is_backfill = state.get("backfill_rounds", 0) > 0
 
-    if is_autopilot or is_backfill:
+    if is_autopilot or is_free_trial or is_backfill:
         all_scored = state.get("scored_jobs") or []
         # On backfill, only queue jobs not already attempted
         done_ids: set[str] = set()
@@ -295,7 +296,7 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
         candidates = await _validate_job_urls(candidates, session_id)
 
         approved_ids = [str(sj.job.id) for sj in candidates][:MAX_APPLICATION_JOBS]
-        label = "backfill" if is_backfill else "autopilot"
+        label = "backfill" if is_backfill else ("free_trial" if is_free_trial else "autopilot")
         logger.info(
             "Auto-approve gate (%s): approving %d jobs",
             label, len(approved_ids),
@@ -305,11 +306,12 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
 
 
 def _route_after_auto_approve_gate(state: JobHunterState) -> str:
-    """Route to application (via supervise) if auto-approved or backfill, otherwise to shortlist_review."""
+    """Route to application (via supervise) if auto-approved, free trial, or backfill, otherwise to shortlist_review."""
     prefs = state.get("preferences") or {}
     is_autopilot = isinstance(prefs, dict) and prefs.get("_autopilot_auto_approve")
+    is_free_trial = isinstance(prefs, dict) and prefs.get("_skip_coach_review")
     is_backfill = state.get("backfill_rounds", 0) > 0
-    if is_autopilot or is_backfill:
+    if is_autopilot or is_free_trial or is_backfill:
         return "supervise_after_shortlist"
     return "shortlist_review"
 
