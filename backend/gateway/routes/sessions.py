@@ -23,7 +23,7 @@ from typing import Any, Dict, List
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
@@ -865,8 +865,10 @@ async def list_sessions(request: Request):
     user = get_current_user(request)
     user_id = str(user["id"])
 
+    include_archived = request.query_params.get("include_archived", "").lower() == "true"
+
     # Load persisted sessions from the sessions table
-    db_sessions = {s["session_id"]: s for s in get_sessions_for_user(user_id)}
+    db_sessions = {s["session_id"]: s for s in get_sessions_for_user(user_id, include_archived=include_archived)}
 
     # Merge: in-memory registry takes precedence (has live status updates)
     merged = {**db_sessions, **session_registry}
@@ -878,6 +880,44 @@ async def list_sessions(request: Request):
         reverse=True,
     )
     return sessions
+
+
+@router.patch("/{session_id}/archive")
+async def archive_session_endpoint(session_id: str, request: Request):
+    """Archive or unarchive a session."""
+    from backend.gateway.deps import get_current_user
+    from backend.shared.session_store import archive_session, unarchive_session
+    user = get_current_user(request)
+    user_id = str(user["id"])
+
+    body = await request.json()
+    archived = body.get("archived", True)
+
+    if archived:
+        ok = archive_session(session_id, user_id)
+    else:
+        ok = unarchive_session(session_id, user_id)
+
+    if not ok:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    return {"ok": True}
+
+
+@router.delete("/{session_id}")
+async def delete_session_endpoint(session_id: str, request: Request):
+    """Permanently delete a session and all associated data."""
+    from backend.gateway.deps import get_current_user
+    from backend.shared.session_store import delete_session
+    user = get_current_user(request)
+    user_id = str(user["id"])
+
+    ok = delete_session(session_id, user_id)
+    if not ok:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+
+    # Remove from in-memory registry if present
+    session_registry.pop(session_id, None)
+    return {"ok": True}
 
 
 @router.post("")
