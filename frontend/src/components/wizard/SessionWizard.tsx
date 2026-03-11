@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormikProvider } from "formik";
 import { usePersistedFormik } from "@/lib/hooks/usePersistedFormik";
@@ -33,6 +33,8 @@ export function SessionWizard() {
   const [step, setStep] = useState(0);
   const [submitError, setSubmitError] = useState("");
   const [isNavigating, setIsNavigating] = useState(false);
+  const [insufficientCredits, setInsufficientCredits] = useState(false);
+  const onInsufficientCredits = useCallback((v: boolean) => setInsufficientCredits(v), []);
 
   useEffect(() => {
     window.umami?.track("wizard-start");
@@ -134,16 +136,18 @@ export function SessionWizard() {
   const isStepValid = useMemo(() => {
     try {
       stepSchemas[step].validateSync(formik.values, { abortEarly: true });
+      // Block progression from config step when user can't afford the session
+      if (step === 2 && insufficientCredits) return false;
       return true;
     } catch {
       return false;
     }
-  }, [step, formik.values]);
+  }, [step, formik.values, insufficientCredits]);
 
   const stepComponents = [
     <JobSearchStep key="job-search" />,
     <ResumeProfileStep key="resume-profile" />,
-    <ConfigStep key="config" />,
+    <ConfigStep key="config" onInsufficientCredits={onInsufficientCredits} />,
     <ReviewStep key="review" onEditStep={setStep} />,
   ];
 

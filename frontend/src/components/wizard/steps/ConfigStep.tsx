@@ -30,7 +30,7 @@ function estimateCredits(values: SessionFormValues): number {
   return Math.round(base * jobRatio);
 }
 
-export function ConfigStep() {
+export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: (v: boolean) => void }) {
   const { values, setFieldValue } = useFormikContext<SessionFormValues>();
   const [balance, setBalance] = useState<number | null>(null);
 
@@ -43,6 +43,10 @@ export function ConfigStep() {
   const boards = values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"];
   const credits = estimateCredits(values);
   const insufficientCredits = balance !== null && credits > balance;
+
+  useEffect(() => {
+    onInsufficientCredits?.(insufficientCredits);
+  }, [insufficientCredits, onInsufficientCredits]);
 
   return (
     <>
