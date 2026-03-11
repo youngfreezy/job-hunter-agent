@@ -262,6 +262,7 @@ export interface SessionListItem {
   applications_submitted: number;
   applications_failed: number;
   created_at: string;
+  archived_at: string | null;
 }
 
 export interface ResumeAnalysis {
@@ -301,12 +302,32 @@ export async function getLifetimeStats(): Promise<LifetimeStats> {
   return res.json();
 }
 
-export async function listSessions(): Promise<SessionListItem[]> {
+export async function listSessions(includeArchived?: boolean): Promise<SessionListItem[]> {
   const auth = await getAuthHeaders();
-  const res = await apiFetch(`${API_BASE}/api/sessions`, { headers: auth });
+  const qs = includeArchived ? "?include_archived=true" : "";
+  const res = await apiFetch(`${API_BASE}/api/sessions${qs}`, { headers: auth });
   if (!res.ok) throw new Error(`Failed to list sessions: ${res.statusText}`);
   const sessions: SessionListItem[] = await res.json();
   return sessions.map((s) => ({ ...s, keywords: s.keywords || [], locations: s.locations || [] }));
+}
+
+export async function archiveSession(sessionId: string, archived: boolean): Promise<void> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/archive`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({ archived }),
+  });
+  if (!res.ok) throw new Error(`Failed to ${archived ? "archive" : "unarchive"} session: ${res.statusText}`);
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}`, {
+    method: "DELETE",
+    headers: auth,
+  });
+  if (!res.ok) throw new Error(`Failed to delete session: ${res.statusText}`);
 }
 
 export async function getSession(sessionId: string): Promise<Record<string, unknown>> {

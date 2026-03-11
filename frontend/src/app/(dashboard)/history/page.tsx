@@ -2,14 +2,31 @@
 
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   listSessions,
   getApplicationLog,
+  archiveSession,
+  deleteSession,
   type SessionListItem,
   type ApplicationLogEntry,
 } from "@/lib/api";
@@ -110,10 +127,13 @@ export default function HistoryPage() {
   const [sessionsWithApps, setSessionsWithApps] = useState<SessionWithApps[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SessionWithApps | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     try {
-      const allSessions = await listSessions();
+      const allSessions = await listSessions(showArchived);
       // Fetch application logs sequentially (3 at a time) to avoid 429 rate limits
       const results: SessionWithApps[] = [];
       const BATCH_SIZE = 3;
@@ -147,11 +167,11 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showArchived]);
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [fetchAll]);
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -159,19 +179,55 @@ export default function HistoryPage() {
       fetchAll();
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchAll]);
+
+  const archivedCount = useMemo(
+    () => sessionsWithApps.filter((s) => s.session.archived_at).length,
+    [sessionsWithApps]
+  );
 
   const totals = useMemo(() => {
-    const totalTimeSaved = sessionsWithApps.reduce((sum, s) => sum + s.timeSaved, 0);
-    const totalApps = sessionsWithApps.reduce((sum, s) => sum + s.entries.length, 0);
+    const active = sessionsWithApps.filter((s) => !s.session.archived_at);
+    const totalTimeSaved = active.reduce((sum, s) => sum + s.timeSaved, 0);
+    const totalApps = active.reduce((sum, s) => sum + s.entries.length, 0);
     const avgSavedPerApp = totalApps > 0 ? totalTimeSaved / totalApps : 0;
     return {
       timeSaved: totalTimeSaved,
-      sessions: sessionsWithApps.length,
+      sessions: active.length,
       applications: totalApps,
       avgPerApp: avgSavedPerApp,
     };
   }, [sessionsWithApps]);
+
+  const handleArchive = async (sessionId: string, archive: boolean) => {
+    try {
+      await archiveSession(sessionId, archive);
+      setSessionsWithApps((prev) =>
+        archive ? prev.filter((s) => s.session.session_id !== sessionId || showArchived) : prev
+      );
+      toast.success(archive ? "Session archived" : "Session restored");
+      fetchAll();
+    } catch {
+      toast.error(`Failed to ${archive ? "archive" : "restore"} session`);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await deleteSession(deleteTarget.session.session_id);
+      setSessionsWithApps((prev) =>
+        prev.filter((s) => s.session.session_id !== deleteTarget.session.session_id)
+      );
+      toast.success("Session deleted");
+      setDeleteTarget(null);
+    } catch {
+      toast.error("Failed to delete session");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   return (
     <div className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
@@ -256,19 +312,30 @@ export default function HistoryPage() {
             </CardContent>
           </Card>
 
-          {/* Session List */}
+          {/* Archive toggle + Session List */}
+          <div className="flex items-center justify-end mb-3">
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              {showArchived ? "Hide archived" : `Show archived${archivedCount > 0 ? ` (${archivedCount})` : ""}`}
+            </button>
+          </div>
           <div className="space-y-3">
             {sessionsWithApps.map(
-              ({ session, entries, timeSaved, automationTime, manualEstimate }) => {
+              (swa) => {
+                const { session, entries, timeSaved, automationTime, manualEstimate } = swa;
                 const isExpanded = expandedId === session.session_id;
                 const submittedCount = entries.filter((e) => e.status === "submitted").length;
+                const isArchived = !!session.archived_at;
 
                 return (
                   <Card
                     key={session.session_id}
                     className={`overflow-hidden rounded-2xl transition-colors ${
                       isExpanded ? "bg-zinc-50 dark:bg-zinc-900/30" : ""
-                    }`}
+                    } ${isArchived ? "opacity-50" : ""}`}
                   >
                     <CardContent className="p-0">
                       {/* Collapsed view - clickable header */}
@@ -309,6 +376,30 @@ export default function HistoryPage() {
                               {formatTime(timeSaved)} saved
                             </span>
                             <span>{formatDate(session.created_at)}</span>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="p-1 rounded hover:bg-muted transition-colors"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+                                  </svg>
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                <DropdownMenuItem onClick={() => handleArchive(session.session_id, !isArchived)}>
+                                  {isArchived ? "Unarchive" : "Archive"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-red-600 dark:text-red-400"
+                                  onClick={() => setDeleteTarget(swa)}
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                             <svg
                               className={`w-4 h-4 transition-transform ${
                                 isExpanded ? "rotate-180" : ""
@@ -448,6 +539,31 @@ export default function HistoryPage() {
           </div>
         </>
       )}
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Session</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this session and all associated application data.
+              {deleteTarget && (
+                <span className="block mt-2 font-medium text-foreground">
+                  {(deleteTarget.session.keywords || []).join(", ") || "Untitled session"}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteLoading}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteLoading}>
+              {deleteLoading ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
