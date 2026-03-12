@@ -242,10 +242,10 @@ export default function HistoryPage() {
 
       {loading ? (
         <div className="space-y-6">
-          <div className="h-36 bg-muted rounded-2xl animate-pulse" />
+          <div className="h-36 bg-zinc-200 dark:bg-zinc-700 rounded-2xl animate-pulse" />
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 bg-muted rounded-2xl animate-pulse" />
+              <div key={i} className="h-24 bg-zinc-200 dark:bg-zinc-700 rounded-2xl animate-pulse" />
             ))}
           </div>
         </div>
@@ -354,6 +354,11 @@ export default function HistoryPage() {
                               <span className="text-sm font-semibold truncate">
                                 {(session.keywords || []).join(", ") || "Untitled"}
                               </span>
+                              {session.is_autopilot && (
+                                <Badge className="text-[10px] py-0 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                                  Autopilot
+                                </Badge>
+                              )}
                               {session.remote_only && (
                                 <Badge variant="secondary" className="text-[10px] py-0">
                                   Remote

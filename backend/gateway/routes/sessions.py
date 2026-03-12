@@ -888,6 +888,12 @@ async def list_sessions(request: Request):
         key=lambda s: s.get("created_at", ""),
         reverse=True,
     )
+
+    # Ensure is_autopilot is set (from DB column or in-memory autopilot_schedule_id)
+    for s in sessions:
+        if "is_autopilot" not in s:
+            s["is_autopilot"] = bool(s.get("autopilot_schedule_id"))
+
     return sessions
 
 

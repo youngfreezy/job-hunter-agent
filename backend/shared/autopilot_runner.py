@@ -240,6 +240,7 @@ async def _run_schedule(
         "applications_failed": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "autopilot_schedule_id": schedule_id,
+        "is_autopilot": True,
     }
     session_registry[session_id] = session_meta
     upsert_session(session_id, session_meta)
