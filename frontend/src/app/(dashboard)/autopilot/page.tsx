@@ -19,6 +19,7 @@ import {
   AutopilotSchedule,
   listAutopilotSchedules,
   createAutopilotSchedule,
+  updateAutopilotSchedule,
   deleteAutopilotSchedule,
   toggleAutopilotPause,
   triggerAutopilotNow,
@@ -83,6 +84,7 @@ export default function AutopilotPage() {
   const [schedules, setSchedules] = useState<AutopilotSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Create form state
   const [name, setName] = useState("My Job Search");
@@ -94,6 +96,59 @@ export default function AutopilotPage() {
   const [customDays, setCustomDays] = useState("1-5");
   const [autoApprove, setAutoApprove] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  // Edit form state
+  const [editName, setEditName] = useState("");
+  const [editKeywords, setEditKeywords] = useState("");
+  const [editLocations, setEditLocations] = useState("");
+  const [editCron, setEditCron] = useState("");
+  const [editCustomHour, setEditCustomHour] = useState("08");
+  const [editCustomMinute, setEditCustomMinute] = useState("00");
+  const [editCustomDays, setEditCustomDays] = useState("1-5");
+  const [editAutoApprove, setEditAutoApprove] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  function startEdit(sched: AutopilotSchedule) {
+    setEditingId(sched.id);
+    setEditName(sched.name);
+    setEditKeywords(sched.keywords.join(", "));
+    setEditLocations(sched.locations.join(", "));
+    const isPreset = CRON_PRESETS.some((p) => p.value === sched.cron_expression);
+    setEditCron(isPreset ? sched.cron_expression : "custom");
+    if (!isPreset) {
+      const parts = sched.cron_expression.split(" ");
+      setEditCustomMinute((parts[0] ?? "0").padStart(2, "0"));
+      setEditCustomHour((parts[1] ?? "8").padStart(2, "0"));
+      setEditCustomDays(parts[4] ?? "1-5");
+    }
+    setEditAutoApprove(sched.auto_approve);
+  }
+
+  async function handleSaveEdit() {
+    if (!editingId || !editKeywords.trim()) return;
+    setSaving(true);
+    try {
+      const finalCron =
+        editCron === "custom"
+          ? buildCustomCron(parseInt(editCustomHour), parseInt(editCustomMinute), editCustomDays)
+          : editCron;
+      await updateAutopilotSchedule(editingId, {
+        name: editName,
+        keywords: editKeywords.split(",").map((k) => k.trim()).filter(Boolean),
+        locations: editLocations.split(",").map((l) => l.trim()).filter(Boolean),
+        cron_expression: finalCron,
+        auto_approve: editAutoApprove,
+      } as Partial<AutopilotSchedule>);
+      setEditingId(null);
+      await load();
+      toast.success("Schedule updated");
+    } catch (err) {
+      console.error("Failed to update schedule", err);
+      toast.error("Failed to update schedule");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function load() {
     try {
@@ -213,67 +268,190 @@ export default function AutopilotPage() {
 
       {schedules.map((sched) => (
         <Card key={sched.id}>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{sched.name}</CardTitle>
-              <div className="flex items-center gap-2">
-                {sched.is_running ? (
-                  <Badge className="bg-green-600 hover:bg-green-600 text-white animate-pulse">Running</Badge>
-                ) : sched.is_active ? (
-                  <Badge variant="default">Active</Badge>
-                ) : (
-                  <Badge variant="secondary">Paused</Badge>
+          {editingId === sched.id ? (
+            <>
+              <CardHeader>
+                <CardTitle>Edit Schedule</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Keywords <span className="text-muted-foreground">(comma-separated)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editKeywords}
+                    onChange={(e) => setEditKeywords(e.target.value)}
+                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Locations <span className="text-muted-foreground">(comma-separated)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editLocations}
+                    onChange={(e) => setEditLocations(e.target.value)}
+                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Schedule</label>
+                  <select
+                    value={editCron}
+                    onChange={(e) => setEditCron(e.target.value)}
+                    className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+                  >
+                    {CRON_PRESETS.map((p) => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {editCron === "custom" && (
+                  <div className="space-y-3 rounded-md border p-3 bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium w-12">Time</label>
+                      <select
+                        value={editCustomHour}
+                        onChange={(e) => setEditCustomHour(e.target.value)}
+                        className="rounded-md border px-2 py-1.5 text-sm bg-background"
+                      >
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <option key={i} value={String(i).padStart(2, "0")}>
+                            {i === 0 ? "12 AM" : i < 12 ? `${i} AM` : i === 12 ? "12 PM" : `${i - 12} PM`}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-muted-foreground">:</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={2}
+                        placeholder="00"
+                        value={editCustomMinute}
+                        onChange={(e) => setEditCustomMinute(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                        onBlur={() => {
+                          const n = Math.min(59, Math.max(0, Number(editCustomMinute) || 0));
+                          setEditCustomMinute(String(n).padStart(2, "0"));
+                        }}
+                        className="rounded-md border px-2 py-1.5 text-sm bg-background w-14 text-center tabular-nums"
+                      />
+                      <span className="text-xs text-muted-foreground ml-1">(your local time)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium w-12">Days</label>
+                      <select
+                        value={editCustomDays}
+                        onChange={(e) => setEditCustomDays(e.target.value)}
+                        className="rounded-md border px-2 py-1.5 text-sm bg-background flex-1"
+                      >
+                        {DAY_OPTIONS.map((d) => (
+                          <option key={d.value} value={d.value}>{d.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 )}
-                {sched.auto_approve && <Badge variant="outline">Auto-approve</Badge>}
-              </div>
-            </div>
-            <CardDescription>{cronToLabel(sched.cron_expression)}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Keywords:</span>{" "}
-                <span className="font-medium">{sched.keywords.join(", ")}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Locations:</span>{" "}
-                <span className="font-medium">{sched.locations.join(", ")}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Last run:</span>{" "}
-                <span className="font-medium">{relativeTime(sched.last_run_at)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Next run:</span>{" "}
-                <span className="font-medium">
-                  {sched.is_active ? formatNextRun(sched.next_run_at) : "—"}
-                </span>
-              </div>
-            </div>
-            {sched.last_session_id && (
-              <div className="mt-3">
-                <Link
-                  href={`/session/${sched.last_session_id}`}
-                  className="text-sm text-blue-600 hover:underline"
-                >
-                  View last session
-                </Link>
-              </div>
-            )}
-          </CardContent>
-          <CardFooter className="gap-2">
-            <Button size="sm" variant="outline" onClick={() => handleTogglePause(sched.id)}>
-              {sched.is_active ? "Pause" : "Resume"}
-            </Button>
-            {sched.is_active && (
-              <Button size="sm" variant="outline" onClick={() => handleRunNow(sched.id)}>
-                Run Now
-              </Button>
-            )}
-            <Button size="sm" variant="destructive" onClick={() => handleDelete(sched.id)}>
-              Delete
-            </Button>
-          </CardFooter>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id={`edit-auto-approve-${sched.id}`}
+                    checked={editAutoApprove}
+                    onChange={(e) => setEditAutoApprove(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor={`edit-auto-approve-${sched.id}`} className="text-sm">
+                    Auto-approve applications (skip shortlist review step)
+                  </label>
+                </div>
+              </CardContent>
+              <CardFooter className="gap-2">
+                <Button onClick={handleSaveEdit} disabled={saving || !editKeywords.trim()}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </Button>
+                <Button variant="outline" onClick={() => setEditingId(null)}>
+                  Cancel
+                </Button>
+              </CardFooter>
+            </>
+          ) : (
+            <>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{sched.name}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    {sched.is_running ? (
+                      <Badge className="bg-green-600 hover:bg-green-600 text-white animate-pulse">Running</Badge>
+                    ) : sched.is_active ? (
+                      <Badge variant="default">Active</Badge>
+                    ) : (
+                      <Badge variant="secondary">Paused</Badge>
+                    )}
+                    {sched.auto_approve && <Badge variant="outline">Auto-approve</Badge>}
+                  </div>
+                </div>
+                <CardDescription>{cronToLabel(sched.cron_expression)}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Keywords:</span>{" "}
+                    <span className="font-medium">{sched.keywords.join(", ")}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Locations:</span>{" "}
+                    <span className="font-medium">{sched.locations.join(", ")}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Last run:</span>{" "}
+                    <span className="font-medium">{relativeTime(sched.last_run_at)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Next run:</span>{" "}
+                    <span className="font-medium">
+                      {sched.is_active ? formatNextRun(sched.next_run_at) : "—"}
+                    </span>
+                  </div>
+                </div>
+                {sched.last_session_id && (
+                  <div className="mt-3">
+                    <Link
+                      href={`/session/${sched.last_session_id}`}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      View last session
+                    </Link>
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter className="gap-2">
+                <Button size="sm" variant="outline" onClick={() => startEdit(sched)}>
+                  Edit
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleTogglePause(sched.id)}>
+                  {sched.is_active ? "Pause" : "Resume"}
+                </Button>
+                {sched.is_active && (
+                  <Button size="sm" variant="outline" onClick={() => handleRunNow(sched.id)}>
+                    Run Now
+                  </Button>
+                )}
+                <Button size="sm" variant="destructive" onClick={() => handleDelete(sched.id)}>
+                  Delete
+                </Button>
+              </CardFooter>
+            </>
+          )}
         </Card>
       ))}
 
