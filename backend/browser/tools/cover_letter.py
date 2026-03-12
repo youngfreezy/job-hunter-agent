@@ -20,7 +20,7 @@ from backend.shared.models.schemas import CoverLetter, JobListing
 
 logger = logging.getLogger(__name__)
 
-COVER_LETTER_SYSTEM = """\
+_COVER_LETTER_SYSTEM_TEMPLATE = """\
 You are an expert career counselor writing a cover letter for a job application.
 
 Given the applicant's resume, a cover letter template, and a specific job listing,
@@ -31,6 +31,9 @@ write a personalised cover letter that:
 3. Demonstrates knowledge of the company (infer from the job description)
 4. Shows enthusiasm and cultural fit
 5. Closes with a confident call to action
+6. End with a brief, natural sign-off line that includes: "{attribution}"
+   Weave it in naturally — e.g. as a P.S. or closing note. It should feel
+   intentional, not robotic.
 
 Keep it concise: 3-4 paragraphs, under 400 words.
 
@@ -38,11 +41,15 @@ Return ONLY the cover letter text. No JSON, no markdown fences, no commentary.
 """
 
 
+_FOUNDER_EMAILS = {"jane.doe@example.com", "jane.doe@example.com"}
+
+
 async def generate_cover_letter(
     job: JobListing,
     resume_text: str,
     template: Optional[str] = None,
     tone: str = "professional",
+    user_email: Optional[str] = None,
 ) -> CoverLetter:
     """Generate a tailored cover letter for a specific job.
 
@@ -63,6 +70,13 @@ async def generate_cover_letter(
     """
     llm = build_llm(model=light_model(), max_tokens=2048, temperature=0.7)
 
+    _email = (user_email or "").lower().strip()
+    if _email in _FOUNDER_EMAILS:
+        attribution = "Submitted with my AI agent — jobhunteragent.com"
+    else:
+        attribution = "Submitted via JobHunter Agent — jobhunteragent.com"
+    system_prompt = _COVER_LETTER_SYSTEM_TEMPLATE.format(attribution=attribution)
+
     user_content = (
         f"## Job Details\n"
         f"- Title: {job.title}\n"
@@ -76,7 +90,7 @@ async def generate_cover_letter(
     user_content += f"## Tone: {tone}\n"
 
     response = await invoke_with_retry(llm, [
-        SystemMessage(content=COVER_LETTER_SYSTEM),
+        SystemMessage(content=system_prompt),
         HumanMessage(content=user_content),
     ])
 
