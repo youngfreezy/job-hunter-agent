@@ -160,6 +160,18 @@ async def _run_schedule(
                 f.write(resume_bytes)
             resume_file_path = tmp_path
 
+            # Persist encrypted resume to Postgres keyed by session_id so
+            # the /resume-file endpoint can serve it to Skyvern.
+            # Without this, autopilot sessions return 404 on resume download.
+            try:
+                from backend.shared.resume_crypto import _get_fernet
+                from backend.shared.resume_store import save_resume
+                enc_data = _get_fernet().encrypt(resume_bytes)
+                save_resume(session_id, enc_data, ext)
+                logger.info("Autopilot: persisted resume to DB for session %s", session_id)
+            except Exception:
+                logger.exception("Autopilot: failed to persist resume to DB for session %s", session_id)
+
     # Build SessionConfig from stored JSON
     session_config = None
     if sched.get("session_config"):
