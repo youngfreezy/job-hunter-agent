@@ -316,6 +316,15 @@ async def _stream_graph(
                 "status": status,
                 "session_summary": summary,
             })
+            # Clear is_running on autopilot schedule if applicable
+            meta = session_registry.get(session_id, {})
+            ap_schedule_id = meta.get("autopilot_schedule_id")
+            if ap_schedule_id:
+                try:
+                    from backend.shared.autopilot_store import mark_run_complete
+                    await mark_run_complete(ap_schedule_id)
+                except Exception:
+                    logger.debug("Failed to clear autopilot is_running", exc_info=True)
             return None  # Terminal — no interrupt
 
         # v2 streaming: interrupts arrive as data, not exceptions
