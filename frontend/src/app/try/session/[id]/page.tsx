@@ -188,9 +188,14 @@ export default function TrialSessionPage() {
           {status === "done" ? "Session Complete!" : "Your AI Job Hunt is in Progress"}
         </h1>
         {status !== "done" && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
-            {STATUS_DESCRIPTIONS[status] || "Working on it..."}
-          </p>
+          <div className="mb-6">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              {STATUS_DESCRIPTIONS[status] || "Working on it..."}
+            </p>
+            <p className="text-sm text-zinc-400 dark:text-zinc-500 mt-1">
+              Feel free to step away — this typically takes 15-20 minutes. We&apos;ll email you when it&apos;s done.
+            </p>
+          </div>
         )}
         {status === "done" && <div className="mb-6" />}
 
