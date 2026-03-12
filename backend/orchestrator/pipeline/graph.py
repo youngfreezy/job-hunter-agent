@@ -494,7 +494,7 @@ async def application_node(state: JobHunterState) -> dict:
 
 def route_after_application(
     state: JobHunterState,
-) -> Literal["application", "verification", "shortlist_review"]:
+) -> Literal["application", "verification", "shortlist_review", "auto_approve_gate"]:
     """Decide whether to continue applying, retry, or move to verification.
 
     Circuit-breaker: if consecutive failures exceed the threshold AND there
@@ -520,6 +520,13 @@ def route_after_application(
             "returning to shortlist review for retry.",
             consecutive,
         )
+        # For autopilot/free-trial, route through auto_approve_gate to avoid
+        # pausing at the shortlist_review interrupt
+        prefs = state.get("preferences") or {}
+        if isinstance(prefs, dict) and (
+            prefs.get("_autopilot_auto_approve") or prefs.get("_skip_coach_review")
+        ):
+            return "auto_approve_gate"
         return "shortlist_review"
 
     return "application"
@@ -527,7 +534,7 @@ def route_after_application(
 
 def route_after_supervise_after_application(
     state: JobHunterState,
-) -> Literal["pause_gate", "application", "verification", "shortlist_review"]:
+) -> Literal["pause_gate", "application", "verification", "shortlist_review", "auto_approve_gate"]:
     if state.get("pause_requested"):
         return "pause_gate"
     return route_after_application(state)
@@ -846,6 +853,7 @@ def build_graph(checkpointer=None):
             "application": "application",
             "verification": "verification",
             "shortlist_review": "shortlist_review",
+            "auto_approve_gate": "auto_approve_gate",
         },
     )
     g.add_edge("application", "supervise_after_application")
