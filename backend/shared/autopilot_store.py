@@ -110,7 +110,7 @@ async def create_schedule(
 
     def _insert():
         with _connect() as conn:
-            row = conn.execute(
+            cur = conn.execute(
                 """
                 INSERT INTO autopilot_schedules
                     (id, user_id, name, keywords, locations, remote_only,
