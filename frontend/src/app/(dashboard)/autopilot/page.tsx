@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
   deleteAutopilotSchedule,
   toggleAutopilotPause,
   triggerAutopilotNow,
+  getAuthHeaders,
 } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -77,6 +79,7 @@ function formatNextRun(iso: string | null): string {
 }
 
 export default function AutopilotPage() {
+  const router = useRouter();
   const [schedules, setSchedules] = useState<AutopilotSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -94,6 +97,11 @@ export default function AutopilotPage() {
 
   async function load() {
     try {
+      const headers = await getAuthHeaders();
+      if (!headers.Authorization) {
+        router.push("/login");
+        return;
+      }
       const data = await listAutopilotSchedules();
       setSchedules(data);
     } catch (err) {
@@ -342,13 +350,17 @@ export default function AutopilotPage() {
                   </select>
                   <span className="text-muted-foreground">:</span>
                   <input
-                    type="number"
-                    min={0}
-                    max={59}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={2}
+                    placeholder="00"
                     value={customMinute}
                     onChange={(e) => {
                       const v = e.target.value.replace(/\D/g, "").slice(0, 2);
-                      const n = Math.min(59, Math.max(0, Number(v)));
+                      setCustomMinute(v);
+                    }}
+                    onBlur={() => {
+                      const n = Math.min(59, Math.max(0, Number(customMinute) || 0));
                       setCustomMinute(String(n).padStart(2, "0"));
                     }}
                     className="rounded-md border px-2 py-1.5 text-sm bg-background w-14 text-center tabular-nums"

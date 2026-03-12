@@ -121,9 +121,18 @@ export default function TrialSessionPage() {
           const s = (entry.scored as number) ?? (entry.scored_so_far as number);
           if (typeof s === "number") setScored(s);
         }
+        if (entry.event === "application_submitted") {
+          setSubmitted((s) => s + 1);
+        }
+        if (entry.event === "application_failed") {
+          setFailed((f) => f + 1);
+        }
         if (entry.event === "application_progress") {
-          if (entry.status === "submitted") setSubmitted((s) => s + 1);
-          if (entry.status === "failed") setFailed((f) => f + 1);
+          const sub = entry.submitted as number;
+          const fail = entry.failed as number;
+          const skip = entry.skipped as number;
+          if (typeof sub === "number") setSubmitted(sub);
+          if (typeof fail === "number") setFailed((typeof skip === "number" ? fail + skip : fail));
         }
       },
       setConnected,
@@ -261,7 +270,7 @@ export default function TrialSessionPage() {
               {events.length === 0 && (
                 <p className="text-sm text-zinc-400">Waiting for events...</p>
               )}
-              {[...events].reverse().filter((e) => e.event !== "agent_complete").slice(0, 50).map((e, i) => (
+              {[...events].reverse().filter((e) => !["agent_complete", "scoring", "discovery"].includes(e.event)).slice(0, 50).map((e, i) => (
                 <div key={i} className="flex items-start gap-3 text-sm">
                   <span className="text-xs text-zinc-400 mt-0.5 whitespace-nowrap font-mono">
                     {new Date(e.timestamp).toLocaleTimeString()}
@@ -383,14 +392,28 @@ function EventBadge({ event }: { event: string }) {
     scoring_progress: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
     tailoring_progress: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
     application_progress: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+    application_submitted: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+    application_failed: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+    application_start: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
     coaching_progress: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+    verification_progress: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+    reporting_progress: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
     error: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
     done: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
   };
 
+  const labels: Record<string, string> = {
+    application_submitted: "applied",
+    application_failed: "skipped",
+    application_start: "applying",
+    application_progress: "applying",
+    verification_progress: "verifying",
+    reporting_progress: "report",
+  };
+
   return (
     <span className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${colors[event] || "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"}`}>
-      {event.replace(/_/g, " ")}
+      {labels[event] || event.replace(/_/g, " ")}
     </span>
   );
 }
@@ -401,14 +424,26 @@ function formatEvent(e: EventEntry): string {
   if (e.event === "scoring_progress") return (e.step as string) || `Scored ${e.scored_so_far ?? e.scored ?? "?"} jobs`;
   if (e.event === "tailoring_progress") return `Tailored resume ${e.current}/${e.total}`;
   if (e.event === "application_progress") {
+    if (e.step) return String(e.step);
     const company = (e.company as string) || (e.job_title as string) || "";
-    if (e.status === "submitted") return `Applied to ${company}`;
-    if (e.status === "failed") return `Skipped ${company}: ${e.error || "verification required"}`;
-    return `${e.status}: ${company}`;
+    if (company) return `Processing ${company}`;
+    return "Processing applications...";
   }
+  if (e.event === "application_start") {
+    const company = (e.company as string) || (e.job_title as string) || "";
+    return `Starting application: ${company} (${e.current}/${e.total})`;
+  }
+  if (e.event === "application_submitted") {
+    return `Applied to ${(e.company as string) || (e.job_title as string) || "job"}`;
+  }
+  if (e.event === "application_failed") {
+    const company = (e.company as string) || (e.job_title as string) || "";
+    return `Skipped ${company}: ${e.error || "could not complete"}`;
+  }
+  if (e.event === "verification_progress") return (e.step as string) || "Verifying submissions...";
+  if (e.event === "reporting_progress") return (e.step as string) || "Generating report...";
   if (e.event === "coaching_progress") return String(e.message || "Analyzing resume...");
-  if (e.event === "agent_complete") return "Agent step complete";
   if (e.event === "done") return "Session complete!";
   if (e.event === "error") return String(e.message || e.error || "An error occurred");
-  return String(e.message || e.event.replace(/_/g, " "));
+  return String(e.message || e.step || e.event.replace(/_/g, " "));
 }

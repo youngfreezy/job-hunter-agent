@@ -109,14 +109,17 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
 
         # --- Average fit score ---
         resume_scores = state.get("resume_scores", {})
-        if resume_scores:
-            avg_fit_score = round(
-                sum(resume_scores.values()) / len(resume_scores), 1
-            )
+        # Filter out zero/falsy values from resume_scores
+        nonzero_scores = [v for v in (resume_scores or {}).values() if v]
+        if nonzero_scores:
+            avg_fit_score = round(sum(nonzero_scores) / len(nonzero_scores), 1)
         elif scored_jobs:
-            avg_fit_score = round(
-                sum(sj.score for sj in scored_jobs) / len(scored_jobs), 1
-            )
+            scores = []
+            for sj in scored_jobs:
+                s = sj.score if hasattr(sj, "score") else sj.get("score", 0) if isinstance(sj, dict) else 0
+                if s:
+                    scores.append(s)
+            avg_fit_score = round(sum(scores) / len(scores), 1) if scores else 0.0
         else:
             avg_fit_score = 0.0
 
