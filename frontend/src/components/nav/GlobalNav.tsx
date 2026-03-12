@@ -23,6 +23,7 @@ declare global {
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/apply", label: "Review & Apply" },
+  { href: "/quick-apply", label: "Quick Apply" },
   { href: "/interview-prep", label: "Interview Prep" },
   { href: "/career-pivot", label: "Career Change" },
   { href: "/freelance", label: "Freelance" },

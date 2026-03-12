@@ -235,7 +235,10 @@ export async function startSession(params: {
     job_boards: string[];
     ai_temperature?: number;
     scoring_strictness?: number;
+    discovery_mode?: string;
+    job_urls?: string[];
   };
+  job_urls?: string[];
 }): Promise<{ session_id: string }> {
   const auth = await getAuthHeaders();
   const res = await apiFetch(`${API_BASE}/api/sessions`, {

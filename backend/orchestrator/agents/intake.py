@@ -51,6 +51,31 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
 
     Returns a dict that LangGraph merges back into the pipeline state.
     """
+    # Quick Apply: if job_urls are provided, hydrate them into JobListings
+    # and skip the LLM-based keyword extraction (keywords may be empty)
+    job_urls = state.get("job_urls", [])
+    if job_urls:
+        from backend.orchestrator.agents.url_hydrator import hydrate_urls
+        try:
+            hydrated = await hydrate_urls(job_urls)
+            logger.info("Quick Apply: hydrated %d URLs into JobListings", len(hydrated))
+            return {
+                "search_config": SearchConfig(
+                    keywords=state.get("keywords") or ["Quick Apply"],
+                    locations=state.get("locations", ["Remote"]),
+                    remote_only=state.get("remote_only", False),
+                ),
+                "discovered_jobs": hydrated,
+                "status": "coaching",
+                "agent_statuses": {"intake": "done"},
+            }
+        except Exception as exc:
+            logger.exception("URL hydration failed: %s", exc)
+            return {
+                "errors": [f"URL hydration failed: {exc}"],
+                "agent_statuses": {"intake": "failed"},
+            }
+
     try:
         llm = build_llm(model=default_model(), max_tokens=4096, temperature=0.0)
         structured_llm = llm.with_structured_output(SearchConfig)

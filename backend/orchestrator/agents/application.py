@@ -925,7 +925,7 @@ async def _apply_to_job(
                 nav_url = urlunparse(parsed._replace(query=""))
                 logger.info("Cleaned LinkedIn URL: %s", nav_url)
             await page.goto(nav_url, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(2)  # settle (Bright Data may need longer)
+            await asyncio.sleep(2)  # settle
             logger.info("Final page URL after navigation: %s", page.url)
 
             # If CAPTCHA appears early, pause for manual intervention.

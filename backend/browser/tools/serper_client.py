@@ -2,7 +2,7 @@
 
 """Serper Google Search client -- simple httpx wrapper for google.serper.dev.
 
-Replaces Bright Data MCP's search_engine tool. Stateless REST calls,
+Stateless REST calls,
 no subprocess management, no Node.js dependency.
 """
 

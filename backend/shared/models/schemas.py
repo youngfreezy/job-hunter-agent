@@ -44,6 +44,7 @@ class JobBoard(str, Enum):
     GLASSDOOR = "glassdoor"
     ZIPRECRUITER = "ziprecruiter"
     GOOGLE_JOBS = "google_jobs"
+    OTHER = "other"
 
 
 class ATSType(str, Enum):
@@ -252,10 +253,12 @@ class SessionConfig(BaseModel):
     # AI settings
     ai_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
     scoring_strictness: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Quick Apply — user-provided job URLs (skips discovery)
+    job_urls: List[str] = Field(default_factory=list)
 
 
 class StartSessionRequest(BaseModel):
-    keywords: List[str]
+    keywords: List[str] = Field(default_factory=list)
     locations: List[str] = Field(default_factory=lambda: ["Remote"])
     remote_only: bool = False
     salary_min: Optional[int] = None
@@ -274,6 +277,8 @@ class StartSessionRequest(BaseModel):
     linkedin_url: Optional[str] = None
     preferences: Dict[str, Any] = Field(default_factory=dict)
     config: Optional[SessionConfig] = None
+    # Quick Apply — user-provided job URLs (skips discovery)
+    job_urls: List[str] = Field(default_factory=list)
 
     @field_validator("resume_file_path")
     @classmethod
