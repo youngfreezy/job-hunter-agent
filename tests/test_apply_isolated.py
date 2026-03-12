@@ -119,7 +119,7 @@ async def test_apply_single(job: JobListing) -> ApplicationResult:
     logger.info("=" * 70)
 
     try:
-        # Start browser (routes to Bright Data for supported boards)
+        # Start browser
         await manager.start_for_task(
             board=job.board,
             purpose="apply",

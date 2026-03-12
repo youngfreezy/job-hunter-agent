@@ -402,6 +402,16 @@ export default function Home() {
                 No account or credit card required. Upload your resume and go.
               </p>
               <p className="mt-1 text-sm text-zinc-400 dark:text-zinc-500">
+                Already have jobs in mind?{" "}
+                <Link
+                  href="/quick-apply"
+                  className="underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                >
+                  Paste URLs and apply instantly
+                </Link>
+                .
+              </p>
+              <p className="mt-1 text-sm text-zinc-400 dark:text-zinc-500">
                 Or{" "}
                 <a
                   href="#product-tour"

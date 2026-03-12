@@ -158,8 +158,3 @@ job_board_breaker = CircuitBreaker(
     recovery_timeout=120,
 )
 
-bright_data_breaker = CircuitBreaker(
-    "bright_data",
-    failure_threshold=3,
-    recovery_timeout=90,
-)

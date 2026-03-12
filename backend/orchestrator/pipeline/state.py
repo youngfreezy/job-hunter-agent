@@ -58,6 +58,9 @@ class JobHunterState(TypedDict):
     linkedin_url: Optional[str]
     preferences: Dict[str, Any]
 
+    # --- Quick Apply (user-provided URLs that skip discovery) ---
+    job_urls: List[str]
+
     # --- Intake output ---
     search_config: Optional[SearchConfig]
 

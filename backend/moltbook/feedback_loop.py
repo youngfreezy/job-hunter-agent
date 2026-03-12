@@ -35,7 +35,7 @@ _RELEVANT_TOPICS = {
     "captcha", "ats", "greenhouse", "lever", "workday", "ashby",
     "linkedin", "indeed", "glassdoor", "ziprecruiter",
     "application", "form_fill", "resume", "cover_letter",
-    "discovery", "rate_limit", "proxy", "bright_data", "skyvern",
+    "discovery", "rate_limit", "proxy", "skyvern",
 }
 
 

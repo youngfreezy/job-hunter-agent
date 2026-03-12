@@ -1,8 +1,8 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Discovery Agent -- MCP-based agentic discovery.
+"""Discovery Agent -- Serper-based agentic discovery.
 
-Uses Bright Data MCP ``search_engine`` to find jobs directly on ATS
+Uses Serper (Google Search API) to find jobs directly on ATS
 platforms (Greenhouse, Lever, Ashby, Workday, etc.) plus the free
 Greenhouse public API.  No browser required, no auth-wall issues.
 """

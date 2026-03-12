@@ -462,12 +462,19 @@ async def _run_pipeline(
             "errors": [],
             "consecutive_failures": 0,
             "applications_used": 0,
+            "job_urls": request_body.job_urls or [],
             "session_config": (
                 request_body.config.model_dump()
                 if request_body.config
                 else None
             ),
         }
+
+        # Quick Apply: when job_urls are provided, auto-set discovery_mode
+        if initial_state["job_urls"]:
+            cfg = initial_state.get("session_config") or {}
+            cfg["discovery_mode"] = "manual_urls"
+            initial_state["session_config"] = cfg
 
         await _emit(session_id, "status", {
             "status": "intake",
