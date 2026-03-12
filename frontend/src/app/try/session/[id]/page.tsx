@@ -86,6 +86,7 @@ export default function TrialSessionPage() {
 
   const trialEmail = getTrialEmail();
   const cleanupRef = useRef<(() => void) | null>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const token = getTrialToken();
@@ -145,6 +146,10 @@ export default function TrialSessionPage() {
       cleanup();
     };
   }, [sessionId, router]);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [events.length]);
 
   const currentStepIdx = STATUS_ORDER.indexOf(status);
 
@@ -277,7 +282,7 @@ export default function TrialSessionPage() {
               {events.length === 0 && (
                 <p className="text-sm text-zinc-400">Waiting for events...</p>
               )}
-              {[...events].reverse().filter((e) => !["agent_complete", "scoring", "discovery"].includes(e.event)).slice(0, 50).map((e, i) => (
+              {events.filter((e) => !["agent_complete", "scoring", "discovery"].includes(e.event)).slice(-50).map((e, i) => (
                 <div key={i} className="flex items-start gap-3 text-sm">
                   <span className="text-xs text-zinc-400 mt-0.5 whitespace-nowrap font-mono">
                     {new Date(e.timestamp).toLocaleTimeString()}
@@ -288,6 +293,7 @@ export default function TrialSessionPage() {
                   </span>
                 </div>
               ))}
+              <div ref={logEndRef} />
             </div>
           </CardContent>
         </Card>
