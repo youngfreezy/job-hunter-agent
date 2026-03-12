@@ -808,8 +808,10 @@ async def _apply_to_job(
 
             cover_letter_text = ""
             if should_generate_cl:
+                _user_email = (user_profile.get("email") or "")
                 cover_letter = await generate_cover_letter(
                     job=job, resume_text=resume_text, template=cover_letter_template,
+                    user_email=_user_email,
                 )
                 cover_letter_text = cover_letter.text
 
@@ -1062,10 +1064,12 @@ async def _apply_to_job(
                     "total": _total_q,
                     "progress": _pct,
                 })
+                _cl_profile = await _extract_user_profile(state)
                 cover_letter = await generate_cover_letter(
                     job=job,
                     resume_text=resume_text,
                     template=cover_letter_template,
+                    user_email=_cl_profile.get("email", ""),
                 )
                 cover_letter_text = cover_letter.text
 
