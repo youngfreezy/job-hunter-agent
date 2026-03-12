@@ -208,10 +208,11 @@ async def apply_with_skyvern(
     if settings.SKYVERN_API_KEY:
         headers["x-api-key"] = settings.SKYVERN_API_KEY
 
-    # Generate a signed resume download URL for Skyvern
-    resume_file_url = None
-    if resume_file_path:
-        resume_file_url = await _generate_resume_url(session_id, resume_file_path)
+    # Generate a signed resume download URL for Skyvern.
+    # Always attempt — the serve endpoint reads from Postgres, so even if
+    # resume_file_path is None (e.g. autopilot sessions), the resume may
+    # still be available in the DB.
+    resume_file_url = await _generate_resume_url(session_id, resume_file_path or "")
 
     # Build task request
     navigation_goal = _build_navigation_goal(job, user_profile, cover_letter)
