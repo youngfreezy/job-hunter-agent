@@ -55,6 +55,7 @@ class Settings(BaseSettings):
 
     # --- System alerts ---
     ADMIN_PHONE: Optional[str] = None  # phone number for system alerts (Skyvern credits, etc.)
+    ADMIN_EMAIL: Optional[str] = None  # email for system alerts (fallback when SMS fails)
 
     # --- Stripe ---
     STRIPE_SECRET_KEY: Optional[str] = None
