@@ -64,8 +64,9 @@ Job criteria:
 - Remote only: {remote_only}
 - Location: {location}
 
-Generate diverse queries using site: operators and keyword variations. \
-Each query should target a different ATS platform or keyword combination. \
+Generate queries using site: operators. Each query MUST include at least one \
+of the exact keywords above — do NOT broaden or substitute with related terms. \
+Each query should target a different ATS platform. \
 Focus on finding CURRENT job postings (2026).
 
 Return a JSON array of query strings, nothing else. Example:

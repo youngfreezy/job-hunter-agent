@@ -119,19 +119,6 @@ def _matches_keywords(job: Dict, keywords: List[str], remote_only: bool) -> bool
         if all(w in title for w in words):
             return True
 
-    # Match software/tech engineering roles specifically
-    software_terms = [
-        "software engineer", "frontend engineer", "backend engineer",
-        "full stack engineer", "fullstack engineer", "platform engineer",
-        "ml engineer", "machine learning engineer", "ai engineer",
-        "data engineer", "data scientist", "applied ai",
-        "research engineer", "infrastructure engineer", "sre",
-        "devops engineer", "security engineer", "systems engineer",
-        "software developer", "web developer",
-    ]
-    if any(term in title for term in software_terms):
-        return True
-
     return False
 
 

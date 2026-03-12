@@ -144,33 +144,46 @@ async def _run_schedule(
 
     # Write resume bytes to temp file if available
     resume_file_path = None
+    resume_bytes: Optional[bytes] = None
+    ext = ".pdf"
+
     if sched.get("resume_bytes") or sched.get("resume_filename"):
         # Use batch-fetched bytes if available, fall back to individual fetch
         if resume_bytes_map and schedule_id in resume_bytes_map:
             resume_bytes = resume_bytes_map[schedule_id]
         else:
             resume_bytes = await _get_resume_bytes(schedule_id)
-        if resume_bytes:
-            resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
-            os.makedirs(resume_dir, exist_ok=True)
-            filename = sched.get("resume_filename", "resume.pdf")
-            ext = os.path.splitext(filename)[1] or ".pdf"
-            tmp_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}{ext}")
-            with open(tmp_path, "wb") as f:
-                f.write(resume_bytes)
-            resume_file_path = tmp_path
+        ext = os.path.splitext(sched.get("resume_filename", "resume.pdf"))[1] or ".pdf"
 
-            # Persist encrypted resume to Postgres keyed by session_id so
-            # the /resume-file endpoint can serve it to Skyvern.
-            # Without this, autopilot sessions return 404 on resume download.
-            try:
-                from backend.shared.resume_crypto import _get_fernet
-                from backend.shared.resume_store import save_resume
-                enc_data = _get_fernet().encrypt(resume_bytes)
-                save_resume(session_id, enc_data, ext)
-                logger.info("Autopilot: persisted resume to DB for session %s", session_id)
-            except Exception:
-                logger.exception("Autopilot: failed to persist resume to DB for session %s", session_id)
+    # Fallback: pull the user's most recent resume from any prior session
+    if not resume_bytes:
+        try:
+            from backend.shared.resume_store import get_latest_resume_for_user
+            result = get_latest_resume_for_user(user_id)
+            if result:
+                resume_bytes, ext = result
+                logger.info("Autopilot: using user's latest resume for schedule %s", schedule_id)
+        except Exception:
+            logger.debug("Autopilot: failed to fetch user's latest resume", exc_info=True)
+
+    if resume_bytes:
+        resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
+        os.makedirs(resume_dir, exist_ok=True)
+        tmp_path = os.path.join(resume_dir, f"{uuid.uuid4().hex}{ext}")
+        with open(tmp_path, "wb") as f:
+            f.write(resume_bytes)
+        resume_file_path = tmp_path
+
+        # Persist encrypted resume to Postgres keyed by session_id so
+        # the /resume-file endpoint can serve it to Skyvern.
+        try:
+            from backend.shared.resume_crypto import _get_fernet
+            from backend.shared.resume_store import save_resume
+            enc_data = _get_fernet().encrypt(resume_bytes)
+            save_resume(session_id, enc_data, ext)
+            logger.info("Autopilot: persisted resume to DB for session %s", session_id)
+        except Exception:
+            logger.exception("Autopilot: failed to persist resume to DB for session %s", session_id)
 
     # Build SessionConfig from stored JSON
     session_config = None
