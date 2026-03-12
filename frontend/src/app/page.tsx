@@ -1670,6 +1670,9 @@ export default function Home() {
               <Link href="/status" className="hover:text-zinc-900 dark:hover:text-white">
                 Status
               </Link>
+              <Link href="/about" className="hover:text-zinc-900 dark:hover:text-white">
+                About
+              </Link>
             </div>
           </div>
           {/* Social links */}
