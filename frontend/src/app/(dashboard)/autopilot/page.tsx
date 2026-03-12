@@ -52,7 +52,27 @@ const DAY_OPTIONS = [
 
 function cronToLabel(cron: string): string {
   const preset = CRON_PRESETS.find((p) => p.value === cron);
-  return preset?.label ?? cron;
+  if (preset) return preset.label;
+
+  // Parse custom cron into a readable string
+  const parts = cron.split(" ");
+  if (parts.length !== 5) return cron;
+  const [minute, hour, , , dayOfWeek] = parts;
+  const h = parseInt(hour);
+  const m = parseInt(minute);
+  const timeStr = `${h === 0 ? 12 : h > 12 ? h - 12 : h}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+
+  const dayMap: Record<string, string> = {
+    "*": "daily",
+    "1-5": "weekdays",
+    "1,3,5": "Mon/Wed/Fri",
+    "2,4": "Tue/Thu",
+    "1": "Mondays",
+    "0,6": "weekends",
+  };
+  const dayStr = dayMap[dayOfWeek] ?? dayOfWeek;
+
+  return `${dayStr.charAt(0).toUpperCase() + dayStr.slice(1)} at ${timeStr}`;
 }
 
 function relativeTime(iso: string | null): string {
