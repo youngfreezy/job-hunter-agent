@@ -217,7 +217,9 @@ export default function AutopilotPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">{sched.name}</CardTitle>
               <div className="flex items-center gap-2">
-                {sched.is_active ? (
+                {sched.is_active && sched.next_run_at && new Date(sched.next_run_at).getTime() <= Date.now() ? (
+                  <Badge className="bg-green-600 hover:bg-green-600 text-white animate-pulse">Running</Badge>
+                ) : sched.is_active ? (
                   <Badge variant="default">Active</Badge>
                 ) : (
                   <Badge variant="secondary">Paused</Badge>
