@@ -141,9 +141,10 @@ async def create_schedule(
                     notification_email,
                     next_run_at,
                 ),
-            ).fetchone()
+            )
+            row = cur.fetchone()
             conn.commit()
-            return _row_to_dict(row, conn.description)
+            return _row_to_dict(row, cur.description)
 
     return await asyncio.to_thread(_insert)
 
@@ -153,11 +154,12 @@ async def get_schedule(schedule_id: str) -> Optional[Dict[str, Any]]:
 
     def _get():
         with _connect() as conn:
-            row = conn.execute(
+            cur = conn.execute(
                 "SELECT * FROM autopilot_schedules WHERE id = %s",
                 (schedule_id,),
-            ).fetchone()
-            return _row_to_dict(row, conn.description) if row else None
+            )
+            row = cur.fetchone()
+            return _row_to_dict(row, cur.description) if row else None
 
     return await asyncio.to_thread(_get)
 
@@ -203,12 +205,13 @@ async def update_schedule(schedule_id: str, user_id: str, updates: Dict[str, Any
 
     def _update():
         with _connect() as conn:
-            row = conn.execute(
+            cur = conn.execute(
                 f"UPDATE autopilot_schedules SET {set_clauses} WHERE id = %s AND user_id = %s RETURNING *",
                 values + [schedule_id, user_id],
-            ).fetchone()
+            )
+            row = cur.fetchone()
             conn.commit()
-            return _row_to_dict(row, conn.description) if row else None
+            return _row_to_dict(row, cur.description) if row else None
 
     return await asyncio.to_thread(_update)
 
