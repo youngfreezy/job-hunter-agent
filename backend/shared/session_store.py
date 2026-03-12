@@ -32,8 +32,9 @@ def upsert_session(session_id: str, data: Dict[str, Any]) -> None:
                 INSERT INTO sessions (id, user_id, status, keywords, locations,
                                       remote_only, salary_min, resume_text_snippet,
                                       linkedin_url, applications_submitted,
-                                      applications_failed, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                                      applications_failed, created_at, updated_at,
+                                      is_autopilot)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
                 ON CONFLICT (id) DO UPDATE SET
                     status = EXCLUDED.status,
                     applications_submitted = EXCLUDED.applications_submitted,
@@ -53,6 +54,7 @@ def upsert_session(session_id: str, data: Dict[str, Any]) -> None:
                     data.get("applications_submitted", 0),
                     data.get("applications_failed", 0),
                     data.get("created_at", datetime.now(timezone.utc).isoformat()),
+                    data.get("is_autopilot", False),
                 ),
             )
             conn.commit()
@@ -106,7 +108,7 @@ def get_sessions_for_user(user_id: str, include_archived: bool = False) -> List[
                 f"""SELECT id, user_id, status, keywords, locations, remote_only,
                           salary_min, resume_text_snippet, linkedin_url,
                           applications_submitted, applications_failed, created_at,
-                          archived_at
+                          archived_at, is_autopilot
                    FROM sessions
                    WHERE user_id::text = %s {archive_filter}
                    ORDER BY created_at DESC""",
@@ -128,6 +130,7 @@ def get_sessions_for_user(user_id: str, include_archived: bool = False) -> List[
                     "applications_failed": r[10] or 0,
                     "created_at": r[11].isoformat() if r[11] else "",
                     "archived_at": r[12].isoformat() if r[12] else None,
+                    "is_autopilot": r[13] if r[13] is not None else False,
                 }
                 for r in rows
             ]

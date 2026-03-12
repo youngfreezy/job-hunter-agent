@@ -267,6 +267,7 @@ export interface SessionListItem {
   applications_failed: number;
   created_at: string;
   archived_at: string | null;
+  is_autopilot?: boolean;
 }
 
 export interface ResumeAnalysis {
