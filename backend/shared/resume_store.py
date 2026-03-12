@@ -91,6 +91,33 @@ def get_resume_bytes(session_id: str) -> Optional[tuple[bytes, str]]:
     return (_get_fernet().decrypt(encrypted_data), ext)
 
 
+def get_latest_resume_for_user(user_id: str) -> Optional[tuple[bytes, str]]:
+    """Get the most recent decrypted resume for a user (across all sessions).
+
+    Joins resume_files with sessions to find the latest resume uploaded
+    by this user. Returns (plaintext_bytes, extension) or None.
+    """
+    _ensure_table()
+    pool = get_pool()
+    with pool.connection() as conn:
+        row = conn.execute(
+            """
+            SELECT rf.encrypted_data, rf.original_extension
+            FROM resume_files rf
+            JOIN sessions s ON s.id::text = rf.session_id
+            WHERE s.user_id = %s
+            ORDER BY rf.created_at DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return None
+    encrypted_data, ext = bytes(row[0]), row[1]
+    from backend.shared.resume_crypto import _get_fernet
+    return (_get_fernet().decrypt(encrypted_data), ext)
+
+
 def delete_resume(session_id: str) -> None:
     """Delete a resume from Postgres."""
     _ensure_table()
