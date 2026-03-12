@@ -36,6 +36,10 @@ _RELEVANT_TOPICS = {
     "linkedin", "indeed", "glassdoor", "ziprecruiter",
     "application", "form_fill", "resume", "cover_letter",
     "discovery", "rate_limit", "proxy", "skyvern",
+    # Broader strategy signals from community feedback
+    "filter", "expired", "date", "posting", "stale", "old listing",
+    "success rate", "conversion", "timeout", "retry", "backfill",
+    "apply", "submit", "blocker", "workaround",
 }
 
 
@@ -222,6 +226,17 @@ def extract_signals(post: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "content": content,
                 "source_post_id": post_id,
             })
+
+    # Filtering / quality signals (e.g. "filter by date", "exclude expired")
+    filter_keywords = ["filter", "expired", "stale", "old listing", "date", "exclude", "skip"]
+    if any(kw in content_lower for kw in filter_keywords):
+        patch_id = _make_patch_id("quality_filter", content)
+        signals.append({
+            "patch_id": patch_id,
+            "category": "quality_filter",
+            "content": content,
+            "source_post_id": post_id,
+        })
 
     # General community tips
     tip_keywords = ["tip", "trick", "found that", "works better", "recommend", "try using"]

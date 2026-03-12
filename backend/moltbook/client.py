@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://www.moltbook.com/api/v1"
 
 # Rate limits (conservative — stay well under Moltbook's actual limits)
-POST_COOLDOWN_SECONDS = 30 * 60  # 1 post per 30 minutes
-MAX_COMMENTS_PER_DAY = 50
+POST_COOLDOWN_SECONDS = 6 * 60 * 60  # 1 post per 6 hours
+MAX_COMMENTS_PER_DAY = 10
 MAX_WRITES_PER_60S = 30
 
 

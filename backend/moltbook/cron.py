@@ -57,6 +57,9 @@ MAX_COMMENTS_PER_CYCLE = 5
 # Cycle counter for dream triggering
 _cycle_count: int = 0
 
+# Last posted summary (skip if metrics unchanged)
+_last_posted_summary: str = ""
+
 
 # ---------------------------------------------------------------------------
 # Persistent post ID tracking (survives deploys)
@@ -172,6 +175,8 @@ async def _step_heartbeat(client: MoltbookClient) -> bool:
 
 async def _step_post_performance(client: MoltbookClient) -> None:
     """Step 2: Post anonymized performance update + ask for community help."""
+    global _last_posted_summary
+
     rl = get_rate_limiter()
     if not rl.can_post():
         logger.info(
@@ -183,6 +188,11 @@ async def _step_post_performance(client: MoltbookClient) -> None:
     summary = generate_performance_summary()
     if "No applications tracked" in summary:
         logger.info("No performance data to share — skipping post")
+        return
+
+    # Skip if metrics haven't changed since last post
+    if summary == _last_posted_summary:
+        logger.info("Metrics unchanged since last post — skipping")
         return
 
     # Append a question asking for community help based on current blockers
@@ -199,6 +209,7 @@ async def _step_post_performance(client: MoltbookClient) -> None:
         post_id = str(result.get("id", result.get("post_id", "")))
         if post_id:
             _save_post_id(post_id)
+        _last_posted_summary = summary
         logger.info("Posted performance update (post_id=%s)", post_id)
     except ValueError as e:
         logger.info("Performance post skipped: %s", e)
@@ -412,13 +423,14 @@ async def _step_check_engagement(client: MoltbookClient) -> None:
         try:
             comments_data = await client.get_comments(post_id, limit=20)
             comments = comments_data.get("comments") or []
-            non_spam = [c for c in comments if not c.get("is_spam", False)]
+            # Process ALL replies to our posts — don't skip spam-flagged
+            # ones since useful agent feedback often gets misclassified.
             logger.info(
-                "Post %s: %d comments (%d non-spam)",
-                post_id, len(comments), len(non_spam),
+                "Post %s: %d comments",
+                post_id, len(comments),
             )
 
-            for comment in non_spam:
+            for comment in comments:
                 comment_content = sanitize(
                     comment.get("content", ""),
                     max_length=500,
