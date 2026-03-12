@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import NextTopLoader from "nextjs-toploader";
 import { Toaster } from "sonner";
+import { Footer } from "@/components/Footer";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -91,7 +92,10 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <NextTopLoader color="#3b82f6" showSpinner={false} height={2} />
         <Toaster position="top-right" richColors />
-        {children}
+        <div className="flex min-h-screen flex-col">
+          <div className="flex-1">{children}</div>
+          <Footer />
+        </div>
       </body>
     </html>
   );

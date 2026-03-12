@@ -556,31 +556,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-zinc-200 px-6 py-8 dark:border-zinc-800">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 md:flex-row">
-          <div>
-            <p className="text-sm font-semibold text-zinc-900 dark:text-white">JobHunter Agent</p>
-            <p className="text-xs text-zinc-500">
-              &copy; {new Date().getFullYear()} V2 Software LLC. All rights reserved.
-            </p>
-          </div>
-          <div className="flex gap-6 text-sm text-zinc-500">
-            <a href="/terms" className="hover:text-zinc-900 dark:hover:text-white">
-              Terms of Service
-            </a>
-            <a href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">
-              Privacy Policy
-            </a>
-            <a
-              href="mailto:support@jobhunteragent.com"
-              className="hover:text-zinc-900 dark:hover:text-white"
-            >
-              Contact
-            </a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
