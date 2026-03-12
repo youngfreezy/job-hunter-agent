@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Integration test for MCP-based agentic discovery.
+"""Integration test for Serper-based agentic discovery.
 
 Imports the actual discover_all_boards() from mcp_discovery and verifies:
 1. Jobs are returned
@@ -10,12 +10,12 @@ Imports the actual discover_all_boards() from mcp_discovery and verifies:
 
 Usage:
     cd backend && source venv/bin/activate
-    BRIGHT_DATA_MCP_TOKEN=c3e3f18f-f09a-43c4-9730-9f00b0ae0501 \
+    SERPER_API_KEY=your-key-here \
         python -m scripts.test_mcp_discovery
 
     Or from repo root:
     cd job-hunter-agent
-    BRIGHT_DATA_MCP_TOKEN=c3e3f18f-f09a-43c4-9730-9f00b0ae0501 \
+    SERPER_API_KEY=your-key-here \
         backend/venv/bin/python -m scripts.test_mcp_discovery
 """
 
@@ -29,12 +29,8 @@ import sys
 # Ensure backend is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Set token if not in env
-if not os.environ.get("BRIGHT_DATA_MCP_TOKEN"):
-    os.environ["BRIGHT_DATA_MCP_TOKEN"] = "c3e3f18f-f09a-43c4-9730-9f00b0ae0501"
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
-logger = logging.getLogger("test_mcp_discovery")
+logger = logging.getLogger("test_serper_discovery")
 
 # Auth-walled domains that should NOT appear in results
 _AUTH_WALLED = {"linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com"}
@@ -54,11 +50,11 @@ async def main():
         remote_only=True,
     )
 
-    session_id = "test-mcp-discovery-001"
-    boards = ["linkedin", "indeed", "glassdoor"]  # ignored by MCP discovery
+    session_id = "test-serper-discovery-001"
+    boards = ["linkedin", "indeed", "glassdoor"]  # ignored by discovery
 
     print("=" * 60)
-    print("MCP Discovery Integration Test")
+    print("Serper Discovery Integration Test")
     print("=" * 60)
     print(f"Keywords: {search_config.keywords}")
     print(f"Remote only: {search_config.remote_only}")
