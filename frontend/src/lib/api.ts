@@ -767,6 +767,7 @@ export interface AutopilotSchedule {
   last_run_at: string | null;
   next_run_at: string | null;
   last_session_id: string | null;
+  is_running: boolean;
   created_at: string;
 }
 

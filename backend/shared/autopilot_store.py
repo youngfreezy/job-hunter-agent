@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS autopilot_schedules (
     last_run_at TIMESTAMPTZ,
     next_run_at TIMESTAMPTZ,
     last_session_id TEXT,
+    is_running BOOLEAN DEFAULT FALSE,
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -263,10 +264,31 @@ async def mark_run(schedule_id: str, session_id: str, next_run_at: datetime) -> 
                 SET last_run_at = NOW(),
                     last_session_id = %s,
                     next_run_at = %s,
+                    is_running = TRUE,
                     updated_at = NOW()
                 WHERE id = %s
                 """,
                 (session_id, next_run_at, schedule_id),
+            )
+            conn.commit()
+
+    await asyncio.to_thread(_mark)
+
+
+async def mark_run_complete(schedule_id: str) -> None:
+    """Clear is_running flag when a session finishes."""
+    import asyncio
+
+    def _mark():
+        with _connect() as conn:
+            conn.execute(
+                """
+                UPDATE autopilot_schedules
+                SET is_running = FALSE,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (schedule_id,),
             )
             conn.commit()
 
