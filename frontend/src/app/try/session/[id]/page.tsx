@@ -121,18 +121,20 @@ export default function TrialSessionPage() {
           const s = (entry.scored as number) ?? (entry.scored_so_far as number);
           if (typeof s === "number") setScored(s);
         }
-        if (entry.event === "application_submitted") {
-          setSubmitted((s) => s + 1);
-        }
-        if (entry.event === "application_failed") {
-          setFailed((f) => f + 1);
-        }
-        if (entry.event === "application_progress") {
-          const sub = entry.submitted as number;
-          const fail = entry.failed as number;
-          const skip = entry.skipped as number;
-          if (typeof sub === "number") setSubmitted(sub);
-          if (typeof fail === "number") setFailed((typeof skip === "number" ? fail + skip : fail));
+        // Use only absolute counts from application_progress summary events.
+        // Incremental counters (s + 1) from application_submitted/failed
+        // double-count on SSE reconnect since all events are replayed.
+        if (
+          entry.event === "application_progress" &&
+          (typeof entry.submitted === "number" ||
+            typeof entry.failed === "number" ||
+            typeof entry.skipped === "number")
+        ) {
+          const sub = typeof entry.submitted === "number" ? entry.submitted : 0;
+          const fail = typeof entry.failed === "number" ? entry.failed : 0;
+          const skip = typeof entry.skipped === "number" ? entry.skipped : 0;
+          setSubmitted(sub);
+          setFailed(fail + skip);
         }
       },
       setConnected,
