@@ -99,8 +99,8 @@ class Settings(BaseSettings):
     BRIGHT_DATA_API_TOKEN: Optional[str] = None
     BRIGHT_DATA_DISCOVERY_ENABLED: bool = False
 
-    # --- Bright Data MCP (agentic discovery) ---
-    BRIGHT_DATA_MCP_TOKEN: Optional[str] = None
+    # --- Serper (Google Search API for discovery) ---
+    SERPER_API_KEY: Optional[str] = None
 
     # --- Self-improvement loop (EvoAgentX) ---
     EVOAGENTX_ENABLED: bool = True

@@ -1,10 +1,10 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""MCP-based agentic discovery -- uses Bright Data MCP free tier to find jobs.
+"""Search-based agentic discovery -- uses Serper (Google Search API) to find jobs.
 
 Instead of scraping LinkedIn/Indeed/Glassdoor (auth-walled), searches for jobs
 directly on ATS platforms (Greenhouse, Lever, Ashby, Workday, etc.) using
-Bright Data's search_engine and scrape_as_markdown MCP tools (free tier).
+Serper's Google Search API with site: operators.
 
 The LLM generates smart search queries targeting ATS sites, then parses
 results into JobListing objects. Combined with the Greenhouse API scraper
@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 import hashlib
 from uuid import uuid4
 
-from backend.browser.tools.mcp_client import mcp_search, mcp_session
+from backend.browser.tools.serper_client import serper_search
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.llm import build_llm, HAIKU_MODEL
 from backend.shared.models.schemas import ATSType, JobBoard, JobListing, SearchConfig
@@ -270,47 +270,47 @@ async def _mcp_discover(
     session_id: str,
     max_results: int = 20,
 ) -> List[JobListing]:
-    """Discover jobs using Bright Data MCP search + LLM parsing."""
+    """Discover jobs using Serper Google Search + LLM parsing."""
 
     await emit_agent_event(session_id, "discovery_progress", {
-        "board": "mcp",
+        "board": "search",
         "step": "Generating smart search queries...",
     })
 
     # 1. Generate search queries
     queries = await _generate_search_queries(search_config)
-    logger.info("MCP discovery: generated %d search queries", len(queries))
+    logger.info("Serper discovery: generated %d search queries", len(queries))
 
-    # 2. Run searches via MCP
+    # 2. Run searches via Serper (all queries in parallel)
     await emit_agent_event(session_id, "discovery_progress", {
-        "board": "mcp",
+        "board": "search",
         "step": f"Searching {len(queries)} ATS platforms for matching jobs...",
     })
 
-    all_results = []
-    async with mcp_session() as session:
-        for i, query in enumerate(queries):
-            try:
-                result = await mcp_search(session, query)
-                all_results.append(result)
-                logger.info("MCP search %d/%d: %d chars", i + 1, len(queries), len(result))
-            except Exception:
-                logger.warning("MCP search failed for query: %s", query, exc_info=True)
+    async def _safe_search(query: str) -> Optional[str]:
+        try:
+            return await serper_search(query)
+        except Exception:
+            logger.warning("Serper search failed for query: %s", query, exc_info=True)
+            return None
+
+    results = await asyncio.gather(*[_safe_search(q) for q in queries])
+    all_results = [r for r in results if r is not None]
 
     if not all_results:
-        logger.error("MCP discovery: all searches failed")
+        logger.error("Serper discovery: all searches failed")
         return []
 
     combined_results = "\n---\n".join(all_results)
 
     # 3. Parse results with LLM
     await emit_agent_event(session_id, "discovery_progress", {
-        "board": "mcp",
+        "board": "search",
         "step": "Parsing job listings from search results...",
     })
 
     parsed_jobs = await _parse_search_results(combined_results)
-    logger.info("MCP discovery: parsed %d jobs from search results", len(parsed_jobs))
+    logger.info("Serper discovery: parsed %d jobs from search results", len(parsed_jobs))
 
     # 4. Convert to JobListing objects, filtering to ATS URLs only
     listings: List[JobListing] = []
@@ -390,12 +390,12 @@ async def _mcp_discover(
             break
 
     await emit_agent_event(session_id, "discovery_progress", {
-        "board": "mcp",
+        "board": "search",
         "step": f"Found {len(listings)} jobs on ATS platforms via search",
         "count": len(listings),
     })
 
-    logger.info("MCP discovery: %d valid ATS listings", len(listings))
+    logger.info("Serper discovery: %d valid ATS listings", len(listings))
     return listings
 
 
@@ -405,13 +405,13 @@ async def discover_all_boards(
     session_id: str,
     max_per_board: int = 20,
 ) -> List[JobListing]:
-    """Discover jobs using Bright Data MCP + Greenhouse API.
+    """Discover jobs using Serper Google Search + Greenhouse API.
 
     Drop-in replacement for direct_discovery.discover_all_boards().
     Same signature, same return type.
 
     The ``boards`` parameter is accepted for interface compatibility but
-    is effectively ignored -- MCP searches across all ATS platforms
+    is effectively ignored -- Serper searches across all ATS platforms
     simultaneously rather than per-board.
     """
     all_jobs: List[JobListing] = []
@@ -423,7 +423,7 @@ async def discover_all_boards(
 
     results = await asyncio.gather(greenhouse_task, mcp_task, return_exceptions=True)
 
-    for label, result in zip(["greenhouse", "mcp"], results):
+    for label, result in zip(["greenhouse", "search"], results):
         if isinstance(result, Exception):
             logger.error("%s discovery failed: %s", label, result)
             await emit_agent_event(session_id, "discovery_progress", {
