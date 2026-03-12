@@ -126,25 +126,6 @@ export default function AboutPage() {
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-zinc-200 px-6 py-10 dark:border-zinc-800">
-        <div className="mx-auto max-w-4xl flex flex-col items-center justify-between gap-4 md:flex-row">
-          <p className="text-xs text-zinc-500">
-            &copy; {new Date().getFullYear()} V2 Software LLC. All rights reserved.
-          </p>
-          <div className="flex gap-6 text-sm text-zinc-500">
-            <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-white">
-              Terms
-            </Link>
-            <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-white">
-              Privacy
-            </Link>
-            <Link href="/" className="hover:text-zinc-900 dark:hover:text-white">
-              Home
-            </Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
