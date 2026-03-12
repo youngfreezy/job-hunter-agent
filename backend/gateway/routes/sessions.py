@@ -471,10 +471,14 @@ async def _run_pipeline(
         }
 
         # Quick Apply: when job_urls are provided, auto-set discovery_mode
+        # and skip coach review (user wants fast path to applications)
         if initial_state["job_urls"]:
             cfg = initial_state.get("session_config") or {}
             cfg["discovery_mode"] = "manual_urls"
             initial_state["session_config"] = cfg
+            prefs = initial_state.get("preferences") or {}
+            prefs["_skip_coach_review"] = True
+            initial_state["preferences"] = prefs
 
         await _emit(session_id, "status", {
             "status": "intake",

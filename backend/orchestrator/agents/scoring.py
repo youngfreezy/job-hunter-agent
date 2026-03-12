@@ -447,11 +447,16 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
 
         # Apply scoring_strictness as a minimum score threshold
         # 0.0 = lenient (min 30), 0.5 = moderate (min 50), 1.0 = strict (min 70)
+        # Quick Apply (manual_urls): skip filtering — user chose these jobs explicitly
         config = state.get("session_config")
         strictness = 0.5  # default
         if config:
             cfg = config if isinstance(config, dict) else config.model_dump()
-            strictness = cfg.get("scoring_strictness", 0.5)
+            if cfg.get("discovery_mode") == "manual_urls":
+                strictness = 0.0  # no filtering for Quick Apply
+                logger.info("Quick Apply session — skipping score filtering")
+            else:
+                strictness = cfg.get("scoring_strictness", 0.5)
         min_score = int(30 + strictness * 40)  # maps 0.0->30, 0.5->50, 1.0->70
         before_filter = len(scored_jobs)
         scored_jobs = [sj for sj in scored_jobs if sj.score >= min_score]
