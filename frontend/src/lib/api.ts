@@ -106,6 +106,9 @@ export type SSEEventType =
   | "agent_complete"
   | "hitl"
   | "application_progress"
+  | "application_submitted"
+  | "application_failed"
+  | "application_start"
   | "application_browser_action"
   | "verification_progress"
   | "backfill_progress"
@@ -573,6 +576,9 @@ export function connectSSE(
     "agent_complete",
     "hitl",
     "application_progress",
+    "application_submitted",
+    "application_failed",
+    "application_start",
     "application_browser_action",
     "verification_progress",
     "backfill_progress",
@@ -934,7 +940,8 @@ export function connectTrialSSE(
     "status", "coaching", "coach_review", "coaching_progress",
     "discovery", "discovery_progress", "scoring", "scoring_progress",
     "tailoring", "tailoring_progress", "shortlist_review", "agent_complete",
-    "hitl", "application_progress", "application_browser_action",
+    "hitl", "application_progress", "application_submitted",
+    "application_failed", "application_start", "application_browser_action",
     "verification_progress", "backfill_progress", "reporting_progress",
     "needs_intervention", "ready_to_submit", "login_required",
     "login_complete", "captcha_detected", "done", "error",
