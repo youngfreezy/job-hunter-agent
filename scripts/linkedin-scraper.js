@@ -101,20 +101,6 @@
         }
       }
 
-      // Helper: extract external URL from LinkedIn redirect URLs
-      const extractExternalUrl = (href) => {
-        if (!href) return null;
-        try {
-          const u = new URL(href);
-          // LinkedIn wraps external applies: /jobs/view/.../externalApply?url=<encoded>
-          const embedded = u.searchParams.get("url") || u.searchParams.get("redirectUrl");
-          if (embedded) return embedded;
-        } catch (_) {}
-        // If it's not a linkedin.com URL, it's already external
-        if (!href.includes("linkedin.com")) return href;
-        return null;
-      };
-
       // Find the external Apply button/link
       const applyBtnSelectors = [
         'a.jobs-apply-button[href]',
@@ -122,17 +108,17 @@
         '.jobs-apply-button--top-card a[href]',
         'a[data-control-name="jobdetails_topcard_inapply"]',
         '.jobs-unified-top-card a.apply-button[href]',
-        // Include linkedin.com links that may contain redirect params
-        '.jobs-unified-top-card a[href]',
-        '.job-details-jobs-unified-top-card__content a[href]',
+        // Generic fallback: any link with "apply" in the detail panel that goes external
+        '.jobs-unified-top-card a[href]:not([href*="linkedin.com"])',
+        '.job-details-jobs-unified-top-card__content a[href]:not([href*="linkedin.com"])',
       ];
 
       let applyUrl = null;
       for (const sel of applyBtnSelectors) {
         const btn = document.querySelector(sel);
-        if (btn && btn.href) {
-          applyUrl = extractExternalUrl(btn.href);
-          if (applyUrl) break;
+        if (btn && btn.href && !btn.href.includes("linkedin.com")) {
+          applyUrl = btn.href;
+          break;
         }
       }
 
@@ -149,11 +135,11 @@
             text.trim().toLowerCase() === "apply" ||
             text.trim().toLowerCase().startsWith("apply to")
           ) {
-            // Check if it's a link (may be LinkedIn redirect or direct external)
+            // Check if it's a link
             const link = btn.closest("a") || btn.querySelector("a");
-            if (link && link.href) {
-              const extracted = extractExternalUrl(link.href);
-              if (extracted) { applyUrl = extracted; break; }
+            if (link && link.href && !link.href.includes("linkedin.com")) {
+              applyUrl = link.href;
+              break;
             }
             // If it's a button that opens a new tab, the URL might be in a data attribute
             const dataUrl =
