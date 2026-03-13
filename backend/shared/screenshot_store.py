@@ -53,6 +53,8 @@ CREATE INDEX IF NOT EXISTS idx_failure_screenshots_session
 _ARTIFACT_INDEX_SQL = """
 CREATE INDEX IF NOT EXISTS idx_skyvern_artifacts_session
     ON skyvern_task_artifacts (session_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_skyvern_artifacts_task_id
+    ON skyvern_task_artifacts (task_id);
 """
 
 _ensured = False
@@ -179,6 +181,31 @@ def delete_for_session(session_id: str) -> int:
 # ---------------------------------------------------------------------------
 
 
+def register_skyvern_task(session_id: str, job_id: str, task_id: str) -> None:
+    """Register a Skyvern task_id immediately after creation (before polling).
+
+    This ensures we can re-poll orphaned tasks if a deploy kills the process
+    mid-poll. The row is later updated with final results by store_task_artifact().
+    """
+    _ensure_table()
+    pool = get_pool()
+    with pool.connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO skyvern_task_artifacts
+                (session_id, job_id, task_id, skyvern_status)
+            VALUES (%s, %s, %s, 'running')
+            ON CONFLICT (task_id) DO NOTHING
+            """,
+            (session_id, job_id, task_id),
+        )
+        conn.commit()
+    logger.info(
+        "Registered Skyvern task %s for session=%s job=%s",
+        task_id, session_id, job_id,
+    )
+
+
 async def store_task_artifact(
     *,
     session_id: str,
@@ -193,7 +220,8 @@ async def store_task_artifact(
     """Persist the full Skyvern task result for post-hoc debugging.
 
     Stored for every task outcome (success, failure, skip) so we always
-    have artifacts to inspect.
+    have artifacts to inspect. Updates the pre-registered row if one exists
+    (from register_skyvern_task), otherwise inserts a new row.
     """
     _ensure_table()
     pool = get_pool()
@@ -204,6 +232,12 @@ async def store_task_artifact(
                 (session_id, job_id, task_id, skyvern_status, failure_reason,
                  extracted_information, screenshot_url, action_screenshot_urls)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (task_id) DO UPDATE SET
+                skyvern_status = EXCLUDED.skyvern_status,
+                failure_reason = EXCLUDED.failure_reason,
+                extracted_information = EXCLUDED.extracted_information,
+                screenshot_url = EXCLUDED.screenshot_url,
+                action_screenshot_urls = EXCLUDED.action_screenshot_urls
             RETURNING id
             """,
             (

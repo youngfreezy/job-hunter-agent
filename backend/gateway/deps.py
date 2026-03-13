@@ -52,7 +52,7 @@ async def verify_session_owner(session_id: str, user: dict, request: Request) ->
     meta = session_registry.get(session_id)
     if meta:
         owner_id = meta.get("user_id")
-        if owner_id and owner_id != user["id"]:
+        if owner_id and str(owner_id) != str(user["id"]):
             raise HTTPException(status_code=403, detail="Not your session")
         if owner_id:
             return  # Ownership confirmed
@@ -70,7 +70,7 @@ async def verify_session_owner(session_id: str, user: dict, request: Request) ->
                 cv = cp.get("channel_values", cp) if isinstance(cp, dict) else {}
                 if isinstance(cv, dict):
                     owner_id = cv.get("user_id")
-                    if owner_id and owner_id != user["id"]:
+                    if owner_id and str(owner_id) != str(user["id"]):
                         raise HTTPException(status_code=403, detail="Not your session")
                     if owner_id:
                         return  # Ownership confirmed
