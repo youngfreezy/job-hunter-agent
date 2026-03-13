@@ -286,7 +286,10 @@ export default function AutopilotPage() {
         </Card>
       )}
 
-      {schedules.map((sched) => (
+      {[...schedules].sort((a, b) => {
+        const rank = (s: typeof a) => (s.is_running ? 0 : s.is_active ? 1 : 2);
+        return rank(a) - rank(b);
+      }).map((sched) => (
         <Card key={sched.id}>
           {editingId === sched.id ? (
             <>
