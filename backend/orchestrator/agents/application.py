@@ -966,38 +966,18 @@ async def _apply_to_job(
             # --- Step 1c: Check if redirected to login page ---
             final_url = page.url
             if _is_login_page(final_url):
-                logger.info("Login required (%s) for %s", final_url, job.title)
-                await emit_agent_event(session_id, "login_required", {
+                logger.info("Login required (%s) for %s — skipping", final_url, job.title)
+                await emit_agent_event(session_id, "application_progress", {
                     "job_id": job_id,
-                    "job_title": job.title,
-                    "company": job.company,
-                    "board": job.board.value,
-                    "message": f"Please log in to {job.board.value} in the browser window, then click Resume.",
+                    "step": f"Skipped — {job.board.value} requires login",
                 })
-                try:
-                    from backend.orchestrator.agents._login_sync import wait_for_login
-
-                    await wait_for_login(session_id, timeout=300)
-                    await emit_agent_event(session_id, "login_complete", {
-                        "job_id": job_id,
-                        "board": job.board.value,
-                    })
-                    await page.goto(job.url, wait_until="domcontentloaded", timeout=30000)
-                    await asyncio.sleep(1)
-                    if _is_login_page(page.url):
-                        return ApplicationResult(
-                            job_id=job_id,
-                            status=ApplicationStatus.SKIPPED,
-                            error_message="auth_required",
-                            duration_seconds=int(time.monotonic() - start_time),
-                        )
-                except Exception:
-                    return ApplicationResult(
-                        job_id=job_id,
-                        status=ApplicationStatus.SKIPPED,
-                        error_message="auth_timeout",
-                        duration_seconds=int(time.monotonic() - start_time),
-                    )
+                return ApplicationResult(
+                    job_id=job_id,
+                    status=ApplicationStatus.SKIPPED,
+                    error_message="auth_required",
+                    error_category=ApplicationErrorCategory.AUTH_REQUIRED,
+                    duration_seconds=int(time.monotonic() - start_time),
+                )
 
             # --- Step 1c: Check for external apply link ---
             # Many board pages (LinkedIn, ZipRecruiter, etc.) have an

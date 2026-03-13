@@ -186,6 +186,11 @@ def _build_navigation_payload(
     return payload
 
 
+_AUTH_REQUIRED_DOMAINS = [
+    "jobvite.com",  # Jobvite apply pages require account login
+]
+
+
 async def apply_with_skyvern(
     job: JobListing,
     user_profile: Dict[str, str],
@@ -200,6 +205,18 @@ async def apply_with_skyvern(
     2. Poll for completion
     3. Parse result into ApplicationResult
     """
+    # Skip ATS domains that require account login
+    url_lower = job.url.lower()
+    for domain in _AUTH_REQUIRED_DOMAINS:
+        if domain in url_lower:
+            logger.info("Skipping Skyvern task for %s — %s requires login", job.title, domain)
+            return ApplicationResult(
+                job_id=job.id,
+                status=ApplicationStatus.SKIPPED,
+                error_message=f"auth_required: {domain} requires account login",
+                duration_seconds=0,
+            )
+
     settings = get_settings()
     base_url = settings.SKYVERN_API_URL.rstrip("/")
     timeout = settings.SKYVERN_TASK_TIMEOUT
