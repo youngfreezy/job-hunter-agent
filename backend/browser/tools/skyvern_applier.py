@@ -314,6 +314,13 @@ async def apply_with_skyvern(
 
         logger.info("Skyvern task created: %s", task_id)
 
+        # Persist task_id immediately so we can re-poll if a deploy kills us mid-poll
+        try:
+            from backend.shared.screenshot_store import register_skyvern_task
+            register_skyvern_task(session_id, str(job.id), task_id)
+        except Exception as reg_exc:
+            logger.warning("Failed to register Skyvern task (non-critical): %s", reg_exc)
+
         # --- Poll for completion ---
         elapsed = 0
         status = "created"

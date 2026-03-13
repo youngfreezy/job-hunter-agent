@@ -264,6 +264,13 @@ async def lifespan(app: FastAPI):
             _spawn_background(_resume_stalled_pipeline(sid, graph, config))
             logger.info("Resuming interrupted session %s", sid)
 
+    # Re-poll orphaned Skyvern tasks from previous deploy
+    try:
+        from backend.shared.skyvern_recovery import recover_orphaned_skyvern_tasks
+        _spawn_background(recover_orphaned_skyvern_tasks())
+    except Exception:
+        logger.debug("Failed to start Skyvern recovery", exc_info=True)
+
     yield
 
     # --- Shutdown ---
