@@ -532,14 +532,28 @@ async def _has_auth_wall(page: Any) -> bool:
 async def _is_dead_page(page: Any) -> bool:
     """Check if the job page is a 404 / expired / removed listing."""
     try:
+        url = page.url or ""
+        is_spa = "workday" in url or "myworkdayjobs" in url
+
+        # SPAs (Workday) need extra time — the shell loads fast but content renders later
+        if is_spa:
+            try:
+                await page.wait_for_function(
+                    "() => document.body.innerText.length > 200",
+                    timeout=10000,
+                )
+            except Exception:
+                pass  # timed out — fall through to checks below
+
         text = await page.evaluate("() => document.body.innerText.substring(0, 1000).toLowerCase()")
         for indicator in _NOT_FOUND_INDICATORS:
             if indicator in text:
                 return True
-        # Also check very short pages (likely errors)
-        full_len = await page.evaluate("() => document.body.innerText.length")
-        if full_len < 100:
-            return True
+        # Check very short pages (likely errors) — skip for SPAs that may still be loading
+        if not is_spa:
+            full_len = await page.evaluate("() => document.body.innerText.length")
+            if full_len < 100:
+                return True
     except Exception:
         pass
     return False
