@@ -111,8 +111,8 @@ export default function AutopilotPage() {
   const [keywords, setKeywords] = useState("");
   const [locations, setLocations] = useState("Remote");
   const [cronExpression, setCronExpression] = useState("0 8 * * 1-5");
-  const [customHour, setCustomHour] = useState("08");
-  const [customMinute, setCustomMinute] = useState("00");
+  const [customHour, setCustomHour] = useState(() => String(new Date().getHours()).padStart(2, "0"));
+  const [customMinute, setCustomMinute] = useState(() => String(new Date().getMinutes()).padStart(2, "0"));
   const [customDays, setCustomDays] = useState("1-5");
   const [autoApprove, setAutoApprove] = useState(false);
   const [creating, setCreating] = useState(false);
