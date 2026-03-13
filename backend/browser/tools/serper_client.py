@@ -21,7 +21,7 @@ _SERPER_URL = "https://google.serper.dev/search"
 _TIMEOUT = 15.0
 
 
-async def serper_search(query: str, num_results: int = 20, tbs: str = "qdr:w") -> str:
+async def serper_search(query: str, num_results: int = 50, tbs: str = "qdr:w") -> str:
     """Search Google via Serper and return JSON string.
 
     Returns JSON matching the shape expected by _parse_search_results():
