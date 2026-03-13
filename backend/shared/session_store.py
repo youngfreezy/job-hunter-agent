@@ -33,8 +33,8 @@ def upsert_session(session_id: str, data: Dict[str, Any]) -> None:
                                       remote_only, salary_min, resume_text_snippet,
                                       linkedin_url, applications_submitted,
                                       applications_failed, created_at, updated_at,
-                                      is_autopilot)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+                                      is_autopilot, autopilot_schedule_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     status = EXCLUDED.status,
                     applications_submitted = EXCLUDED.applications_submitted,
@@ -55,6 +55,7 @@ def upsert_session(session_id: str, data: Dict[str, Any]) -> None:
                     data.get("applications_failed", 0),
                     data.get("created_at", datetime.now(timezone.utc).isoformat()),
                     data.get("is_autopilot", False),
+                    data.get("autopilot_schedule_id"),
                 ),
             )
             conn.commit()
@@ -240,7 +241,7 @@ def get_interrupted_sessions(max_age_hours: int = 2) -> List[Dict[str, Any]]:
     with _connect() as conn:
         try:
             cur = conn.execute(
-                """SELECT id, user_id, status
+                """SELECT id, user_id, status, autopilot_schedule_id
                    FROM sessions
                    WHERE status IN ('intake', 'coaching', 'discovering', 'scoring',
                                     'tailoring', 'applying', 'running', 'interrupted')
@@ -248,7 +249,15 @@ def get_interrupted_sessions(max_age_hours: int = 2) -> List[Dict[str, Any]]:
                    ORDER BY created_at DESC""",
                 (max_age_hours,),
             )
-            return [{"session_id": r[0], "user_id": r[1], "status": r[2]} for r in cur.fetchall()]
+            return [
+                {
+                    "session_id": r[0],
+                    "user_id": r[1],
+                    "status": r[2],
+                    "autopilot_schedule_id": r[3],
+                }
+                for r in cur.fetchall()
+            ]
         except Exception:
             logger.warning("Failed to query interrupted sessions", exc_info=True)
             return []

@@ -221,6 +221,13 @@ async def lifespan(app: FastAPI):
         session_registry, event_logs,
     )
 
+    # Clear autopilot schedules stuck in is_running=TRUE from dead sessions
+    try:
+        from backend.shared.autopilot_store import clear_zombie_running
+        clear_zombie_running()
+    except Exception:
+        logger.debug("Failed to clear zombie autopilot schedules", exc_info=True)
+
     # Mark stale orphaned sessions (>2h old) as failed so they don't sit in limbo
     from backend.shared.db import get_connection as _get_conn
     try:
@@ -241,11 +248,17 @@ async def lifespan(app: FastAPI):
         for sess in orphaned:
             sid = sess["session_id"]
             # Hydrate in-memory registry so SSE reconnects work
-            session_registry[sid] = {
+            # Include autopilot_schedule_id so mark_run_complete works after recovery
+            registry_entry = {
                 "session_id": sid,
                 "user_id": sess["user_id"],
                 "status": "recovering",
             }
+            ap_schedule_id = sess.get("autopilot_schedule_id")
+            if ap_schedule_id:
+                registry_entry["autopilot_schedule_id"] = ap_schedule_id
+                registry_entry["is_autopilot"] = True
+            session_registry[sid] = registry_entry
             event_logs[sid] = []
             config = {"configurable": {"thread_id": sid}}
             _spawn_background(_resume_stalled_pipeline(sid, graph, config))

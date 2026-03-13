@@ -295,6 +295,40 @@ async def mark_run_complete(schedule_id: str) -> None:
     await asyncio.to_thread(_mark)
 
 
+def clear_zombie_running() -> int:
+    """Clear is_running for schedules whose last session is dead.
+
+    Called on startup to unstick schedules whose sessions were killed
+    by a deploy restart. Returns the number of schedules cleared.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE autopilot_schedules ap
+            SET is_running = FALSE, updated_at = NOW()
+            WHERE ap.is_running = TRUE
+              AND (
+                  -- Session completed or failed (zombie)
+                  EXISTS (
+                      SELECT 1 FROM sessions s
+                      WHERE s.id = ap.last_session_id
+                        AND s.status IN ('completed', 'failed', 'interrupted')
+                  )
+                  -- Or session doesn't exist at all
+                  OR NOT EXISTS (
+                      SELECT 1 FROM sessions s
+                      WHERE s.id = ap.last_session_id
+                  )
+              )
+            """,
+        )
+        cleared = cur.rowcount
+        conn.commit()
+    if cleared:
+        logger.info("Autopilot: cleared is_running on %d zombie schedule(s)", cleared)
+    return cleared
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
