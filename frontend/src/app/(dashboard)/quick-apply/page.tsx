@@ -82,7 +82,7 @@ export default function QuickApplyPage() {
         preferences: {},
         job_urls: parsedUrls,
         config: {
-          max_jobs: Math.max(parsedUrls.length, 3),
+          max_jobs: parsedUrls.length,
           tailoring_quality: "standard",
           application_mode: "auto_apply",
           generate_cover_letters: true,

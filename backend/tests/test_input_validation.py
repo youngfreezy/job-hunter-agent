@@ -20,7 +20,7 @@ class TestSessionConfig:
 
     def test_max_jobs_below_min(self):
         with pytest.raises(ValidationError):
-            SessionConfig(max_jobs=2)
+            SessionConfig(max_jobs=0)
 
     def test_max_jobs_above_max(self):
         with pytest.raises(ValidationError):
