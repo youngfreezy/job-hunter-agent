@@ -366,17 +366,17 @@ export default function AutopilotPage() {
                       </select>
                       <span className="text-muted-foreground">:</span>
                       <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={2}
+                        type="number"
+                        min={0}
+                        max={59}
+                        step={1}
                         placeholder="00"
                         value={editCustomMinute}
-                        onChange={(e) => setEditCustomMinute(e.target.value.replace(/\D/g, "").slice(0, 2))}
-                        onBlur={() => {
-                          const n = Math.min(59, Math.max(0, Number(editCustomMinute) || 0));
+                        onChange={(e) => {
+                          const n = Math.min(59, Math.max(0, Number(e.target.value) || 0));
                           setEditCustomMinute(String(n).padStart(2, "0"));
                         }}
-                        className="rounded-md border px-2 py-1.5 text-sm bg-background w-14 text-center tabular-nums"
+                        className="rounded-md border px-2 py-1.5 text-sm bg-background w-16 text-center tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                       <span className="text-xs text-muted-foreground ml-1">(your local time)</span>
                     </div>
@@ -562,20 +562,17 @@ export default function AutopilotPage() {
                   </select>
                   <span className="text-muted-foreground">:</span>
                   <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={2}
+                    type="number"
+                    min={0}
+                    max={59}
+                    step={1}
                     placeholder="00"
                     value={customMinute}
                     onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, "").slice(0, 2);
-                      setCustomMinute(v);
-                    }}
-                    onBlur={() => {
-                      const n = Math.min(59, Math.max(0, Number(customMinute) || 0));
+                      const n = Math.min(59, Math.max(0, Number(e.target.value) || 0));
                       setCustomMinute(String(n).padStart(2, "0"));
                     }}
-                    className="rounded-md border px-2 py-1.5 text-sm bg-background w-14 text-center tabular-nums"
+                    className="rounded-md border px-2 py-1.5 text-sm bg-background w-16 text-center tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <span className="text-xs text-muted-foreground ml-1">(your local time)</span>
                 </div>
