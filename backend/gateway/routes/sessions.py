@@ -996,6 +996,8 @@ async def start_session(body: StartSessionRequest, request: Request):
     # Re-key the resume from the parse-time file UUID to this session_id.
     # parse-resume saved to Postgres keyed by file UUID; we copy it under session_id.
     file_uuid = body.resume_uuid  # Preferred: explicit UUID from parse-resume response
+    if not file_uuid:
+        logger.warning("No resume_uuid in start_session body for session %s (resume_file_path=%s)", session_id, body.resume_file_path)
     if not file_uuid and body.resume_file_path:
         # Legacy fallback: extract UUID from file path
         import os
@@ -2209,9 +2211,21 @@ async def serve_resume_file(session_id: str, request: Request, token: str = ""):
         raise HTTPException(status_code=403, detail="Malformed token")
 
     # Always read from Postgres — the single source of truth.
-    from backend.shared.resume_store import get_resume_bytes
+    from backend.shared.resume_store import get_resume_bytes, get_latest_resume_for_user
+    from backend.shared.session_store import get_session_by_id
 
     result = get_resume_bytes(session_id)
+    if not result:
+        # Fallback: re-keying from parse-resume UUID may have failed.
+        # Look up the user's most recent resume instead.
+        sess = get_session_by_id(session_id)
+        if sess:
+            result = get_latest_resume_for_user(sess["user_id"])
+            if result:
+                logger.warning(
+                    "Resume not found for session %s — fell back to user's latest resume",
+                    session_id,
+                )
     if not result:
         raise HTTPException(status_code=404, detail="No resume file found")
 
