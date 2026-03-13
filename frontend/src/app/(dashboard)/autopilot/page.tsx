@@ -274,6 +274,11 @@ export default function AutopilotPage() {
         </p>
       </div>
 
+      {/* New schedule button */}
+      {schedules.length > 0 && !showCreate && (
+        <Button onClick={() => setShowCreate(true)}>New Schedule</Button>
+      )}
+
       {/* Schedule list */}
       {schedules.length === 0 && !showCreate && (
         <Card>
@@ -612,10 +617,6 @@ export default function AutopilotPage() {
         </Card>
       )}
 
-      {/* Create button (when schedules exist) */}
-      {schedules.length > 0 && !showCreate && (
-        <Button onClick={() => setShowCreate(true)}>New Schedule</Button>
-      )}
     </main>
   );
 }
