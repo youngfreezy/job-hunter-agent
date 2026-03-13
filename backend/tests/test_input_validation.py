@@ -26,6 +26,10 @@ class TestSessionConfig:
         with pytest.raises(ValidationError):
             SessionConfig(max_jobs=11)
 
+    def test_max_jobs_minimum_valid(self):
+        c = SessionConfig(max_jobs=1)
+        assert c.max_jobs == 1
+
     def test_max_jobs_valid(self):
         c = SessionConfig(max_jobs=10)
         assert c.max_jobs == 10
