@@ -21,11 +21,15 @@ _SERPER_URL = "https://google.serper.dev/search"
 _TIMEOUT = 15.0
 
 
-async def serper_search(query: str, num_results: int = 10) -> str:
+async def serper_search(query: str, num_results: int = 20, tbs: str = "qdr:w") -> str:
     """Search Google via Serper and return JSON string.
 
     Returns JSON matching the shape expected by _parse_search_results():
     {"organic": [{"title": "...", "link": "...", "description": "..."}, ...]}
+
+    Args:
+        tbs: Google time-based search filter. Default "qdr:w" = past week.
+             Use "qdr:d" for past day, "qdr:m" for past month, "" for no filter.
     """
     api_key = get_settings().SERPER_API_KEY
     if not api_key:
@@ -33,11 +37,15 @@ async def serper_search(query: str, num_results: int = 10) -> str:
             "SERPER_API_KEY not set. Get one from google.serper.dev."
         )
 
+    payload: dict = {"q": query, "num": num_results}
+    if tbs:
+        payload["tbs"] = tbs
+
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(
             _SERPER_URL,
             headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
-            json={"q": query, "num": num_results},
+            json=payload,
         )
         resp.raise_for_status()
         data = resp.json()
