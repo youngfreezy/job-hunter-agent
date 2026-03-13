@@ -214,6 +214,15 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   return res;
 }
 
+async function throwApiError(res: Response): Promise<never> {
+  let detail = res.statusText;
+  try {
+    const body = await res.json();
+    if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+  } catch {}
+  throw new Error(detail || `Request failed (${res.status})`);
+}
+
 // ---------- REST API ----------
 
 export async function startSession(params: {
@@ -246,14 +255,7 @@ export async function startSession(params: {
     headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(params),
   });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-    } catch {}
-    throw new Error(detail || `Request failed (${res.status})`);
-  }
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -914,14 +916,7 @@ export async function startFreeTrialSession(params: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-    } catch {}
-    throw new Error(detail || `Request failed (${res.status})`);
-  }
+  if (!res.ok) await throwApiError(res);
   const data = await res.json();
   setTrialData(data.trial_token, data.email);
   return data;
@@ -1005,14 +1000,7 @@ export async function convertTrialAccount(params: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-    } catch {}
-    throw new Error(detail || `Request failed (${res.status})`);
-  }
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
