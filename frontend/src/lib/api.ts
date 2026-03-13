@@ -250,7 +250,7 @@ export async function startSession(params: {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      if (body?.detail) detail = body.detail;
+      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
     } catch {}
     throw new Error(detail || `Request failed (${res.status})`);
   }
@@ -918,7 +918,7 @@ export async function startFreeTrialSession(params: {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      if (body?.detail) detail = body.detail;
+      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
     } catch {}
     throw new Error(detail || `Request failed (${res.status})`);
   }
@@ -1009,7 +1009,7 @@ export async function convertTrialAccount(params: {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      if (body?.detail) detail = body.detail;
+      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
     } catch {}
     throw new Error(detail || `Request failed (${res.status})`);
   }
