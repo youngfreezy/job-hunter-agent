@@ -9,6 +9,7 @@ const STORAGE_KEY = "jh_resume_text";
 const FILENAME_KEY = "jh_resume_filename";
 const FILE_BYTES_KEY = "jh_resume_bytes";
 const FILE_SAVED_AT_KEY = "jh_resume_saved_at";
+const RESUME_UUID_KEY = "jh_resume_uuid";
 const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function fileToBase64(file: File): Promise<string> {
@@ -103,6 +104,11 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
       const file = base64ToFile(cached.bytes, cached.fileName);
       setParsing(true);
       parseResume(file)
+        .then((result) => {
+          if (result.resume_uuid) {
+            try { localStorage.setItem(RESUME_UUID_KEY, result.resume_uuid); } catch {}
+          }
+        })
         .catch(() => {})
         .finally(() => setParsing(false));
     }
@@ -128,6 +134,9 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
       const [result, base64] = await Promise.all([parseResume(file), fileToBase64(file)]);
       setResumeText(result.text);
       saveResumeToStorage(result.text, file.name, base64);
+      if (result.resume_uuid) {
+        try { localStorage.setItem(RESUME_UUID_KEY, result.resume_uuid); } catch {}
+      }
       onResumeReady?.(result.text);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to parse file";

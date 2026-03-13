@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 const RESUME_TEXT_KEY = "jh_resume_text";
 const RESUME_FILENAME_KEY = "jh_resume_filename";
+const RESUME_UUID_KEY = "jh_resume_uuid";
 const URLS_STORAGE_KEY = "jh_quick_apply_urls";
 
 export default function QuickApplyPage() {
@@ -76,7 +77,7 @@ export default function QuickApplyPage() {
         salary_min: null,
         resume_text: resumeText,
         resume_file_path: null,
-        resume_uuid: null,
+        resume_uuid: localStorage.getItem(RESUME_UUID_KEY) || null,
         linkedin_url: null,
         preferences: {},
         job_urls: parsedUrls,
