@@ -143,6 +143,8 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             )
             applied_urls = get_previously_applied_urls(user_id)
             blocked_companies = get_rate_limited_companies(user_id)
+            from backend.shared.billing_store import get_blocked_companies
+            blocked_companies = blocked_companies | get_blocked_companies(user_id)
             before_filter = len(deduped)
             deduped = [
                 j for j in deduped

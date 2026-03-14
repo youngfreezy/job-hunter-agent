@@ -46,6 +46,28 @@ async def update_notification_channel(request: Request, body: NotificationChanne
     return {"notification_channel": body.notification_channel}
 
 
+class BlockedCompaniesUpdate(BaseModel):
+    blocked_companies: list[str]
+
+
+@router.get("/me/blocked-companies")
+async def get_blocked_companies(request: Request):
+    """Return the user's blocked companies list."""
+    user = get_current_user(request)
+    from backend.shared.billing_store import get_user_by_id
+    user_data = get_user_by_id(user["id"])
+    return {"blocked_companies": user_data.get("blocked_companies", []) if user_data else []}
+
+
+@router.put("/me/blocked-companies")
+async def update_blocked_companies(request: Request, body: BlockedCompaniesUpdate):
+    """Update the user's blocked companies list."""
+    user = get_current_user(request)
+    from backend.shared.billing_store import update_blocked_companies as _update_blocked
+    _update_blocked(user["id"], body.blocked_companies)
+    return {"blocked_companies": body.blocked_companies}
+
+
 @router.delete("/me/data")
 async def delete_user_data(request: Request):
     """GDPR: permanently delete all data associated with the current user."""
