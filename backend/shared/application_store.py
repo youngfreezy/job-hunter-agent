@@ -250,7 +250,7 @@ def get_rate_limited_companies(
                 FROM application_results
                 WHERE user_id = %s AND status = 'submitted'
                   AND created_at > NOW() - %s * INTERVAL '1 day'
-                  AND job_company != ''
+                  AND job_company != '' AND LOWER(job_company) != 'unknown'
                 GROUP BY LOWER(job_company)
                 HAVING COUNT(*) >= %s
                 """,
