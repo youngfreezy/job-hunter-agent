@@ -131,12 +131,11 @@ def record_result(
 def check_already_applied(
     job_id: str, user_id: Optional[str] = None, job_url: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
-    """Check if this job was already submitted (or is currently being submitted) by this user.
+    """Check if this job was already successfully submitted by this user.
 
     Returns the prior application record if found, None otherwise.
-    Matches ``submitted`` and ``pending`` statuses — pending prevents double-submit
-    when a deploy kills the process mid-Skyvern and the session auto-resumes.
-    Failed/skipped don't block re-attempts.
+    Only matches ``submitted`` status — failed, skipped, and pending results
+    should not block re-attempts (pending is handled by clear_pending).
     Checks both by job_id and by job_url (for backward compat with old random IDs).
     """
     try:
@@ -147,7 +146,7 @@ def check_already_applied(
                     """
                     SELECT session_id, job_title, job_company, created_at
                     FROM application_results
-                    WHERE job_id = %s AND user_id = %s AND status IN ('submitted', 'pending')
+                    WHERE job_id = %s AND user_id = %s AND status = 'submitted'
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -158,7 +157,7 @@ def check_already_applied(
                     """
                     SELECT session_id, job_title, job_company, created_at
                     FROM application_results
-                    WHERE job_id = %s AND status IN ('submitted', 'pending')
+                    WHERE job_id = %s AND status = 'submitted'
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -179,7 +178,7 @@ def check_already_applied(
                     """
                     SELECT session_id, job_title, job_company, created_at
                     FROM application_results
-                    WHERE job_url = %s AND user_id = %s AND status IN ('submitted', 'pending')
+                    WHERE job_url = %s AND user_id = %s AND status = 'submitted'
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
