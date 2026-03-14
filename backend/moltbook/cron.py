@@ -54,8 +54,7 @@ DREAM_CYCLE_INTERVAL = 5
 # Max comments per cron cycle (be a good citizen)
 MAX_COMMENTS_PER_CYCLE = 5
 
-# Cycle counter for dream triggering
-_cycle_count: int = 0
+# Cycle counter is persisted in strategy state (survives deploys)
 
 # Last posted summary (skip if metrics unchanged)
 _last_posted_summary: str = ""
@@ -206,7 +205,8 @@ async def _step_post_performance(client: MoltbookClient) -> None:
 
     try:
         result = await client.create_post(safe_summary)
-        post_id = str(result.get("id", result.get("post_id", "")))
+        post_data = result.get("post", result)
+        post_id = str(post_data.get("id", post_data.get("post_id", "")))
         if post_id:
             _save_post_id(post_id)
         _last_posted_summary = summary
@@ -583,14 +583,16 @@ async def run_cycle() -> None:
         # Step 7: Update strategy
         await _step_update_strategy()
 
-        # Step 8: Track cycle count and trigger dream cycle every 5th cycle
-        global _cycle_count
-        _cycle_count += 1
+        # Step 8: Track cycle count (persisted) and trigger dream every 5th cycle
+        mgr = get_strategy_manager()
+        state = mgr.get_state()
+        state.cron_cycle_count += 1
+        mgr._save()
 
-        if _cycle_count % DREAM_CYCLE_INTERVAL == 0:
+        if state.cron_cycle_count % DREAM_CYCLE_INTERVAL == 0:
             logger.info(
                 "Step 8: Cycle %d -- entering dream cycle (sleep-time compute)...",
-                _cycle_count,
+                state.cron_cycle_count,
             )
             try:
                 from backend.moltbook.dream import run_dream_cycle
@@ -601,8 +603,8 @@ async def run_cycle() -> None:
         else:
             logger.info(
                 "Cycle %d -- next dream in %d cycles",
-                _cycle_count,
-                DREAM_CYCLE_INTERVAL - (_cycle_count % DREAM_CYCLE_INTERVAL),
+                state.cron_cycle_count,
+                DREAM_CYCLE_INTERVAL - (state.cron_cycle_count % DREAM_CYCLE_INTERVAL),
             )
 
         elapsed = time.time() - start

@@ -1105,16 +1105,20 @@ async def _apply_to_job(
 
         # Emit final SSE event
         if success:
+            _label = f"{job.title} at {job.company}" if job.company else job.title
             await emit_agent_event(session_id, "application_submitted", {
                 "job_id": job_id,
                 "job_title": job.title,
                 "company": job.company,
+                "message": f"Applied to {_label}",
             })
         else:
+            _label = f"{job.title} at {job.company}" if job.company else job.title
             await emit_agent_event(session_id, "application_failed", {
                 "job_id": job_id,
                 "job_title": job.title,
                 "company": job.company,
+                "message": f"Failed: {_label}",
                 "error": result.error_message or "Application did not complete",
                 "screenshot_url": result.screenshot_url,
                 "error_category": (
@@ -1125,25 +1129,11 @@ async def _apply_to_job(
                 "duration_seconds": result.duration_seconds,
             })
 
-        # Clear pending record before inserting final result — BUT keep pending
-        # for ambiguous Skyvern API/connection errors where the form may have
-        # actually been submitted despite the error response. This prevents
-        # retries from double-submitting.
-        _is_ambiguous_skyvern_error = (
-            result.status == ApplicationStatus.FAILED
-            and result.error_message
-            and any(kw in result.error_message.lower() for kw in (
-                "skyvern api error", "skyvern connection error",
-                "skyvern returned no task id", "skyvern task timed out",
-            ))
-        )
-        if not _is_ambiguous_skyvern_error:
-            clear_pending(session_id, job_id)
-        else:
-            logger.warning(
-                "Keeping pending record for %s — Skyvern error is ambiguous, form may have been submitted",
-                job_id,
-            )
+        # Always clear pending before inserting the final result row.
+        # Previously we kept pending for "ambiguous" Skyvern errors, but since
+        # we always insert a final failed row below, keeping pending just
+        # creates duplicate rows (pending + failed) and inflates the UI count.
+        clear_pending(session_id, job_id)
 
         # Persist to DB immediately (survives restarts)
         # Always store the cover letter and tailored resume regardless of success/failure
@@ -1194,22 +1184,17 @@ async def _apply_to_job(
 
         await _record_result_to_neo4j(job_id, detected_ats, success=False)
 
+        _label = f"{job.title} at {job.company}" if job.company else job.title
         await emit_agent_event(session_id, "application_failed", {
             "job_id": job_id,
             "job_title": job.title,
             "company": job.company,
+            "message": f"Failed: {_label}",
             "error": str(exc),
         })
 
-        # Keep pending for ambiguous Skyvern errors (form may have been submitted)
-        _exc_str = str(exc).lower()
-        _is_ambiguous = any(kw in _exc_str for kw in (
-            "skyvern", "httpstatuserror", "connecterror", "timeout",
-        ))
-        if not _is_ambiguous:
-            clear_pending(session_id, job_id)
-        else:
-            logger.warning("Keeping pending record for %s — exception may indicate partial submission", job_id)
+        # Always clear pending before inserting the final failed row.
+        clear_pending(session_id, job_id)
 
         _exc_category = _infer_error_category(str(exc))
         _db_record_result(

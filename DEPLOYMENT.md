@@ -56,6 +56,26 @@ The Hobby plan only allows 3 persistent volumes across all services. Each databa
 ### 11. pgvector not available on Railway Postgres
 Railway's default Postgres image doesn't include pgvector. If vector search is needed, you'd need a custom Postgres Docker image or use a different provider (Supabase, Neon).
 
+### 12. Deploy-resilient sessions (zero-downtime deploys)
+
+**Problem**: When Railway deployed a new container, the old container was killed immediately — mid-session Skyvern polls died, SSE connections dropped with 403s, and application results were left in a permanent "pending" state with no way to recover.
+
+**Root causes**:
+1. No healthcheck configured → Railway did a hard swap instead of a rolling deploy
+2. No graceful shutdown → uvicorn was killed without draining active connections
+3. Skyvern `task_id` was only stored after polling completed → if the backend died mid-poll, the task was lost forever
+4. `verify_session_owner` compared `int` user_id from JWT against `str` user_id in Redis → 403 on SSE reconnect after deploy
+
+**Fix** (commit `3008ccf`):
+1. **`backend/railway.toml`** — added healthcheck config (`/api/health`, 300s timeout). Railway now waits for the new container to pass healthcheck before routing traffic, enabling zero-downtime deploys.
+2. **Graceful shutdown** — added 30s `--timeout-graceful-shutdown` to uvicorn so in-flight requests finish before the old container exits.
+3. **Persist Skyvern task_id immediately** — `skyvern_applier.py` now writes the `task_id` to `skyvern_task_artifacts` right after Skyvern creates the task (before polling starts). This means even if the backend crashes mid-poll, we know which tasks were in flight.
+4. **Skyvern recovery on startup** — new module `backend/shared/skyvern_recovery.py` runs on boot, queries all artifacts with `skyvern_status = 'running'`, re-polls Skyvern for their final status, and updates both the artifact and `application_results` rows. Orphaned tasks are recovered within 10 minutes of a restart.
+5. **SSE reconnect fix** — normalized `user_id` to `str()` in `verify_session_owner` so JWT int values match Redis string keys.
+6. **DB migration** — added unique constraint on `skyvern_task_artifacts.task_id` to support upsert during recovery.
+
+**Result**: Deploys no longer kill active sessions. Skyvern tasks that were mid-poll are automatically recovered on startup, and SSE clients reconnect seamlessly.
+
 ## Remaining Manual Steps
 
 1. **Google OAuth**: Add `https://frontend-production-96d4b.up.railway.app/api/auth/callback/google` to authorized redirect URIs in Google Cloud Console

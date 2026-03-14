@@ -693,6 +693,13 @@ def route_after_qa(state: JobHunterState) -> str:
             logger.info("QA decision=halt — skipping backfill, routing to reporting")
             return "reporting"
 
+    # Quick Apply sessions: user provided exact URLs, no backfill
+    config = state.get("session_config")
+    cfg = config if isinstance(config, dict) else (config.model_dump() if config else {})
+    if cfg.get("discovery_mode") == "manual_urls":
+        logger.info("Quick Apply session — skipping backfill, routing to reporting")
+        return "reporting"
+
     # Standard backfill check — count all *attempted* jobs, not just successful
     submitted = len(state.get("applications_submitted") or [])
     failed = len(state.get("applications_failed") or [])

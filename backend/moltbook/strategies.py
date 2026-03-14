@@ -2,7 +2,9 @@
 
 """Strategy memory for Moltbook-informed agent improvements.
 
-Persists strategy patches to a JSON file (fallback) or Postgres table.
+Persists strategy state to Postgres (JSONB). Falls back to local JSON file
+if Postgres is unavailable (e.g. local dev without Docker).
+
 Patches are injected into LLM calls at agent decision points to influence
 board selection, application strategies, and blocker workarounds.
 
@@ -37,6 +39,75 @@ STRATEGY_FILE = Path(__file__).resolve().parent / "_strategies.json"
 
 # Human review threshold: flag when this many auto-adjustments accumulate
 HUMAN_REVIEW_THRESHOLD = 10
+
+# ---------------------------------------------------------------------------
+# Postgres persistence (single-row JSONB)
+# ---------------------------------------------------------------------------
+
+_STRATEGY_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS moltbook_strategy_state (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    state JSONB NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
+_strategy_table_ensured = False
+
+
+def ensure_strategy_table() -> None:
+    """Create the single-row strategy state table if it doesn't exist."""
+    global _strategy_table_ensured
+    if _strategy_table_ensured:
+        return
+    try:
+        from backend.shared.db import get_pool
+        pool = get_pool()
+        with pool.connection() as conn:
+            conn.execute(_STRATEGY_TABLE_SQL)
+            conn.commit()
+        _strategy_table_ensured = True
+    except Exception:
+        logger.debug("Could not ensure moltbook_strategy_state table", exc_info=True)
+
+
+def _load_from_postgres() -> Optional[Dict[str, Any]]:
+    """Load strategy state from Postgres. Returns None if unavailable."""
+    try:
+        from backend.shared.db import get_pool
+        pool = get_pool()
+        with pool.connection() as conn:
+            cur = conn.execute(
+                "SELECT state FROM moltbook_strategy_state WHERE id = 1"
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+    except Exception:
+        logger.debug("Could not load strategy state from Postgres", exc_info=True)
+    return None
+
+
+def _save_to_postgres(data: Dict[str, Any]) -> bool:
+    """Upsert strategy state to Postgres. Returns True on success."""
+    try:
+        from backend.shared.db import get_pool
+        pool = get_pool()
+        with pool.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO moltbook_strategy_state (id, state, updated_at)
+                VALUES (1, %s::jsonb, NOW())
+                ON CONFLICT (id) DO UPDATE
+                SET state = EXCLUDED.state, updated_at = NOW()
+                """,
+                (json.dumps(data),),
+            )
+            conn.commit()
+        return True
+    except Exception:
+        logger.debug("Could not save strategy state to Postgres", exc_info=True)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +180,7 @@ class StrategyState:
     last_updated: float = 0.0
 
     dream_log: List[Dict[str, Any]] = field(default_factory=list)
+    cron_cycle_count: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -120,6 +192,7 @@ class StrategyState:
             "human_review_needed": self.human_review_needed,
             "last_updated": self.last_updated,
             "dream_log": self.dream_log,
+            "cron_cycle_count": self.cron_cycle_count,
         }
 
     @classmethod
@@ -133,6 +206,7 @@ class StrategyState:
             human_review_needed=data.get("human_review_needed", False),
             last_updated=data.get("last_updated", 0.0),
             dream_log=data.get("dream_log", []),
+            cron_cycle_count=data.get("cron_cycle_count", 0),
         )
 
 
@@ -151,14 +225,26 @@ class StrategyManager:
     def _load(self) -> StrategyState:
         if self._state is not None:
             return self._state
+
+        # Try Postgres first
+        pg_data = _load_from_postgres()
+        if pg_data:
+            self._state = StrategyState.from_dict(pg_data)
+            logger.info("Loaded strategy state from Postgres")
+            return self._state
+
+        # Fall back to local JSON file
         if self._path.exists():
             try:
                 data = json.loads(self._path.read_text())
                 self._state = StrategyState.from_dict(data)
-                logger.info("Loaded strategy state from %s", self._path)
+                logger.info("Loaded strategy state from %s (JSON fallback)", self._path)
+                # Migrate to Postgres if available
+                _save_to_postgres(self._state.to_dict())
                 return self._state
             except Exception as exc:
-                logger.warning("Failed to load strategy state: %s", exc)
+                logger.warning("Failed to load strategy state from JSON: %s", exc)
+
         self._state = StrategyState()
         return self._state
 
@@ -166,11 +252,18 @@ class StrategyManager:
         if self._state is None:
             return
         self._state.last_updated = time.time()
+        data = self._state.to_dict()
+
+        # Save to Postgres (primary)
+        if not _save_to_postgres(data):
+            logger.warning("Postgres save failed — falling back to JSON file")
+
+        # Also save to JSON file (local backup)
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps(self._state.to_dict(), indent=2))
+            self._path.write_text(json.dumps(data, indent=2))
         except Exception as exc:
-            logger.error("Failed to save strategy state: %s", exc)
+            logger.debug("Failed to save strategy JSON fallback: %s", exc)
 
     def get_state(self) -> StrategyState:
         return self._load()
