@@ -92,8 +92,6 @@ export default function QuickApplyPage() {
         },
       });
 
-      // Clear saved URLs on success
-      localStorage.removeItem(URLS_STORAGE_KEY);
       toast.success(`Session started with ${parsedUrls.length} jobs`);
       router.push(`/session/${session.session_id}`);
     } catch (err) {
