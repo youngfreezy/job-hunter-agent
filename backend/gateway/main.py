@@ -109,45 +109,19 @@ async def lifespan(app: FastAPI):
         checkpointer = AsyncPostgresSaver(pool)
         logger.info("Using AsyncPostgresSaver with connection pool")
 
-        # Ensure selector tables exist and seed defaults
-        from backend.shared.selector_memory import (
-            ensure_table,
-            seed_defaults as seed_discovery_defaults,
-        )
-        await ensure_table()
+        # Ensure all store tables exist (single registry — no store can be forgotten)
+        from backend.shared.table_registry import ensure_all_tables
+        await ensure_all_tables()
+
+        # Seed defaults after tables are ready
+        from backend.shared.selector_memory import seed_defaults as seed_discovery_defaults
         await seed_discovery_defaults()
 
-        from backend.browser.tools.apply_selectors import (
-            ensure_table as ensure_apply_table,
-            seed_defaults as seed_apply_defaults,
-        )
-        await ensure_apply_table()
+        from backend.browser.tools.apply_selectors import seed_defaults as seed_apply_defaults
         await seed_apply_defaults()
 
-        from backend.shared.application_store import ensure_table as ensure_app_table
-        await ensure_app_table()
-
-        from backend.shared.billing_store import ensure_billing_tables
-        await ensure_billing_tables()
-
-        from backend.shared.autopilot_store import ensure_autopilot_tables
-        await ensure_autopilot_tables()
-
-        from backend.shared.agent_store import ensure_agent_tables, seed_builtin_agents
-        await ensure_agent_tables()
+        from backend.shared.agent_store import seed_builtin_agents
         seed_builtin_agents()
-
-        try:
-            from backend.shared.webhook_store import _ensure_webhook_tables
-            _ensure_webhook_tables()
-        except Exception as wh_exc:
-            logger.warning("Webhook tables setup failed (non-fatal): %s", wh_exc)
-
-        try:
-            from backend.shared.screenshot_store import _ensure_table as ensure_screenshot_tables
-            ensure_screenshot_tables()
-        except Exception as ss_exc:
-            logger.warning("Screenshot/artifact tables setup failed (non-fatal): %s", ss_exc)
 
         # Schedule daily selector health-check
         from backend.shared.scheduler import schedule, schedule_seconds, schedule_with_notify
