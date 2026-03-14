@@ -143,6 +143,12 @@ async def lifespan(app: FastAPI):
         except Exception as wh_exc:
             logger.warning("Webhook tables setup failed (non-fatal): %s", wh_exc)
 
+        try:
+            from backend.shared.screenshot_store import _ensure_table as ensure_screenshot_tables
+            ensure_screenshot_tables()
+        except Exception as ss_exc:
+            logger.warning("Screenshot/artifact tables setup failed (non-fatal): %s", ss_exc)
+
         # Schedule daily selector health-check
         from backend.shared.scheduler import schedule, schedule_seconds, schedule_with_notify
         from backend.shared.selector_health import run_selector_health_check
