@@ -207,13 +207,17 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 }
 
         # Step 1: Deduplicate
-        unique_jobs = _deduplicate_jobs(discovered_jobs)
-
-        # Step 1b: Filter out jobs the user already applied to or companies at rate limit
-        # Quick Apply: skip this filter — user explicitly chose these URLs
         config = state.get("session_config")
         cfg = config if isinstance(config, dict) else (config.model_dump() if config else {})
         is_quick_apply = cfg.get("discovery_mode") == "manual_urls"
+
+        # Quick Apply: skip dedup — user explicitly chose each URL (e.g. two
+        # Workday jobs both hydrate as company='Unknown', title='' and would
+        # collapse into one entry)
+        unique_jobs = discovered_jobs if is_quick_apply else _deduplicate_jobs(discovered_jobs)
+
+        # Step 1b: Filter out jobs the user already applied to or companies at rate limit
+        # Quick Apply: skip this filter — user explicitly chose these URLs
         user_id = state.get("user_id", "")
         if user_id and not is_quick_apply:
             try:
