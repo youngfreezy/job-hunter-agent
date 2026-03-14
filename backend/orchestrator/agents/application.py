@@ -743,7 +743,8 @@ async def _apply_to_job(
         )
 
     # Pre-flight: enforce company application rate limit (max 2 per company per 2 weeks)
-    company_limit = check_company_rate_limit(job.company, user_id=user_id)
+    # Quick Apply bypasses this — user explicitly chose each URL
+    company_limit = check_company_rate_limit(job.company, user_id=user_id) if not _is_quick_apply else None
     if company_limit:
         msg = f"Already applied to {company_limit['count']} jobs at {job.company} in the last {company_limit['window_days']} days"
         logger.info("Company rate limit: %s — %s", job.title, msg)
