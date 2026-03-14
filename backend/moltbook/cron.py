@@ -553,7 +553,8 @@ async def run_cycle() -> None:
     """Execute one full Moltbook cron cycle."""
     logger.info("=== Moltbook cron cycle starting ===")
     start = time.time()
-    client = MoltbookClient()
+    from backend.shared.config import get_settings
+    client = MoltbookClient(api_key=get_settings().MOLTBOOK_API_KEY)
     log_id = _cron_log_start()
 
     try:
