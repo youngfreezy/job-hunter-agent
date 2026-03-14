@@ -267,6 +267,24 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
             len(unique_jobs),
         )
 
+        # Quick Apply: skip LLM scoring entirely — user chose these jobs, score=100
+        if is_quick_apply:
+            scored_jobs = [
+                ScoredJob(job=j, score=100, reasons=["Quick Apply — user selected"], fit_summary="User-provided URL")
+                for j in unique_jobs
+            ]
+            logger.info("Quick Apply — skipping LLM scoring, assigned score=100 to %d jobs", len(scored_jobs))
+            session_id = state.get("session_id", "")
+            if session_id:
+                await emit_agent_event(session_id, "scoring_complete", {
+                    "scored_count": len(scored_jobs),
+                })
+            return {
+                "scored_jobs": scored_jobs,
+                "status": "tailoring",
+                "agent_statuses": {"scoring": f"done — {len(scored_jobs)} jobs (Quick Apply)"},
+            }
+
         # Step 2: Batch
         batches = _batch(unique_jobs, SCORING_BATCH_SIZE)
 
