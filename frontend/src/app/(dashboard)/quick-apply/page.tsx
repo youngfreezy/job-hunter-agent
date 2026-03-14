@@ -185,9 +185,9 @@ export default function QuickApplyPage() {
                 require an account
               </p>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                Workday, Taleo, and similar sites require you to create an account
-                before applying. These will likely fail unless you already have an
-                account.
+                Workday, Taleo, and similar sites require login to apply. We
+                don&apos;t support authenticated job boards — these URLs will be
+                skipped.
               </p>
             </div>
           )}
