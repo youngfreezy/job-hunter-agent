@@ -199,7 +199,7 @@ async def _send_completion_notifications(session_id: str) -> None:
                 total_failed=total_failed,
             )
     except Exception:
-        logger.debug("Failed to send completion notifications for %s", session_id, exc_info=True)
+        logger.warning("Failed to send completion notifications for %s", session_id, exc_info=True)
 
 
 STATUS_MESSAGES = {
@@ -538,6 +538,7 @@ async def _run_pipeline(
         })
         unregister_emitter(session_id)
         await _release_task_slot(session_id)
+        await _send_completion_notifications(session_id)
 
 
 async def _resume_pipeline(
@@ -591,6 +592,9 @@ async def _resume_pipeline(
             "status": "failed",
             "error": "An internal error occurred",
         })
+        unregister_emitter(session_id)
+        await _release_task_slot(session_id)
+        await _send_completion_notifications(session_id)
     finally:
         if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
             unregister_emitter(session_id)
