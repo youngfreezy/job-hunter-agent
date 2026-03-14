@@ -47,7 +47,8 @@ def _unique_id() -> str:
 class TestPendingBlocksDoubleSubmit:
     """A 'pending' record should block check_already_applied."""
 
-    def test_pending_record_blocks_resubmit(self, _clean_test_rows):
+    def test_pending_record_does_not_block_resubmit(self, _clean_test_rows):
+        """Pending records should NOT block re-attempts — only submitted does."""
         job_id = _unique_id()
         session_id = _unique_id()
         user_id = str(uuid.uuid4())
@@ -67,13 +68,11 @@ class TestPendingBlocksDoubleSubmit:
             user_id=user_id,
         )
 
-        # Now check_already_applied should find the pending record
-        result = check_already_applied(job_id, user_id=user_id)
-        assert result is not None
-        assert result["job_title"] == "Backend Engineer"
-        assert result["job_company"] == "Acme"
+        # Pending should NOT block — only submitted blocks
+        assert check_already_applied(job_id, user_id=user_id) is None
 
-    def test_pending_blocks_by_url_fallback(self, _clean_test_rows):
+    def test_submitted_blocks_resubmit(self, _clean_test_rows):
+        """Only submitted status should block re-attempts."""
         job_id = _unique_id()
         session_id = _unique_id()
         user_id = str(uuid.uuid4())
@@ -83,17 +82,21 @@ class TestPendingBlocksDoubleSubmit:
         record_result(
             session_id=session_id,
             job_id=job_id,
-            status="pending",
+            status="submitted",
             job_title="Frontend Dev",
             job_url=url,
             user_id=user_id,
         )
 
-        # Query with a different job_id but same URL → should still find it
+        # Submitted should block by job_id
+        result = check_already_applied(job_id, user_id=user_id)
+        assert result is not None
+        assert result["job_title"] == "Frontend Dev"
+
+        # And by URL fallback with different job_id
         different_job_id = _unique_id()
         result = check_already_applied(different_job_id, user_id=user_id, job_url=url)
         assert result is not None
-        assert result["job_title"] == "Frontend Dev"
 
 
 class TestClearPending:
@@ -105,17 +108,16 @@ class TestClearPending:
         user_id = str(uuid.uuid4())
         _clean_test_rows.append(job_id)
 
-        # Insert pending
+        # Insert pending then submitted
         record_result(
             session_id=session_id, job_id=job_id, status="pending",
             job_title="SRE", user_id=user_id,
         )
-        assert check_already_applied(job_id, user_id=user_id) is not None
 
-        # Clear pending
+        # Clear pending — should remove the pending row
         clear_pending(session_id, job_id)
 
-        # Should no longer block
+        # No submitted record exists, so should not block
         assert check_already_applied(job_id, user_id=user_id) is None
 
     def test_clear_does_not_remove_submitted(self, _clean_test_rows):
@@ -168,7 +170,8 @@ class TestFullLifecycle:
             session_id=session_id, job_id=job_id, status="pending",
             job_title="ML Engineer", job_company="BigCo", user_id=user_id,
         )
-        assert check_already_applied(job_id, user_id=user_id) is not None
+        # Pending should not block
+        assert check_already_applied(job_id, user_id=user_id) is None
 
         # 2. Clear pending (after Skyvern returns)
         clear_pending(session_id, job_id)
