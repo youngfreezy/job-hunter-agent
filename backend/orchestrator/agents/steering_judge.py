@@ -33,8 +33,10 @@ class SteeringDirective(BaseModel):
         "resume_intervention",
         "confirm_login",
         "set_mode",
+        "block_company",
     ] = "none"
     mode: Literal["status"] | None = None
+    company_name: str | None = None
     reason: str = ""
 
 
@@ -69,6 +71,10 @@ Rules:
   `resume_workflow`.
 - Use `set_mode` when the user explicitly asks to switch to screenshot or
   takeover mode.
+- Use `block_company` when the user says they want to block, exclude, skip,
+  or never see a specific company again. Set `company_name` to the company
+  name they mention. Examples: "block Anthropic", "don't show me OpenAI jobs",
+  "never apply to Meta", "skip Google forever".
 - Keep `response_message` concise, high-signal, and grounded in the session.
 
 Response style:
@@ -80,6 +86,7 @@ Response style:
   - `I'll resume from the current intervention point.`
   - `I'll mark login as complete and continue.`
   - `I'll switch the session to ... mode.`
+  - `Done — I've added [company] to your blocklist. They won't appear in future sessions.`
 - If the user is ambiguous, ask a short clarifying question and emit no
   control directive.
 """

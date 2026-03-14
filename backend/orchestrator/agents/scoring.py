@@ -334,10 +334,26 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                         "Jobs requiring 5+ years of experience or senior/staff/principal titles "
                         "are a POOR fit. Score their experience_match at 20 or below.\n\n"
                     )
+            blocklist_section = ""
+            if user_id:
+                try:
+                    from backend.shared.billing_store import get_user_by_id
+                    _user_data = get_user_by_id(user_id)
+                    _blocked_list = _user_data.get("blocked_companies", []) if _user_data else []
+                    if _blocked_list:
+                        blocklist_section = (
+                            f"## Blocked Companies\n\n"
+                            f"The candidate has permanently blocked these companies: {', '.join(_blocked_list)}.\n"
+                            f"Any jobs from these companies MUST receive an overall score of 0.\n\n"
+                        )
+                except Exception:
+                    pass
+
             user_prompt = (
                 f"## Candidate Resume\n\n{resume}\n\n"
                 f"{keywords_section}"
                 f"{experience_section}"
+                f"{blocklist_section}"
                 f"## Job Listings (batch {batch_idx + 1}/{total_batches})\n\n{jobs_text}\n\n"
             )
             if _strategy_context:

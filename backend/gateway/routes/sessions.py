@@ -1656,6 +1656,20 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
                     state_update["status"] = RESUME_STATUS_BY_NODE.get(resume_target, values.get("status"))
             elif directive.action == "skip_next_job":
                 state_update["skip_next_job_requested"] = True
+            elif directive.action == "block_company" and directive.company_name:
+                try:
+                    from backend.shared.billing_store import get_blocked_companies, update_blocked_companies
+                    current = get_blocked_companies(user["id"])
+                    company = directive.company_name.strip()
+                    if company.lower() not in current:
+                        from backend.shared.billing_store import get_user_by_id
+                        user_data = get_user_by_id(user["id"])
+                        raw_list = user_data.get("blocked_companies", []) if user_data else []
+                        raw_list.append(company)
+                        update_blocked_companies(user["id"], raw_list)
+                        logger.info("Blocked company %r for user %s via steering", company, user["id"])
+                except Exception:
+                    logger.warning("Failed to block company via steering", exc_info=True)
         await graph.aupdate_state(config, state_update)
     except Exception as exc:
         logger.exception("Failed to steer session %s", session_id)
