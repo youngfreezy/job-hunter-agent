@@ -704,7 +704,12 @@ async def _apply_to_job(
         pass  # Don't block on URL parse errors
 
     # Pre-flight: skip jobs already submitted by this user (checks by ID and URL)
-    prior = check_already_applied(job_id, user_id=user_id, job_url=job.url)
+    # Quick Apply sessions bypass this — user explicitly provided URLs
+    _app_cfg = state.get("session_config") or {}
+    _app_cfg = _app_cfg if isinstance(_app_cfg, dict) else (_app_cfg.model_dump() if hasattr(_app_cfg, "model_dump") else {})
+    _is_quick_apply = _app_cfg.get("discovery_mode") == "manual_urls"
+
+    prior = check_already_applied(job_id, user_id=user_id, job_url=job.url) if not _is_quick_apply else None
     if prior:
         raw_at = prior.get("applied_at", "")
         try:
@@ -1366,7 +1371,11 @@ async def run_application_agent(state: JobHunterState) -> dict:
             }
 
         # --- Per-session company dedup (1 application per company) ---
-        if job_obj and job_obj.company.lower().strip() in session_applied_companies:
+        # Quick Apply bypasses this — user explicitly chose each URL
+        _qa_cfg = state.get("session_config") or {}
+        _qa_cfg = _qa_cfg if isinstance(_qa_cfg, dict) else (_qa_cfg.model_dump() if hasattr(_qa_cfg, "model_dump") else {})
+        _qa_mode = _qa_cfg.get("discovery_mode") == "manual_urls"
+        if not _qa_mode and job_obj and job_obj.company.lower().strip() in session_applied_companies:
             company_name = job_obj.company
             logger.info("Skipping %s — already applied to %s in this session", job_label, company_name)
             skipped_result = ApplicationResult(
