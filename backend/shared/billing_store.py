@@ -92,6 +92,12 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+-- Per-user company blocklist (excluded from all discovery/scoring)
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_companies TEXT[] DEFAULT '{}';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
@@ -136,7 +142,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
     """Get or create a user by email. Returns dict with id, email, balance, free_remaining."""
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider, created_at, notification_channel, phone_number FROM users WHERE email = %s",
+            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider, created_at, notification_channel, phone_number, blocked_companies FROM users WHERE email = %s",
             (email,),
         )
         row = cur.fetchone()
@@ -152,6 +158,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
                 "created_at": row[7].isoformat() if row[7] else None,
                 "notification_channel": row[8] or "email",
                 "phone_number": row[9],
+                "blocked_companies": list(row[10]) if row[10] else [],
             }
 
         # Create new user
@@ -527,7 +534,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
     """Get a user by their ID. Returns dict with notification prefs, or None."""
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT id, email, notification_channel, phone_number, phone_verified, name FROM users WHERE id = %s",
+            "SELECT id, email, notification_channel, phone_number, phone_verified, name, blocked_companies FROM users WHERE id = %s",
             (user_id,),
         )
         row = cur.fetchone()
@@ -540,6 +547,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
             "phone_number": row[3],
             "phone_verified": bool(row[4]) if row[4] is not None else False,
             "name": row[5],
+            "blocked_companies": list(row[6]) if row[6] else [],
         }
 
 
@@ -549,6 +557,32 @@ def update_notification_channel(user_id: str, channel: str) -> None:
         conn.execute(
             "UPDATE users SET notification_channel = %s WHERE id = %s",
             (channel, user_id),
+        )
+        conn.commit()
+
+
+def get_blocked_companies(user_id: str) -> set:
+    """Get the set of blocked company names (lowercased) for a user."""
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                "SELECT blocked_companies FROM users WHERE id = %s", (user_id,)
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                return {c.lower().strip() for c in row[0]}
+    except Exception:
+        logger.warning("Failed to get blocked companies for user %s", user_id, exc_info=True)
+    return set()
+
+
+def update_blocked_companies(user_id: str, companies: list) -> None:
+    """Update the blocked companies list for a user. Normalizes to lowercase."""
+    normalized = [c.strip() for c in companies if c.strip()]
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE users SET blocked_companies = %s WHERE id = %s",
+            (normalized, user_id),
         )
         conn.commit()
 

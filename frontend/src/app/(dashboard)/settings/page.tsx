@@ -21,6 +21,9 @@ export default function SettingsPage() {
   const [confirming, setConfirming] = useState(false);
   const [savingChannel, setSavingChannel] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [blockedCompanies, setBlockedCompanies] = useState<string[]>([]);
+  const [newCompany, setNewCompany] = useState("");
+  const [savingBlocklist, setSavingBlocklist] = useState(false);
 
 
   useEffect(() => {
@@ -29,10 +32,12 @@ export default function SettingsPage() {
         const auth = await getAuthHeaders();
         const res = await apiFetch(`${API_BASE}/api/auth/me`, { headers: auth });
         if (res.ok) {
-          const user = await res.json();
+          const data = await res.json();
+          const user = data.user || data;
           setSavedPhone(user.phone_number || null);
           setPhoneVerified(user.phone_verified || false);
           setNotificationChannel(user.notification_channel || "email");
+          setBlockedCompanies(user.blocked_companies || []);
           if (user.phone_verified) {
             setVerifyStep("done");
             setPhone(user.phone_number || "");
@@ -110,6 +115,42 @@ export default function SettingsPage() {
     } finally {
       setSavingChannel(false);
     }
+  }
+
+  async function saveBlockedCompanies(updated: string[]) {
+    setSavingBlocklist(true);
+    try {
+      const auth = await getAuthHeaders();
+      await apiFetch(`${API_BASE}/api/auth/me/blocked-companies`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...auth },
+        body: JSON.stringify({ blocked_companies: updated }),
+      });
+      setBlockedCompanies(updated);
+    } catch {
+      toast.error("Failed to update company blocklist");
+    } finally {
+      setSavingBlocklist(false);
+    }
+  }
+
+  function handleAddCompany() {
+    const name = newCompany.trim();
+    if (!name) return;
+    if (blockedCompanies.some((c) => c.toLowerCase() === name.toLowerCase())) {
+      toast.error(`${name} is already blocked`);
+      return;
+    }
+    const updated = [...blockedCompanies, name];
+    setNewCompany("");
+    saveBlockedCompanies(updated);
+    toast.success(`${name} added to blocklist`);
+  }
+
+  function handleRemoveCompany(company: string) {
+    const updated = blockedCompanies.filter((c) => c !== company);
+    saveBlockedCompanies(updated);
+    toast.success(`${company} removed from blocklist`);
   }
 
   if (loading) return null;
@@ -233,6 +274,61 @@ export default function SettingsPage() {
         </Card>
       )}
 
+
+      {/* Company blocklist */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Company Blocklist</CardTitle>
+          <CardDescription>
+            Companies you never want to see in job results. Applied to all sessions automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newCompany}
+              onChange={(e) => setNewCompany(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddCompany()}
+              placeholder="e.g. Anthropic"
+              className="flex-1 rounded-md border px-3 py-2 text-sm bg-background"
+              disabled={savingBlocklist}
+            />
+            <Button
+              onClick={handleAddCompany}
+              disabled={savingBlocklist || !newCompany.trim()}
+              size="sm"
+            >
+              Add
+            </Button>
+          </div>
+          {blockedCompanies.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {blockedCompanies.map((company) => (
+                <Badge
+                  key={company}
+                  variant="secondary"
+                  className="gap-1 pr-1 text-sm"
+                >
+                  {company}
+                  <button
+                    onClick={() => handleRemoveCompany(company)}
+                    disabled={savingBlocklist}
+                    className="ml-1 rounded-full p-0.5 hover:bg-destructive/20 transition-colors"
+                    aria-label={`Remove ${company}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No companies blocked. Jobs from all companies will appear in your results.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* SMS Commands reference */}
       {phoneVerified && (
