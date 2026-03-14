@@ -55,6 +55,18 @@ export default function QuickApplyPage() {
     .map((u) => u.trim())
     .filter((u) => u.startsWith("http"));
 
+  // Domains that almost always require account creation (Workday, Taleo, etc.)
+  const AUTH_DOMAINS = [
+    "myworkdayjobs.com",
+    "taleo.net",
+    "icims.com",
+    "apply.deloitte.com",
+    "smartrecruiters.com",
+  ];
+  const authWarnings = parsedUrls.filter((u) =>
+    AUTH_DOMAINS.some((d) => u.includes(d))
+  );
+
   const handleSubmit = async () => {
     if (parsedUrls.length === 0) {
       toast.error("Paste at least one job URL.");
@@ -165,6 +177,19 @@ export default function QuickApplyPage() {
               {parsedUrls.length} valid URL{parsedUrls.length !== 1 ? "s" : ""}{" "}
               detected
             </p>
+          )}
+          {authWarnings.length > 0 && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/50 px-4 py-3">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                {authWarnings.length} URL{authWarnings.length !== 1 ? "s" : ""} may
+                require an account
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                Workday, Taleo, and similar sites require you to create an account
+                before applying. These will likely fail unless you already have an
+                account.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>

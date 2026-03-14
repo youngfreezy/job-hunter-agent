@@ -331,7 +331,7 @@ _EXPIRED_PAGE_INDICATORS = [
     "page not found", "this page could not be found",
     "job posting has been removed",
     # Common SPA / JS-rendered indicators (often in <noscript> or meta tags)
-    "404", "not found",
+    "error 404", "404 not found", "404 error",
     "this role has been closed", "role is no longer available",
     "opportunity is no longer available", "job is closed",
     "application closed", "applications are closed",
