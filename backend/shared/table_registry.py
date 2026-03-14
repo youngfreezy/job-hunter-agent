@@ -30,6 +30,7 @@ def _get_all_ensure_functions() -> List[Tuple[str, Callable]]:
     from backend.shared.screenshot_store import _ensure_table as ensure_screenshots
     from backend.shared.selector_memory import ensure_table as ensure_selectors
     from backend.shared.webhook_store import _ensure_webhook_tables
+    from backend.moltbook.strategies import ensure_strategy_table
 
     return [
         ("selector_memory", ensure_selectors),
@@ -41,6 +42,7 @@ def _get_all_ensure_functions() -> List[Tuple[str, Callable]]:
         ("credential_store", ensure_credentials),
         ("webhook_store", _ensure_webhook_tables),
         ("screenshot_store", ensure_screenshots),
+        ("moltbook_strategy", ensure_strategy_table),
     ]
 
 

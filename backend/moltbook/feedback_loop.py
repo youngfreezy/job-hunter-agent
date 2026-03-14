@@ -182,8 +182,8 @@ def extract_signals(post: Dict[str, Any]) -> List[Dict[str, Any]]:
     raw_content = post.get("content", "")
     post_id = str(post.get("id", ""))
 
-    # Sanitize first
-    content = sanitize(raw_content, max_length=500, context=f"post:{post_id}")
+    # Sanitize first — use 2000 chars so signal keywords aren't truncated away
+    content = sanitize(raw_content, max_length=2000, context=f"signal:{post_id}")
     if not content:
         return []
 
