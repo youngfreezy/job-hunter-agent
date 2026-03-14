@@ -1137,26 +1137,10 @@ async def _apply_to_job(
             await asyncio.sleep(2)  # settle
             logger.info("Final page URL after navigation: %s", page.url)
 
-            # If CAPTCHA appears early, pause for manual intervention.
+            # Skyvern handles CAPTCHAs natively — no manual intervention needed.
+            # Just log if one is detected for debugging purposes.
             if await _has_captcha(page):
-                await emit_agent_event(session_id, "needs_intervention", {
-                    "job_id": job_id,
-                    "job_title": job.title,
-                    "company": job.company,
-                    "reason": "CAPTCHA detected. Solve it in the browser window, then click Resume Agent.",
-                })
-                resumed = await _wait_for_intervention_resume(session_id, timeout_seconds=600)
-                if not resumed:
-                    return ApplicationResult(
-                        job_id=job_id,
-                        status=ApplicationStatus.SKIPPED,
-                        error_message="intervention_timeout",
-                        duration_seconds=int(time.monotonic() - start_time),
-                    )
-                await emit_agent_event(session_id, "application_progress", {
-                    "job_id": job_id,
-                    "step": "Manual intervention received — resuming application...",
-                })
+                logger.info("CAPTCHA detected on %s — Skyvern will handle it", job.url[:80])
 
             # --- Step 1b: Check if page is dead (404/expired) ---
             if await _is_dead_page(page):
