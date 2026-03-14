@@ -217,6 +217,195 @@ def _infer_error_category(error_message: str | None) -> ApplicationErrorCategory
 
 
 # ---------------------------------------------------------------------------
+# Application Supervisor -- LLM-based circuit breaker replacement
+# ---------------------------------------------------------------------------
+
+from enum import Enum as _Enum
+
+from pydantic import BaseModel as _BaseModel, Field as _Field
+
+
+class SupervisorDecision(str, _Enum):
+    CONTINUE = "continue"  # proceed to next job in queue
+    PAUSE = "pause"        # stop and return to shortlist review
+    ABORT = "abort"        # stop entirely, go to verification/summary
+
+
+class ApplicationSupervisorResult(_BaseModel):
+    decision: SupervisorDecision = _Field(
+        description="What to do next after this failure"
+    )
+    reasoning: str = _Field(
+        description="1-2 sentence explanation for logging"
+    )
+    is_systemic: bool = _Field(
+        default=False,
+        description="True if this failure suggests a systemic issue, not job-specific",
+    )
+
+
+_SUPERVISOR_SYSTEM = """\
+You are a supervisor for a job application automation system. After each failed \
+application attempt, you decide what the system should do next.
+
+You will receive:
+- The error details from the failed attempt
+- A summary of recent failures in this session
+- How many jobs remain in the queue
+- Whether this is a Quick Apply session (user explicitly chose these URLs)
+
+## Decisions
+
+- "continue": The failure is job-specific or site-specific (expired listing, auth wall, \
+captcha on one site, duplicate). Move to the next job.
+- "pause": Multiple consecutive failures suggest a systemic problem (e.g., resume upload \
+broken across sites, Skyvern navigation failing repeatedly, form fill errors on \
+different ATS platforms). Stop and let the user review.
+- "abort": An unrecoverable condition (credits exhausted, all remaining jobs share the \
+same systemic blocker). Proceed directly to summary.
+
+## Key rules
+
+1. Site-specific blockers (auth walls, captchas, expired listings, duplicates) should \
+ALWAYS be "continue" — these say nothing about whether the next job will work.
+
+2. A failure is "systemic" if it indicates the automation itself is broken — form fill \
+errors, submit button not found, timeout on multiple different sites, navigation failures.
+
+3. Quick Apply: The user hand-picked these URLs. Be aggressive about continuing. Only \
+pause after 5+ consecutive systemic failures. Never abort unless credits are exhausted.
+
+4. Standard sessions: Pause after 3 consecutive systemic failures.
+
+5. Set is_systemic=true only for failures that indicate the automation is broken, not \
+for site-specific issues the automation can't control.\
+"""
+
+
+def _build_supervisor_context(
+    result: ApplicationResult,
+    failed_history: list,
+    remaining_count: int,
+    is_quick_apply: bool,
+) -> str:
+    """Build compact JSON context for the supervisor LLM."""
+    import json as _json
+
+    effective_cat = result.error_category or _infer_error_category(result.error_message)
+
+    recent_failures = []
+    for f in failed_history[-5:]:
+        cat = f.error_category or _infer_error_category(f.error_message)
+        recent_failures.append({
+            "error": (f.error_message or "unknown")[:100],
+            "category": cat.value if cat else "unknown",
+        })
+
+    return _json.dumps({
+        "current_failure": {
+            "error_message": (result.error_message or "")[:200],
+            "error_category": effective_cat.value if effective_cat else None,
+            "failure_step": result.failure_step,
+        },
+        "session_history": {
+            "total_failures": len(failed_history),
+            "recent_failures": recent_failures,
+        },
+        "remaining_jobs": remaining_count,
+        "is_quick_apply": is_quick_apply,
+    }, indent=2)
+
+
+def _hardcoded_fallback(
+    result: ApplicationResult,
+    failed_history: list,
+    remaining_count: int,
+    is_quick_apply: bool,
+) -> ApplicationSupervisorResult:
+    """Replicate existing circuit breaker logic as safe LLM-failure degradation."""
+    effective_cat = result.error_category or _infer_error_category(result.error_message)
+    is_site_blocker = effective_cat in (
+        ApplicationErrorCategory.CAPTCHA,
+        ApplicationErrorCategory.AUTH_REQUIRED,
+        ApplicationErrorCategory.JOB_EXPIRED,
+        ApplicationErrorCategory.DUPLICATE,
+    )
+
+    # Count recent consecutive systemic failures
+    consecutive_systemic = 0
+    for f in reversed(failed_history):
+        cat = f.error_category or _infer_error_category(f.error_message)
+        if cat in (
+            ApplicationErrorCategory.CAPTCHA,
+            ApplicationErrorCategory.AUTH_REQUIRED,
+            ApplicationErrorCategory.JOB_EXPIRED,
+            ApplicationErrorCategory.DUPLICATE,
+        ):
+            break  # streak broken by a site-specific failure
+        consecutive_systemic += 1
+
+    threshold = 5 if is_quick_apply else 3
+
+    if consecutive_systemic >= threshold:
+        return ApplicationSupervisorResult(
+            decision=SupervisorDecision.PAUSE,
+            reasoning=f"Fallback: {consecutive_systemic} consecutive systemic failures",
+            is_systemic=True,
+        )
+
+    return ApplicationSupervisorResult(
+        decision=SupervisorDecision.CONTINUE,
+        reasoning="Fallback: failure appears job-specific, continuing",
+        is_systemic=not is_site_blocker,
+    )
+
+
+async def _call_application_supervisor(
+    result: ApplicationResult,
+    failed_history: list,
+    remaining_count: int,
+    is_quick_apply: bool,
+    session_id: str,
+) -> ApplicationSupervisorResult:
+    """Ask the LLM supervisor what to do after a failure.
+
+    Falls back to hardcoded logic if the LLM call fails.
+    """
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from backend.shared.llm import build_llm, invoke_with_retry, HAIKU_MODEL
+
+        llm = build_llm(model=HAIKU_MODEL, max_tokens=256, temperature=0.0)
+        structured_llm = llm.with_structured_output(ApplicationSupervisorResult)
+
+        context = _build_supervisor_context(
+            result, failed_history, remaining_count, is_quick_apply,
+        )
+
+        messages = [
+            SystemMessage(content=_SUPERVISOR_SYSTEM),
+            HumanMessage(content=context),
+        ]
+
+        decision = await invoke_with_retry(structured_llm, messages, max_retries=1)
+
+        logger.info(
+            "Application supervisor: decision=%s systemic=%s reasoning=%s",
+            decision.decision.value, decision.is_systemic, decision.reasoning,
+        )
+
+        return decision
+
+    except Exception as exc:
+        logger.warning(
+            "Application supervisor LLM failed (%s) — using hardcoded fallback", exc,
+        )
+        return _hardcoded_fallback(
+            result, failed_history, remaining_count, is_quick_apply,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Helpers -- lazy imports to avoid import-time failures when browser
 # deps are not installed
 # ---------------------------------------------------------------------------
@@ -1407,28 +1596,6 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 "errors": [], "skip_next_job_requested": False,
             }
 
-        # --- Circuit breaker ---
-        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-            logger.warning(
-                "Circuit breaker tripped after %d consecutive failures -- pausing",
-                consecutive_failures,
-            )
-            return {
-                "applications_submitted": [],
-                "applications_failed": [],
-                "applications_skipped": [],
-                "consecutive_failures": consecutive_failures,
-                "status": "paused",
-                "agent_statuses": {
-                    "application": (
-                        f"paused -- circuit breaker after "
-                        f"{consecutive_failures} consecutive failures"
-                    )
-                },
-                "errors": errors,
-                "skip_next_job_requested": False,
-            }
-
         prev_submitted = len(state.get("applications_submitted") or [])
         prev_failed = len(state.get("applications_failed") or [])
         prev_skipped = len(state.get("applications_skipped") or [])
@@ -1566,14 +1733,31 @@ async def run_application_agent(state: JobHunterState) -> dict:
                                 "errors": ["Skyvern credits exhausted. Top up at https://app.skyvern.com"],
                                 "skip_next_job_requested": False,
                             }
-                        # Don't count site-specific blockers (reCAPTCHA, anti-bot) toward
-                        # circuit breaker — they're not systemic failures.
-                        is_site_blocker = result.error_category in (
-                            ApplicationErrorCategory.CAPTCHA,
-                            ApplicationErrorCategory.AUTH_REQUIRED,
+                        # --- LLM Supervisor decides whether to continue ---
+                        all_failed = list(state.get("applications_failed") or []) + failed
+                        remaining_count = len(remaining) - (app_idx + 1)
+                        supervisor = await _call_application_supervisor(
+                            result=result,
+                            failed_history=all_failed,
+                            remaining_count=remaining_count,
+                            is_quick_apply=_qa_mode,
+                            session_id=session_id,
                         )
-                        if not is_site_blocker:
+                        if supervisor.is_systemic:
                             consecutive_failures += 1
+                        else:
+                            consecutive_failures = 0
+                        if supervisor.decision in (SupervisorDecision.PAUSE, SupervisorDecision.ABORT):
+                            return {
+                                "applications_submitted": submitted,
+                                "applications_failed": failed,
+                                "applications_skipped": skipped,
+                                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
+                                "status": "paused",
+                                "agent_statuses": {"application": f"paused — {supervisor.reasoning}"},
+                                "errors": errors,
+                                "skip_next_job_requested": False,
+                            }
                         if result.error_message:
                             errors.append(f"Application failed for {job_id}: {result.error_message}")
                     else:
@@ -1588,6 +1772,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         error_message=str(exc),
                     )
                     failed.append(fail_result)
+                    # Unhandled exceptions are always systemic
                     consecutive_failures += 1
                     if job is not None:
                         _db_record_result(
@@ -1634,12 +1819,31 @@ async def run_application_agent(state: JobHunterState) -> dict:
                                 "errors": ["Skyvern credits exhausted. Top up at https://app.skyvern.com"],
                                 "skip_next_job_requested": False,
                             }
-                        is_site_blocker = res.error_category in (
-                            ApplicationErrorCategory.CAPTCHA,
-                            ApplicationErrorCategory.AUTH_REQUIRED,
+                        # --- LLM Supervisor decides whether to continue ---
+                        all_failed_batch = list(state.get("applications_failed") or []) + failed
+                        remaining_batch = len(remaining) - (i + 1)
+                        sv = await _call_application_supervisor(
+                            result=res,
+                            failed_history=all_failed_batch,
+                            remaining_count=remaining_batch,
+                            is_quick_apply=_qa_mode,
+                            session_id=session_id,
                         )
-                        if not is_site_blocker:
+                        if sv.is_systemic:
                             consecutive_failures += 1
+                        else:
+                            consecutive_failures = 0
+                        if sv.decision in (SupervisorDecision.PAUSE, SupervisorDecision.ABORT):
+                            return {
+                                "applications_submitted": submitted,
+                                "applications_failed": failed,
+                                "applications_skipped": skipped,
+                                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
+                                "status": "paused",
+                                "agent_statuses": {"application": f"paused — {sv.reasoning}"},
+                                "errors": errors,
+                                "skip_next_job_requested": False,
+                            }
                         if res.error_message:
                             errors.append(f"Application failed for {jid}: {res.error_message}")
                     else:

@@ -21,7 +21,6 @@ export default function QuickApplyPage() {
   const [resumeText, setResumeText] = useState("");
   const [resumeFileName, setResumeFileName] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
   const [showResumeUpload, setShowResumeUpload] = useState(false);
 
   // Restore saved resume from localStorage
@@ -57,13 +56,12 @@ export default function QuickApplyPage() {
     .filter((u) => u.startsWith("http"));
 
   const handleSubmit = async () => {
-    setError("");
     if (parsedUrls.length === 0) {
-      setError("Paste at least one job URL.");
+      toast.error("Paste at least one job URL.");
       return;
     }
     if (!resumeText) {
-      setError("Upload your resume first.");
+      toast.error("Upload your resume first.");
       setShowResumeUpload(true);
       return;
     }
@@ -95,8 +93,8 @@ export default function QuickApplyPage() {
       toast.success(`Session started with ${parsedUrls.length} jobs`);
       router.push(`/session/${session.session_id}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to start session";
-      setError(msg);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg || "Failed to start session");
       setSubmitting(false);
     }
   };
@@ -170,13 +168,6 @@ export default function QuickApplyPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Error */}
-      {error && (
-        <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 text-sm">
-          {error}
-        </div>
-      )}
 
       {/* Submit */}
       <Button
