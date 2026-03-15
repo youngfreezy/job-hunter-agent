@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 12px;
+      width: 100%;
+    }
+    .status-badge.connected {
+      background: #052e16;
+      color: #4ade80;
+      border: 1px solid #166534;
+    }
+    .status-badge.disconnected {
+      background: #1c1917;
+      color: #a8a29e;
+      border: 1px solid #292524;
+    }
+    .status-badge.connecting, .status-badge.reconnecting {
+      background: #1e1b4b;
+      color: #818cf8;
+      border: 1px solid #312e81;
+    }
+    .status-badge.error {
+      background: #450a0a;
+      color: #f87171;
+      border: 1px solid #7f1d1d;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .connected .dot { background: #4ade80; }
+    .disconnected .dot { background: #78716c; }
+    .connecting .dot, .reconnecting .dot {
+      background: #818cf8;
+      animation: pulse 1.5s infinite;
+    }
+    .error .dot { background: #f87171; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .message {
+      font-size: 12px;
+      color: #a3a3a3;
+      margin-bottom: 16px;
+    }
+    .token-section {
+      margin-bottom: 12px;
+    }
+    .token-section label {
+      display: block;
+      font-size: 12px;
+      color: #a3a3a3;
+      margin-bottom: 4px;
+    }
+    .token-section input {
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      background: #171717;
+      color: #e5e5e5;
+      font-size: 13px;
+      outline: none;
+    }
+    .token-section input:focus {
+      border-color: #6366f1;
+    }
+    .env-select {
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      background: #171717;
+      color: #e5e5e5;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-connect {
+      background: #4f46e5;
+      color: #fff;
+    }
+    .btn-connect:hover { background: #4338ca; }
+    .btn-disconnect {
+      background: #292524;
+      color: #e5e5e5;
+    }
+    .btn-disconnect:hover { background: #44403c; }
+    .btn + .btn { margin-top: 8px; }
+    .footer {
+      margin-top: 16px;
+      font-size: 11px;
+      color: #525252;
+      text-align: center;
+    }
+    .footer a { color: #6366f1; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>JobHunter Agent</h1>
+  </div>
+
+  <div id="statusBadge" class="status-badge disconnected">
+    <span class="dot"></span>
+    <span id="statusText">Disconnected</span>
+  </div>
+  <div id="statusMessage" class="message">Not connected</div>
+
+  <div class="token-section">
+    <label>Auth Token (from jobhunteragent.com)</label>
+    <input type="password" id="tokenInput" placeholder="Paste your token here">
+  </div>
+
+  <select id="envSelect" class="env-select">
+    <option value="production">Production</option>
+    <option value="staging">Staging</option>
+    <option value="local">Local (localhost:8000)</option>
+  </select>
+
+  <button id="connectBtn" class="btn btn-connect">Connect</button>
+  <button id="disconnectBtn" class="btn btn-disconnect" style="display:none">Disconnect</button>
+
+  <div class="footer">
+    <a href="https://jobhunteragent.com" target="_blank">jobhunteragent.com</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

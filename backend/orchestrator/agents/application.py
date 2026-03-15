@@ -1250,29 +1250,45 @@ async def _apply_to_job(
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
 
-            # --- Step 4: Apply via Skyvern AI agent ---
-            # Skyvern handles ATS detection, form filling, and submission
-            # visually — no hardcoded selectors or per-board dispatch needed.
+            # --- Step 4: Apply via AI agent ---
+            # Route: Extension CDP (user's browser) → Skyvern (fallback)
             await page.close()
-            page = None  # Skyvern manages its own browser
+            page = None  # AI agent manages its own browser
+
+            from backend.gateway.routes.extension import extension_manager
+            _use_extension = extension_manager.is_connected(user_id)
+            _mode = "extension" if _use_extension else "skyvern"
 
             await emit_agent_event(session_id, "application_progress", {
                 "job_id": job_id,
-                "step": f"Filling application form (AI agent) for {job.title}...",
+                "step": f"Filling application form ({_mode}) for {job.title}...",
                 "current": _app_idx + 1,
                 "total": _total_q,
                 "progress": _pct,
             })
 
-            from backend.browser.tools.skyvern_applier import apply_with_skyvern
-            result = await apply_with_skyvern(
-                job=job,
-                user_profile=user_profile,
-                resume_text=resume_text,
-                cover_letter=cover_letter_text,
-                resume_file_path=resume_file,
-                session_id=session_id,
-            )
+            if _use_extension:
+                _cdp_url = extension_manager.get_cdp_ws_url(user_id)
+                from backend.browser.tools.browser_use_applier import apply_with_browser_use
+                result = await apply_with_browser_use(
+                    job=job,
+                    resume_text=resume_text,
+                    cover_letter=cover_letter_text,
+                    user_profile=user_profile,
+                    session_id=session_id,
+                    resume_file_path=resume_file,
+                    cdp_url=_cdp_url,
+                )
+            else:
+                from backend.browser.tools.skyvern_applier import apply_with_skyvern
+                result = await apply_with_skyvern(
+                    job=job,
+                    user_profile=user_profile,
+                    resume_text=resume_text,
+                    cover_letter=cover_letter_text,
+                    resume_file_path=resume_file,
+                    session_id=session_id,
+                )
 
         finally:
             if page and not page.is_closed():

@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "JobHunter Agent",
+  "version": "1.0.0",
+  "description": "Connect your browser to JobHunter Agent for authenticated job applications",
+  "permissions": [
+    "debugger",
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://backend-production-*.up.railway.app/*",
+    "https://backend-staging-*.up.railway.app/*",
+    "http://localhost:8000/*",
+    "https://jobhunteragent.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "JobHunter Agent"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

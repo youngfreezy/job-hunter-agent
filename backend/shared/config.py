@@ -101,6 +101,9 @@ class Settings(BaseSettings):
     SKYVERN_TASK_TIMEOUT: int = 1800  # Max seconds to wait for a task to complete (30 min)
     SKYVERN_CONCURRENCY: int = 2  # Concurrent Skyvern browser tasks
 
+    # --- Chrome Extension (CDP relay for browser-use) ---
+    EXTENSION_CDP_TIMEOUT: int = 30  # seconds to wait for CDP response from extension
+
     # --- Smart Apply (direct ATS API submission) ---
     API_APPLY_ENABLED: bool = True  # Try direct API before Skyvern
     API_APPLY_BATCH_SIZE: int = 5  # Max API jobs to process per graph iteration

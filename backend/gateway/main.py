@@ -348,6 +348,7 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.free_trial import router as free_trial_router
     from backend.gateway.routes.marketplace import router as marketplace_router
     from backend.gateway.routes.developer import router as developer_router
+    from backend.gateway.routes.extension import router as extension_router
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
@@ -363,6 +364,7 @@ def create_app() -> FastAPI:
     app.include_router(free_trial_router)
     app.include_router(marketplace_router)
     app.include_router(developer_router)
+    app.include_router(extension_router)
 
     return app
 
