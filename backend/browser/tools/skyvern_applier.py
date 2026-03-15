@@ -52,7 +52,8 @@ async def _generate_resume_url(session_id: str, resume_file_path: str = "") -> O
         if settings.BACKEND_PUBLIC_URL:
             base = settings.BACKEND_PUBLIC_URL.rstrip("/")
         else:
-            base = "http://localhost:8000"
+            # Skyvern runs in Docker — localhost won't resolve to host machine
+            base = "http://host.docker.internal:8000"
 
         url = f"{base}/api/sessions/{session_id}/resume-file?token={token}"
         logger.info("Generated resume URL for Skyvern: %s", url[:80])
@@ -284,7 +285,12 @@ async def apply_with_skyvern(
             logger.error("Skyvern task creation failed: %s %s", e.response.status_code, e.response.text[:500])
             # Surface 402 credits-exhausted as a distinct error so the apply loop
             # can short-circuit immediately instead of retrying every remaining job.
-            error_msg = f"Skyvern API error: {e.response.status_code}"
+            # Include response body detail for better diagnostics
+            try:
+                detail = e.response.json().get("detail", e.response.text[:200])
+            except Exception:
+                detail = e.response.text[:200]
+            error_msg = f"Skyvern API error: {e.response.status_code} — {detail}"
             error_cat = None
             if e.response.status_code == 402:
                 error_msg = "skyvern_credits_exhausted"
