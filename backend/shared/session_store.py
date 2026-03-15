@@ -280,55 +280,73 @@ def mark_sessions_interrupted(session_ids: List[str]) -> None:
 
 
 def cleanup_old_data(days: int = 90) -> int:
-    """Delete application results and sessions older than N days. Returns count deleted."""
+    """Delete old data to keep Postgres volume lean. Returns total rows deleted."""
+    completed_session_cutoff = "7 days"
     with _connect() as conn:
         try:
+            total = 0
+
             # Delete old application results (keep sessions table for reference)
             cur = conn.execute(
                 "DELETE FROM application_results WHERE created_at < NOW() - INTERVAL '%s days'",
                 (days,),
             )
             app_count = cur.rowcount
+            total += app_count
 
             # Delete resolved DLQ items older than 30 days
             cur = conn.execute(
                 "DELETE FROM dead_letter_queue WHERE status != 'pending' AND created_at < NOW() - INTERVAL '30 days'"
             )
             dlq_count = cur.rowcount
+            total += dlq_count
 
-            # Clean up old LangGraph checkpoints for completed sessions older than 7 days
-            checkpoint_count = 0
+            # Delete failure screenshots older than 7 days (biggest table by size)
+            screenshot_count = 0
             try:
                 cur = conn.execute(
-                    """DELETE FROM checkpoints WHERE thread_id IN (
-                        SELECT id::text FROM sessions WHERE status IN ('completed', 'failed')
-                        AND updated_at < NOW() - INTERVAL '7 days'
-                    )"""
+                    "DELETE FROM failure_screenshots WHERE created_at < NOW() - INTERVAL '7 days'"
                 )
-                checkpoint_count = cur.rowcount
+                screenshot_count = cur.rowcount
+                total += screenshot_count
+            except Exception:
+                logger.debug("failure_screenshots cleanup skipped", exc_info=True)
 
-                conn.execute(
-                    """DELETE FROM checkpoint_blobs WHERE thread_id IN (
+            # Delete old Skyvern task artifacts for completed sessions
+            artifact_count = 0
+            try:
+                cur = conn.execute(
+                    f"""DELETE FROM skyvern_task_artifacts WHERE session_id IN (
                         SELECT id::text FROM sessions WHERE status IN ('completed', 'failed')
-                        AND updated_at < NOW() - INTERVAL '7 days'
+                        AND updated_at < NOW() - INTERVAL '{completed_session_cutoff}'
                     )"""
                 )
+                artifact_count = cur.rowcount
+                total += artifact_count
+            except Exception:
+                logger.debug("skyvern_task_artifacts cleanup skipped", exc_info=True)
 
-                conn.execute(
-                    """DELETE FROM checkpoint_writes WHERE thread_id IN (
-                        SELECT id::text FROM sessions WHERE status IN ('completed', 'failed')
-                        AND updated_at < NOW() - INTERVAL '7 days'
-                    )"""
-                )
+            # Clean up old LangGraph checkpoints for completed sessions
+            checkpoint_count = 0
+            try:
+                for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
+                    cur = conn.execute(
+                        f"""DELETE FROM {table} WHERE thread_id IN (
+                            SELECT id::text FROM sessions WHERE status IN ('completed', 'failed')
+                            AND updated_at < NOW() - INTERVAL '{completed_session_cutoff}'
+                        )"""
+                    )
+                    checkpoint_count += cur.rowcount
+                total += checkpoint_count
             except Exception:
                 logger.debug("Checkpoint cleanup skipped (tables may not exist)", exc_info=True)
 
             conn.commit()
             logger.info(
-                "Cleanup: deleted %d old app results, %d old DLQ items, %d old checkpoints",
-                app_count, dlq_count, checkpoint_count,
+                "Cleanup: %d app results, %d DLQ, %d screenshots, %d artifacts, %d checkpoints (%d total)",
+                app_count, dlq_count, screenshot_count, artifact_count, checkpoint_count, total,
             )
-            return app_count + dlq_count + checkpoint_count
+            return total
         except Exception:
             conn.rollback()
             logger.error("Cleanup failed", exc_info=True)
