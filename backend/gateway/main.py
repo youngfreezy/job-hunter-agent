@@ -123,14 +123,22 @@ async def lifespan(app: FastAPI):
         from backend.shared.agent_store import seed_builtin_agents
         seed_builtin_agents()
 
+        # --- Initialize Paperclip agent orchestration (optional) ---
+        from backend.shared.paperclip_integration import init_paperclip, with_paperclip_reporting
+        paperclip_active = init_paperclip()
+        if paperclip_active:
+            logger.info("Paperclip integration active — agents reporting to dashboard")
+
         # Schedule daily selector health-check
         from backend.shared.scheduler import schedule, schedule_seconds, schedule_with_notify
         from backend.shared.selector_health import run_selector_health_check
-        schedule("selector-health-check", run_selector_health_check, interval_hours=24.0)
+        _health_check = with_paperclip_reporting("health-check")(run_selector_health_check) if paperclip_active else run_selector_health_check
+        schedule("selector-health-check", _health_check, interval_hours=24.0)
 
         # Schedule daily data cleanup (delete app results older than 90 days)
         from backend.shared.session_store import cleanup_old_data
-        schedule("data-cleanup", cleanup_old_data, interval_hours=24.0)
+        _cleanup = with_paperclip_reporting("cleanup")(cleanup_old_data) if paperclip_active else cleanup_old_data
+        schedule("data-cleanup", _cleanup, interval_hours=24.0)
 
         # Schedule daily cleanup of stale anonymous users (30-day TTL)
         from backend.shared.billing_store import cleanup_anonymous_users
@@ -138,9 +146,10 @@ async def lifespan(app: FastAPI):
 
         # Schedule autopilot checker (LISTEN/NOTIFY + 5min fallback)
         from backend.shared.autopilot_runner import check_and_run_due_schedules
+        _autopilot = with_paperclip_reporting("autopilot")(check_and_run_due_schedules) if paperclip_active else check_and_run_due_schedules
         schedule_with_notify(
             "autopilot-checker",
-            check_and_run_due_schedules,
+            _autopilot,
             channel="autopilot_schedules_changed",
             fallback_interval_seconds=300,
         )
@@ -148,7 +157,8 @@ async def lifespan(app: FastAPI):
         # Schedule Moltbook self-improvement loop (every 30 min)
         if settings.MOLTBOOK_ENABLED and settings.MOLTBOOK_API_KEY:
             from backend.moltbook.cron import run as moltbook_run
-            schedule_seconds("moltbook-cron", moltbook_run, interval_seconds=1800, run_immediately=True)
+            _moltbook = with_paperclip_reporting("moltbook")(moltbook_run) if paperclip_active else moltbook_run
+            schedule_seconds("moltbook-cron", _moltbook, interval_seconds=1800, run_immediately=True)
             logger.info("Moltbook cron scheduled (every 30 min)")
         else:
             logger.info("Moltbook integration disabled (MOLTBOOK_ENABLED=%s)", settings.MOLTBOOK_ENABLED)

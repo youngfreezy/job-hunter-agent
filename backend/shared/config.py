@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     API_APPLY_ENABLED: bool = True  # Try direct API before Skyvern
     API_APPLY_BATCH_SIZE: int = 5  # Max API jobs to process per graph iteration
 
+    # --- Paperclip (agent orchestration dashboard) ---
+    PAPERCLIP_ENABLED: bool = False
+    PAPERCLIP_API_URL: str = "http://127.0.0.1:3100/api"
+    PAPERCLIP_COMPANY_ID: str = ""
+
     # --- Moltbook (agent social network) ---
     MOLTBOOK_API_KEY: Optional[str] = None
     MOLTBOOK_ENABLED: bool = True  # Feature flag for Moltbook integration
