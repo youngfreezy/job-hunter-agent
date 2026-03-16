@@ -110,13 +110,12 @@ class TestInitPaperclip:
     def test_init_returns_false_when_no_credentials(self):
         """init_paperclip() returns False when no agent env vars are set."""
         with patch("backend.shared.paperclip_integration.get_settings") as mock_settings, \
+             patch("dotenv.load_dotenv"), \
              patch.dict("os.environ", {}, clear=True):
             mock_settings.return_value.PAPERCLIP_ENABLED = True
-            # Clear any cached agent env vars
             import backend.shared.paperclip_integration as mod
             mod._initialized = False
             result = init_paperclip()
-            # No PAPERCLIP_AGENT_* env vars → warns and returns False
             assert result is False
 
     def test_init_configures_agents_from_env(self):
