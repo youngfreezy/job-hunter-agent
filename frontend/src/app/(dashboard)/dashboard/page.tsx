@@ -4,7 +4,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -167,6 +166,15 @@ export default function Dashboard() {
   const completedSessions = sortedSessions.filter((session) =>
     ["completed", "failed"].includes(session.status)
   );
+
+  // Track which keyword sets have an active session running
+  const activeKeywordSets = useMemo(() => {
+    const sets = new Set<string>();
+    for (const s of [...actionRequiredSessions, ...activeSessions]) {
+      sets.add((s.keywords || []).sort().join("|").toLowerCase());
+    }
+    return sets;
+  }, [actionRequiredSessions, activeSessions]);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
@@ -367,7 +375,14 @@ export default function Dashboard() {
               </div>
               <div className="space-y-3">
                 {completedSessions.map((session) => (
-                  <SessionCard key={session.session_id} session={session} />
+                  <SessionCard
+                    key={session.session_id}
+                    session={session}
+                    hasActiveRerun={activeKeywordSets.has(
+                      (session.keywords || []).sort().join("|").toLowerCase()
+                    )}
+                    onSessionLaunched={fetchSessions}
+                  />
                 ))}
               </div>
             </section>
@@ -398,10 +413,13 @@ export default function Dashboard() {
 
 function SessionCard({
   session,
+  hasActiveRerun,
+  onSessionLaunched,
 }: {
   session: SessionListItem;
+  hasActiveRerun?: boolean;
+  onSessionLaunched?: () => void;
 }) {
-  const router = useRouter();
   const submitted = session.applications_submitted;
   const failed = session.applications_failed;
   const total = submitted + failed;
@@ -416,15 +434,19 @@ function SessionCard({
   const [editSalary, setEditSalary] = useState(session.salary_min?.toString() || "");
   const [editRemote, setEditRemote] = useState(session.remote_only);
   const [busy, setBusy] = useState(false);
+  const [launched, setLaunched] = useState(false);
+
+  const rerunDisabled = busy || launched || !!hasActiveRerun;
 
   const handleRerun = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setBusy(true);
     try {
-      const result = await rerunSession(session.session_id);
+      await rerunSession(session.session_id);
+      setLaunched(true);
       toast.success("Session started");
-      router.push(`/session/${result.session_id}`);
+      onSessionLaunched?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to re-run");
     } finally {
@@ -458,8 +480,10 @@ function SessionCard({
         remote_only: editRemote,
         salary_min: editSalary ? parseInt(editSalary) : null,
       });
+      setLaunched(true);
+      setEditing(false);
       toast.success("Session started with updated params");
-      router.push(`/session/${result.session_id}`);
+      onSessionLaunched?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to start");
     } finally {
@@ -525,28 +549,37 @@ function SessionCard({
               </div>
             )}
             {isDone && (
-              <div className="mt-3 flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={handleRerun}
-                  className="flex-1"
-                >
-                  {busy ? "Starting..." : "Re-run"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setEditing(!editing);
-                  }}
-                  className="flex-1"
-                >
-                  {editing ? "Cancel" : "Edit & Run"}
-                </Button>
+              <div className="mt-3">
+                {(launched || hasActiveRerun) && (
+                  <div className="mb-2 flex items-center justify-center gap-1.5 rounded-full bg-blue-50 py-1 text-xs font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    Running
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={rerunDisabled}
+                    onClick={handleRerun}
+                    className="flex-1"
+                  >
+                    {busy ? "Starting..." : "Re-run"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={rerunDisabled}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setEditing(!editing);
+                    }}
+                    className="flex-1"
+                  >
+                    {editing ? "Cancel" : "Edit & Run"}
+                  </Button>
+                </div>
               </div>
             )}
           </div>
