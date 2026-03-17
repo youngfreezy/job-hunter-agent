@@ -322,6 +322,25 @@ export async function listSessions(includeArchived?: boolean): Promise<SessionLi
   return sessions.map((s) => ({ ...s, keywords: s.keywords || [], locations: s.locations || [] }));
 }
 
+export async function rerunSession(
+  sessionId: string,
+  overrides?: {
+    keywords?: string[];
+    locations?: string[];
+    remote_only?: boolean;
+    salary_min?: number | null;
+  }
+): Promise<{ session_id: string }> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/rerun`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify(overrides || {}),
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
 export async function archiveSession(sessionId: string, archived: boolean): Promise<void> {
   const auth = await getAuthHeaders();
   const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/archive`, {

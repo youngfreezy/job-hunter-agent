@@ -4,12 +4,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import {
   listSessions,
   getLifetimeStats,
+  rerunSession,
   type SessionListItem,
   type LifetimeStats,
 } from "@/lib/api";
@@ -346,7 +349,7 @@ export default function Dashboard() {
               </div>
               <div className="space-y-3">
                 {activeSessions.map((session) => (
-                  <SessionCard key={session.session_id} session={session} />
+                  <SessionCard key={session.session_id} session={session} onRerun={fetchSessions} />
                 ))}
               </div>
             </section>
@@ -364,7 +367,7 @@ export default function Dashboard() {
               </div>
               <div className="space-y-3">
                 {completedSessions.map((session) => (
-                  <SessionCard key={session.session_id} session={session} />
+                  <SessionCard key={session.session_id} session={session} onRerun={fetchSessions} />
                 ))}
               </div>
             </section>
@@ -393,71 +396,222 @@ export default function Dashboard() {
   );
 }
 
-function SessionCard({ session }: { session: SessionListItem }) {
+function SessionCard({
+  session,
+  onRerun,
+}: {
+  session: SessionListItem;
+  onRerun: () => void;
+}) {
+  const router = useRouter();
   const submitted = session.applications_submitted;
   const failed = session.applications_failed;
   const total = submitted + failed;
   const successRate = total > 0 ? Math.round((submitted / total) * 100) : null;
   const isRunning =
     !["completed", "failed"].includes(session.status) && !ACTION_REQUIRED.has(session.status);
+  const isDone = ["completed", "failed"].includes(session.status);
+
+  const [editing, setEditing] = useState(false);
+  const [editKeywords, setEditKeywords] = useState((session.keywords || []).join(", "));
+  const [editLocations, setEditLocations] = useState((session.locations || []).join(", "));
+  const [editSalary, setEditSalary] = useState(session.salary_min?.toString() || "");
+  const [editRemote, setEditRemote] = useState(session.remote_only);
+  const [busy, setBusy] = useState(false);
+
+  const handleRerun = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      const result = await rerunSession(session.session_id);
+      toast.success("Session started");
+      router.push(`/session/${result.session_id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to re-run");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleEditRun = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      const keywords = editKeywords
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean);
+      const locations = editRemote
+        ? []
+        : editLocations
+            .split(",")
+            .map((l) => l.trim())
+            .filter(Boolean);
+      if (keywords.length === 0) {
+        toast.error("Enter at least one keyword");
+        setBusy(false);
+        return;
+      }
+      const result = await rerunSession(session.session_id, {
+        keywords,
+        locations,
+        remote_only: editRemote,
+        salary_min: editSalary ? parseInt(editSalary) : null,
+      });
+      toast.success("Session started with updated params");
+      router.push(`/session/${result.session_id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to start");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <Link href={`/session/${session.session_id}`} className="block">
-      <Card className="border-zinc-200 transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600">
-        <CardContent className="py-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={STATUS_COLORS[session.status] || "secondary"}>
-                  {isRunning && (
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-current mr-1.5 animate-pulse" />
-                  )}
-                  {STATUS_LABELS[session.status] || session.status}
-                </Badge>
-                <span className="text-sm text-zinc-500">
-                  {formatRelativeDate(session.created_at)}
-                </span>
-                {session.remote_only && <Badge variant="outline">Remote only</Badge>}
-              </div>
-              <p className="mt-3 text-lg font-semibold">{(session.keywords || []).join(", ")}</p>
-              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                {getSessionHeadline(session)}
-              </p>
-              {(session.locations || []).length > 0 && (
-                <p className="mt-2 text-sm text-zinc-500">
-                  Targeting {(session.locations || []).join(", ")}
-                </p>
-              )}
+    <Card className="border-zinc-200 transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600">
+      <CardContent className="py-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <Link href={`/session/${session.session_id}`} className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={STATUS_COLORS[session.status] || "secondary"}>
+                {isRunning && (
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-current mr-1.5 animate-pulse" />
+                )}
+                {STATUS_LABELS[session.status] || session.status}
+              </Badge>
+              <span className="text-sm text-zinc-500">
+                {formatRelativeDate(session.created_at)}
+              </span>
+              {session.remote_only && <Badge variant="outline">Remote only</Badge>}
             </div>
-            <div className="min-w-[220px]">
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
-                  <p className="text-xl font-bold text-emerald-600">{submitted}</p>
-                  <p className="text-xs text-zinc-500">Submitted</p>
-                </div>
-                <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
-                  <p className="text-xl font-bold text-red-500">{failed}</p>
-                  <p className="text-xs text-zinc-500">Failed</p>
-                </div>
-                <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
-                  <p className="text-xl font-bold text-zinc-900 dark:text-white">
-                    {successRate !== null ? `${successRate}%` : "—"}
-                  </p>
-                  <p className="text-xs text-zinc-500">Success</p>
-                </div>
+            <p className="mt-3 text-lg font-semibold">{(session.keywords || []).join(", ")}</p>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+              {getSessionHeadline(session)}
+            </p>
+            {(session.locations || []).length > 0 && (
+              <p className="mt-2 text-sm text-zinc-500">
+                Targeting {(session.locations || []).join(", ")}
+              </p>
+            )}
+            {session.salary_min && (
+              <p className="mt-1 text-sm text-zinc-500">
+                Min ${session.salary_min.toLocaleString()}
+              </p>
+            )}
+          </Link>
+          <div className="min-w-[220px]">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
+                <p className="text-xl font-bold text-emerald-600">{submitted}</p>
+                <p className="text-xs text-zinc-500">Submitted</p>
               </div>
-              {isRunning && (
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
-                    style={{ width: "60%" }}
+              <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
+                <p className="text-xl font-bold text-red-500">{failed}</p>
+                <p className="text-xs text-zinc-500">Failed</p>
+              </div>
+              <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
+                <p className="text-xl font-bold text-zinc-900 dark:text-white">
+                  {successRate !== null ? `${successRate}%` : "—"}
+                </p>
+                <p className="text-xs text-zinc-500">Success</p>
+              </div>
+            </div>
+            {isRunning && (
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
+                  style={{ width: "60%" }}
+                />
+              </div>
+            )}
+            {isDone && (
+              <div className="mt-3 flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={handleRerun}
+                  className="flex-1"
+                >
+                  {busy ? "Starting..." : "Re-run"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditing(!editing);
+                  }}
+                  className="flex-1"
+                >
+                  {editing ? "Cancel" : "Edit & Run"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Inline edit panel */}
+        {editing && (
+          <div
+            className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">Keywords</label>
+                <input
+                  type="text"
+                  value={editKeywords}
+                  onChange={(e) => setEditKeywords(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                  placeholder="AI Engineer, React"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">Locations</label>
+                <input
+                  type="text"
+                  value={editLocations}
+                  onChange={(e) => setEditLocations(e.target.value)}
+                  disabled={editRemote}
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900"
+                  placeholder="San Francisco, Remote"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-500">Min Salary</label>
+                <input
+                  type="number"
+                  value={editSalary}
+                  onChange={(e) => setEditSalary(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                  placeholder="150000"
+                />
+              </div>
+              <div className="flex items-end gap-3 pb-1">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editRemote}
+                    onChange={(e) => setEditRemote(e.target.checked)}
+                    className="rounded"
                   />
-                </div>
-              )}
+                  Remote only
+                </label>
+              </div>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button size="sm" disabled={busy} onClick={handleEditRun}>
+                {busy ? "Starting..." : "Run with Changes"}
+              </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
-    </Link>
+        )}
+      </CardContent>
+    </Card>
   );
 }

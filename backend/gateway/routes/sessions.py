@@ -1038,6 +1038,109 @@ async def start_session(body: StartSessionRequest, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Re-run: clone an existing session with same (or overridden) search params
+# ---------------------------------------------------------------------------
+
+
+from pydantic import BaseModel as _RerunBase
+
+
+class RerunRequest(_RerunBase):
+    """Optional overrides when re-running a session."""
+    keywords: List[str] | None = None
+    locations: List[str] | None = None
+    remote_only: bool | None = None
+    salary_min: int | None = None
+
+
+@router.post("/{session_id}/rerun")
+async def rerun_session(session_id: str, body: RerunRequest, request: Request):
+    """Clone a completed/failed session with same params (or overrides) and launch."""
+    from backend.gateway.deps import get_current_user
+    from backend.shared.session_store import get_session_by_id
+    from backend.shared.resume_store import get_resume as _get_resume_db, save_resume as _save_resume_db
+
+    user = get_current_user(request)
+    user_id = str(user["id"])
+    graph = request.app.state.graph
+
+    # Load original session
+    original = get_session_by_id(session_id)
+    if not original:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if original["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not your session")
+
+    # Build params: use overrides if provided, else original values
+    keywords = body.keywords if body.keywords is not None else original["keywords"]
+    locations = body.locations if body.locations is not None else original["locations"]
+    remote_only = body.remote_only if body.remote_only is not None else original["remote_only"]
+    salary_min = body.salary_min if body.salary_min is not None else original["salary_min"]
+
+    # Clone resume from original session
+    resume_row = _get_resume_db(session_id)
+    resume_text = original.get("resume_text_snippet", "")
+
+    new_session_id = str(uuid.uuid4())
+
+    # Enforce concurrency limits
+    try:
+        from backend.shared.task_queue import enqueue_session, mark_active
+        enqueued = await enqueue_session(new_session_id, user_id)
+        if not enqueued:
+            raise HTTPException(
+                status_code=429,
+                detail="You already have the maximum number of active sessions.",
+            )
+        await mark_active(new_session_id)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.debug("Task queue unavailable — skipping concurrency check", exc_info=True)
+
+    event_logs[new_session_id] = []
+    sse_subscribers[new_session_id] = []
+
+    session_meta = {
+        "session_id": new_session_id,
+        "user_id": user_id,
+        "status": "intake",
+        "keywords": keywords,
+        "locations": locations,
+        "remote_only": remote_only,
+        "salary_min": salary_min,
+        "resume_text_snippet": resume_text[:200],
+        "linkedin_url": original.get("linkedin_url"),
+        "applications_submitted": 0,
+        "applications_failed": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    session_registry[new_session_id] = session_meta
+    upsert_session(new_session_id, session_meta)
+
+    # Copy resume to new session
+    if resume_row:
+        enc_data, ext = resume_row
+        _save_resume_db(new_session_id, enc_data, ext)
+        logger.info("Resume cloned from %s to %s", session_id, new_session_id)
+
+    # Build StartSessionRequest for the pipeline
+    start_body = StartSessionRequest(
+        keywords=keywords,
+        locations=locations,
+        remote_only=remote_only,
+        salary_min=salary_min,
+        resume_text=resume_text,
+        linkedin_url=original.get("linkedin_url"),
+        preferences={},
+    )
+
+    _spawn_background(_run_pipeline(new_session_id, start_body, graph, user_id=user_id))
+
+    return {"session_id": new_session_id}
+
+
+# ---------------------------------------------------------------------------
 # Test endpoint: isolated application with screenshot streaming
 # ---------------------------------------------------------------------------
 
