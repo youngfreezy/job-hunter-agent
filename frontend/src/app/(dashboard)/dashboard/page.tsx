@@ -167,11 +167,15 @@ export default function Dashboard() {
     ["completed", "failed"].includes(session.status)
   );
 
-  // Track which keyword sets have an active session running
-  const activeKeywordSets = useMemo(() => {
+  // Track which keyword+location combos have an active session running
+  const activeSearchKeys = useMemo(() => {
     const sets = new Set<string>();
     for (const s of [...actionRequiredSessions, ...activeSessions]) {
-      sets.add((s.keywords || []).sort().join("|").toLowerCase());
+      const key = [
+        (s.keywords || []).sort().join("|"),
+        (s.locations || []).sort().join("|"),
+      ].join("::").toLowerCase();
+      sets.add(key);
     }
     return sets;
   }, [actionRequiredSessions, activeSessions]);
@@ -378,8 +382,11 @@ export default function Dashboard() {
                   <SessionCard
                     key={session.session_id}
                     session={session}
-                    hasActiveRerun={activeKeywordSets.has(
-                      (session.keywords || []).sort().join("|").toLowerCase()
+                    hasActiveRerun={activeSearchKeys.has(
+                      [
+                        (session.keywords || []).sort().join("|"),
+                        (session.locations || []).sort().join("|"),
+                      ].join("::").toLowerCase()
                     )}
                     onSessionLaunched={fetchSessions}
                   />
