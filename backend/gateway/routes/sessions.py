@@ -897,7 +897,8 @@ async def list_sessions(request: Request):
     db_sessions = {s["session_id"]: s for s in get_sessions_for_user(user_id, include_archived=include_archived)}
 
     # Merge in-memory registry entries that aren't in the DB yet (just-created sessions)
-    for sid, s in session_registry.items():
+    # Snapshot to avoid RuntimeError if another coroutine mutates the dict mid-iteration
+    for sid, s in dict(session_registry).items():
         if sid not in db_sessions and str(s.get("user_id", "")) == user_id:
             db_sessions[sid] = s
 
