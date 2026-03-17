@@ -341,7 +341,12 @@ export default function Dashboard() {
             <section>
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold">Active Sessions</h2>
+                  <h2 className="text-xl font-semibold">
+                    Active Sessions
+                    <span className="ml-2 inline-flex items-center justify-center rounded-full bg-blue-100 px-2 py-0.5 text-sm font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                      {activeSessions.length}
+                    </span>
+                  </h2>
                   <p className="text-sm text-zinc-500">
                     Your searches that are actively finding and applying to jobs.
                   </p>
