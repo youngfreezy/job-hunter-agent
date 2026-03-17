@@ -700,6 +700,19 @@ export async function startLinkedInUpdate(
   return res.json();
 }
 
+// ---------- User Preferences API ----------
+
+export async function updateMinimumSubmitted(value: number): Promise<{ minimum_submitted_applications: number }> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/auth/me/minimum-submitted`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({ minimum_submitted_applications: value }),
+  });
+  if (!res.ok) throw new Error("Failed to update minimum submitted preference");
+  return res.json();
+}
+
 // ---------- Billing API ----------
 
 export async function getWallet(): Promise<{
