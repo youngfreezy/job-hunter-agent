@@ -893,15 +893,25 @@ async def list_sessions(request: Request):
 
     include_archived = request.query_params.get("include_archived", "").lower() == "true"
 
-    # Load persisted sessions from the sessions table
+    # Load persisted sessions from the sessions table (source of truth)
     db_sessions = {s["session_id"]: s for s in get_sessions_for_user(user_id, include_archived=include_archived)}
 
-    # Merge: in-memory registry takes precedence (has live status updates)
-    merged = {**db_sessions, **session_registry}
+    # Merge in-memory registry entries that aren't in the DB yet (just-created sessions)
+    for sid, s in session_registry.items():
+        if sid not in db_sessions and str(s.get("user_id", "")) == user_id:
+            db_sessions[sid] = s
 
-    # Filter to only this user's sessions (str() ensures UUID vs TEXT comparison works)
+    # For sessions in both, use DB status but overlay live fields from registry
+    for sid, db_s in db_sessions.items():
+        reg = session_registry.get(sid)
+        if reg and db_s["status"] not in ("completed", "failed"):
+            # Only overlay non-status fields (DB status is authoritative)
+            for key in ("applications_submitted", "applications_failed"):
+                if reg.get(key, 0) > db_s.get(key, 0):
+                    db_s[key] = reg[key]
+
     sessions = sorted(
-        [s for s in merged.values() if str(s.get("user_id", "")) == user_id],
+        db_sessions.values(),
         key=lambda s: s.get("created_at", ""),
         reverse=True,
     )
