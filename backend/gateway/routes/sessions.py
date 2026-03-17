@@ -1068,7 +1068,7 @@ async def rerun_session(session_id: str, body: RerunRequest, request: Request):
     original = get_session_by_id(session_id)
     if not original:
         raise HTTPException(status_code=404, detail="Session not found")
-    if original["user_id"] != user_id:
+    if str(original["user_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Not your session")
 
     # Build params: use overrides if provided, else original values
