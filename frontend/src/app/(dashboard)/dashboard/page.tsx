@@ -420,61 +420,53 @@ function SessionCard({
   const [editLocations, setEditLocations] = useState((session.locations || []).join(", "));
   const [editSalary, setEditSalary] = useState(session.salary_min?.toString() || "");
   const [editRemote, setEditRemote] = useState(session.remote_only);
-  const [busy, setBusy] = useState(false);
   const [launched, setLaunched] = useState(false);
-
-  const rerunDisabled = busy || launched;
 
   const handleRerun = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setBusy(true);
+    setLaunched(true);
     try {
       await rerunSession(session.session_id);
-      setLaunched(true);
       toast.success("Session started");
       onSessionLaunched?.();
     } catch (err) {
+      setLaunched(false);
       toast.error(err instanceof Error ? err.message : "Failed to re-run");
-    } finally {
-      setBusy(false);
     }
   };
 
   const handleEditRun = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setBusy(true);
+    const keywords = editKeywords
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean);
+    const locations = editRemote
+      ? []
+      : editLocations
+          .split(",")
+          .map((l) => l.trim())
+          .filter(Boolean);
+    if (keywords.length === 0) {
+      toast.error("Enter at least one keyword");
+      return;
+    }
+    setLaunched(true);
     try {
-      const keywords = editKeywords
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean);
-      const locations = editRemote
-        ? []
-        : editLocations
-            .split(",")
-            .map((l) => l.trim())
-            .filter(Boolean);
-      if (keywords.length === 0) {
-        toast.error("Enter at least one keyword");
-        setBusy(false);
-        return;
-      }
       await rerunSession(session.session_id, {
         keywords,
         locations,
         remote_only: editRemote,
         salary_min: editSalary ? parseInt(editSalary) : null,
       });
-      setLaunched(true);
       setEditing(false);
       toast.success("Session started with updated params");
       onSessionLaunched?.();
     } catch (err) {
+      setLaunched(false);
       toast.error(err instanceof Error ? err.message : "Failed to start");
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -547,16 +539,16 @@ function SessionCard({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={rerunDisabled}
+                    disabled={launched}
                     onClick={handleRerun}
                     className="flex-1"
                   >
-                    {busy ? "Starting..." : "Re-run"}
+                    {launched ? "Running..." : "Re-run"}
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
-                    disabled={rerunDisabled}
+                    disabled={launched}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -623,8 +615,8 @@ function SessionCard({
               </div>
             </div>
             <div className="mt-3 flex justify-end">
-              <Button size="sm" disabled={busy} onClick={handleEditRun}>
-                {busy ? "Starting..." : "Run with Changes"}
+              <Button size="sm" disabled={launched} onClick={handleEditRun}>
+                {launched ? "Running..." : "Run with Changes"}
               </Button>
             </div>
           </div>
