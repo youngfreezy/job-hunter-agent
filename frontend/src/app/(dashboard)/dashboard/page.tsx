@@ -349,7 +349,7 @@ export default function Dashboard() {
               </div>
               <div className="space-y-3">
                 {activeSessions.map((session) => (
-                  <SessionCard key={session.session_id} session={session} onRerun={fetchSessions} />
+                  <SessionCard key={session.session_id} session={session} />
                 ))}
               </div>
             </section>
@@ -367,7 +367,7 @@ export default function Dashboard() {
               </div>
               <div className="space-y-3">
                 {completedSessions.map((session) => (
-                  <SessionCard key={session.session_id} session={session} onRerun={fetchSessions} />
+                  <SessionCard key={session.session_id} session={session} />
                 ))}
               </div>
             </section>
@@ -398,10 +398,8 @@ export default function Dashboard() {
 
 function SessionCard({
   session,
-  onRerun,
 }: {
   session: SessionListItem;
-  onRerun: () => void;
 }) {
   const router = useRouter();
   const submitted = session.applications_submitted;
