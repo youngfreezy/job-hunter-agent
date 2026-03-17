@@ -474,7 +474,7 @@ function SessionCard({
         setBusy(false);
         return;
       }
-      const result = await rerunSession(session.session_id, {
+      await rerunSession(session.session_id, {
         keywords,
         locations,
         remote_only: editRemote,
