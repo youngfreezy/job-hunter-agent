@@ -167,18 +167,6 @@ export default function Dashboard() {
     ["completed", "failed"].includes(session.status)
   );
 
-  // Track which keyword+location combos have an active session running
-  const activeSearchKeys = useMemo(() => {
-    const sets = new Set<string>();
-    for (const s of [...actionRequiredSessions, ...activeSessions]) {
-      const key = [
-        (s.keywords || []).sort().join("|"),
-        (s.locations || []).sort().join("|"),
-      ].join("::").toLowerCase();
-      sets.add(key);
-    }
-    return sets;
-  }, [actionRequiredSessions, activeSessions]);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
@@ -382,12 +370,6 @@ export default function Dashboard() {
                   <SessionCard
                     key={session.session_id}
                     session={session}
-                    hasActiveRerun={activeSearchKeys.has(
-                      [
-                        (session.keywords || []).sort().join("|"),
-                        (session.locations || []).sort().join("|"),
-                      ].join("::").toLowerCase()
-                    )}
                     onSessionLaunched={fetchSessions}
                   />
                 ))}
@@ -420,11 +402,9 @@ export default function Dashboard() {
 
 function SessionCard({
   session,
-  hasActiveRerun,
   onSessionLaunched,
 }: {
   session: SessionListItem;
-  hasActiveRerun?: boolean;
   onSessionLaunched?: () => void;
 }) {
   const submitted = session.applications_submitted;
@@ -443,7 +423,7 @@ function SessionCard({
   const [busy, setBusy] = useState(false);
   const [launched, setLaunched] = useState(false);
 
-  const rerunDisabled = busy || launched || !!hasActiveRerun;
+  const rerunDisabled = busy || launched;
 
   const handleRerun = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -557,7 +537,7 @@ function SessionCard({
             )}
             {isDone && (
               <div className="mt-3">
-                {(launched || hasActiveRerun) && (
+                {launched && (
                   <div className="mb-2 flex items-center justify-center gap-1.5 rounded-full bg-blue-50 py-1 text-xs font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
                     Running
