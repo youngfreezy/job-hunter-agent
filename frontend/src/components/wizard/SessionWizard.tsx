@@ -77,6 +77,7 @@ export function SessionWizard() {
           preferences: {},
           config: {
             max_jobs: values.maxJobs ?? 20,
+            minimum_submitted_applications: values.minimumSubmittedApplications ?? 0,
             tailoring_quality: values.tailoringQuality ?? "standard",
             application_mode: values.applicationMode ?? "auto_apply",
             generate_cover_letters: values.generateCoverLetters ?? true,

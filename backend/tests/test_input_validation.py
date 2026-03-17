@@ -34,6 +34,18 @@ class TestSessionConfig:
         c = SessionConfig(max_jobs=10)
         assert c.max_jobs == 10
 
+    def test_minimum_submitted_defaults_off(self):
+        c = SessionConfig()
+        assert c.minimum_submitted_applications == 0
+
+    def test_minimum_submitted_cannot_exceed_max_jobs(self):
+        with pytest.raises(ValidationError, match="cannot exceed max_jobs"):
+            SessionConfig(max_jobs=5, minimum_submitted_applications=6)
+
+    def test_minimum_submitted_valid(self):
+        c = SessionConfig(max_jobs=10, minimum_submitted_applications=10)
+        assert c.minimum_submitted_applications == 10
+
     def test_defaults(self):
         c = SessionConfig()
         assert c.max_jobs == 5

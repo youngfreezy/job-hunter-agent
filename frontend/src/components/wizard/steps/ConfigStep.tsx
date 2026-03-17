@@ -52,6 +52,14 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
     onInsufficientCredits?.(insufficientCredits);
   }, [insufficientCredits, onInsufficientCredits]);
 
+  useEffect(() => {
+    const currentMin = values.minimumSubmittedApplications ?? 0;
+    const maxJobs = values.maxJobs ?? 5;
+    if (currentMin > maxJobs) {
+      setFieldValue("minimumSubmittedApplications", maxJobs);
+    }
+  }, [setFieldValue, values.maxJobs, values.minimumSubmittedApplications]);
+
   return (
     <>
       <Card>
@@ -105,6 +113,31 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
               <span>10</span>
             </div>
           </div>
+
+          {isPremium && values.applicationMode === "auto_apply" && (
+            <div>
+              <label htmlFor="minimumSubmittedApplications" className="text-sm font-medium block">
+                Minimum submitted applications
+              </label>
+              <p className="text-xs text-zinc-500 mt-1">
+                We’ll keep discovering and retrying until at least this many applications are actually submitted.
+              </p>
+              <input
+                id="minimumSubmittedApplications"
+                type="number"
+                min={0}
+                max={values.maxJobs ?? 5}
+                value={values.minimumSubmittedApplications ?? 0}
+                onChange={(e) => {
+                  const next = Number.parseInt(e.target.value || "0", 10);
+                  const clamped = Math.min(Math.max(Number.isNaN(next) ? 0 : next, 0), values.maxJobs ?? 5);
+                  setFieldValue("minimumSubmittedApplications", clamped);
+                }}
+                className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-950"
+              />
+              <p className="text-xs text-zinc-400 mt-1">Set to 0 to disable. Premium only.</p>
+            </div>
+          )}
 
           {/* Tailoring Quality */}
           <div>

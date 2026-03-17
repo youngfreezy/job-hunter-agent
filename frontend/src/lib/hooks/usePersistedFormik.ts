@@ -44,6 +44,15 @@ export function usePersistedFormik<T extends FormikValues>({
             10,
           );
         }
+        if (
+          "minimumSubmittedApplications" in parsed &&
+          typeof (parsed as Record<string, unknown>).minimumSubmittedApplications === "number"
+        ) {
+          (parsed as Record<string, unknown>).minimumSubmittedApplications = Math.min(
+            Math.max((parsed as Record<string, unknown>).minimumSubmittedApplications as number, 0),
+            10,
+          );
+        }
         const merged = { ...initialValues, ...parsed };
         formik.resetForm({ values: merged });
       }

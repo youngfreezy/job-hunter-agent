@@ -1452,6 +1452,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
 
     try:
         application_queue: List[str] = state.get("application_queue", [])
+        active_retry_job_ids = set(state.get("active_retry_job_ids") or [])
         if not application_queue:
             return {
                 "applications_submitted": [],
@@ -1464,12 +1465,13 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 },
                 "errors": [],
                 "skip_next_job_requested": False,
+                "active_retry_job_ids": [],
             }
 
         submitted_ids = {r.job_id for r in (state.get("applications_submitted") or [])}
         failed_ids = {r.job_id for r in (state.get("applications_failed") or [])}
         skipped_ids = set(state.get("applications_skipped") or [])
-        done_ids = submitted_ids | failed_ids | skipped_ids
+        done_ids = submitted_ids | (failed_ids - active_retry_job_ids) | skipped_ids
 
         # Track companies already applied to in this session (1 per company)
         session_applied_companies: set = set()
@@ -1491,6 +1493,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 },
                 "errors": [],
                 "skip_next_job_requested": False,
+                "active_retry_job_ids": [],
             }
 
         logger.info(
@@ -1542,6 +1545,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 "agent_statuses": {"application": f"skipped -- {job_label}"},
                 "errors": [],
                 "skip_next_job_requested": False,
+                "active_retry_job_ids": [],
             }
 
         # --- Per-session company dedup (1 application per company) ---
@@ -1578,6 +1582,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 "consecutive_failures": 0, "status": "applying",
                 "agent_statuses": {"application": f"skipped -- duplicate company {company_name}"},
                 "errors": [], "skip_next_job_requested": False,
+                "active_retry_job_ids": [],
             }
 
         prev_submitted = len(state.get("applications_submitted") or [])
@@ -1716,6 +1721,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                                 "agent_statuses": {"application": "aborted — Skyvern credits exhausted"},
                                 "errors": ["Skyvern credits exhausted. Top up at https://app.skyvern.com"],
                                 "skip_next_job_requested": False,
+                                "active_retry_job_ids": [],
                             }
                         # --- LLM Supervisor decides whether to continue ---
                         all_failed = list(state.get("applications_failed") or []) + failed
@@ -1741,6 +1747,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                                 "agent_statuses": {"application": f"paused — {supervisor.reasoning}"},
                                 "errors": errors,
                                 "skip_next_job_requested": False,
+                                "active_retry_job_ids": [],
                             }
                         if result.error_message:
                             errors.append(f"Application failed for {job_id}: {result.error_message}")
@@ -1802,6 +1809,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                                 "agent_statuses": {"application": "aborted — Skyvern credits exhausted"},
                                 "errors": ["Skyvern credits exhausted. Top up at https://app.skyvern.com"],
                                 "skip_next_job_requested": False,
+                                "active_retry_job_ids": [],
                             }
                         # --- LLM Supervisor decides whether to continue ---
                         all_failed_batch = list(state.get("applications_failed") or []) + failed
@@ -1827,6 +1835,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                                 "agent_statuses": {"application": f"paused — {sv.reasoning}"},
                                 "errors": errors,
                                 "skip_next_job_requested": False,
+                                "active_retry_job_ids": [],
                             }
                         if res.error_message:
                             errors.append(f"Application failed for {jid}: {res.error_message}")
@@ -1898,6 +1907,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
         "errors": errors,
         "skip_next_job_requested": False,
         "api_failed_job_ids": list(api_failed_ids),
+        "active_retry_job_ids": [],
     }
 
 

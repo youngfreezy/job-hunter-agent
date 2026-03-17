@@ -243,6 +243,7 @@ class SSEEvent(BaseModel):
 class SessionConfig(BaseModel):
     """User-configurable session parameters controlling cost and behavior."""
     max_jobs: int = Field(default=5, ge=1, le=10)
+    minimum_submitted_applications: int = Field(default=0, ge=0, le=10)
     tailoring_quality: TailoringQuality = TailoringQuality.STANDARD
     application_mode: ApplicationMode = ApplicationMode.AUTO_APPLY
     discovery_mode: DiscoveryMode = DiscoveryMode.AI_SEARCH
@@ -255,6 +256,14 @@ class SessionConfig(BaseModel):
     scoring_strictness: float = Field(default=0.5, ge=0.0, le=1.0)
     # Quick Apply — user-provided job URLs (skips discovery)
     job_urls: List[str] = Field(default_factory=list)
+
+    @field_validator("minimum_submitted_applications")
+    @classmethod
+    def validate_minimum_submitted_applications(cls, v: int, info) -> int:
+        max_jobs = info.data.get("max_jobs", 5)
+        if v > max_jobs:
+            raise ValueError("minimum_submitted_applications cannot exceed max_jobs")
+        return v
 
 
 class StartSessionRequest(BaseModel):

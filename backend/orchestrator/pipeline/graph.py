@@ -52,6 +52,16 @@ logger = logging.getLogger(__name__)
 
 # Maximum consecutive application failures before the circuit breaker trips.
 MAX_CONSECUTIVE_FAILURES = 3
+MAX_RETRY_PER_JOB = 1
+
+RETRYABLE_ERROR_CATEGORIES = {
+    "form_navigation",
+    "form_fill_error",
+    "submit_failed",
+    "no_confirmation",
+    "timeout",
+    "unknown",
+}
 
 
 # ===================================================================
@@ -282,7 +292,13 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
 
     if is_autopilot or is_free_trial or is_backfill or is_quick_apply:
         all_scored = state.get("scored_jobs") or []
-        # On backfill, only queue jobs not already attempted
+        submitted_count = len(state.get("applications_submitted") or [])
+        minimum_submitted_target = _get_minimum_submitted_target(state)
+        desired_queue_size = MAX_APPLICATION_JOBS
+        if is_backfill and minimum_submitted_target > 0:
+            desired_queue_size = max(1, min(MAX_APPLICATION_JOBS, minimum_submitted_target - submitted_count))
+
+        # On backfill, prefer jobs we have not already attempted.
         done_ids: set[str] = set()
         if is_backfill:
             done_ids = (
@@ -298,13 +314,44 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
         session_id = state.get("session_id", "")
         candidates = await _validate_job_urls(candidates, session_id)
 
-        approved_ids = [str(sj.job.id) for sj in candidates][:MAX_APPLICATION_JOBS]
+        approved_ids = [str(sj.job.id) for sj in candidates][:desired_queue_size]
+        retry_job_ids: list[str] = []
+
+        if is_backfill and minimum_submitted_target > 0 and len(approved_ids) < desired_queue_size:
+            retry_counts = dict(state.get("application_retry_counts") or {})
+            retried_this_round: set[str] = set()
+            for failure in reversed(state.get("applications_failed") or []):
+                job_id = str(failure.job_id)
+                if (
+                    job_id in approved_ids
+                    or job_id in retried_this_round
+                    or retry_counts.get(job_id, 0) >= MAX_RETRY_PER_JOB
+                ):
+                    continue
+                category = getattr(failure, "error_category", None)
+                category_value = category.value if hasattr(category, "value") else category
+                if category_value not in RETRYABLE_ERROR_CATEGORIES:
+                    continue
+                retry_job_ids.append(job_id)
+                retried_this_round.add(job_id)
+                retry_counts[job_id] = retry_counts.get(job_id, 0) + 1
+                if len(approved_ids) + len(retry_job_ids) >= desired_queue_size:
+                    break
+        else:
+            retry_counts = dict(state.get("application_retry_counts") or {})
+
+        approved_ids.extend(retry_job_ids)
         label = "quick_apply" if is_quick_apply else ("backfill" if is_backfill else ("free_trial" if is_free_trial else "autopilot"))
         logger.info(
             "Auto-approve gate (%s): approving %d jobs",
             label, len(approved_ids),
         )
-        return {"application_queue": approved_ids, "consecutive_failures": 0}
+        return {
+            "application_queue": approved_ids,
+            "consecutive_failures": 0,
+            "active_retry_job_ids": retry_job_ids,
+            "application_retry_counts": retry_counts,
+        }
     return {}
 
 
@@ -511,7 +558,8 @@ def route_after_application(
     submitted = {r.job_id for r in (state.get("applications_submitted") or [])}
     failed = {r.job_id for r in (state.get("applications_failed") or [])}
     skipped = set(state.get("applications_skipped") or [])
-    done = submitted | failed | skipped
+    active_retry_ids = set(state.get("active_retry_job_ids") or [])
+    done = submitted | (failed - active_retry_ids) | skipped
 
     remaining = [jid for jid in queue if jid not in done]
 
@@ -618,7 +666,7 @@ async def reporting_node(state: JobHunterState) -> dict:
 
 
 def _get_max_jobs(state: JobHunterState) -> int:
-    """Extract the user's max_jobs target from session config."""
+    """Extract the user's max_jobs cap from session config."""
     config = state.get("session_config")
     if config:
         cfg = config if isinstance(config, dict) else (
@@ -628,11 +676,44 @@ def _get_max_jobs(state: JobHunterState) -> int:
     return 20
 
 
+def _get_submission_target(state: JobHunterState) -> int:
+    """Extract the submitted-application target from session config."""
+    config = state.get("session_config")
+    if config:
+        cfg = config if isinstance(config, dict) else (
+            config.model_dump() if hasattr(config, "model_dump") else {}
+        )
+        minimum_submitted = cfg.get("minimum_submitted_applications", 0) or 0
+        if minimum_submitted > 0:
+            return minimum_submitted
+        return cfg.get("max_jobs", 20) or 20
+    return 20
+
+
+def _get_minimum_submitted_target(state: JobHunterState) -> int:
+    """Return the explicit minimum submitted target, or 0 when disabled."""
+    config = state.get("session_config")
+    if not config:
+        return 0
+    cfg = config if isinstance(config, dict) else (
+        config.model_dump() if hasattr(config, "model_dump") else {}
+    )
+    return cfg.get("minimum_submitted_applications", 0) or 0
+
+
 async def backfill_prep_node(state: JobHunterState) -> dict:
     """Prepare state for a backfill round — collect seen IDs and bump counter."""
     submitted = len(state.get("applications_submitted") or [])
-    max_jobs = _get_max_jobs(state)
-    deficit = max_jobs - submitted
+    failed = len(state.get("applications_failed") or [])
+    skipped = len(state.get("applications_skipped") or [])
+    minimum_submitted_target = _get_minimum_submitted_target(state)
+    if minimum_submitted_target > 0:
+        target = minimum_submitted_target
+        progress_count = submitted
+    else:
+        target = _get_max_jobs(state)
+        progress_count = submitted + failed + skipped
+    deficit = target - progress_count
     rounds = state.get("backfill_rounds", 0)
 
     # Collect all job IDs we've already seen (for dedup in next discovery)
@@ -652,7 +733,7 @@ async def backfill_prep_node(state: JobHunterState) -> dict:
     await emit_agent_event(state["session_id"], "backfill_progress", {
         "step": step_msg,
         "submitted": submitted,
-        "target": max_jobs,
+        "target": target,
         "round": rounds + 1,
         "boards_to_skip": boards_to_skip,
     })
@@ -710,15 +791,24 @@ def route_after_qa(state: JobHunterState) -> str:
     submitted = len(state.get("applications_submitted") or [])
     failed = len(state.get("applications_failed") or [])
     skipped = len(state.get("applications_skipped") or [])
-    attempted = submitted + failed + skipped
-    max_jobs = _get_max_jobs(state)
+    minimum_submitted_target = _get_minimum_submitted_target(state)
 
-    if should_backfill(state, attempted, max_jobs):
-        logger.info(
-            "Backfill: %d/%d attempted (%d submitted, %d failed, %d skipped), round %d — routing to backfill_prep",
-            attempted, max_jobs, submitted, failed, skipped, state.get("backfill_rounds", 0),
-        )
-        return "backfill_prep"
+    if minimum_submitted_target > 0:
+        if should_backfill(state, submitted, minimum_submitted_target):
+            logger.info(
+                "Backfill: %d/%d submitted (%d failed, %d skipped), round %d — routing to backfill_prep",
+                submitted, minimum_submitted_target, failed, skipped, state.get("backfill_rounds", 0),
+            )
+            return "backfill_prep"
+    else:
+        attempted = submitted + failed + skipped
+        max_jobs = _get_max_jobs(state)
+        if should_backfill(state, attempted, max_jobs):
+            logger.info(
+                "Backfill: %d/%d attempted (%d submitted, %d failed, %d skipped), round %d — routing to backfill_prep",
+                attempted, max_jobs, submitted, failed, skipped, state.get("backfill_rounds", 0),
+            )
+            return "backfill_prep"
     return "reporting"
 
 
