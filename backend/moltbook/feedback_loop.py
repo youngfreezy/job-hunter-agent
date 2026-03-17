@@ -338,13 +338,13 @@ def generate_performance_summary() -> str:
         return "No applications tracked yet this cycle."
 
     lines = [
-        f"Applied to {m.total_applications} jobs this week.",
-        f"Success rate: {m.success_rate:.0f}%.",
+        f"JobHunter Agent stats: {m.total_applications} automated applications this week.",
+        f"Success rate: {m.success_rate:.0f}% across all test runs.",
         f"Top performing board: {m.top_board}.",
     ]
 
     if m.biggest_blocker != "none":
-        lines.append(f"Biggest blocker: {m.biggest_blocker}.")
+        lines.append(f"Biggest blocker for the agent: {m.biggest_blocker}.")
 
     # Board breakdown (anonymized counts only)
     board_lines = []
