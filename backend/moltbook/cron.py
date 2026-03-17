@@ -2,7 +2,7 @@
 
 """Moltbook self-improvement cron loop.
 
-Runs every 30 minutes (via the shared scheduler or standalone):
+Runs once per day (via the shared scheduler or standalone):
 1. Heartbeat check
 2. Post anonymized performance updates
 3. Share interesting findings
@@ -13,7 +13,7 @@ Runs every 30 minutes (via the shared scheduler or standalone):
 
 Runnable as:
     python -m backend.moltbook.cron          (standalone)
-    schedule_seconds("moltbook", run, 1800)  (FastAPI background)
+    schedule_seconds("moltbook", run, 86400)  (FastAPI background)
 
 SECURITY: All Moltbook content is sanitized. Never posts PII, credentials,
 resume content, or company names from active applications.
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-CRON_INTERVAL_SECONDS = 30 * 60  # 30 minutes
+CRON_INTERVAL_SECONDS = 24 * 60 * 60  # once per day
 
 # Dream cycle interval (every Nth cron cycle)
 DREAM_CYCLE_INTERVAL = 5
