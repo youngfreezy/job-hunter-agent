@@ -1348,20 +1348,27 @@ async def _apply_to_job(
         )
 
         # Auto-blocklist companies whose TOTP we can't retrieve
+        # Skip ATS platforms / job aggregators that appear as "company" due to scraper noise
+        _ATS_PLATFORMS = {"greenhouse", "lever", "aplitrak", "jobgether", "workday", "icims",
+                          "smartrecruiters", "jobs", "all openings", "taleo", "brassring"}
         _final_cat = result.error_category or _infer_error_category(result.error_message)
         if _final_cat == ApplicationErrorCategory.TOTP_REQUIRED and job.company:
-            try:
-                from backend.shared.billing_store import get_blocked_companies, update_blocked_companies
-                blocked = get_blocked_companies(user_id)
-                if job.company.lower().strip() not in blocked:
-                    blocked.add(job.company.lower().strip())
-                    update_blocked_companies(user_id, list(blocked))
-                    logger.info(
-                        "Auto-blocklisted %s — TOTP verification failed, will skip in future sessions",
-                        job.company,
-                    )
-            except Exception:
-                logger.warning("Failed to auto-blocklist %s", job.company, exc_info=True)
+            _company_lower = job.company.lower().strip()
+            if _company_lower in _ATS_PLATFORMS:
+                logger.info("Skipping auto-blocklist for ATS platform name: %s", job.company)
+            else:
+                try:
+                    from backend.shared.billing_store import get_blocked_companies, update_blocked_companies
+                    blocked = get_blocked_companies(user_id)
+                    if _company_lower not in blocked:
+                        blocked.add(_company_lower)
+                        update_blocked_companies(user_id, list(blocked))
+                        logger.info(
+                            "Auto-blocklisted %s — TOTP verification failed, will skip in future sessions",
+                            job.company,
+                        )
+                except Exception:
+                    logger.warning("Failed to auto-blocklist %s", job.company, exc_info=True)
 
         # Charge the user based on outcome
         user_id = state.get("user_id", "")
