@@ -46,6 +46,9 @@ type SessionData = {
   pause_resume_node?: string | null;
   status_before_pause?: string | null;
   keywords: string[];
+  locations?: string[];
+  remote_only?: boolean;
+  salary_min?: number | null;
   scored_jobs: Array<{
     job: {
       id: string;
@@ -1540,6 +1543,53 @@ export default function SessionPage() {
                   ))}
                 </div>
               </div>
+              {/* Locations */}
+              {session.locations && session.locations.length > 0 && (
+                <div>
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {session.remote_only ? "Remote" : "Locations"}
+                  </span>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {session.remote_only && (
+                      <Badge variant="secondary" className="bg-white/80 text-xs dark:bg-white/10">
+                        Remote only
+                      </Badge>
+                    )}
+                    {!session.remote_only && session.locations.map((loc, i) => (
+                      <Badge
+                        key={i}
+                        variant="secondary"
+                        className="bg-white/80 text-xs dark:bg-white/10"
+                      >
+                        {loc}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {session.remote_only && (!session.locations || session.locations.length === 0) && (
+                <div>
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Location
+                  </span>
+                  <div className="mt-1">
+                    <Badge variant="secondary" className="bg-white/80 text-xs dark:bg-white/10">
+                      Remote only
+                    </Badge>
+                  </div>
+                </div>
+              )}
+              {/* Min Salary */}
+              {session.salary_min != null && session.salary_min > 0 && (
+                <div>
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Min Salary
+                  </span>
+                  <p className="mt-1 text-sm font-medium">
+                    ${session.salary_min.toLocaleString()}
+                  </p>
+                </div>
+              )}
               {/* Quick Apply job URLs */}
               {session.session_config?.discovery_mode === "manual_urls" &&
                 (session.session_config?.job_urls?.length || session.job_urls?.length) && (
