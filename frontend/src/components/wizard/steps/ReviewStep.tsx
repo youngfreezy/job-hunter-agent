@@ -154,6 +154,10 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
               <p className="capitalize">{values.tailoringQuality ?? "standard"}</p>
             </div>
             <div>
+              <p className="font-medium text-zinc-500">Minimum submitted</p>
+              <p>{values.minimumSubmittedApplications ?? 0}</p>
+            </div>
+            <div>
               <p className="font-medium text-zinc-500">Application mode</p>
               <p>{values.applicationMode === "materials_only" ? "Materials only" : "Auto apply"}</p>
             </div>

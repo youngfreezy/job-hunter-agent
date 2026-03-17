@@ -238,6 +238,7 @@ export async function startSession(params: {
   preferences: Record<string, unknown>;
   config?: {
     max_jobs: number;
+    minimum_submitted_applications?: number;
     tailoring_quality: string;
     application_mode: string;
     generate_cover_letters: boolean;

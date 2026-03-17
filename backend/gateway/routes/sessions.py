@@ -445,6 +445,8 @@ async def _run_pipeline(
             "applications_submitted": [],
             "applications_failed": [],
             "applications_skipped": [],
+            "application_retry_counts": {},
+            "active_retry_job_ids": [],
             "agent_statuses": {},
             "human_messages": [],
             "steering_mode": "status",
@@ -958,6 +960,13 @@ async def start_session(body: StartSessionRequest, request: Request):
     from backend.gateway.deps import get_current_user
     user = get_current_user(request)
     user_id = str(user["id"])  # Ensure string — users.id is UUID, sessions.user_id is TEXT
+
+    min_submitted = getattr(body.config, "minimum_submitted_applications", 0) if body.config else 0
+    if min_submitted > 0 and not user.get("is_premium", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Minimum submitted applications is available for premium users only.",
+        )
 
     # Enforce per-user concurrency limits via Redis task queue
     try:

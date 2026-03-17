@@ -62,6 +62,18 @@ export const resumeProfileSchema = Yup.object({
 // ---------- Step 3: Configuration ----------
 export const configSchema = Yup.object({
   maxJobs: Yup.number().min(3).max(10).default(5),
+  minimumSubmittedApplications: Yup.number()
+    .min(0)
+    .max(10)
+    .test(
+      "min-submitted-lte-max-jobs",
+      "Minimum submitted applications cannot exceed jobs to apply to.",
+      function (value) {
+        const maxJobs = this.parent.maxJobs ?? 5;
+        return (value ?? 0) <= maxJobs;
+      }
+    )
+    .default(0),
   tailoringQuality: Yup.string().oneOf(["standard", "premium"]).default("standard"),
   applicationMode: Yup.string().oneOf(["auto_apply", "materials_only"]).default("auto_apply"),
   generateCoverLetters: Yup.boolean().default(true),
@@ -92,6 +104,7 @@ export const sessionInitialValues: SessionFormValues = {
   resumeFileUuid: "",
   linkedinUrl: "",
   maxJobs: 5,
+  minimumSubmittedApplications: 0,
   tailoringQuality: "standard",
   applicationMode: "auto_apply",
   generateCoverLetters: true,
