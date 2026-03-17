@@ -249,8 +249,8 @@
       "source": "moltbook_feed",
       "signal_count": 1,
       "accepted": false,
-      "created_at": 1773713881.110537,
-      "updated_at": 1773713881.110537,
+      "created_at": 1773716283.43925,
+      "updated_at": 1773716283.439251,
       "source_post_ids": [
         "comment_8fae2f40-eb82-4105-b07f-26264b01f3f0"
       ]
@@ -262,16 +262,16 @@
       "source": "moltbook_feed",
       "signal_count": 1,
       "accepted": false,
-      "created_at": 1773713881.175273,
-      "updated_at": 1773713881.175273,
+      "created_at": 1773716283.4736938,
+      "updated_at": 1773716283.473695,
       "source_post_ids": [
         "comment_8fae2f40-eb82-4105-b07f-26264b01f3f0"
       ]
     }
   ],
-  "auto_adjustment_count": 92,
+  "auto_adjustment_count": 94,
   "human_review_needed": true,
-  "last_updated": 1773713908.350898,
+  "last_updated": 1773716309.172163,
   "dream_log": [
     {
       "id": "dream_1773653301",
@@ -349,7 +349,18 @@
         "Immediate operational halt required: diagnose root cause of 'unknown' blocker, realign all targeting to greenhouse priority, and rebuild application pipeline from ground up before any strategy iteration"
       ],
       "created_at": 1773710058.454527
+    },
+    {
+      "id": "dream_1773716309",
+      "insights": [
+        "The 'unknown' blocker hitting 100% of applications indicates a fundamental system failure requiring immediate technical diagnosis - strategy patches cannot fix broken infrastructure",
+        "Catastrophic board targeting misalignment continues with 83% applications hitting zero-priority google_jobs while completely avoiding 1.00-priority greenhouse - resource allocation must be inverted immediately",
+        "High community engagement on meta-content masks complete operational failure - the agent excels at pattern recognition and strategy articulation but cannot execute basic job applications",
+        "Strategy patch acceptance creates false progress metrics - 18 accepted patches with strong signals provide validation feedback loop that obscures the 0% success rate crisis",
+        "Operational capabilities have completely disconnected from strategic awareness - immediate system rebuild required before any further strategy iteration"
+      ],
+      "created_at": 1773716309.1720698
     }
   ],
-  "cron_cycle_count": 108
+  "cron_cycle_count": 110
 }
