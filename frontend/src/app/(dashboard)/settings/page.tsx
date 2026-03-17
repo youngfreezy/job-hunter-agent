@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
+import { API_BASE, getAuthHeaders, apiFetch, updateMinimumSubmitted } from "@/lib/api";
 
 export default function SettingsPage() {
   const [phone, setPhone] = useState("");
@@ -24,6 +24,9 @@ export default function SettingsPage() {
   const [blockedCompanies, setBlockedCompanies] = useState<string[]>([]);
   const [newCompany, setNewCompany] = useState("");
   const [savingBlocklist, setSavingBlocklist] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
+  const [minimumSubmitted, setMinimumSubmitted] = useState(0);
+  const [savingMinSubmitted, setSavingMinSubmitted] = useState(false);
 
 
   useEffect(() => {
@@ -38,6 +41,8 @@ export default function SettingsPage() {
           setPhoneVerified(user.phone_verified || false);
           setNotificationChannel(user.notification_channel || "email");
           setBlockedCompanies(user.blocked_companies || []);
+          setIsPremium(user.is_premium || false);
+          setMinimumSubmitted(user.minimum_submitted_applications || 0);
           if (user.phone_verified) {
             setVerifyStep("done");
             setPhone(user.phone_number || "");
@@ -145,6 +150,19 @@ export default function SettingsPage() {
     setNewCompany("");
     saveBlockedCompanies(updated);
     toast.success(`${name} added to blocklist`);
+  }
+
+  async function handleSaveMinSubmitted(value: number) {
+    setSavingMinSubmitted(true);
+    try {
+      await updateMinimumSubmitted(value);
+      setMinimumSubmitted(value);
+      toast.success(value > 0 ? `Minimum set to ${value} submitted applications` : "Minimum submitted disabled");
+    } catch {
+      toast.error("Failed to save minimum submitted preference");
+    } finally {
+      setSavingMinSubmitted(false);
+    }
   }
 
   function handleRemoveCompany(company: string) {
@@ -329,6 +347,46 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Minimum Submitted Applications (premium) */}
+      {isPremium && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Minimum Submitted Applications</CardTitle>
+            <CardDescription>
+              Keep discovering and retrying until at least this many applications are actually submitted.
+              Applied to all new sessions automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min={0}
+                max={10}
+                step={1}
+                value={minimumSubmitted}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setMinimumSubmitted(v);
+                }}
+                onMouseUp={() => handleSaveMinSubmitted(minimumSubmitted)}
+                onTouchEnd={() => handleSaveMinSubmitted(minimumSubmitted)}
+                disabled={savingMinSubmitted}
+                className="flex-1 accent-primary"
+              />
+              <span className="text-lg font-bold tabular-nums w-8 text-center">
+                {minimumSubmitted}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {minimumSubmitted === 0
+                ? "Disabled — the agent will attempt each job once and move on."
+                : `The agent will backfill and retry until ${minimumSubmitted} application${minimumSubmitted !== 1 ? "s are" : " is"} successfully submitted.`}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* SMS Commands reference */}
       {phoneVerified && (

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useFormikContext } from "formik";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getWallet } from "@/lib/api";
+import { getWallet, API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
 import type { SessionFormValues } from "@/lib/schemas/session";
 
 const BOARDS = [
@@ -42,6 +42,19 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
         setIsPremium(w.is_premium ?? false);
       })
       .catch(() => setBalance(null));
+    // Pre-populate minimum submitted from user profile if not already set
+    getAuthHeaders()
+      .then((auth) => apiFetch(`${API_BASE}/api/auth/me`, { headers: auth }))
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const user = data.user || data;
+        const saved = user.minimum_submitted_applications || 0;
+        if (saved > 0 && (values.minimumSubmittedApplications ?? 0) === 0) {
+          setFieldValue("minimumSubmittedApplications", saved);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const boards = values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"];
@@ -114,7 +127,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
             </div>
           </div>
 
-          {isPremium && values.applicationMode === "auto_apply" && (
+          {isPremium && (
             <div>
               <label htmlFor="minimumSubmittedApplications" className="text-sm font-medium block">
                 Minimum submitted applications

@@ -98,6 +98,12 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+-- Minimum submitted applications preference (premium feature)
+DO $$ BEGIN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS minimum_submitted_applications INT DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
@@ -142,7 +148,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
     """Get or create a user by email. Returns dict with id, email, balance, free_remaining."""
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider, created_at, notification_channel, phone_number, blocked_companies FROM users WHERE email = %s",
+            "SELECT id, email, wallet_balance, free_applications_remaining, is_premium, name, auth_provider, created_at, notification_channel, phone_number, blocked_companies, minimum_submitted_applications FROM users WHERE email = %s",
             (email,),
         )
         row = cur.fetchone()
@@ -159,6 +165,7 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
                 "notification_channel": row[8] or "email",
                 "phone_number": row[9],
                 "blocked_companies": list(row[10]) if row[10] else [],
+                "minimum_submitted_applications": row[11] or 0,
             }
 
         # Create new user
@@ -534,7 +541,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
     """Get a user by their ID. Returns dict with notification prefs, or None."""
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT id, email, notification_channel, phone_number, phone_verified, name, blocked_companies FROM users WHERE id = %s",
+            "SELECT id, email, notification_channel, phone_number, phone_verified, name, blocked_companies, minimum_submitted_applications FROM users WHERE id = %s",
             (user_id,),
         )
         row = cur.fetchone()
@@ -548,6 +555,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
             "phone_verified": bool(row[4]) if row[4] is not None else False,
             "name": row[5],
             "blocked_companies": list(row[6]) if row[6] else [],
+            "minimum_submitted_applications": row[7] or 0,
         }
 
 
@@ -574,6 +582,17 @@ def get_blocked_companies(user_id: str) -> set:
     except Exception:
         logger.warning("Failed to get blocked companies for user %s", user_id, exc_info=True)
     return set()
+
+
+def update_minimum_submitted(user_id: str, value: int) -> None:
+    """Update the user's default minimum submitted applications preference."""
+    clamped = max(0, min(10, value))
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE users SET minimum_submitted_applications = %s WHERE id = %s",
+            (clamped, user_id),
+        )
+        conn.commit()
 
 
 def update_blocked_companies(user_id: str, companies: list) -> None:
