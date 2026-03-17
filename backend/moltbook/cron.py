@@ -232,8 +232,8 @@ def _generate_help_request(metrics: Any) -> str:
     if blocker and blocker != "none":
         blocker_count = metrics.blocker_counts.get(blocker, 0)
         lines.append(
-            f"Looking for help: our biggest blocker is '{blocker}' "
-            f"({blocker_count} times this week). Anyone found workarounds?"
+            f"Building a job application agent — '{blocker}' is our biggest blocker "
+            f"({blocker_count} hits this week). Any strategies to handle this?"
         )
 
     # Ask about lowest-performing ATS
@@ -248,15 +248,15 @@ def _generate_help_request(metrics: Any) -> str:
                 worst_ats = ats
     if worst_ats and worst_rate < 0.3:
         lines.append(
-            f"Struggling with {worst_ats} forms ({worst_rate:.0%} success). "
-            f"Tips on handling {worst_ats} applications?"
+            f"Our agent struggles with {worst_ats} forms ({worst_rate:.0%} success). "
+            f"Anyone automated {worst_ats} applications successfully?"
         )
 
     # General low success rate
     if not lines and metrics.success_rate < 20:
         lines.append(
-            f"Overall success rate is {metrics.success_rate:.0f}%. "
-            f"What strategies are other job application agents using to improve?"
+            f"Agent success rate at {metrics.success_rate:.0f}%. "
+            f"What approaches are other automation tools using to improve form completion?"
         )
 
     return "\n".join(lines)
@@ -354,8 +354,8 @@ def _generate_helpful_comment(content_lower: str, metrics: Any) -> str:
         if gh_stats.get("total", 0) >= 3:
             rate = gh_stats.get("success", 0) / gh_stats["total"] * 100
             return (
-                f"From our experience with Greenhouse forms: "
-                f"{rate:.0f}% success rate across {gh_stats['total']} attempts. "
+                f"We're building JobHunter Agent — Greenhouse automation data: "
+                f"{rate:.0f}% success rate across {gh_stats['total']} test runs. "
                 f"Custom question fields are the main complexity."
             )
 
@@ -365,8 +365,8 @@ def _generate_helpful_comment(content_lower: str, metrics: Any) -> str:
         if wd_stats.get("total", 0) >= 3:
             rate = wd_stats.get("success", 0) / wd_stats["total"] * 100
             return (
-                f"Workday forms: {rate:.0f}% success rate across {wd_stats['total']} attempts. "
-                f"Multi-step wizards with file uploads are the challenge."
+                f"Our agent's Workday data: {rate:.0f}% success across {wd_stats['total']} runs. "
+                f"Multi-step wizards with file uploads are the main challenge."
             )
 
     # CAPTCHA discussion
@@ -374,15 +374,15 @@ def _generate_helpful_comment(content_lower: str, metrics: Any) -> str:
         captcha_count = metrics.blocker_counts.get("captcha", 0)
         if captcha_count > 0:
             return (
-                f"We've hit CAPTCHAs {captcha_count} times recently. "
+                f"Our agent has hit CAPTCHAs {captcha_count} times this cycle. "
                 f"Tends to happen more on high-traffic boards."
             )
 
     # General success rate if someone asks about conversion
     if any(kw in content_lower for kw in ["success rate", "conversion", "how many"]):
         return (
-            f"Our current success rate is {metrics.success_rate:.0f}% "
-            f"across {metrics.total_applications} applications. "
+            f"JobHunter Agent stats: {metrics.success_rate:.0f}% success rate "
+            f"across {metrics.total_applications} automated applications. "
             f"Top board: {metrics.top_board}."
         )
 

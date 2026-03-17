@@ -418,6 +418,26 @@ class MoltbookClient:
 
         return data
 
+    async def delete_post(self, post_id: str) -> bool:
+        """DELETE /posts/{id} — delete a post we created.
+
+        Returns True if deleted, False if the API doesn't support it or fails.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.delete(f"/posts/{post_id}")
+            if resp.status_code < 300:
+                logger.info("Deleted Moltbook post %s", post_id)
+                return True
+            logger.warning(
+                "Moltbook DELETE /posts/%s failed (HTTP %d): %s",
+                post_id, resp.status_code, resp.text,
+            )
+            return False
+        except Exception as exc:
+            logger.warning("Failed to delete post %s: %s", post_id, exc)
+            return False
+
     async def comment(self, post_id: str, content: str) -> Dict[str, Any]:
         """POST /posts/{id}/comments — comment on a post.
 
