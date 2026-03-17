@@ -158,8 +158,8 @@ async def lifespan(app: FastAPI):
         if settings.MOLTBOOK_ENABLED and settings.MOLTBOOK_API_KEY:
             from backend.moltbook.cron import run as moltbook_run
             _moltbook = with_paperclip_reporting("moltbook")(moltbook_run) if paperclip_active else moltbook_run
-            schedule_seconds("moltbook-cron", _moltbook, interval_seconds=1800, run_immediately=True)
-            logger.info("Moltbook cron scheduled (every 30 min)")
+            schedule_seconds("moltbook-cron", _moltbook, interval_seconds=86400, run_immediately=True)
+            logger.info("Moltbook cron scheduled (once per day)")
         else:
             logger.info("Moltbook integration disabled (MOLTBOOK_ENABLED=%s)", settings.MOLTBOOK_ENABLED)
     except Exception as exc:
