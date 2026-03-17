@@ -1125,6 +1125,7 @@ async def rerun_session(session_id: str, body: RerunRequest, request: Request):
         logger.info("Resume cloned from %s to %s", session_id, new_session_id)
 
     # Build StartSessionRequest for the pipeline
+    # Re-runs skip coach review + auto-approve shortlist (resume already coached)
     start_body = StartSessionRequest(
         keywords=keywords,
         locations=locations,
@@ -1132,7 +1133,10 @@ async def rerun_session(session_id: str, body: RerunRequest, request: Request):
         salary_min=salary_min,
         resume_text=resume_text,
         linkedin_url=original.get("linkedin_url"),
-        preferences={},
+        preferences={
+            "_skip_coach_review": True,
+            "_autopilot_auto_approve": True,
+        },
     )
 
     _spawn_background(_run_pipeline(new_session_id, start_body, graph, user_id=user_id))
