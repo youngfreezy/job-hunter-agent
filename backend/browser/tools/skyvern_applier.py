@@ -451,7 +451,9 @@ async def apply_with_skyvern(
             else:
                 # Fallback: detect from free text if no structured code
                 error_lower = error_msg.lower()
-                if any(kw in error_lower for kw in ("recaptcha", "captcha", "spam", "bot detection", "blocked")):
+                if any(kw in error_lower for kw in ("totp", "verification code", "2fa", "two-factor", "one-time")):
+                    error_category = ApplicationErrorCategory.TOTP_REQUIRED
+                elif any(kw in error_lower for kw in ("recaptcha", "captcha", "spam", "bot detection", "blocked")):
                     error_category = ApplicationErrorCategory.CAPTCHA
 
             return ApplicationResult(

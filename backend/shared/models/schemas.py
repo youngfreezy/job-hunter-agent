@@ -176,6 +176,7 @@ class ApplicationErrorCategory(str, Enum):
     CREDIT_INSUFFICIENT = "credit_insufficient"
     DUPLICATE = "duplicate"
     RATE_LIMITED = "rate_limited"
+    TOTP_REQUIRED = "totp_required"
     UNKNOWN = "unknown"
 
 
