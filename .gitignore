@@ -51,3 +51,4 @@ package-lock.json
 
 # CodeYam local files (contains secrets and local database)
 .codeyam
+.gstack/

@@ -676,19 +676,6 @@ def _get_max_jobs(state: JobHunterState) -> int:
     return 20
 
 
-def _get_submission_target(state: JobHunterState) -> int:
-    """Extract the submitted-application target from session config."""
-    config = state.get("session_config")
-    if config:
-        cfg = config if isinstance(config, dict) else (
-            config.model_dump() if hasattr(config, "model_dump") else {}
-        )
-        minimum_submitted = cfg.get("minimum_submitted_applications", 0) or 0
-        if minimum_submitted > 0:
-            return minimum_submitted
-        return cfg.get("max_jobs", 20) or 20
-    return 20
-
 
 def _get_minimum_submitted_target(state: JobHunterState) -> int:
     """Return the explicit minimum submitted target, or 0 when disabled."""
