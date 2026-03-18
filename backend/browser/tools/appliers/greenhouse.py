@@ -119,8 +119,11 @@ class GreenhouseApplier(BaseApplier):
 
                     # If submit button still visible, try programmatic form.submit()
                     still_visible = await self.page.evaluate("""() => {
-                        const btn = document.querySelector('button:has-text("Submit Application"), button:has-text("Submit application"), input[type="submit"]');
-                        return btn && btn.offsetParent !== null;
+                        const buttons = [...document.querySelectorAll('button, input[type="submit"]')];
+                        const submitBtn = buttons.find(b =>
+                            b.textContent.toLowerCase().includes('submit') && b.offsetParent !== null
+                        );
+                        return !!submitBtn;
                     }""")
                     if still_visible:
                         logger.info("Submit button still visible after click — trying form.submit()")
