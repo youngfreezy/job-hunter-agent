@@ -104,8 +104,30 @@ class GreenhouseApplier(BaseApplier):
                 await self._emit_step("Submitting application...")
                 submit_clicked = await self._click_selector(_SUBMIT_BUTTON, "submit_button", timeout=5000)
                 if submit_clicked:
-                    await self._random_delay(2.0, 4.0)
-                    await self._wait_for_navigation()
+                    await self._random_delay(3.0, 5.0)
+                    await self._wait_for_navigation(timeout=15000)
+
+                    # Check for validation errors — if present, re-fill and retry once
+                    has_errors = await self.page.evaluate("""() => {
+                        return [...document.querySelectorAll(
+                            '.field--error, [class*="error-message"], [class*="field-error"], .field_with_errors'
+                        )].some(el => el.offsetParent !== null)
+                    }""")
+                    if has_errors:
+                        await self._emit_step("Fixing validation errors and resubmitting...")
+                        await self._fill_current_form(
+                            user_profile=user_profile,
+                            resume_text=resume_text,
+                            cover_letter=cover_letter,
+                            job_title=job.title,
+                            job_company=job.company,
+                            resume_file_path=resume_file_path,
+                        )
+                        await self._random_delay(1.0, 2.0)
+                        await self._click_selector(_SUBMIT_BUTTON, "submit_button", timeout=5000)
+                        await self._random_delay(3.0, 5.0)
+                        await self._wait_for_navigation(timeout=15000)
+
                     break
 
                 # Neither Next nor Submit found
