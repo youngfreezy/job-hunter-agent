@@ -2,7 +2,7 @@
 
 export default function FreelanceLoading() {
   return (
-    <div className="container mx-auto max-w-4xl p-6">
+    <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6">
       <div className="h-8 w-64 bg-muted animate-pulse rounded mb-2" />
       <div className="h-4 w-96 bg-muted animate-pulse rounded mb-8" />
 

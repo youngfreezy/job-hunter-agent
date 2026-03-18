@@ -204,7 +204,7 @@ export default function BillingPage() {
 
       {/* Social Proof */}
       <div className="rounded-xl border border-blue-200/60 bg-blue-50/50 dark:border-blue-900/40 dark:bg-blue-950/20 px-5 py-4">
-        <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
           <div>
             <p className="text-xl font-bold text-zinc-900 dark:text-white">1,200+</p>
             <p className="text-xs text-zinc-500">Job seekers helped</p>
@@ -329,7 +329,7 @@ export default function BillingPage() {
       {/* Top-ups */}
       <div>
         <h2 className="text-lg font-semibold mb-3">Quick Top-up</h2>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           {topUpPacks.map((id) => {
             const pack = packs[id];
             if (!pack) return null;

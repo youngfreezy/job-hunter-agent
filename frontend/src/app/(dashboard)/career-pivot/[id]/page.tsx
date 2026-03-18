@@ -146,7 +146,7 @@ export default function PivotResultPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto max-w-4xl p-6 space-y-6">
+      <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6 space-y-6">
         <h1 className="text-2xl font-bold">Career Change Analysis</h1>
 
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -246,7 +246,7 @@ export default function PivotResultPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl p-6 space-y-8">
+    <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6 space-y-8">
       <h1 className="text-2xl font-bold">Career Change Analysis</h1>
 
       {/* Paywall — unlock pivot roles with blurred chart preview */}
