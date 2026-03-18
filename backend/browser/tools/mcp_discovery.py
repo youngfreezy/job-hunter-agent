@@ -495,7 +495,9 @@ async def discover_all_boards(
     all_jobs: List[JobListing] = []
     total_max = max_per_board * max(len(boards), 3)
 
-    # Run MCP search and Greenhouse API in parallel
+    # Run Lever API, Greenhouse API, and Serper search in parallel.
+    # Lever API is highest priority — guaranteed current, no CAPTCHA.
+    lever_task = _lever_discover(search_config, session_id, max_per_board)
     greenhouse_task = _greenhouse_discover(search_config, session_id, max_per_board)
     mcp_task = _mcp_discover(
         search_config, session_id, total_max,
@@ -504,13 +506,14 @@ async def discover_all_boards(
         round_number=round_number,
     )
 
-    results = await asyncio.gather(greenhouse_task, mcp_task, return_exceptions=True)
+    results = await asyncio.gather(lever_task, greenhouse_task, mcp_task, return_exceptions=True)
 
-    # Add Serper results FIRST (Lever/Ashby priority), then Greenhouse API.
-    # Dedup keeps first occurrence, so Lever/Ashby jobs win over duplicates.
+    # Priority order: Lever API > Serper (Lever/Ashby) > Greenhouse API.
+    # Lever API jobs are guaranteed current and submittable.
+    lever_jobs: List[JobListing] = []
     serper_jobs: List[JobListing] = []
     greenhouse_jobs: List[JobListing] = []
-    for label, result in zip(["greenhouse", "search"], results):
+    for label, result in zip(["lever", "greenhouse", "search"], results):
         if isinstance(result, Exception):
             logger.error("%s discovery failed: %s", label, result)
             await emit_agent_event(session_id, "discovery_progress", {
@@ -519,18 +522,23 @@ async def discover_all_boards(
                 "error": True,
             })
         elif result:
-            if label == "search":
+            if label == "lever":
+                lever_jobs.extend(result)
+            elif label == "search":
                 serper_jobs.extend(result)
             else:
                 greenhouse_jobs.extend(result)
 
     # Cap Greenhouse API results to leave room for Lever/Ashby
     gh_cap = max(5, max_per_board // 2)
-    if len(greenhouse_jobs) > gh_cap and serper_jobs:
+    if len(greenhouse_jobs) > gh_cap and (lever_jobs or serper_jobs):
         logger.info("Capping Greenhouse API from %d to %d (prioritizing Lever/Ashby)", len(greenhouse_jobs), gh_cap)
         greenhouse_jobs = greenhouse_jobs[:gh_cap]
 
-    all_jobs = serper_jobs + greenhouse_jobs
+    # Lever API first (guaranteed submittable), then Serper, then Greenhouse
+    all_jobs = lever_jobs + serper_jobs + greenhouse_jobs
+    logger.info("Discovery sources: %d Lever API, %d Serper, %d Greenhouse API",
+                len(lever_jobs), len(serper_jobs), len(greenhouse_jobs))
 
     # Deduplicate across sources (by title + company)
     seen: set = set()
@@ -550,6 +558,37 @@ async def discover_all_boards(
 
     logger.info("Total discovery: %d raw -> %d deduped jobs", len(all_jobs), len(deduped))
     return deduped
+
+
+async def _lever_discover(
+    search_config: SearchConfig,
+    session_id: str,
+    max_results: int,
+) -> List[JobListing]:
+    """Run the Lever API scraper (free, no browser, no CAPTCHA)."""
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": "lever",
+        "step": "Searching Lever API (80+ tech companies)...",
+    })
+
+    try:
+        from backend.browser.tools.job_boards.lever_boards import scrape_lever
+        jobs = await scrape_lever(
+            search_config=search_config,
+            max_results=max_results * 3,
+        )
+
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": "lever",
+            "step": f"Found {len(jobs)} jobs on Lever (guaranteed current)",
+            "count": len(jobs),
+        })
+
+        logger.info("Lever API: %d jobs (all current, submittable)", len(jobs))
+        return jobs
+    except Exception:
+        logger.warning("Lever API discovery failed", exc_info=True)
+        return []
 
 
 async def _greenhouse_discover(
