@@ -36,8 +36,29 @@ async def _extract_sitekey(page) -> Optional[dict]:
     """
     try:
         result = await page.evaluate("""() => {
-            // reCAPTCHA v2 — div with data-sitekey
-            const recaptchaDiv = document.querySelector('.g-recaptcha[data-sitekey], [data-sitekey]');
+            // hCaptcha FIRST (Lever, Ashby use hCaptcha — must check before reCAPTCHA)
+            const hcaptchaDiv = document.querySelector('.h-captcha[data-sitekey]');
+            if (hcaptchaDiv) {
+                const sitekey = hcaptchaDiv.getAttribute('data-sitekey');
+                if (sitekey) return { sitekey, type: 'hcaptcha' };
+            }
+
+            const hcaptchaIframe = document.querySelector('iframe[src*="hcaptcha.com"]');
+            if (hcaptchaIframe) {
+                const match = hcaptchaIframe.src.match(/sitekey=([A-Za-z0-9_-]+)/);
+                if (match) return { sitekey: match[1], type: 'hcaptcha' };
+            }
+
+            // Also detect hCaptcha by script tag (some sites load it dynamically)
+            const hcaptchaScript = document.querySelector('script[src*="hcaptcha.com"]');
+            if (hcaptchaScript) {
+                // Find the sitekey from any data-sitekey element
+                const el = document.querySelector('[data-sitekey]');
+                if (el) return { sitekey: el.getAttribute('data-sitekey'), type: 'hcaptcha' };
+            }
+
+            // reCAPTCHA v2 — specifically .g-recaptcha class (NOT generic [data-sitekey])
+            const recaptchaDiv = document.querySelector('.g-recaptcha[data-sitekey]');
             if (recaptchaDiv) {
                 const sitekey = recaptchaDiv.getAttribute('data-sitekey');
                 if (sitekey) return { sitekey, type: 'recaptcha_v2' };
@@ -59,17 +80,13 @@ async def _extract_sitekey(page) -> Optional[dict]:
                 if (match) return { sitekey: match[1], type: 'recaptcha_v2' };
             }
 
-            // hCaptcha
-            const hcaptchaDiv = document.querySelector('.h-captcha[data-sitekey]');
-            if (hcaptchaDiv) {
-                const sitekey = hcaptchaDiv.getAttribute('data-sitekey');
-                if (sitekey) return { sitekey, type: 'hcaptcha' };
-            }
-
-            const hcaptchaIframe = document.querySelector('iframe[src*="hcaptcha.com"]');
-            if (hcaptchaIframe) {
-                const match = hcaptchaIframe.src.match(/sitekey=([A-Za-z0-9_-]+)/);
-                if (match) return { sitekey: match[1], type: 'hcaptcha' };
+            // Fallback: any data-sitekey element — determine type by context
+            const genericEl = document.querySelector('[data-sitekey]');
+            if (genericEl) {
+                const sitekey = genericEl.getAttribute('data-sitekey');
+                // hCaptcha sitekeys are UUIDs, reCAPTCHA sitekeys start with 6L
+                const isHcaptcha = /^[0-9a-f]{8}-/.test(sitekey);
+                return { sitekey, type: isHcaptcha ? 'hcaptcha' : 'recaptcha_v2' };
             }
 
             return null;
