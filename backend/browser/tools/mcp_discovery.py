@@ -529,14 +529,10 @@ async def discover_all_boards(
             else:
                 greenhouse_jobs.extend(result)
 
-    # Cap Greenhouse API results to leave room for Lever/Ashby
-    gh_cap = max(5, max_per_board // 2)
-    if len(greenhouse_jobs) > gh_cap and (lever_jobs or serper_jobs):
-        logger.info("Capping Greenhouse API from %d to %d (prioritizing Lever/Ashby)", len(greenhouse_jobs), gh_cap)
-        greenhouse_jobs = greenhouse_jobs[:gh_cap]
-
-    # Lever API first (guaranteed submittable), then Serper, then Greenhouse
-    all_jobs = lever_jobs + serper_jobs + greenhouse_jobs
+    # Greenhouse reCAPTCHA is solvable via 2captcha — prioritize Greenhouse.
+    # Lever/Ashby use hCaptcha which we can't solve yet.
+    # Put Greenhouse first so those jobs rank higher in dedup.
+    all_jobs = greenhouse_jobs + lever_jobs + serper_jobs
     logger.info("Discovery sources: %d Lever API, %d Serper, %d Greenhouse API",
                 len(lever_jobs), len(serper_jobs), len(greenhouse_jobs))
 

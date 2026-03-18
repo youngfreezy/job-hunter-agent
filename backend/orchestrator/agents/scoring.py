@@ -471,10 +471,10 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 )
             )
 
-        # ATS applicability boost: Lever/Ashby submit successfully (no reCAPTCHA).
-        # Greenhouse/Workday are blocked by reCAPTCHA on headless browsers.
-        # Apply a real score boost so submittable jobs rank higher.
-        _ATS_SCORE_BOOST = {"lever": 10, "ashby": 8, "greenhouse": -5, "workday": -5}
+        # ATS applicability boost: Greenhouse reCAPTCHA solvable via 2captcha.
+        # Lever/Ashby use hCaptcha which 2captcha can't solve (yet).
+        # Boost Greenhouse since we can actually submit those.
+        _ATS_SCORE_BOOST = {"greenhouse": 10, "lever": -5, "ashby": -5, "workday": -5}
         for sj in scored_jobs:
             ats = (sj.job.ats_type.value if hasattr(sj.job.ats_type, 'value') else str(sj.job.ats_type or '')).lower()
             boost = _ATS_SCORE_BOOST.get(ats, 0)
