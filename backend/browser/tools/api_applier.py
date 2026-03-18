@@ -3,7 +3,7 @@
 """Direct ATS API submission — bypasses browser automation entirely.
 
 Generic dispatcher: try direct API submission first, return None if unsupported
-or blocked (caller falls back to Skyvern).
+or blocked (caller falls back to Playwright).
 
 Supported ATS platforms:
   - Greenhouse: POST multipart form to boards-api.greenhouse.io
@@ -250,7 +250,7 @@ async def _apply_greenhouse(
     """Submit application via Greenhouse Job Board API.
 
     Returns ApplicationResult on success/definitive failure.
-    Returns None if blocked (reCAPTCHA) or API unavailable → caller falls back to Skyvern.
+    Returns None if blocked (reCAPTCHA) or API unavailable → caller falls back to Playwright.
     """
     parsed = _parse_greenhouse_url(job.url)
     if not parsed:
@@ -349,7 +349,7 @@ async def _apply_greenhouse(
                     )
                 elif status == 428:
                     logger.info(
-                        "Greenhouse API: reCAPTCHA required for %s — falling back to Skyvern",
+                        "Greenhouse API: reCAPTCHA required for %s — falling back to Playwright",
                         board,
                     )
                     return None  # Fall back to Skyvern
@@ -392,7 +392,7 @@ async def _apply_lever(
     """Submit application via Lever Postings API.
 
     Returns ApplicationResult on success/definitive failure.
-    Returns None if API unavailable → caller falls back to Skyvern.
+    Returns None if API unavailable → caller falls back to Playwright.
     """
     parsed = _parse_lever_url(job.url)
     if not parsed and job.external_apply_url:
@@ -481,11 +481,13 @@ async def _apply_lever(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
-# Greenhouse and Lever POST endpoints require per-company HTTP Basic Auth
-# API keys. These are issued to the hiring company, not to third-party
-# applicants, so we cannot use the API path. All jobs go straight to Skyvern.
-# Keeping the handler functions above in case we obtain keys in the future.
-_ATS_HANDLERS: dict = {}
+# Greenhouse Job Board API and Lever Postings API are public endpoints
+# that accept applications without API keys. Greenhouse returns 428 when
+# reCAPTCHA is required — caller falls back to Playwright browser automation.
+_ATS_HANDLERS: dict = {
+    ATSType.GREENHOUSE: _apply_greenhouse,
+    ATSType.LEVER: _apply_lever,
+}
 
 
 async def apply_via_api(

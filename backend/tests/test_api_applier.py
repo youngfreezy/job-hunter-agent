@@ -207,13 +207,16 @@ class TestGreenhouseApi:
 
     @pytest.mark.asyncio
     async def test_greenhouse_returns_none(self):
-        """Greenhouse job returns None — handler disabled, falls through to Skyvern."""
+        """Greenhouse job with fake job_id returns FAILED/JOB_EXPIRED (404 from API)."""
         job = _make_job(ATSType.GREENHOUSE, url="https://boards.greenhouse.io/anthropic/jobs/12345")
         result = await apply_via_api(
             job, {"name": "Test User", "email": "test@test.com"},
             "Resume text", "Cover letter", None, "session-1",
         )
-        assert result is None
+        # Handler is now enabled — fake job_id returns 404
+        assert result is not None
+        assert result.status.value == "failed"
+        assert result.error_category.value == "job_expired"
 
     @pytest.mark.asyncio
     async def test_unparseable_url_returns_none(self):
@@ -224,22 +227,24 @@ class TestGreenhouseApi:
 
 
 # ---------------------------------------------------------------------------
-# Lever API tests — handler disabled (same reason as Greenhouse)
+# Lever API tests — handler enabled, uses public Lever Postings API
 # ---------------------------------------------------------------------------
 
 
 class TestLeverApi:
-    """Lever API handlers are disabled. All Lever jobs go to Skyvern."""
+    """Lever API handlers are enabled. Uses public api.lever.co endpoint."""
 
     @pytest.mark.asyncio
-    async def test_lever_returns_none(self):
-        """Lever job returns None — handler disabled, falls through to Skyvern."""
+    async def test_lever_fake_posting_returns_none_or_error(self):
+        """Lever job with fake posting_id — API returns error or None."""
         job = _make_job(ATSType.LEVER, url="https://jobs.lever.co/openai/abc-def-123")
         result = await apply_via_api(
             job, {"name": "Test User", "email": "test@test.com"},
             "Resume text", "Cover letter", None, "session-1",
         )
-        assert result is None
+        # Fake posting returns 404 or other error — result may be None (fallback) or FAILED
+        if result is not None:
+            assert result.status.value == "failed"
 
     @pytest.mark.asyncio
     async def test_unparseable_lever_url_returns_none(self):
