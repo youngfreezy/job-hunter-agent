@@ -141,14 +141,21 @@ async def _fetch_company_postings(
         return []
 
 
+def _normalize(text: str) -> str:
+    """Normalize text for flexible matching (full-stack == fullstack, etc.)."""
+    return text.lower().replace("-", "").replace("–", "").replace("—", "")
+
+
 def _matches_keywords(posting: Dict, keywords: List[str], remote_only: bool) -> bool:
     """Check if a Lever posting matches any of the search keywords."""
     title = (posting.get("text") or "").lower()
+    title_norm = _normalize(title)
 
     # Location from categories
     categories = posting.get("categories", {})
     location = (categories.get("location") or "").lower()
     commitment = (categories.get("commitment") or "").lower()
+    team = (categories.get("team") or "").lower()
 
     # Remote filter
     if remote_only:
@@ -159,11 +166,25 @@ def _matches_keywords(posting: Dict, keywords: List[str], remote_only: bool) -> 
         if not is_remote:
             return False
 
-    # Keyword match (match any keyword in title)
+    # Keyword match — flexible: normalize hyphens, match any keyword
     for kw in keywords:
-        words = kw.lower().split()
-        if all(w in title for w in words):
+        words = _normalize(kw).split()
+        if all(w in title_norm for w in words):
             return True
+
+    # Also match on team/department for broader coverage
+    # e.g. keyword "engineer" matches team "Engineering"
+    team_norm = _normalize(f"{team} {commitment}")
+    for kw in keywords:
+        core_words = [w for w in _normalize(kw).split() if len(w) > 3]
+        if core_words and any(w in title_norm or w in team_norm for w in core_words):
+            # At least one significant keyword word appears in title or team
+            # AND the title looks like an engineering role
+            eng_indicators = ["engineer", "developer", "architect", "fullstack",
+                              "frontend", "backend", "software", "sre", "devops",
+                              "platform", "infrastructure", "ml", "ai", "data"]
+            if any(ind in title_norm for ind in eng_indicators):
+                return True
 
     return False
 
