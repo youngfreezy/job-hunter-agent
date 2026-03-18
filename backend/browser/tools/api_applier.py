@@ -481,9 +481,10 @@ async def _apply_lever(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
-# Greenhouse Job Board API and Lever Postings API are public endpoints
-# that accept applications without API keys. Greenhouse returns 428 when
-# reCAPTCHA is required — caller falls back to Playwright browser automation.
+# Lever Postings API accepts applications without API keys (public endpoint).
+# Greenhouse Job Board API requires per-board API keys for POST (returns 401),
+# but the handler gracefully falls back to Playwright when blocked (401/428).
+# Keeping Greenhouse enabled so boards that DO allow public submission work.
 _ATS_HANDLERS: dict = {
     ATSType.GREENHOUSE: _apply_greenhouse,
     ATSType.LEVER: _apply_lever,
