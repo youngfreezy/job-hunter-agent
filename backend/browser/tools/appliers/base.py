@@ -472,19 +472,21 @@ class BaseApplier(ABC):
             await self._wait_for_navigation()
 
         # 2. CAPTCHA check — try to solve via 2captcha if API key is set
+        captcha_attempted = False
         if await self._has_recaptcha():
+            captcha_attempted = True
             from backend.browser.tools.captcha_solver import solve_captcha
             solved = await solve_captcha(self.page)
             if solved:
                 logger.info("CAPTCHA solved — re-clicking submit")
                 # Re-click submit after CAPTCHA solved
                 await self._click_selectors("submit_button")
-                await asyncio.sleep(3)
+                await asyncio.sleep(5)
             else:
                 logger.info("CAPTCHA detected and unsolvable — submission blocked")
                 return self._make_result(
                     job_id, ApplicationStatus.FAILED,
-                    error_message="CAPTCHA blocked submission (bot detection)",
+                    error_message="CAPTCHA unsolvable (2captcha failed)",
                 )
 
         # 3. Poll for confirmation (AJAX submissions may take a moment)
@@ -498,9 +500,13 @@ class BaseApplier(ABC):
             if attempt < 4:
                 await asyncio.sleep(3)
 
-        # 3. Failure?
+        # 4. Failure? (skip captcha check if we already solved it — DOM element persists)
         failure = await self._detect_failure()
         if failure:
+            if failure == "captcha" and captcha_attempted:
+                # CAPTCHA was solved but form still didn't submit — likely a
+                # different issue (validation error, JS callback didn't fire)
+                failure = "no_confirmation_after_captcha_solve"
             return self._make_result(
                 job_id, ApplicationStatus.FAILED,
                 error_message=f"{self.PLATFORM} detected: {failure}",
