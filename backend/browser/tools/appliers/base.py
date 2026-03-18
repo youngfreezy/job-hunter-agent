@@ -440,7 +440,11 @@ class BaseApplier(ABC):
         job_id: str,
         cover_letter: str = "",
     ) -> ApplicationResult:
-        """Universal post-submit handler: verification → confirm → fail."""
+        """Universal post-submit handler: verification → confirm → fail.
+
+        Polls for confirmation up to 5 times (15s total) to handle AJAX
+        form submissions that don't trigger page navigation.
+        """
 
         # 1. Verification code prompt?
         if await self._detect_verification_prompt():
@@ -453,15 +457,18 @@ class BaseApplier(ABC):
             await self._random_delay(1.0, 2.0)
             await self._wait_for_navigation()
 
-        # 2. Confirmation?
-        if await self._detect_confirmation():
-            await self._emit_step("Application submitted!")
-            return self._make_result(
-                job_id, ApplicationStatus.SUBMITTED,
-                cover_letter_used=cover_letter,
-            )
+        # 2. Poll for confirmation (AJAX submissions may take a moment)
+        for attempt in range(5):
+            if await self._detect_confirmation():
+                await self._emit_step("Application submitted!")
+                return self._make_result(
+                    job_id, ApplicationStatus.SUBMITTED,
+                    cover_letter_used=cover_letter,
+                )
+            if attempt < 4:
+                await asyncio.sleep(3)
 
-        # 4. Failure?
+        # 3. Failure?
         failure = await self._detect_failure()
         if failure:
             return self._make_result(
@@ -469,7 +476,7 @@ class BaseApplier(ABC):
                 error_message=f"{self.PLATFORM} detected: {failure}",
             )
 
-        # 5. No signal
+        # 4. No signal
         return self._make_result(
             job_id, ApplicationStatus.FAILED,
             error_message=f"No confirmation detected on {self.PLATFORM}",
