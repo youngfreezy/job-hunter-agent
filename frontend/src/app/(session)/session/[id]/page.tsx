@@ -1381,8 +1381,8 @@ export default function SessionPage() {
       )}
 
       {/* Main content */}
-      <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_340px] overflow-hidden">
-        <div className="min-h-0 flex flex-col">
+      <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-4 py-4 sm:px-5 sm:py-5 xl:grid-cols-[minmax(0,1fr)_340px] overflow-hidden">
+        <div className="min-h-0 flex flex-col order-2 xl:order-1">
           <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-2">
               <div className="flex items-center justify-between">
@@ -1496,7 +1496,7 @@ export default function SessionPage() {
           </Card>
         </div>
 
-        <div className="space-y-4 overflow-y-auto overflow-x-hidden min-w-0 min-h-0 border-l border-border/50 bg-card/30 px-5 pb-5 pt-0">
+        <div className="space-y-4 overflow-y-auto overflow-x-hidden min-w-0 min-h-0 xl:border-l border-border/50 bg-card/30 px-4 pb-5 pt-0 sm:px-5 order-1 xl:order-2">
           <Card className="border-blue-100 bg-gradient-to-br from-blue-50 to-sky-50 dark:border-blue-900 dark:from-blue-950/50 dark:to-sky-950/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
