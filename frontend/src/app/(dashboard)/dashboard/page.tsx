@@ -213,7 +213,7 @@ export default function Dashboard() {
                 <Button size="lg">Start New Session</Button>
               </Link>
             </div>
-            <div className="grid gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
                 <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
                   Needs Attention

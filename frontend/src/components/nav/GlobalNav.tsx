@@ -53,6 +53,12 @@ export function GlobalNav() {
   const pathname = usePathname();
   const [credits, setCredits] = useState<number | null>(null);
   const [showGoogleBanner, setShowGoogleBanner] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     async function fetchData() {
@@ -104,7 +110,7 @@ export function GlobalNav() {
           >
             JobHunter Agent
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             {credits !== null && (
               <Link
                 href="/billing"
@@ -118,14 +124,31 @@ export function GlobalNav() {
             </Link>
             <button
               onClick={handleSignOut}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="hidden md:inline text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               Sign Out
             </button>
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="md:hidden p-1.5 rounded-md hover:bg-muted transition-colors"
+              aria-label="Toggle menu"
+            >
+              {menuOpen ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
-        {/* Row 2: Page Links */}
-        <div className="flex items-center justify-center gap-1 -mb-px">
+
+        {/* Row 2: Desktop tab bar (hidden on mobile) */}
+        <div className="hidden md:flex items-center justify-center gap-1 -mb-px">
           {NAV_LINKS.map(({ href, label }) => {
             const isActive = pathname === href;
             return (
@@ -143,6 +166,36 @@ export function GlobalNav() {
             );
           })}
         </div>
+
+        {/* Mobile menu (slide-down) */}
+        {menuOpen && (
+          <div className="md:hidden border-t border-border/50 py-2">
+            <div className="grid grid-cols-2 gap-1">
+              {NAV_LINKS.map(({ href, label }) => {
+                const isActive = pathname === href;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`px-3 py-2.5 text-sm rounded-lg transition-colors ${
+                      isActive
+                        ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/40 dark:text-blue-400"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="w-full mt-2 px-3 py-2.5 text-sm text-left text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
       </NavShell>
       {showGoogleBanner && (
         <NotificationBanner
