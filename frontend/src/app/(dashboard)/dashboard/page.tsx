@@ -115,6 +115,7 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [stats, setStats] = useState<LifetimeStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [stoppingAll, setStoppingAll] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchSessions = useCallback(() => {
@@ -352,6 +353,29 @@ export default function Dashboard() {
                     Your searches that are actively finding and applying to jobs.
                   </p>
                 </div>
+                {activeSessions.length > 1 && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={stoppingAll}
+                    onClick={async () => {
+                      setStoppingAll(true);
+                      try {
+                        await Promise.all(
+                          activeSessions.map((s) => killSession(s.session_id))
+                        );
+                        toast.success(`Stopped ${activeSessions.length} sessions`);
+                        fetchSessions();
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Failed to stop all");
+                      } finally {
+                        setStoppingAll(false);
+                      }
+                    }}
+                  >
+                    {stoppingAll ? "Stopping..." : "Stop All"}
+                  </Button>
+                )}
               </div>
               <div className="space-y-3">
                 {activeSessions.map((session) => (
