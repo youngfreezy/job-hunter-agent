@@ -100,18 +100,17 @@ class GreenhouseApplier(BaseApplier):
                     await self._wait_for_navigation()
                     continue
 
-                # No Next button — proactively solve CAPTCHA before Submit.
-                # Greenhouse uses reCAPTCHA Enterprise (invisible). The iframe
-                # loads after page idle, so wait a moment for it to appear.
+                # No Next button — solve CAPTCHA and submit IMMEDIATELY.
+                # reCAPTCHA tokens expire in ~2 min. Zero delay between solve and click.
                 from backend.browser.tools.captcha_solver import solve_captcha
                 await self._emit_step("Solving CAPTCHA...")
                 await asyncio.sleep(3)  # wait for reCAPTCHA iframe to load
                 solved = await solve_captcha(self.page)
                 if solved:
-                    logger.info("CAPTCHA pre-solved before submit click")
-                await self._random_delay(1.0, 2.0)
+                    logger.info("CAPTCHA solved — clicking submit immediately")
 
                 await self._emit_step("Submitting application...")
+                # Click submit immediately after CAPTCHA solve — no delay!
                 submit_clicked = await self._click_selector(_SUBMIT_BUTTON, "submit_button", timeout=5000)
                 if submit_clicked:
                     await self._random_delay(3.0, 5.0)
