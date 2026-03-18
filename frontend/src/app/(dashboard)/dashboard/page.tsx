@@ -171,7 +171,7 @@ export default function Dashboard() {
 
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-12">
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] items-start">
         <Card className="border-zinc-200 dark:border-zinc-800 h-[480px] flex flex-col overflow-hidden">
           <CardContent className="flex flex-col gap-5 p-8 overflow-y-auto min-h-0">
@@ -533,7 +533,7 @@ function SessionCard({
               </p>
             )}
           </Link>
-          <div className="min-w-[220px]">
+          <div className="w-full lg:min-w-[220px] lg:w-auto">
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-2xl bg-zinc-50 px-3 py-3 dark:bg-zinc-900">
                 <p className="text-xl font-bold text-emerald-600">{submitted}</p>
