@@ -67,7 +67,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         cfg = session_config if isinstance(session_config, dict) else (session_config.model_dump() if hasattr(session_config, "model_dump") else {})
         configured_boards = cfg.get("job_boards")
 
-    boards = configured_boards or ["greenhouse", "lever", "ashby", "workday"]
+    boards = configured_boards or ["lever", "ashby", "greenhouse", "workday"]
 
     # Inject Moltbook strategy patches: reorder boards by community-informed priority
     try:

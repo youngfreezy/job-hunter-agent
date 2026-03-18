@@ -471,13 +471,16 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 )
             )
 
-        # Sort descending by score, with a small boost for Lever/Ashby
-        # (these ATS platforms don't have reCAPTCHA, so submissions succeed)
-        _ATS_BOOST = {"lever": 0.05, "ashby": 0.05}
-        def _sort_key(sj):
+        # ATS applicability boost: Lever/Ashby submit successfully (no reCAPTCHA).
+        # Greenhouse/Workday are blocked by reCAPTCHA on headless browsers.
+        # Apply a real score boost so submittable jobs rank higher.
+        _ATS_SCORE_BOOST = {"lever": 10, "ashby": 8, "greenhouse": -5, "workday": -5}
+        for sj in scored_jobs:
             ats = (sj.job.ats_type.value if hasattr(sj.job.ats_type, 'value') else str(sj.job.ats_type or '')).lower()
-            return sj.score + _ATS_BOOST.get(ats, 0)
-        scored_jobs.sort(key=_sort_key, reverse=True)
+            boost = _ATS_SCORE_BOOST.get(ats, 0)
+            if boost:
+                sj.score = max(0, min(100, sj.score + boost))
+        scored_jobs.sort(key=lambda sj: sj.score, reverse=True)
 
         # Step 4b: Per-company dedup — keep only the highest-scored job per company
         # to avoid wasting application queue slots on duplicate companies
