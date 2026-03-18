@@ -21,7 +21,7 @@ _SERPER_URL = "https://google.serper.dev/search"
 _TIMEOUT = 15.0
 
 
-async def serper_search(query: str, num_results: int = 20, tbs: str = "qdr:w") -> str:
+async def serper_search(query: str, num_results: int = 20, tbs: str = "qdr:w", page: int = 1) -> str:
     """Search Google via Serper and return JSON string.
 
     Returns JSON matching the shape expected by _parse_search_results():
@@ -30,6 +30,7 @@ async def serper_search(query: str, num_results: int = 20, tbs: str = "qdr:w") -
     Args:
         tbs: Google time-based search filter. Default "qdr:w" = past week.
              Use "qdr:d" for past day, "qdr:m" for past month, "" for no filter.
+        page: Result page number (1-indexed). Page 2+ returns deeper results.
     """
     api_key = get_settings().SERPER_API_KEY
     if not api_key:
@@ -40,6 +41,8 @@ async def serper_search(query: str, num_results: int = 20, tbs: str = "qdr:w") -
     payload: dict = {"q": query, "num": num_results}
     if tbs:
         payload["tbs"] = tbs
+    if page > 1:
+        payload["page"] = page
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(

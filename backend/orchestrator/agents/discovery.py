@@ -103,6 +103,26 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         total_max = cfg.get("max_jobs", PER_BOARD_MAX) or PER_BOARD_MAX
     max_per_board = max(total_max // len(boards), 5) if boards else total_max
 
+    # Fetch applied URLs and blocked companies BEFORE discovery so we can
+    # pass them into query generation for smarter, more varied searches
+    user_id = state.get("user_id", "")
+    applied_urls: set[str] = set()
+    blocked_companies: set[str] = set()
+    if user_id:
+        try:
+            from backend.shared.application_store import (
+                get_previously_applied_urls,
+                get_rate_limited_companies,
+            )
+            applied_urls = get_previously_applied_urls(user_id)
+            blocked_companies = get_rate_limited_companies(user_id)
+            from backend.shared.billing_store import get_blocked_companies
+            blocked_companies = blocked_companies | get_blocked_companies(user_id)
+        except Exception:
+            logger.warning("Failed to fetch applied URLs for user %s", user_id, exc_info=True)
+
+    round_number = state.get("backfill_rounds", 0)
+
     errors: List[str] = []
     try:
         all_jobs = await discover_all_boards(
@@ -110,6 +130,9 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             search_config=search_config,
             session_id=session_id,
             max_per_board=max_per_board,
+            applied_companies=blocked_companies,
+            applied_urls=applied_urls,
+            round_number=round_number,
         )
     except Exception as exc:
         logger.exception("Discovery failed entirely: %s", exc)
@@ -131,38 +154,32 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             seen_keys.add(key)
             deduped.append(job)
 
-    # Exclude jobs from companies the user has already hit the rate limit for,
-    # and jobs the user has already applied to (by URL). This prevents wasting
-    # discovery slots on jobs that would be filtered out later at scoring/application.
-    user_id = state.get("user_id", "")
-    if user_id:
-        try:
-            from backend.shared.application_store import (
-                get_previously_applied_urls,
-                get_rate_limited_companies,
+    # Exclude jobs the user has already applied to or from blocked companies
+    if user_id and (applied_urls or blocked_companies):
+        before_filter = len(deduped)
+        deduped = [
+            j for j in deduped
+            if j.url not in applied_urls
+            and j.company.lower().strip() not in blocked_companies
+        ]
+        excluded = before_filter - len(deduped)
+        if excluded:
+            logger.info(
+                "Discovery pre-filter: excluded %d jobs (applied URLs: %d, blocked companies: %s) for user %s",
+                excluded, len(applied_urls), blocked_companies or "none", user_id,
             )
-            applied_urls = get_previously_applied_urls(user_id)
-            blocked_companies = get_rate_limited_companies(user_id)
-            from backend.shared.billing_store import get_blocked_companies
-            blocked_companies = blocked_companies | get_blocked_companies(user_id)
-            before_filter = len(deduped)
-            deduped = [
-                j for j in deduped
-                if j.url not in applied_urls
-                and j.company.lower().strip() not in blocked_companies
-            ]
-            excluded = before_filter - len(deduped)
-            if excluded:
-                logger.info(
-                    "Discovery pre-filter: excluded %d jobs (applied URLs: %d, rate-limited companies: %s) for user %s",
-                    excluded, len(applied_urls), blocked_companies or "none", user_id,
-                )
-        except Exception:
-            logger.warning("Discovery pre-filter failed for user %s", user_id, exc_info=True)
+        # Emit filtering stats so user can see why jobs were filtered
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": "all",
+            "step": f"Found {before_filter} jobs, {excluded} already applied — {len(deduped)} new",
+            "total_found": before_filter,
+            "already_applied": excluded,
+            "new_jobs": len(deduped),
+        })
 
     # On backfill rounds, exclude jobs already seen in previous rounds
     # (by title+company since IDs are regenerated each discovery)
-    if state.get("backfill_rounds", 0) > 0:
+    if round_number > 0:
         prev_keys: set[str] = set()
         for prev_job in (state.get("discovered_jobs") or []):
             prev_keys.add(_dedup_key(prev_job))
@@ -187,7 +204,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "all",
-        "step": f"{len(deduped)} jobs ready for scoring" if deduped else "No jobs found across any board",
+        "step": f"{len(deduped)} new jobs ready for scoring" if deduped else "No new jobs found — try different keywords or locations",
         "total": len(deduped),
         "error": not deduped,
     })
