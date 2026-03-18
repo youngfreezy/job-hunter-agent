@@ -101,10 +101,14 @@ class GreenhouseApplier(BaseApplier):
                     continue
 
                 # No Next button — proactively solve CAPTCHA before Submit.
-                # Greenhouse always has invisible reCAPTCHA that blocks form POST.
+                # Greenhouse uses reCAPTCHA Enterprise (invisible). The iframe
+                # loads after page idle, so wait a moment for it to appear.
                 from backend.browser.tools.captcha_solver import solve_captcha
                 await self._emit_step("Solving CAPTCHA...")
-                await solve_captcha(self.page)
+                await asyncio.sleep(3)  # wait for reCAPTCHA iframe to load
+                solved = await solve_captcha(self.page)
+                if solved:
+                    logger.info("CAPTCHA pre-solved before submit click")
                 await self._random_delay(1.0, 2.0)
 
                 await self._emit_step("Submitting application...")

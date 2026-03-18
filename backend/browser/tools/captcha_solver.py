@@ -111,11 +111,14 @@ async def _extract_sitekey(page) -> Optional[dict]:
                 }
             }
 
-            // reCAPTCHA iframe — extract sitekey from iframe src
-            const iframe = document.querySelector('iframe[src*="recaptcha/api2"], iframe[src*="recaptcha/enterprise"]');
-            if (iframe) {
+            // reCAPTCHA iframe — extract sitekey from iframe src (includes Enterprise)
+            const recaptchaIframes = document.querySelectorAll('iframe[src*="recaptcha"]');
+            for (const iframe of recaptchaIframes) {
                 const match = iframe.src.match(/[?&]k=([A-Za-z0-9_-]+)/);
-                if (match) return { sitekey: match[1], type: 'recaptcha_v2' };
+                if (match) {
+                    const isEnterprise = iframe.src.includes('/enterprise');
+                    return { sitekey: match[1], type: isEnterprise ? 'recaptcha_enterprise' : 'recaptcha_v2' };
+                }
             }
 
             // Fallback: any data-sitekey element — determine type by context
@@ -150,6 +153,12 @@ async def _submit_to_2captcha(
         params["method"] = "hcaptcha"
         params["sitekey"] = sitekey
         params["pageurl"] = page_url
+    elif captcha_type == "recaptcha_enterprise":
+        # reCAPTCHA Enterprise — same as v2 but with enterprise flag
+        params["method"] = "userrecaptcha"
+        params["googlekey"] = sitekey
+        params["pageurl"] = page_url
+        params["enterprise"] = 1
     elif captcha_type == "recaptcha_v3":
         params["method"] = "userrecaptcha"
         params["googlekey"] = sitekey
