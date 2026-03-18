@@ -100,7 +100,13 @@ class GreenhouseApplier(BaseApplier):
                     await self._wait_for_navigation()
                     continue
 
-                # No Next button — try Submit
+                # No Next button — solve CAPTCHA if present, then Submit
+                if await self._has_recaptcha():
+                    from backend.browser.tools.captcha_solver import solve_captcha
+                    await self._emit_step("Solving CAPTCHA...")
+                    await solve_captcha(self.page)
+                    await self._random_delay(1.0, 2.0)
+
                 await self._emit_step("Submitting application...")
                 submit_clicked = await self._click_selector(_SUBMIT_BUTTON, "submit_button", timeout=5000)
                 if submit_clicked:

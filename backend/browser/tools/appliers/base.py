@@ -471,13 +471,21 @@ class BaseApplier(ABC):
             await self._random_delay(1.0, 2.0)
             await self._wait_for_navigation()
 
-        # 2. Quick reCAPTCHA check — fail fast instead of polling
+        # 2. CAPTCHA check — try to solve via 2captcha if API key is set
         if await self._has_recaptcha():
-            logger.info("reCAPTCHA detected — submission blocked")
-            return self._make_result(
-                job_id, ApplicationStatus.FAILED,
-                error_message="reCAPTCHA blocked submission (bot detection)",
-            )
+            from backend.browser.tools.captcha_solver import solve_captcha
+            solved = await solve_captcha(self.page)
+            if solved:
+                logger.info("CAPTCHA solved — re-clicking submit")
+                # Re-click submit after CAPTCHA solved
+                await self._click_selectors("submit_button")
+                await asyncio.sleep(3)
+            else:
+                logger.info("CAPTCHA detected and unsolvable — submission blocked")
+                return self._make_result(
+                    job_id, ApplicationStatus.FAILED,
+                    error_message="CAPTCHA blocked submission (bot detection)",
+                )
 
         # 3. Poll for confirmation (AJAX submissions may take a moment)
         for attempt in range(5):
