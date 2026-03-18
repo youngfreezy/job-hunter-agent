@@ -341,6 +341,16 @@ export async function rerunSession(
   return res.json();
 }
 
+export async function killSession(sessionId: string): Promise<{ status: string }> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/kill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
 export async function archiveSession(sessionId: string, archived: boolean): Promise<void> {
   const auth = await getAuthHeaders();
   const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/archive`, {

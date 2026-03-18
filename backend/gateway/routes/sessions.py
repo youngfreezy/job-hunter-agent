@@ -1155,6 +1155,32 @@ async def rerun_session(session_id: str, body: RerunRequest, request: Request):
     return {"session_id": new_session_id}
 
 
+@router.post("/{session_id}/kill")
+async def kill_session(session_id: str, request: Request):
+    """Force-complete a session, releasing both DB status and Redis concurrency slot."""
+    from backend.gateway.deps import get_current_user
+    from backend.shared.session_store import get_session_by_id, update_session_status
+
+    user = get_current_user(request)
+    user_id = str(user["id"])
+
+    session = get_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if str(session["user_id"]) != user_id:
+        raise HTTPException(status_code=403, detail="Not your session")
+    if session["status"] in ("completed", "failed"):
+        return {"status": "already_done"}
+
+    # Update DB
+    update_session_status(session_id, "completed")
+    # Release Redis concurrency slot
+    await _release_task_slot(session_id)
+
+    logger.info("Session %s killed by user %s", session_id, user_id)
+    return {"status": "killed"}
+
+
 # ---------------------------------------------------------------------------
 # Test endpoint: isolated application with screenshot streaming
 # ---------------------------------------------------------------------------
