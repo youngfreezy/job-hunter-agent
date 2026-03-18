@@ -295,13 +295,22 @@ class BrowserManager:
         # Proxy: explicit arg > settings.PROXY_URL > none
         effective_proxy = proxy or settings.PROXY_URL
         if effective_proxy:
-            # BrightData sticky session — same residential IP for entire context
-            if "brd.superproxy.io" in effective_proxy:
-                import uuid as _uuid
-                stick_id = _uuid.uuid4().hex[:8]
-                effective_proxy = effective_proxy.replace("@brd.", f"-session-{stick_id}@brd.")
-            ctx_options["proxy"] = {"server": effective_proxy}
-            logger.debug("Context %s using proxy %s", ctx_id, effective_proxy)
+            # Parse proxy URL into Playwright's expected format
+            from urllib.parse import urlparse
+            parsed = urlparse(effective_proxy)
+            proxy_config: dict = {"server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"}
+            if parsed.username:
+                username = parsed.username
+                # BrightData sticky session — same residential IP for entire context
+                if "brd.superproxy.io" in effective_proxy:
+                    import uuid as _uuid
+                    stick_id = _uuid.uuid4().hex[:8]
+                    username = f"{username}-session-{stick_id}"
+                proxy_config["username"] = username
+            if parsed.password:
+                proxy_config["password"] = parsed.password
+            ctx_options["proxy"] = proxy_config
+            logger.info("Context %s using proxy %s:%s", ctx_id, parsed.hostname, parsed.port)
 
         context = await self._browser.new_context(**ctx_options)
         # Note: stealth JS is applied per-page via apply_stealth() in each
