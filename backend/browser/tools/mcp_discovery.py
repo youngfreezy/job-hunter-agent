@@ -63,7 +63,8 @@ Job criteria:
 - Keywords: {keywords}
 - Remote only: {remote_only}
 - Location: {location}
-
+{exclusion_block}
+{round_block}
 Generate queries using site: operators. Each query MUST include at least one \
 of the exact keywords above — do NOT broaden or substitute with related terms. \
 Each query should target a different ATS platform. \
@@ -121,9 +122,29 @@ def _is_board_url(url: str) -> bool:
 async def _generate_search_queries(
     search_config: SearchConfig,
     num_queries: int = 8,
+    applied_companies: set[str] | None = None,
+    round_number: int = 0,
 ) -> List[str]:
     """Use LLM to generate smart search queries targeting ATS sites."""
-    llm = build_llm(model=HAIKU_MODEL, max_tokens=1024, temperature=0.3)
+    temperature = 0.9 if round_number > 0 else 0.7
+    llm = build_llm(model=HAIKU_MODEL, max_tokens=1024, temperature=temperature)
+
+    # Build exclusion and round-awareness blocks
+    exclusion_block = ""
+    if applied_companies:
+        top_companies = sorted(applied_companies)[:20]
+        exclusion_block = (
+            f"AVOID these companies (already applied): {', '.join(top_companies)}\n"
+            "Focus on companies NOT in this list."
+        )
+
+    round_block = ""
+    if round_number > 0:
+        round_block = (
+            f"This is search round {round_number + 1}. Generate DIFFERENT queries than a standard search. "
+            "Try alternative keyword phrasings, different ATS site combinations, "
+            "less common job title variations, and different company sizes/stages."
+        )
 
     # Load optimized prompt from registry, fall back to hardcoded default
     active_prompt = get_active_prompt("discovery_search_query") or _SEARCH_QUERY_PROMPT
@@ -132,6 +153,8 @@ async def _generate_search_queries(
         keywords=", ".join(search_config.keywords),
         remote_only=search_config.remote_only,
         location=", ".join(search_config.locations) if search_config.locations else "Remote / United States",
+        exclusion_block=exclusion_block,
+        round_block=round_block,
     )
 
     from langchain_core.messages import HumanMessage
@@ -269,6 +292,9 @@ async def _mcp_discover(
     search_config: SearchConfig,
     session_id: str,
     max_results: int = 20,
+    applied_companies: set[str] | None = None,
+    applied_urls: set[str] | None = None,
+    round_number: int = 0,
 ) -> List[JobListing]:
     """Discover jobs using Serper Google Search + LLM parsing."""
 
@@ -277,21 +303,29 @@ async def _mcp_discover(
         "step": "Generating smart search queries...",
     })
 
-    # 1. Generate search queries
-    queries = await _generate_search_queries(search_config)
-    logger.info("Serper discovery: generated %d search queries", len(queries))
+    # 1. Generate search queries (with exclusion context for re-runs)
+    queries = await _generate_search_queries(
+        search_config,
+        applied_companies=applied_companies,
+        round_number=round_number,
+    )
+    logger.info("Serper discovery: generated %d search queries (round %d)", len(queries), round_number)
 
     # 2. Run searches via Serper (all queries in parallel)
+    # Broader time window on subsequent rounds; more results per query
+    tbs = "qdr:m" if round_number > 0 else "qdr:w"
+    num_results = 30
+
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "search",
         "step": f"Searching {len(queries)} ATS platforms for matching jobs...",
     })
 
-    async def _safe_search(query: str) -> Optional[str]:
+    async def _safe_search(query: str, page: int = 1) -> Optional[str]:
         try:
-            return await serper_search(query)
+            return await serper_search(query, num_results=num_results, tbs=tbs, page=page)
         except Exception:
-            logger.warning("Serper search failed for query: %s", query, exc_info=True)
+            logger.warning("Serper search failed for query: %s (page %d)", query, page, exc_info=True)
             return None
 
     results = await asyncio.gather(*[_safe_search(q) for q in queries])
@@ -389,6 +423,48 @@ async def _mcp_discover(
         if len(listings) >= max_results:
             break
 
+    # If too few new listings after filtering applied URLs, try page 2
+    _applied = applied_urls or set()
+    new_count = sum(1 for j in listings if j.url not in _applied)
+    if new_count < 15 and queries:
+        logger.info("Serper discovery: only %d new jobs after filter, fetching page 2", new_count)
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": "search",
+            "step": f"Only {new_count} new jobs found, searching deeper...",
+        })
+        p2_results = await asyncio.gather(*[_safe_search(q, page=2) for q in queries])
+        p2_valid = [r for r in p2_results if r is not None]
+        if p2_valid:
+            p2_combined = "\n---\n".join(p2_valid)
+            p2_parsed = await _parse_search_results(p2_combined)
+            for raw in p2_parsed:
+                url = raw.get("url", "")
+                if not url or not _is_ats_url(url) or _is_board_url(url):
+                    continue
+                url_key = url.lower().split("?")[0]
+                if url_key in seen_urls:
+                    continue
+                seen_urls.add(url_key)
+                title = raw.get("title", "").strip()
+                company = raw.get("company", "").strip()
+                if not title or not company or title.lower() in _GENERIC_TITLES or title.isdigit():
+                    continue
+                for prefix in ["Job Application for ", "Apply for "]:
+                    if title.startswith(prefix):
+                        title = title[len(prefix):]
+                location = raw.get("location", "Remote").strip()
+                is_remote = raw.get("is_remote", False) or "remote" in location.lower()
+                job_id = hashlib.sha256(url.strip().encode()).hexdigest()[:16]
+                listings.append(JobListing(
+                    id=job_id, title=title, company=company, location=location,
+                    url=url.strip(), board=JobBoard.GOOGLE_JOBS,
+                    ats_type=_detect_ats_type(url),
+                    salary_range=raw.get("salary"),
+                    description_snippet=raw.get("description", "")[:500] or None,
+                    is_remote=is_remote, discovered_at=datetime.utcnow(),
+                ))
+            logger.info("Serper discovery: %d total after page 2", len(listings))
+
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "search",
         "step": f"Found {len(listings)} jobs on ATS platforms via search",
@@ -404,6 +480,9 @@ async def discover_all_boards(
     search_config: SearchConfig,
     session_id: str,
     max_per_board: int = 20,
+    applied_companies: set[str] | None = None,
+    applied_urls: set[str] | None = None,
+    round_number: int = 0,
 ) -> List[JobListing]:
     """Discover jobs using Serper Google Search + Greenhouse API.
 
@@ -419,7 +498,12 @@ async def discover_all_boards(
 
     # Run MCP search and Greenhouse API in parallel
     greenhouse_task = _greenhouse_discover(search_config, session_id, max_per_board)
-    mcp_task = _mcp_discover(search_config, session_id, total_max)
+    mcp_task = _mcp_discover(
+        search_config, session_id, total_max,
+        applied_companies=applied_companies,
+        applied_urls=applied_urls,
+        round_number=round_number,
+    )
 
     results = await asyncio.gather(greenhouse_task, mcp_task, return_exceptions=True)
 
