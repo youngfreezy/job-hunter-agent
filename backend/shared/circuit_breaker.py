@@ -148,8 +148,8 @@ def _is_content_error(exc: Exception | None) -> bool:
 
 llm_breaker = CircuitBreaker(
     "llm",
-    failure_threshold=5,
-    recovery_timeout=60,
+    failure_threshold=15,  # Higher threshold for concurrent sessions
+    recovery_timeout=30,
 )
 
 job_board_breaker = CircuitBreaker(
