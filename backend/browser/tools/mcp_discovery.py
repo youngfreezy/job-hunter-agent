@@ -52,11 +52,11 @@ _SEARCH_QUERY_PROMPT = """\
 You are a job search expert. Generate {num_queries} Google search queries to find \
 job listings on ATS platforms (NOT on LinkedIn, Indeed, or Glassdoor).
 
-PRIORITIZE these ATS sites (they have the best application success rate):
-- jobs.lever.co (HIGHEST PRIORITY — generate at least 3 queries for Lever)
-- jobs.ashbyhq.com (HIGH PRIORITY — generate at least 2 queries for Ashby)
-- boards.greenhouse.io (generate 1-2 queries)
-- myworkdayjobs.com (generate 1 query if needed)
+PRIORITIZE these ATS sites (ordered by application success rate):
+- jobs.lever.co (HIGHEST PRIORITY — generate at least 4 queries for Lever)
+- jobs.ashbyhq.com (HIGH PRIORITY — generate at least 3 queries for Ashby)
+- boards.greenhouse.io (generate 1 query only — reCAPTCHA blocks most submissions)
+- myworkdayjobs.com (generate 0-1 queries — auth walls block submissions)
 
 Job criteria:
 - Keywords: {keywords}

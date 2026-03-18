@@ -162,16 +162,16 @@ class StrategyState:
     """Full strategy state — board priorities, ATS strategies, patches."""
 
     board_priorities: Dict[str, float] = field(default_factory=lambda: {
-        "greenhouse": 1.0,
-        "lever": 0.9,
-        "ashby": 0.8,
-        "workday": 0.7,
+        "lever": 1.0,
+        "ashby": 0.95,
+        "greenhouse": 0.4,
+        "workday": 0.3,
     })
     ats_strategies: Dict[str, str] = field(default_factory=lambda: {
-        "greenhouse": "Standard form fill. Watch for custom questions.",
-        "lever": "Simpler forms, usually fewer custom fields.",
-        "workday": "Multi-step wizard. Expect file uploads + work history.",
-        "ashby": "Modern UI, usually straightforward.",
+        "lever": "HIGHEST PRIORITY. Direct API submission, no reCAPTCHA. Simpler forms.",
+        "ashby": "HIGH PRIORITY. Modern UI, no reCAPTCHA. Usually straightforward.",
+        "greenhouse": "LOW PRIORITY. reCAPTCHA blocks headless browsers. Only use API path.",
+        "workday": "LOW PRIORITY. Multi-step wizard, often blocked by auth walls.",
     })
     known_blockers: Dict[str, str] = field(default_factory=dict)
     patches: List[StrategyPatch] = field(default_factory=list)
