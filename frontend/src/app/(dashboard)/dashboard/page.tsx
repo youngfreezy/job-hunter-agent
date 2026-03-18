@@ -12,6 +12,7 @@ import {
   listSessions,
   getLifetimeStats,
   rerunSession,
+  killSession,
   type SessionListItem,
   type LifetimeStats,
 } from "@/lib/api";
@@ -426,6 +427,7 @@ function SessionCard({
   const [editSalary, setEditSalary] = useState(session.salary_min?.toString() || "");
   const [editRemote, setEditRemote] = useState(session.remote_only);
   const [launched, setLaunched] = useState(false);
+  const [killing, setKilling] = useState(false);
 
   const handleRerun = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -525,12 +527,36 @@ function SessionCard({
               </div>
             </div>
             {isRunning && (
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
-                  style={{ width: "60%" }}
-                />
-              </div>
+              <>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
+                    style={{ width: "60%" }}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="mt-2 w-full"
+                  disabled={killing}
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setKilling(true);
+                    try {
+                      await killSession(session.session_id);
+                      toast.success("Session stopped");
+                      onSessionLaunched?.();
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed to stop");
+                    } finally {
+                      setKilling(false);
+                    }
+                  }}
+                >
+                  {killing ? "Stopping..." : "Stop"}
+                </Button>
+              </>
             )}
             {isDone && (
               <div className="mt-3">
