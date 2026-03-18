@@ -79,10 +79,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # --- Browser ---
-    PROXY_URL: Optional[str] = None
+    PROXY_URL: Optional[str] = None  # BrightData: http://brd-customer-{ID}-zone-{ZONE}:{PASS}@brd.superproxy.io:33335
     BROWSER_HEADLESS: bool = False
     BROWSER_SLOW_MO: int = 0  # ms delay between Playwright actions (smoother in headed mode)
     BROWSER_MODE: str = "cdp"  # "cdp" (real Chrome) or "patchright" (built-in Chromium)
+
+    # --- CAPTCHA solving (2captcha) ---
+    CAPTCHA_API_KEY: Optional[str] = None  # 2captcha.com API key
 
     # --- Serper (Google Search API for discovery) ---
     SERPER_API_KEY: Optional[str] = None

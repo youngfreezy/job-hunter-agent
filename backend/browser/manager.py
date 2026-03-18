@@ -295,6 +295,11 @@ class BrowserManager:
         # Proxy: explicit arg > settings.PROXY_URL > none
         effective_proxy = proxy or settings.PROXY_URL
         if effective_proxy:
+            # BrightData sticky session — same residential IP for entire context
+            if "brd.superproxy.io" in effective_proxy:
+                import uuid as _uuid
+                stick_id = _uuid.uuid4().hex[:8]
+                effective_proxy = effective_proxy.replace("@brd.", f"-session-{stick_id}@brd.")
             ctx_options["proxy"] = {"server": effective_proxy}
             logger.debug("Context %s using proxy %s", ctx_id, effective_proxy)
 
