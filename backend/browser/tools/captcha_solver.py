@@ -73,12 +73,25 @@ async def _extract_sitekey(page) -> Optional[dict]:
                 }
             }
 
-            // Invisible reCAPTCHA — check ___grecaptcha_cfg for sitekey
+            // reCAPTCHA iframe — MOST RELIABLE detection, check FIRST.
+            // Enterprise reCAPTCHA is solvable as v3 (not as enterprise type).
+            const recaptchaIframes = document.querySelectorAll('iframe[src*="recaptcha"]');
+            for (const iframe of recaptchaIframes) {
+                const match = iframe.src.match(/[?&]k=([A-Za-z0-9_-]+)/);
+                if (match) {
+                    // Enterprise and invisible reCAPTCHA both solve as v3
+                    const isInvisible = iframe.src.includes('size=invisible') || iframe.src.includes('/enterprise');
+                    return { sitekey: match[1], type: isInvisible ? 'recaptcha_v3' : 'recaptcha_v2' };
+                }
+            }
+
+            // Fallback: check ___grecaptcha_cfg for sitekey (invisible reCAPTCHA without iframe)
             try {
                 if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
+                    // Detect if Enterprise by checking for enterprise property
+                    const isEnterprise = !!___grecaptcha_cfg.enterprise;
                     for (const cid in ___grecaptcha_cfg.clients) {
                         const client = ___grecaptcha_cfg.clients[cid];
-                        // Walk the client tree to find sitekey
                         const findKey = (obj, depth) => {
                             if (depth > 5 || !obj) return null;
                             for (const k in obj) {
@@ -91,15 +104,13 @@ async def _extract_sitekey(page) -> Optional[dict]:
                             return null;
                         };
                         const key = findKey(client, 0);
-                        if (key) return { sitekey: key, type: 'recaptcha_v2' };
+                        if (key) return { sitekey: key, type: isEnterprise ? 'recaptcha_enterprise' : 'recaptcha_v2' };
                     }
                 }
             } catch(e) {}
 
-            // Invisible reCAPTCHA — check for recaptcha script presence even without visible widget
+            // Fallback: check inline scripts for sitekey references
             if (scripts.length > 0) {
-                // reCAPTCHA script exists but no sitekey found via render param
-                // Try to extract from the enterprise API URL or page source
                 const allScripts = document.querySelectorAll('script');
                 for (const s of allScripts) {
                     if (s.textContent) {
@@ -108,16 +119,6 @@ async def _extract_sitekey(page) -> Optional[dict]:
                         const renderMatch = s.textContent.match(/grecaptcha\.(?:enterprise\.)?execute\s*\(\s*['"]([A-Za-z0-9_-]{20,})['"]/);
                         if (renderMatch) return { sitekey: renderMatch[1], type: 'recaptcha_v3' };
                     }
-                }
-            }
-
-            // reCAPTCHA iframe — extract sitekey from iframe src (includes Enterprise)
-            const recaptchaIframes = document.querySelectorAll('iframe[src*="recaptcha"]');
-            for (const iframe of recaptchaIframes) {
-                const match = iframe.src.match(/[?&]k=([A-Za-z0-9_-]+)/);
-                if (match) {
-                    const isEnterprise = iframe.src.includes('/enterprise');
-                    return { sitekey: match[1], type: isEnterprise ? 'recaptcha_enterprise' : 'recaptcha_v2' };
                 }
             }
 
