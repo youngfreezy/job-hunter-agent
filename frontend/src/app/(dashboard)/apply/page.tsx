@@ -99,7 +99,7 @@ export default function ApplyPage() {
   };
 
   return (
-    <div className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
+    <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Review & Apply</h1>
         <p className="text-muted-foreground mt-1">
@@ -183,7 +183,7 @@ export default function ApplyPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {(["all", "submitted", "failed", "skipped"] as Tab[]).map((t) => (
           <button
             key={t}

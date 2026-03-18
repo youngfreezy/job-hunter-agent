@@ -351,7 +351,7 @@ export default function AutopilotPage() {
                 </div>
                 {editCron === "custom" && (
                   <div className="space-y-3 rounded-md border p-3 bg-muted/30">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <label className="text-sm font-medium w-12">Time</label>
                       <select
                         value={editCustomHour}
@@ -435,7 +435,7 @@ export default function AutopilotPage() {
                 <CardDescription>{cronToLabel(sched.cron_expression)}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Keywords:</span>{" "}
                     <span className="font-medium">{sched.keywords.join(", ")}</span>
@@ -547,7 +547,7 @@ export default function AutopilotPage() {
             </div>
             {cronExpression === "custom" && (
               <div className="space-y-3 rounded-md border p-3 bg-muted/30">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <label className="text-sm font-medium w-12">Time</label>
                   <select
                     value={customHour}

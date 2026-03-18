@@ -56,7 +56,7 @@ export default function InterviewPrepLandingPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl p-6">
+    <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6">
       <h1 className="text-3xl font-bold mb-2">Interview Prep</h1>
       <p className="text-muted-foreground mb-8">
         Practice with AI-powered mock interviews tailored to your resume and target role.

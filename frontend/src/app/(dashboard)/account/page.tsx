@@ -87,7 +87,7 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto max-w-4xl p-6 space-y-6">
+      <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6 space-y-6">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
         <div className="grid gap-4 mt-4">
           <div className="h-48 bg-muted animate-pulse rounded-lg" />
@@ -99,14 +99,14 @@ export default function AccountPage() {
 
   if (!user) {
     return (
-      <div className="container mx-auto max-w-4xl p-6">
+      <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6">
         <p className="text-muted-foreground">Unable to load account information.</p>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto max-w-4xl p-6 space-y-6">
+    <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold">My Account</h1>
         <p className="text-muted-foreground text-sm mt-1">
@@ -120,7 +120,7 @@ export default function AccountPage() {
           <CardTitle className="text-lg">Profile</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Name</p>
               <p className="font-medium">{user.name || "Not set"}</p>
@@ -161,17 +161,17 @@ export default function AccountPage() {
           <CardTitle className="text-lg">Subscription & Credits</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <p className="text-3xl font-bold">{user.wallet_balance.toFixed(0)}</p>
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
+            <div className="text-center p-3 sm:p-4 bg-muted/50 rounded-lg">
+              <p className="text-2xl sm:text-3xl font-bold">{user.wallet_balance.toFixed(0)}</p>
               <p className="text-xs text-muted-foreground mt-1">Credits</p>
             </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <p className="text-3xl font-bold">{user.free_applications_remaining}</p>
+            <div className="text-center p-3 sm:p-4 bg-muted/50 rounded-lg">
+              <p className="text-2xl sm:text-3xl font-bold">{user.free_applications_remaining}</p>
               <p className="text-xs text-muted-foreground mt-1">Free Apps Left</p>
             </div>
-            <div className="text-center p-4 bg-muted/50 rounded-lg">
-              <p className="text-3xl font-bold">{user.is_premium ? "Active" : "Free"}</p>
+            <div className="text-center p-3 sm:p-4 bg-muted/50 rounded-lg">
+              <p className="text-2xl sm:text-3xl font-bold">{user.is_premium ? "Active" : "Free"}</p>
               <p className="text-xs text-muted-foreground mt-1">Plan</p>
             </div>
           </div>

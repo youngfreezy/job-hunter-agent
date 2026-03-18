@@ -71,7 +71,7 @@ export default function FreelancePage() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl p-6">
+    <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6">
       <h1 className="text-3xl font-bold mb-2">Freelance Gig Finder</h1>
       <p className="text-muted-foreground mb-8">
         Find gigs free. Submit unlimited proposals for one flat price.
@@ -87,7 +87,7 @@ export default function FreelancePage() {
 
         <div>
           <label className="block text-sm font-medium mb-2">Hourly Rate Range</label>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1">
               <span className="text-muted-foreground">$</span>
               <input
@@ -132,7 +132,7 @@ export default function FreelancePage() {
 
         <div>
           <label className="block text-sm font-medium mb-2">Availability</label>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {[
               { id: "full_time", label: "Full-time freelance" },
               { id: "part_time", label: "Part-time / side gigs" },
