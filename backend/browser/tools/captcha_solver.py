@@ -233,49 +233,91 @@ async def _inject_token(page, token: str, captcha_type: str) -> bool:
                     try {{ window.hcaptcha.execute(); }} catch(e) {{}}
                 }}
             }}""", token)
+        elif captcha_type == "recaptcha_enterprise":
+            # reCAPTCHA Enterprise — override execute() to return our token
+            await page.evaluate("""(token) => {
+                // 1. Create/set the g-recaptcha-response textarea (Enterprise may not have one)
+                let ta = document.getElementById('g-recaptcha-response');
+                if (!ta) {
+                    ta = document.createElement('textarea');
+                    ta.id = 'g-recaptcha-response';
+                    ta.name = 'g-recaptcha-response';
+                    ta.style.display = 'none';
+                    const form = document.querySelector('form');
+                    if (form) form.appendChild(ta);
+                }
+                ta.value = token;
+
+                // 2. Override grecaptcha.enterprise.execute to resolve with our token
+                if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
+                    const origExecute = grecaptcha.enterprise.execute;
+                    grecaptcha.enterprise.execute = function() {
+                        return Promise.resolve(token);
+                    };
+                }
+
+                // 3. Trigger callbacks in ___grecaptcha_cfg.clients
+                try {
+                    const clients = ___grecaptcha_cfg.clients;
+                    for (const cid in clients) {
+                        const client = clients[cid];
+                        const walk = (obj, depth) => {
+                            if (depth > 5 || !obj) return;
+                            for (const key in obj) {
+                                if (typeof obj[key] === 'function') {
+                                    try { obj[key](token); } catch(e) {}
+                                }
+                                if (typeof obj[key] === 'object' && obj[key] !== null) {
+                                    walk(obj[key], depth + 1);
+                                }
+                            }
+                        };
+                        walk(client, 0);
+                    }
+                } catch(e) {}
+            }""", token)
         else:
             # reCAPTCHA v2/v3
-            await page.evaluate(f"""(token) => {{
+            await page.evaluate("""(token) => {
                 // Set response textarea (may be hidden)
                 const ta = document.getElementById('g-recaptcha-response');
-                if (ta) {{
+                if (ta) {
                     ta.style.display = 'block';
                     ta.value = token;
-                }}
+                }
 
                 // Also set any other recaptcha response textareas (multi-widget pages)
-                document.querySelectorAll('[name="g-recaptcha-response"]').forEach(el => {{
+                document.querySelectorAll('[name="g-recaptcha-response"]').forEach(el => {
                     el.value = token;
-                }});
+                });
 
                 // Trigger reCAPTCHA callback
-                try {{
+                try {
                     const clients = ___grecaptcha_cfg.clients;
-                    for (const cid in clients) {{
+                    for (const cid in clients) {
                         const client = clients[cid];
-                        // Walk the client object tree to find the callback
-                        const walk = (obj, depth) => {{
+                        const walk = (obj, depth) => {
                             if (depth > 5) return;
-                            for (const key in obj) {{
-                                if (typeof obj[key] === 'function' && key.length < 3) {{
-                                    try {{ obj[key](token); }} catch(e) {{}}
-                                }}
-                                if (typeof obj[key] === 'object' && obj[key] !== null) {{
+                            for (const key in obj) {
+                                if (typeof obj[key] === 'function' && key.length < 3) {
+                                    try { obj[key](token); } catch(e) {}
+                                }
+                                if (typeof obj[key] === 'object' && obj[key] !== null) {
                                     walk(obj[key], depth + 1);
-                                }}
-                            }}
-                        }};
+                                }
+                            }
+                        };
                         walk(client, 0);
-                    }}
-                }} catch(e) {{}}
+                    }
+                } catch(e) {}
 
                 // Fallback: find and call the callback from data-callback attribute
                 const div = document.querySelector('.g-recaptcha[data-callback]');
-                if (div) {{
+                if (div) {
                     const cbName = div.getAttribute('data-callback');
                     if (window[cbName]) window[cbName](token);
-                }}
-            }}""", token)
+                }
+            }""", token)
 
         logger.info("CAPTCHA token injected (%s)", captcha_type)
         return True
