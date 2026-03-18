@@ -1,8 +1,9 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Application Agent -- submits job applications via Skyvern AI browser agent.
+"""Application Agent -- submits job applications via direct API or Playwright.
 
-Uses Skyvern's visual AI (no hardcoded selectors) to navigate forms, fill
+Uses direct API submission (Greenhouse, Lever) when possible, falls back to
+Playwright + Claude Haiku for browser-based form filling. Previously used Skyvern;
 fields, upload files, and submit applications on any ATS platform.
 
 For each job in the queue:
@@ -1252,28 +1253,26 @@ async def _apply_to_job(
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
 
-            # --- Step 4: Apply via Skyvern AI agent ---
-            # Skyvern handles ATS detection, form filling, and submission
-            # visually — no hardcoded selectors or per-board dispatch needed.
-            await page.close()
-            page = None  # Skyvern manages its own browser
-
+            # --- Step 4: Apply via Playwright + Claude Haiku ---
+            # Uses ATS-specific appliers (Greenhouse, Lever, Ashby) with
+            # form_filler.py for Claude-powered field extraction and filling.
             await emit_agent_event(session_id, "application_progress", {
                 "job_id": job_id,
-                "step": f"Filling application form (AI agent) for {job.title}...",
+                "step": f"Filling application form for {job.title}...",
                 "current": _app_idx + 1,
                 "total": _total_q,
                 "progress": _pct,
             })
 
-            from backend.browser.tools.skyvern_applier import apply_with_skyvern
-            result = await apply_with_skyvern(
+            from backend.browser.tools.appliers.dispatcher import apply_with_playwright
+            result = await apply_with_playwright(
                 job=job,
                 user_profile=user_profile,
                 resume_text=resume_text,
                 cover_letter=cover_letter_text,
                 resume_file_path=resume_file,
                 session_id=session_id,
+                page=page,
             )
 
         finally:

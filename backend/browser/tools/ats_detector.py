@@ -26,6 +26,14 @@ _URL_PATTERNS = [
 ]
 
 
+def detect_ats_from_url(url: str) -> ATSType:
+    """Detect ATS type from URL only (no browser needed)."""
+    for pattern, ats_type in _URL_PATTERNS:
+        if pattern.search(url):
+            return ats_type
+    return ATSType.UNKNOWN
+
+
 async def detect_ats_type(page: Any) -> ATSType:
     """Detect the ATS type from the current page URL and content.
 

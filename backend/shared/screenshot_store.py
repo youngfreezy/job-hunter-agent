@@ -120,6 +120,35 @@ async def download_and_store(
     return row_id
 
 
+def store_screenshot_bytes(
+    session_id: str,
+    job_id: str,
+    image_data: bytes,
+    content_type: str = "image/png",
+) -> Optional[int]:
+    """Store screenshot bytes directly to Postgres. Returns row ID."""
+    if not image_data:
+        return None
+    _ensure_table()
+    pool = get_pool()
+    with pool.connection() as conn:
+        row = conn.execute(
+            """
+            INSERT INTO failure_screenshots (session_id, job_id, image_data, content_type)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (session_id, job_id, image_data, content_type),
+        ).fetchone()
+        conn.commit()
+    row_id = row[0] if row else None
+    logger.info(
+        "Stored screenshot for session=%s job=%s (%d bytes, id=%s)",
+        session_id, job_id, len(image_data), row_id,
+    )
+    return row_id
+
+
 def get_screenshot(screenshot_id: int) -> Optional[tuple[bytes, str]]:
     """Retrieve screenshot bytes and content_type by ID.
 

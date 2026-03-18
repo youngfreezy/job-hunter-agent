@@ -546,20 +546,22 @@ class BaseApplier(ABC):
         return int(time.monotonic() - self._start_time)
 
     async def _capture_screenshot(self, job: "JobListing") -> Optional[str]:
-        """Take a post-action screenshot and store the path."""
+        """Take a post-action screenshot and persist to Postgres."""
         try:
-            import os, tempfile as _tmpmod
-            screenshot_dir = os.path.join(_tmpmod.gettempdir(), "jobhunter_screenshots")
-            os.makedirs(screenshot_dir, exist_ok=True)
-            safe_name = f"{job.company}_{job.title}".replace(" ", "_").replace("/", "_")[:60]
-            path = os.path.join(screenshot_dir, f"{safe_name}_{int(time.monotonic())}.png")
-            await self.page.screenshot(path=path, full_page=True)
-            self._screenshot_path = path
-            logger.info("Post-submit screenshot saved: %s", path)
-            return path
+            png_bytes = await self.page.screenshot(full_page=True)
+            from backend.shared.screenshot_store import store_screenshot_bytes
+            row_id = store_screenshot_bytes(
+                session_id=self.session_id,
+                job_id=str(job.id),
+                image_data=png_bytes,
+            )
+            if row_id:
+                self._screenshot_path = f"/api/sessions/{self.session_id}/screenshots/{row_id}"
+                logger.info("Screenshot stored in Postgres (id=%s)", row_id)
+                return self._screenshot_path
         except Exception:
             logger.debug("Screenshot capture failed", exc_info=True)
-            return None
+        return None
 
     def _make_result(
         self,
