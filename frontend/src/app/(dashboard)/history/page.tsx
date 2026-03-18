@@ -268,7 +268,7 @@ export default function HistoryPage() {
                 </p>
                 <p className="text-sm font-medium text-muted-foreground mt-1">Total time saved</p>
               </div>
-              <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-sm text-muted-foreground">
                 <span>
                   <span className="font-semibold text-foreground">{totals.sessions}</span> sessions
                   completed
@@ -345,13 +345,13 @@ export default function HistoryPage() {
                         className="w-full text-left px-5 py-4"
                         onClick={() => setExpandedId(isExpanded ? null : session.session_id)}
                       >
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <Badge variant={STATUS_COLORS[session.status] || "outline"}>
                                 {STATUS_LABELS[session.status] || session.status}
                               </Badge>
-                              <span className="text-sm font-semibold truncate">
+                              <span className="text-sm font-semibold">
                                 {(session.keywords || []).join(", ") || "Untitled"}
                               </span>
                               {session.is_autopilot && (
@@ -371,7 +371,7 @@ export default function HistoryPage() {
                               </p>
                             )}
                           </div>
-                          <div className="flex items-center gap-4 shrink-0 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-2 md:gap-4 shrink-0 text-xs text-muted-foreground">
                             <span>
                               <span className="font-semibold text-foreground">
                                 {submittedCount}
@@ -433,21 +433,21 @@ export default function HistoryPage() {
                             <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
                               This session saved you {formatTime(timeSaved)}
                             </p>
-                            <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+                            <div className="flex flex-col gap-1 mt-2 text-xs text-muted-foreground md:flex-row md:gap-4">
                               <span>
                                 Manual estimate:{" "}
                                 <span className="font-medium text-foreground">
                                   {formatTime(manualEstimate)}
                                 </span>
                               </span>
-                              <span className="text-border">|</span>
+                              <span className="hidden md:inline text-border">|</span>
                               <span>
                                 Automation time:{" "}
                                 <span className="font-medium text-foreground">
                                   {formatTime(automationTime)}
                                 </span>
                               </span>
-                              <span className="text-border">|</span>
+                              <span className="hidden md:inline text-border">|</span>
                               <span>
                                 You saved:{" "}
                                 <span className="font-medium text-emerald-600 dark:text-emerald-400">
