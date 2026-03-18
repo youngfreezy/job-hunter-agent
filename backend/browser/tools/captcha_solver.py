@@ -64,12 +64,50 @@ async def _extract_sitekey(page) -> Optional[dict]:
                 if (sitekey) return { sitekey, type: 'recaptcha_v2' };
             }
 
-            // reCAPTCHA v3 — script src contains sitekey
+            // reCAPTCHA v3 — script src contains sitekey (render param)
             const scripts = document.querySelectorAll('script[src*="recaptcha"]');
             for (const s of scripts) {
                 const match = s.src.match(/render=([A-Za-z0-9_-]+)/);
                 if (match && match[1] !== 'explicit') {
                     return { sitekey: match[1], type: 'recaptcha_v3' };
+                }
+            }
+
+            // Invisible reCAPTCHA — check ___grecaptcha_cfg for sitekey
+            try {
+                if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
+                    for (const cid in ___grecaptcha_cfg.clients) {
+                        const client = ___grecaptcha_cfg.clients[cid];
+                        // Walk the client tree to find sitekey
+                        const findKey = (obj, depth) => {
+                            if (depth > 5 || !obj) return null;
+                            for (const k in obj) {
+                                if (k === 'sitekey' || k === 'k') return obj[k];
+                                if (typeof obj[k] === 'object') {
+                                    const found = findKey(obj[k], depth + 1);
+                                    if (found) return found;
+                                }
+                            }
+                            return null;
+                        };
+                        const key = findKey(client, 0);
+                        if (key) return { sitekey: key, type: 'recaptcha_v2' };
+                    }
+                }
+            } catch(e) {}
+
+            // Invisible reCAPTCHA — check for recaptcha script presence even without visible widget
+            if (scripts.length > 0) {
+                // reCAPTCHA script exists but no sitekey found via render param
+                // Try to extract from the enterprise API URL or page source
+                const allScripts = document.querySelectorAll('script');
+                for (const s of allScripts) {
+                    if (s.textContent) {
+                        const keyMatch = s.textContent.match(/['"]sitekey['"]\s*:\s*['"]([A-Za-z0-9_-]{20,})['"]/);
+                        if (keyMatch) return { sitekey: keyMatch[1], type: 'recaptcha_v2' };
+                        const renderMatch = s.textContent.match(/grecaptcha\.(?:enterprise\.)?execute\s*\(\s*['"]([A-Za-z0-9_-]{20,})['"]/);
+                        if (renderMatch) return { sitekey: renderMatch[1], type: 'recaptcha_v3' };
+                    }
                 }
             }
 
@@ -84,7 +122,6 @@ async def _extract_sitekey(page) -> Optional[dict]:
             const genericEl = document.querySelector('[data-sitekey]');
             if (genericEl) {
                 const sitekey = genericEl.getAttribute('data-sitekey');
-                // hCaptcha sitekeys are UUIDs, reCAPTCHA sitekeys start with 6L
                 const isHcaptcha = /^[0-9a-f]{8}-/.test(sitekey);
                 return { sitekey, type: isHcaptcha ? 'hcaptcha' : 'recaptcha_v2' };
             }
