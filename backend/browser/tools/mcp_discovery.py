@@ -52,12 +52,11 @@ _SEARCH_QUERY_PROMPT = """\
 You are a job search expert. Generate {num_queries} Google search queries to find \
 job listings on ATS platforms (NOT on LinkedIn, Indeed, or Glassdoor).
 
-Target these ATS sites specifically:
-- boards.greenhouse.io
-- jobs.lever.co
-- jobs.ashbyhq.com
-- myworkdayjobs.com
-- jobs.smartrecruiters.com
+PRIORITIZE these ATS sites (they have the best application success rate):
+- jobs.lever.co (HIGHEST PRIORITY — generate at least 3 queries for Lever)
+- jobs.ashbyhq.com (HIGH PRIORITY — generate at least 2 queries for Ashby)
+- boards.greenhouse.io (generate 1-2 queries)
+- myworkdayjobs.com (generate 1 query if needed)
 
 Job criteria:
 - Keywords: {keywords}
@@ -71,7 +70,7 @@ Each query should target a different ATS platform. \
 Focus on finding CURRENT job postings (2026).
 
 Return a JSON array of query strings, nothing else. Example:
-["Senior Software Engineer remote site:boards.greenhouse.io", "AI engineer site:jobs.lever.co 2026"]
+["Full stack engineer remote site:jobs.lever.co", "AI engineer site:jobs.ashbyhq.com 2026", "software engineer site:jobs.lever.co"]
 """
 
 _PARSE_RESULTS_PROMPT = """\
@@ -180,15 +179,15 @@ async def _generate_search_queries(
     except (ValueError, json.JSONDecodeError) as exc:
         logger.warning("Failed to parse LLM search queries (%s), using defaults", exc)
 
-    # Fallback queries
+    # Fallback queries — prioritize Lever and Ashby (no reCAPTCHA)
     kw = search_config.keywords[0] if search_config.keywords else "Software Engineer"
     remote = "remote" if search_config.remote_only else ""
     return [
-        f"{kw} {remote} site:boards.greenhouse.io",
         f"{kw} {remote} site:jobs.lever.co",
+        f"{kw} {remote} site:jobs.lever.co 2026",
         f"{kw} {remote} site:jobs.ashbyhq.com",
-        f"{kw} {remote} site:myworkdayjobs.com",
-        f"{kw} {remote} site:jobs.smartrecruiters.com",
+        f"{kw} {remote} site:jobs.ashbyhq.com 2026",
+        f"{kw} {remote} site:boards.greenhouse.io",
         f"{kw} {remote} apply now greenhouse OR lever 2026",
     ]
 
