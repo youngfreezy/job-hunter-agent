@@ -485,9 +485,10 @@ async def _apply_lever(
 # Greenhouse Job Board API requires per-board API keys for POST (returns 401),
 # but the handler gracefully falls back to Playwright when blocked (401/428).
 # Keeping Greenhouse enabled so boards that DO allow public submission work.
+# Lever API apply endpoint is disabled across all companies (404 on POST).
+# Lever jobs now go directly to Playwright with residential proxy + CAPTCHA solver.
 _ATS_HANDLERS: dict = {
     ATSType.GREENHOUSE: _apply_greenhouse,
-    ATSType.LEVER: _apply_lever,
 }
 
 
