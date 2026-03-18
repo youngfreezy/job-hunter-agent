@@ -336,8 +336,22 @@ class BaseApplier(ABC):
             pass
         return False
 
+    async def _has_recaptcha(self) -> bool:
+        """Check for reCAPTCHA iframe or challenge on the page."""
+        try:
+            return await self.page.evaluate("""() => {
+                const iframes = document.querySelectorAll('iframe[src*="recaptcha"], iframe[src*="hcaptcha"]');
+                const divs = document.querySelectorAll('.g-recaptcha, [data-sitekey], #recaptcha');
+                return iframes.length > 0 || divs.length > 0;
+            }""")
+        except Exception:
+            return False
+
     async def _detect_failure(self) -> Optional[str]:
-        """Check if current page shows a failure indicator."""
+        """Check if current page shows a failure indicator or reCAPTCHA."""
+        # Check for reCAPTCHA first (common on Greenhouse)
+        if await self._has_recaptcha():
+            return "captcha"
         try:
             text = await self.page.evaluate("() => document.body.innerText.toLowerCase()")
             for kw in _FAILURE_KEYWORDS:
@@ -457,7 +471,15 @@ class BaseApplier(ABC):
             await self._random_delay(1.0, 2.0)
             await self._wait_for_navigation()
 
-        # 2. Poll for confirmation (AJAX submissions may take a moment)
+        # 2. Quick reCAPTCHA check — fail fast instead of polling
+        if await self._has_recaptcha():
+            logger.info("reCAPTCHA detected — submission blocked")
+            return self._make_result(
+                job_id, ApplicationStatus.FAILED,
+                error_message="reCAPTCHA blocked submission (bot detection)",
+            )
+
+        # 3. Poll for confirmation (AJAX submissions may take a moment)
         for attempt in range(5):
             if await self._detect_confirmation():
                 await self._emit_step("Application submitted!")
