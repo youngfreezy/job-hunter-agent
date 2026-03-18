@@ -28,6 +28,8 @@ import {
   getApplicationLog,
   archiveSession,
   deleteSession,
+  rerunSession,
+  killSession,
   type SessionListItem,
   type ApplicationLogEntry,
 } from "@/lib/api";
@@ -330,6 +332,8 @@ export default function HistoryPage() {
                 const isExpanded = expandedId === session.session_id;
                 const submittedCount = entries.filter((e) => e.status === "submitted").length;
                 const isArchived = !!session.archived_at;
+                const isDone = ["completed", "failed"].includes(session.status);
+                const isRunning = !isDone;
 
                 return (
                   <Card
@@ -395,6 +399,36 @@ export default function HistoryPage() {
                                 </button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                {isDone && (
+                                  <DropdownMenuItem
+                                    onClick={async () => {
+                                      try {
+                                        await rerunSession(session.session_id);
+                                        toast.success("Re-run started");
+                                        fetchAll();
+                                      } catch (err) {
+                                        toast.error(err instanceof Error ? err.message : "Failed to re-run");
+                                      }
+                                    }}
+                                  >
+                                    Re-run
+                                  </DropdownMenuItem>
+                                )}
+                                {isRunning && (
+                                  <DropdownMenuItem
+                                    onClick={async () => {
+                                      try {
+                                        await killSession(session.session_id);
+                                        toast.success("Session stopped");
+                                        fetchAll();
+                                      } catch (err) {
+                                        toast.error(err instanceof Error ? err.message : "Failed to stop");
+                                      }
+                                    }}
+                                  >
+                                    Stop
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem onClick={() => handleArchive(session.session_id, !isArchived)}>
                                   {isArchived ? "Unarchive" : "Archive"}
                                 </DropdownMenuItem>
