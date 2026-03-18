@@ -134,29 +134,28 @@ export default function HistoryPage() {
   const [deleteTarget, setDeleteTarget] = useState<SessionWithApps | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Cache of fetched application logs per session
+  const [logCache, setLogCache] = useState<Record<string, ApplicationLogEntry[]>>({});
+
   const fetchAll = useCallback(async () => {
     try {
       const allSessions = await listSessions(showArchived);
-      // Fetch application logs sequentially (3 at a time) to avoid 429 rate limits
-      const results: SessionWithApps[] = [];
-      const BATCH_SIZE = 3;
-      for (let i = 0; i < allSessions.length; i += BATCH_SIZE) {
-        const batch = allSessions.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.all(
-          batch.map(async (session) => {
-            let entries: ApplicationLogEntry[] = [];
-            try {
-              const log = await getApplicationLog(session.session_id);
-              entries = log.entries;
-            } catch {
-              // session may not have an application log yet
-            }
-            const { timeSaved, automationTime, manualEstimate } = computeTimeSaved(entries);
-            return { session, entries, timeSaved, automationTime, manualEstimate };
-          })
-        );
-        results.push(...batchResults);
-      }
+
+      // Build results immediately from session counts (no extra API calls)
+      const results: SessionWithApps[] = allSessions.map((session) => {
+        // Use cached logs if available, otherwise estimate from counts
+        const cached = logCache[session.session_id];
+        if (cached) {
+          const { timeSaved, automationTime, manualEstimate } = computeTimeSaved(cached);
+          return { session, entries: cached, timeSaved, automationTime, manualEstimate };
+        }
+        // Estimate from session counts (no API call needed)
+        const totalApps = session.applications_submitted + session.applications_failed;
+        const manualEstimate = totalApps * MANUAL_MINUTES_PER_APP;
+        const automationTime = totalApps * 2; // estimate 2 min per app
+        const timeSaved = Math.max(0, manualEstimate - automationTime);
+        return { session, entries: [], timeSaved, automationTime, manualEstimate };
+      });
 
       // Sort by most recent first
       results.sort(
@@ -170,7 +169,7 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [showArchived]);
+  }, [showArchived, logCache]);
 
   useEffect(() => {
     fetchAll();
@@ -192,7 +191,9 @@ export default function HistoryPage() {
   const totals = useMemo(() => {
     const active = sessionsWithApps.filter((s) => !s.session.archived_at);
     const totalTimeSaved = active.reduce((sum, s) => sum + s.timeSaved, 0);
-    const totalApps = active.reduce((sum, s) => sum + s.entries.length, 0);
+    const totalApps = active.reduce(
+      (sum, s) => sum + s.session.applications_submitted + s.session.applications_failed, 0
+    );
     const avgSavedPerApp = totalApps > 0 ? totalTimeSaved / totalApps : 0;
     return {
       timeSaved: totalTimeSaved,
@@ -347,7 +348,18 @@ export default function HistoryPage() {
                       <button
                         type="button"
                         className="w-full text-left px-5 py-4"
-                        onClick={() => setExpandedId(isExpanded ? null : session.session_id)}
+                        onClick={() => {
+                          const newId = isExpanded ? null : session.session_id;
+                          setExpandedId(newId);
+                          // Lazy-load application log when expanding
+                          if (newId && !logCache[newId]) {
+                            getApplicationLog(newId)
+                              .then((log) => {
+                                setLogCache((prev) => ({ ...prev, [newId]: log.entries }));
+                              })
+                              .catch(() => {});
+                          }
+                        }}
                       >
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
                           <div className="min-w-0 flex-1">
