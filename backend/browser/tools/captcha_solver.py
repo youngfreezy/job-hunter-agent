@@ -234,35 +234,52 @@ async def _inject_token(page, token: str, captcha_type: str) -> bool:
                 }}
             }}""", token)
         elif captcha_type == "recaptcha_enterprise":
-            # reCAPTCHA Enterprise — override execute() to return our token
+            # reCAPTCHA Enterprise — inject token and force form submission.
+            # Enterprise reCAPTCHA intercepts the submit button click, calls
+            # grecaptcha.enterprise.execute(), and only submits if it gets a token.
+            # We: 1) override execute() to return our token, 2) add hidden field,
+            # 3) trigger all callbacks, 4) programmatically submit the form.
             await page.evaluate("""(token) => {
-                // 1. Create/set the g-recaptcha-response textarea (Enterprise may not have one)
-                let ta = document.getElementById('g-recaptcha-response');
-                if (!ta) {
-                    ta = document.createElement('textarea');
-                    ta.id = 'g-recaptcha-response';
-                    ta.name = 'g-recaptcha-response';
-                    ta.style.display = 'none';
-                    const form = document.querySelector('form');
-                    if (form) form.appendChild(ta);
-                }
-                ta.value = token;
-
-                // 2. Override grecaptcha.enterprise.execute to resolve with our token
+                // 1. Override grecaptcha.enterprise.execute BEFORE submit
                 if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
-                    const origExecute = grecaptcha.enterprise.execute;
                     grecaptcha.enterprise.execute = function() {
                         return Promise.resolve(token);
                     };
+                    // Also override getResponse
+                    grecaptcha.enterprise.getResponse = function() {
+                        return token;
+                    };
                 }
 
-                // 3. Trigger callbacks in ___grecaptcha_cfg.clients
+                // 2. Create hidden input with token in ALL forms on the page
+                document.querySelectorAll('form').forEach(form => {
+                    let input = form.querySelector('input[name="g-recaptcha-response"]');
+                    if (!input) {
+                        input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'g-recaptcha-response';
+                        form.appendChild(input);
+                    }
+                    input.value = token;
+
+                    // Also create textarea version
+                    let ta = form.querySelector('#g-recaptcha-response');
+                    if (!ta) {
+                        ta = document.createElement('textarea');
+                        ta.id = 'g-recaptcha-response';
+                        ta.name = 'g-recaptcha-response';
+                        ta.style.display = 'none';
+                        form.appendChild(ta);
+                    }
+                    ta.value = token;
+                });
+
+                // 3. Trigger ALL callbacks in ___grecaptcha_cfg.clients
                 try {
                     const clients = ___grecaptcha_cfg.clients;
                     for (const cid in clients) {
-                        const client = clients[cid];
                         const walk = (obj, depth) => {
-                            if (depth > 5 || !obj) return;
+                            if (depth > 6 || !obj) return;
                             for (const key in obj) {
                                 if (typeof obj[key] === 'function') {
                                     try { obj[key](token); } catch(e) {}
@@ -272,7 +289,7 @@ async def _inject_token(page, token: str, captcha_type: str) -> bool:
                                 }
                             }
                         };
-                        walk(client, 0);
+                        walk(clients[cid], 0);
                     }
                 } catch(e) {}
             }""", token)
