@@ -313,7 +313,7 @@ async def _mcp_discover(
     # 2. Run searches via Serper (all queries in parallel)
     # Broader time window on subsequent rounds; more results per query
     tbs = "qdr:m" if round_number > 0 else "qdr:w"
-    num_results = 30
+    num_results = 20  # Serper max is 20 per request
 
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "search",
