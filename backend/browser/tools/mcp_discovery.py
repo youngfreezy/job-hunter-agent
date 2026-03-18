@@ -181,14 +181,14 @@ async def _generate_search_queries(
 
     # Fallback queries — prioritize Lever and Ashby (no reCAPTCHA)
     kw = search_config.keywords[0] if search_config.keywords else "Software Engineer"
-    remote = "remote" if search_config.remote_only else ""
+    remote = " remote" if search_config.remote_only else ""
     return [
-        f"{kw} {remote} site:jobs.lever.co",
-        f"{kw} {remote} site:jobs.lever.co 2026",
-        f"{kw} {remote} site:jobs.ashbyhq.com",
-        f"{kw} {remote} site:jobs.ashbyhq.com 2026",
-        f"{kw} {remote} site:boards.greenhouse.io",
-        f"{kw} {remote} apply now greenhouse OR lever 2026",
+        f"{kw}{remote} site:jobs.lever.co",
+        f"{kw}{remote} site:jobs.lever.co 2026",
+        f"{kw}{remote} site:jobs.ashbyhq.com",
+        f"{kw}{remote} site:jobs.ashbyhq.com 2026",
+        f"{kw}{remote} site:boards.greenhouse.io",
+        f"{kw}{remote} apply now lever OR ashby 2026",
     ]
 
 
@@ -506,6 +506,10 @@ async def discover_all_boards(
 
     results = await asyncio.gather(greenhouse_task, mcp_task, return_exceptions=True)
 
+    # Add Serper results FIRST (Lever/Ashby priority), then Greenhouse API.
+    # Dedup keeps first occurrence, so Lever/Ashby jobs win over duplicates.
+    serper_jobs: List[JobListing] = []
+    greenhouse_jobs: List[JobListing] = []
     for label, result in zip(["greenhouse", "search"], results):
         if isinstance(result, Exception):
             logger.error("%s discovery failed: %s", label, result)
@@ -515,7 +519,18 @@ async def discover_all_boards(
                 "error": True,
             })
         elif result:
-            all_jobs.extend(result)
+            if label == "search":
+                serper_jobs.extend(result)
+            else:
+                greenhouse_jobs.extend(result)
+
+    # Cap Greenhouse API results to leave room for Lever/Ashby
+    gh_cap = max(5, max_per_board // 2)
+    if len(greenhouse_jobs) > gh_cap and serper_jobs:
+        logger.info("Capping Greenhouse API from %d to %d (prioritizing Lever/Ashby)", len(greenhouse_jobs), gh_cap)
+        greenhouse_jobs = greenhouse_jobs[:gh_cap]
+
+    all_jobs = serper_jobs + greenhouse_jobs
 
     # Deduplicate across sources (by title + company)
     seen: set = set()
