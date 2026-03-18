@@ -117,6 +117,20 @@ class GreenhouseApplier(BaseApplier):
                     await self._random_delay(3.0, 5.0)
                     await self._wait_for_navigation(timeout=15000)
 
+                    # If submit button still visible, try programmatic form.submit()
+                    still_visible = await self.page.evaluate("""() => {
+                        const btn = document.querySelector('button:has-text("Submit Application"), button:has-text("Submit application"), input[type="submit"]');
+                        return btn && btn.offsetParent !== null;
+                    }""")
+                    if still_visible:
+                        logger.info("Submit button still visible after click — trying form.submit()")
+                        await self.page.evaluate("""() => {
+                            const form = document.querySelector('form');
+                            if (form) form.submit();
+                        }""")
+                        await self._random_delay(3.0, 5.0)
+                        await self._wait_for_navigation(timeout=15000)
+
                     # Check for validation errors — if present, re-fill and retry once
                     has_errors = await self.page.evaluate("""() => {
                         return [...document.querySelectorAll(
