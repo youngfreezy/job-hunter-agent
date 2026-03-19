@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useState, useCallback } from "react";
+import { toast } from "sonner";
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -326,8 +327,8 @@ function WaitlistBanner() {
       );
       if (res.ok) {
         setStatus("success");
-        setMessage("You're on the list! We'll notify you when we launch.");
         setEmail("");
+        toast.success("You're on the list! We'll notify you when we launch.");
       } else {
         const data = await res.json().catch(() => ({}));
         setStatus("error");
