@@ -60,14 +60,18 @@ async def join_waitlist(body: WaitlistRequest):
     try:
         pool = get_pool()
         with pool.connection() as conn:
-            conn.execute(
-                "INSERT INTO waitlist (email) VALUES (%s) ON CONFLICT (email) DO NOTHING",
+            cur = conn.execute(
+                "INSERT INTO waitlist (email) VALUES (%s) ON CONFLICT (email) DO NOTHING RETURNING id",
                 (email,),
             )
+            row = cur.fetchone()
             conn.commit()
     except Exception:
         logger.exception("Failed to insert waitlist email")
         raise HTTPException(status_code=500, detail="Server error")
+
+    if row is None:
+        raise HTTPException(status_code=409, detail="You're already on the waitlist!")
 
     logger.info("Waitlist signup: %s", email)
     return {"status": "ok", "message": "You're on the list!"}
