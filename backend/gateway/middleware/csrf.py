@@ -30,6 +30,7 @@ _EXEMPT_PATHS = {
     "/api/auth/register",
     "/api/auth/login",
     "/api/auth/link-google",
+    "/api/waitlist",
 }
 _EXEMPT_PREFIXES = (
     "/api/sessions/",  # SSE stream endpoints use GET
