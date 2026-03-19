@@ -374,6 +374,9 @@ def create_app() -> FastAPI:
     app.include_router(marketplace_router)
     app.include_router(developer_router)
 
+    from backend.gateway.routes.waitlist import router as waitlist_router
+    app.include_router(waitlist_router)
+
     return app
 
 

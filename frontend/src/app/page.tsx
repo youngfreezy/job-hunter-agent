@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -306,6 +306,75 @@ function ROICalculator() {
   );
 }
 
+function WaitlistBanner() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setStatus("loading");
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || ""}/api/waitlist`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim() }),
+        }
+      );
+      if (res.ok) {
+        setStatus("success");
+        setMessage("You're on the list! We'll notify you when we launch.");
+        setEmail("");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setStatus("error");
+        setMessage(data.detail || "Something went wrong. Try again.");
+      }
+    } catch {
+      setStatus("error");
+      setMessage("Network error. Try again.");
+    }
+  }, [email]);
+
+  return (
+    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-white">
+      <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
+        <p className="text-sm font-medium">
+          We&apos;re launching soon &mdash; get early access and 5 free application credits.
+        </p>
+        {status === "success" ? (
+          <span className="text-sm font-semibold text-emerald-200">{message}</span>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <input
+              type="email"
+              required
+              placeholder="you@email.com"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setStatus("idle"); }}
+              className="rounded-md border-0 bg-white/20 px-3 py-1.5 text-sm text-white placeholder-white/60 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/40"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={status === "loading"}
+              className="bg-white text-blue-700 hover:bg-white/90 font-semibold"
+            >
+              {status === "loading" ? "..." : "Join Waitlist"}
+            </Button>
+          </form>
+        )}
+        {status === "error" && (
+          <span className="text-xs text-red-200">{message}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
@@ -315,6 +384,9 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+
+      {/* Waitlist Banner */}
+      <WaitlistBanner />
 
       {/* Nav */}
       <nav className="border-b border-zinc-200/80 bg-white/80 px-6 py-4 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/80 sticky top-0 z-50">
