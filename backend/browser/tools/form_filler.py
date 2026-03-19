@@ -427,8 +427,15 @@ async def extract_form_fields(page: Any) -> List[Dict[str, Any]]:
         return fields;
     }""")
 
-    # Filter out unlabeled ghost inputs (React Select renders invisible sibling inputs)
-    fields = [f for f in fields if f.get("label") or f.get("name") or f.get("type") in ("react-select", "file")]
+    # Filter out ghost inputs from React Select (renders invisible sibling inputs
+    # with placeholder text like "Select..." as their label)
+    _GHOST_LABELS = {"select...", "select", "choose...", "choose", "type to search...", ""}
+    fields = [
+        f for f in fields
+        if f.get("type") in ("react-select", "file")
+        or (f.get("label", "").strip().lower().rstrip(".*") not in _GHOST_LABELS
+            and (f.get("label") or f.get("name")))
+    ]
 
     # Discover actual options for React Select fields by opening each dropdown
     react_fields = [f for f in fields if f.get("type") == "react-select"]
