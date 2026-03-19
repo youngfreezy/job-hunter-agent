@@ -339,15 +339,15 @@ function WaitlistBanner() {
     }
   }, [email]);
 
+  if (status === "success") return null;
+
   return (
     <div className="sticky top-0 z-[60] bg-gradient-to-r from-orange-500 to-amber-600 px-4 py-3 text-white shadow-md">
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
         <p className="text-sm font-medium">
           We&apos;re launching soon &mdash; get early access and 5 free application credits.
         </p>
-        {status === "success" ? (
-          <span className="text-sm font-semibold text-emerald-200">{message}</span>
-        ) : (
+        {status === "error" ? null : (
           <form onSubmit={handleSubmit} className="flex gap-2">
             <input
               type="email"
