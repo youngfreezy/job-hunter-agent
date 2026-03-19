@@ -234,65 +234,62 @@ async def _inject_token(page, token: str, captcha_type: str) -> bool:
                     try {{ window.hcaptcha.execute(); }} catch(e) {{}}
                 }}
             }}""", token)
-        elif captcha_type == "recaptcha_enterprise":
-            # reCAPTCHA Enterprise — inject token and force form submission.
-            # Enterprise reCAPTCHA intercepts the submit button click, calls
-            # grecaptcha.enterprise.execute(), and only submits if it gets a token.
-            # We: 1) override execute() to return our token, 2) add hidden field,
-            # 3) trigger all callbacks, 4) programmatically submit the form.
+        elif captcha_type in ("recaptcha_enterprise", "recaptcha_v3"):
+            # reCAPTCHA Enterprise/v3 — intercept fetch/XHR to inject token.
+            # Greenhouse's React form constructs POST body internally.
+            # Overriding execute() doesn't work because React captures the
+            # original function reference. Instead, monkey-patch fetch/XHR
+            # to append the token to every outgoing POST request body.
             await page.evaluate("""(token) => {
-                // 1. Override grecaptcha.enterprise.execute BEFORE submit
-                if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
-                    grecaptcha.enterprise.execute = function() {
-                        return Promise.resolve(token);
-                    };
-                    // Also override getResponse
-                    grecaptcha.enterprise.getResponse = function() {
-                        return token;
-                    };
-                }
-
-                // 2. Create hidden input with token in ALL forms on the page
-                document.querySelectorAll('form').forEach(form => {
-                    let input = form.querySelector('input[name="g-recaptcha-response"]');
-                    if (!input) {
-                        input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = 'g-recaptcha-response';
-                        form.appendChild(input);
-                    }
-                    input.value = token;
-
-                    // Also create textarea version
-                    let ta = form.querySelector('#g-recaptcha-response');
-                    if (!ta) {
-                        ta = document.createElement('textarea');
-                        ta.id = 'g-recaptcha-response';
-                        ta.name = 'g-recaptcha-response';
-                        ta.style.display = 'none';
-                        form.appendChild(ta);
-                    }
-                    ta.value = token;
-                });
-
-                // 3. Trigger ALL callbacks in ___grecaptcha_cfg.clients
-                try {
-                    const clients = ___grecaptcha_cfg.clients;
-                    for (const cid in clients) {
-                        const walk = (obj, depth) => {
-                            if (depth > 6 || !obj) return;
-                            for (const key in obj) {
-                                if (typeof obj[key] === 'function') {
-                                    try { obj[key](token); } catch(e) {}
-                                }
-                                if (typeof obj[key] === 'object' && obj[key] !== null) {
-                                    walk(obj[key], depth + 1);
-                                }
+                // 1. Patch window.fetch
+                const origFetch = window.fetch;
+                window.fetch = function(url, opts) {
+                    if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
+                        if (opts.body instanceof FormData) {
+                            opts.body.append('g-recaptcha-response', token);
+                        } else if (typeof opts.body === 'string') {
+                            try {
+                                const data = JSON.parse(opts.body);
+                                data['g-recaptcha-response'] = token;
+                                opts.body = JSON.stringify(data);
+                            } catch(e) {
+                                opts.body += '&g-recaptcha-response=' + encodeURIComponent(token);
                             }
-                        };
-                        walk(clients[cid], 0);
+                        }
                     }
-                } catch(e) {}
+                    return origFetch.call(this, url, opts);
+                };
+
+                // 2. Patch XMLHttpRequest.send
+                const origSend = XMLHttpRequest.prototype.send;
+                XMLHttpRequest.prototype.send = function(body) {
+                    if (body instanceof FormData) {
+                        body.append('g-recaptcha-response', token);
+                    } else if (typeof body === 'string') {
+                        try {
+                            const data = JSON.parse(body);
+                            data['g-recaptcha-response'] = token;
+                            body = JSON.stringify(data);
+                        } catch(e) {
+                            body += '&g-recaptcha-response=' + encodeURIComponent(token);
+                        }
+                    }
+                    return origSend.call(this, body);
+                };
+
+                // 3. Also override grecaptcha.enterprise.execute as backup
+                if (typeof grecaptcha !== 'undefined') {
+                    if (grecaptcha.enterprise) {
+                        grecaptcha.enterprise.execute = () => Promise.resolve(token);
+                        grecaptcha.enterprise.getResponse = () => token;
+                    }
+                    if (grecaptcha.execute) {
+                        grecaptcha.execute = () => Promise.resolve(token);
+                    }
+                    if (grecaptcha.getResponse) {
+                        grecaptcha.getResponse = () => token;
+                    }
+                }
             }""", token)
         else:
             # reCAPTCHA v2/v3
