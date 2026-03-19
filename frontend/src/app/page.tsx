@@ -329,6 +329,9 @@ function WaitlistBanner() {
         setStatus("success");
         setEmail("");
         toast.success("You're on the list! We'll notify you when we launch.");
+      } else if (res.status === 409) {
+        setStatus("success");
+        toast.info("You're already on the waitlist!");
       } else {
         const data = await res.json().catch(() => ({}));
         setStatus("error");
