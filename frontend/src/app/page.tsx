@@ -340,7 +340,7 @@ function WaitlistBanner() {
   }, [email]);
 
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-white">
+    <div className="sticky top-0 z-[60] bg-gradient-to-r from-orange-500 to-amber-600 px-4 py-3 text-white shadow-md">
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
         <p className="text-sm font-medium">
           We&apos;re launching soon &mdash; get early access and 5 free application credits.
@@ -355,13 +355,13 @@ function WaitlistBanner() {
               placeholder="you@email.com"
               value={email}
               onChange={(e) => { setEmail(e.target.value); setStatus("idle"); }}
-              className="rounded-md border-0 bg-white/20 px-3 py-1.5 text-sm text-white placeholder-white/60 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/40"
+              className="rounded-md border-0 bg-white/20 px-3 py-1.5 text-sm text-white placeholder-white/70 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-white/50"
             />
             <Button
               type="submit"
               size="sm"
               disabled={status === "loading"}
-              className="bg-white text-blue-700 hover:bg-white/90 font-semibold"
+              className="bg-white text-orange-700 hover:bg-white/90 font-semibold"
             >
               {status === "loading" ? "..." : "Join Waitlist"}
             </Button>
