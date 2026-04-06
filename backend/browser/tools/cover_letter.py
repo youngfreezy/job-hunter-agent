@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -41,7 +42,7 @@ Return ONLY the cover letter text. No JSON, no markdown fences, no commentary.
 """
 
 
-_FOUNDER_EMAILS = {"jane.doe@example.com", "jane.doe@example.com"}
+_FOUNDER_EMAILS = set(os.environ.get("FOUNDER_EMAILS", "").split(",")) - {""}
 
 
 async def generate_cover_letter(

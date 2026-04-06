@@ -262,7 +262,13 @@ export function buildResumePdf(rawText: string): jsPDF {
    Cover Letter PDF – clean business letter format
    ────────────────────────────────────────────────────────────── */
 
-export function buildCoverLetterPdf(text: string, company: string, position: string): jsPDF {
+export function buildCoverLetterPdf(
+  text: string,
+  company: string,
+  position: string,
+  userName?: string,
+  contactLine?: string,
+): jsPDF {
   const doc = new jsPDF({ unit: "mm", format: "letter" });
 
   const marginX = 25;
@@ -277,13 +283,13 @@ export function buildCoverLetterPdf(text: string, company: string, position: str
   doc.setTextColor(...DARK);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
-  doc.text("Jane Doe", marginX, y);
+  doc.text(userName || "", marginX, y);
   y += 6;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(...GRAY);
-  doc.text("San Francisco, CA | (555) 123-4567 | jane.doe@example.com", marginX, y);
+  doc.text(contactLine || "", marginX, y);
   y += 10;
 
   // ─── Divider ───
@@ -366,8 +372,10 @@ export function downloadCoverLetterPdf(
   text: string,
   company: string,
   position: string,
-  filename: string
+  filename: string,
+  userName?: string,
+  contactLine?: string,
 ): void {
-  const doc = buildCoverLetterPdf(text, company, position);
+  const doc = buildCoverLetterPdf(text, company, position, userName, contactLine);
   doc.save(`${sanitizeFilename(filename) || "Cover Letter"}.pdf`);
 }

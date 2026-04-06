@@ -132,7 +132,7 @@ async def main():
         }""")
         print("React fiber:", fiber_info)
 
-        screenshots_dir = "/Users/janedoe/Desktop/job-hunter-agent/screenshots"
+        screenshots_dir = os.path.join(os.path.dirname(__file__), "..", "screenshots")
         os.makedirs(screenshots_dir, exist_ok=True)
         await page.screenshot(path=f"{screenshots_dir}/location_debug.png", full_page=True)
 

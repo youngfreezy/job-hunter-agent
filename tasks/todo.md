@@ -39,7 +39,7 @@
   - `/api/sessions/test-apply` end-to-end with manual intervention streaming (`needs_intervention` -> resume -> submitted)
   - `application-log` persisted submitted entry with non-empty `cover_letter` and `tailored_resume`
 - Live UI workflow verification passed:
-  - Session started from `/session/new` using `/Users/janedoe/Library/Mobile Documents/com~apple~CloudDocs/Resume/Test Resume.pdf`
+  - Session started from `/session/new` using a test resume PDF
   - Session `5ebabbc4-7efd-4165-aee0-3899a692a6eb` reached real `submitted` application
   - `/session/5ebabbc4-7efd-4165-aee0-3899a692a6eb/manual-apply` displayed submitted row in UI
 - Additional current-run live verification:

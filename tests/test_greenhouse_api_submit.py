@@ -13,7 +13,7 @@ import aiohttp
 import os
 
 async def main():
-    resume_path = "/Users/janedoe/Desktop/Resumes/Jane_Doe_Resume_AI_Native_2026.pdf"
+    resume_path = "/tmp/test_resume.pdf"
     if not os.path.exists(resume_path):
         print(f"Resume not found: {resume_path}")
         return

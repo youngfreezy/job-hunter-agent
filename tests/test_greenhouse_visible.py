@@ -80,7 +80,7 @@ async def main():
             except Exception:
                 continue
 
-        screenshots_dir = "/Users/janedoe/Desktop/job-hunter-agent/screenshots"
+        screenshots_dir = os.path.join(os.path.dirname(__file__), "..", "screenshots")
         os.makedirs(screenshots_dir, exist_ok=True)
 
         def _id_sel(iid):
@@ -241,7 +241,7 @@ async def main():
                 if el: await el.fill(val)
 
         # Upload resume
-        resume_path = "/Users/janedoe/Desktop/Resumes/Jane_Doe_Resume_AI_Native_2026.pdf"
+        resume_path = "/tmp/test_resume.pdf"
         fi = await page.query_selector('input[type="file"]')
         if fi and os.path.exists(resume_path):
             await fi.set_input_files(resume_path)

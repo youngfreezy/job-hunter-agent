@@ -8,9 +8,9 @@ import json
 async def main():
     from patchright.async_api import async_playwright
 
-    screenshots_dir = "/Users/janedoe/Desktop/job-hunter-agent/screenshots"
+    screenshots_dir = os.path.join(os.path.dirname(__file__), "..", "screenshots")
     os.makedirs(screenshots_dir, exist_ok=True)
-    resume_path = "/Users/janedoe/Desktop/Resumes/Jane_Doe_Resume_AI_Native_2026.pdf"
+    resume_path = "/tmp/test_resume.pdf"
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=False)

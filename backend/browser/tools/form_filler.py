@@ -176,7 +176,7 @@ def _fallback_fill_value(
     if "name" in label_l:
         return profile.get("name", "")
     if "linkedin" in label_l:
-        return "https://www.linkedin.com/in/jane-doe"
+        return profile.get("linkedin_url", "")
     if "city" in label_l or ("location" in label_l and "reloc" not in label_l):
         return location_parts.get("city", "San Francisco")
     if "state" in label_l:

@@ -3,7 +3,7 @@
 """Isolated apply test -- test the application flow with real job URLs.
 
 Usage:
-    cd /Users/janedoe/Desktop/job-hunter-agent
+    cd <project_root>
     source backend/venv/bin/activate
     python -m tests.test_apply_isolated
 
@@ -15,11 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from uuid import uuid4
 
 # Ensure project root is on path
-sys.path.insert(0, "/Users/janedoe/Desktop/job-hunter-agent")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from backend.browser.manager import BrowserManager
 from backend.shared.models.schemas import (

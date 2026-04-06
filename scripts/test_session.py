@@ -36,12 +36,12 @@ from cryptography.hazmat.primitives import hashes
 
 ENVS = {
     "production": {
-        "api": "https://api.jobhunteragent.com",
-        "secret": "QQD7SGSZkKqJM9b4Lr1weNwI69eZ5VkdnYDg3G/R8XI=",
+        "api": os.environ.get("PROD_API_URL", "https://api.jobhunteragent.com"),
+        "secret": os.environ.get("PROD_NEXTAUTH_SECRET", "change-me"),
     },
     "staging": {
-        "api": "https://backend-staging-a1c9.up.railway.app",
-        "secret": "QQD7SGSZkKqJM9b4Lr1weNwI69eZ5VkdnYDg3G/R8XI=",
+        "api": os.environ.get("STAGING_API_URL", "https://backend-staging-a1c9.up.railway.app"),
+        "secret": os.environ.get("STAGING_NEXTAUTH_SECRET", "change-me"),
     },
     "local": {
         "api": "http://localhost:8000",
@@ -49,10 +49,11 @@ ENVS = {
     },
 }
 
-DEFAULT_RESUME = os.path.expanduser(
-    "~/Desktop/Jane_Doe_Resume_Generated.pdf"
+DEFAULT_RESUME = os.environ.get(
+    "DEFAULT_RESUME_PATH",
+    os.path.expanduser("~/resume.pdf"),
 )
-DEFAULT_EMAIL = "jane.doe@example.com"
+DEFAULT_EMAIL = os.environ.get("DEFAULT_TEST_EMAIL", "jane.doe@example.com")
 
 # ---------------------------------------------------------------------------
 # JWE token minting (NextAuth v4 compatible)

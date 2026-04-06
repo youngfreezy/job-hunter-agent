@@ -2,6 +2,7 @@
 
 """Test interacting with React Select on Greenhouse forms."""
 import asyncio
+import os
 import sys
 
 async def main():
@@ -62,7 +63,7 @@ async def main():
                         print(f"  Country value after selection: '{value}'")
                 else:
                     # Try screenshot to see what happened
-                    await page.screenshot(path="/Users/janedoe/Desktop/job-hunter-agent/screenshots/react_select_attempt1.png", full_page=True)
+                    await page.screenshot(path=os.path.join(os.path.dirname(__file__), "..", "screenshots", "react_select_attempt1.png"), full_page=True)
                     print("  Screenshot saved")
 
                     # Check what the page shows
@@ -230,7 +231,7 @@ async def main():
             print(f"  Error: {e}")
 
         # Take final screenshot
-        await page.screenshot(path="/Users/janedoe/Desktop/job-hunter-agent/screenshots/react_select_final.png", full_page=True)
+        await page.screenshot(path=os.path.join(os.path.dirname(__file__), "..", "screenshots", "react_select_final.png"), full_page=True)
         print("\nFinal screenshot saved")
 
         await browser.close()

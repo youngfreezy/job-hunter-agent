@@ -14,7 +14,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const API_BASE = process.env.API_BASE || "http://localhost:8000";
 const RESUME_PATH =
   process.env.RESUME_PATH ||
-  "/Users/janedoe/Library/Mobile Documents/com~apple~CloudDocs/Resume/Test Resume.pdf";
+  "/path/to/your/resume.pdf";
 const KEYWORDS =
   process.env.KEYWORDS ||
   "AI Engineer, Machine Learning Engineer, Software Engineer";

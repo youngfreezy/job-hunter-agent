@@ -174,7 +174,7 @@ async def main():
                 if el: await el.fill(val)
 
         # Upload resume
-        resume_path = "/Users/janedoe/Desktop/Resumes/Jane_Doe_Resume_AI_Native_2026.pdf"
+        resume_path = "/tmp/test_resume.pdf"
         fi = await page.query_selector('input[type="file"]')
         if fi and os.path.exists(resume_path):
             await fi.set_input_files(resume_path)
@@ -223,7 +223,7 @@ async def main():
         else:
             print("\nAll required fields filled!")
 
-        screenshots_dir = "/Users/janedoe/Desktop/job-hunter-agent/screenshots"
+        screenshots_dir = os.path.join(os.path.dirname(__file__), "..", "screenshots")
         os.makedirs(screenshots_dir, exist_ok=True)
         await page.screenshot(path=f"{screenshots_dir}/debug_before_submit.png", full_page=True)
 

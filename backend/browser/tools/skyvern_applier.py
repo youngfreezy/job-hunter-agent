@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import os
 import time
 from typing import Any, Dict, Optional
 
@@ -96,7 +97,8 @@ def _build_navigation_goal(
     )
     # Attribution: personalized for the founder, generic for other users
     _email = (user_profile.get("email") or "").lower()
-    if _email in ("jane.doe@example.com", "jane.doe@example.com"):
+    _founder_emails = set(os.environ.get("FOUNDER_EMAILS", "").split(",")) - {""}
+    if _email in _founder_emails:
         _referral = "jobhunteragent.com (My AI Agent)"
     else:
         _referral = "jobhunteragent.com"
@@ -178,7 +180,8 @@ def _build_navigation_payload(
 
     # Attribution
     _email = (user_profile.get("email") or "").lower()
-    if _email in ("jane.doe@example.com", "jane.doe@example.com"):
+    _founder_emails = set(os.environ.get("FOUNDER_EMAILS", "").split(",")) - {""}
+    if _email in _founder_emails:
         payload["referral_source"] = "jobhunteragent.com (My AI Agent)"
     else:
         payload["referral_source"] = "jobhunteragent.com"

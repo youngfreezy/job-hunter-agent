@@ -39,7 +39,7 @@ async def main():
     from pypdf import PdfReader
 
     # --- Resume ---
-    resume_path = "/Users/janedoe/Desktop/Resumes/Jane_Doe_Resume_AI_Native_2026.pdf"
+    resume_path = "/tmp/test_resume.pdf"
     reader = PdfReader(resume_path)
     resume_text = "\n".join(p.extract_text() for p in reader.pages)
     logger.info("Resume loaded: %d chars", len(resume_text))

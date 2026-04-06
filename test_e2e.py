@@ -27,46 +27,23 @@ jane.doe@example.com
 Senior AI Engineer with over ten years of software development experience across full-stack web applications, backend services, and AI-native systems. Builds production LLM platforms where models are first-class architecture components: agentic pipelines, HITL validation, and retrieval-augmented systems. Proven across React/Next.js, Python, Node.js, and AWS with a focus on evaluation-driven iteration and fast iteration cycles.
 
 SKILLS
-AI Systems & LLM Architecture: Agentic system design, orchestration, HITL validation, AI safety and guardrails, Prompt architecture, LLM evals, Evaluation-driven iteration, LangSmith, LangGraph, LangChain, LlamaIndex, Bedrock, AgentCore, OpenAI API
-Vector Search & Retrieval: RAG, semantic retrieval, grounding, PGVector, vector embeddings
+AI Systems & LLM Architecture: Agentic system design, orchestration, HITL validation, AI safety and guardrails
 Backend: Node.js, NestJS, Express.js, Python, FastAPI, Flask, Ruby on Rails, Java
-Cloud / DevOps: AWS (Lambda, S3, EC2, Step Functions), GCP (Vertex AI, Cloud Run), Azure ML, CI/CD: GitLab, GitHub Actions, CircleCI
+Cloud / DevOps: AWS (Lambda, S3, EC2, Step Functions), GCP (Vertex AI, Cloud Run), Azure ML
 Frontend: React, Next.js, TypeScript, JavaScript, Redux, HTML5, CSS3, Angular, D3.js
 Databases: PostgreSQL, DynamoDB, MongoDB, Neo4j, PGVector, Redis
 Testing & Quality: Jest, React Testing Library, Pytest, Playwright, Cypress, Storybook
 
-AI-NATIVE SYSTEMS & AGENTIC APPLICATIONS
-AEM Content Validator
-- Designed LangGraph pipeline with 5 parallel agents and zero-cost triage router
-- Reduced article validation from approx. 45 minutes to under 3 minutes
-- Loaded 34 validation rules from Neo4j Aura graph DB with JSON fallback
-- Grounded Accuracy Agent in PGVector; RAGAS evaluated faithfulness and recall
-- LLM Judge synthesized approve/reject/needs-revision verdict
-- Human reviewer gated via LangGraph interrupt() streamed to Next.js via SSE
-
-AI Foundry Platform
-- Shipped streaming chat on Bedrock/AgentCore with Vercel AI SDK and SSE
-- Memory reconciliation eliminated CloudFront timeout errors across all deployments
-- Built MCP server and model catalog for agent onboarding and spend tracking
-- Designed three-agent Copilot system (Orchestrator, Planner, QA) with E2E tests
-
 WORK HISTORY
-Nov 2018 - Present: Sr Software Engineer, V2 Software LLC
-- Mayo Clinic: Evolved AEM toward hybrid headless CMS; optimized GraphQL queries; built React component library; architected production LangGraph pipeline with 5 parallel agents
-- Signet Jewelers: Built AI Foundry platform; authored custom Vercel AI SDK provider for Bedrock AgentCore with server-side streaming
-- JP Morgan Chase: Developed React and Redux-based microfrontends; built backend services using Node.js and Express within AWS serverless architectures
-- CACI (Army AI Maintenance, DoD): Led UI development for DoD secure apps; built ML output visualizations with Plotly.js. Active Secret Clearance.
-- Rivian Automotive: Built React/Redux platform components; AWS Amplify backend with DynamoDB and Python Lambdas
-- College Board: Architected React micro-frontend for Student Portal with Redux and AWS Serverless
-- Etsy (Reverb): Led Plaid integration for secure financial account linking at scale
-- Live Nation (Ticketmaster): Built front-end components using ReactJS, Redux, Next.js, and GraphQL
-Jun 2017 - Nov 2018: Senior Software Engineer, CoStar Realty Group
-Aug 2016 - Mar 2017: Sr Software Engineer, Datascan
-Nov 2015 - Aug 2016: Software Engineer, General Electric
+Nov 2018 - Present: Sr Software Engineer, Acme Software LLC
+- Built AI-native applications with LangGraph, React/Next.js, and Python/FastAPI
+- Designed agentic pipelines with HITL validation and RAG systems
+- Led full-stack development across multiple enterprise clients
+Jun 2017 - Nov 2018: Senior Software Engineer, Example Corp
+Nov 2015 - Aug 2016: Software Engineer, Tech Industries Inc
 
 EDUCATION
-MA: International Affairs and Economics, Columbia University, New York, NY
-Professional Certificates: DeepLearning.AI & Udemy — Agentic AI Engineering Course, Data Analytics Foundations
+MS: Computer Science, Example University, New York, NY
 """
 
 

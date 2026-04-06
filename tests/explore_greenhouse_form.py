@@ -3,6 +3,7 @@
 """Explore a real Greenhouse application form to understand submission mechanism."""
 import asyncio
 import json
+import os
 import sys
 
 async def main():
@@ -195,8 +196,7 @@ async def main():
             print(f"  {json.dumps(info, indent=2)}")
 
         # Take a screenshot
-        screenshot_path = "/Users/janedoe/Desktop/job-hunter-agent/screenshots/greenhouse_form_explore.png"
-        import os
+        screenshot_path = os.path.join(os.path.dirname(__file__), "..", "screenshots", "greenhouse_form_explore.png")
         os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
         await page.screenshot(path=screenshot_path, full_page=True)
         print(f"\nScreenshot saved: {screenshot_path}")

@@ -96,7 +96,7 @@ async def main():
             except Exception:
                 continue
 
-        screenshots_dir = "/Users/janedoe/Desktop/job-hunter-agent/screenshots"
+        screenshots_dir = os.path.join(os.path.dirname(__file__), "..", "screenshots")
         os.makedirs(screenshots_dir, exist_ok=True)
 
         # --- Human-like form filling helpers ---
@@ -181,7 +181,7 @@ async def main():
         # --- Fill basic text fields with human-like typing ---
         fields = {
             "first_name": "Jane",
-            "last_name": "Ahmed",
+            "last_name": "Doe",
             "email": "jane.doe@example.com",
             "phone": "5551234567",
         }
@@ -327,7 +327,7 @@ async def main():
                     print(f"  Filled #{f['id']}")
 
         # --- Upload resume ---
-        resume_path = "/Users/janedoe/Desktop/Resumes/Jane_Doe_Resume_AI_Native_2026.pdf"
+        resume_path = "/tmp/test_resume.pdf"
         fi = await page.query_selector('input[type="file"]')
         if fi and os.path.exists(resume_path):
             await fi.set_input_files(resume_path)

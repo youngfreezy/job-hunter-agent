@@ -100,7 +100,7 @@ async def main():
         await page.goto(target_url, wait_until="domcontentloaded", timeout=20000)
         await asyncio.sleep(3)
 
-        screenshots_dir = "/Users/janedoe/Desktop/job-hunter-agent/screenshots"
+        screenshots_dir = os.path.join(os.path.dirname(__file__), "..", "screenshots")
         os.makedirs(screenshots_dir, exist_ok=True)
         await page.screenshot(path=f"{screenshots_dir}/ashby_01_form.png", full_page=True)
 
@@ -204,7 +204,7 @@ async def main():
             elif 'first' in label:
                 val = "Jane"
             elif 'last' in label:
-                val = "Ahmed"
+                val = "Doe"
             elif 'email' in label or inp['type'] == 'email':
                 val = "jane.doe@example.com"
             elif 'phone' in label or inp['type'] == 'tel':
@@ -301,7 +301,7 @@ async def main():
         # 1. "Autofill from resume" (top) - parses resume and fills fields (slow, triggers toast)
         # 2. "Resume" field (actual resume attachment)
         # We should SKIP the autofill one and only upload to the actual Resume field
-        resume_path = "/Users/janedoe/Desktop/Resumes/Jane_Doe_Resume_AI_Native_2026.pdf"
+        resume_path = "/tmp/test_resume.pdf"
         if os.path.exists(resume_path):
             try:
                 file_inputs = await page.query_selector_all('input[type="file"]')
@@ -454,7 +454,7 @@ async def main():
             elif 'first' in label:
                 val = "Jane"
             elif 'last' in label:
-                val = "Ahmed"
+                val = "Doe"
             elif 'email' in label or inp['type'] == 'email':
                 val = "jane.doe@example.com"
             elif 'phone' in label or inp['type'] == 'tel':
