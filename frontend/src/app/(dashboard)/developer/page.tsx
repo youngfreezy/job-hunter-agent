@@ -3,7 +3,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -137,12 +136,6 @@ export default function DeveloperPage() {
             Manage API keys, webhooks, and integrate with the JobHunter platform.
           </p>
         </div>
-        <Link
-          href="/developer/docs"
-          className="text-sm text-blue-600 hover:underline"
-        >
-          API Docs
-        </Link>
       </div>
 
       {/* Tabs */}

@@ -1,8 +1,19 @@
 // Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+// Signed-in app routes have their own shell and no marketing footer.
+const APP_PREFIXES = [
+  "/dashboard", "/session", "/apply", "/autopilot", "/billing", "/career-pivot", "/developer",
+  "/freelance", "/history", "/interview-prep", "/marketplace", "/quick-apply", "/settings", "/account",
+];
 
 export function Footer() {
+  const pathname = usePathname() ?? "";
+  if (APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))) return null;
   return (
     <footer className="border-t border-zinc-200 px-6 py-10 dark:border-zinc-800">
       <div className="mx-auto max-w-6xl">

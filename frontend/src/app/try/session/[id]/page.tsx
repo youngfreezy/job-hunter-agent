@@ -16,6 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ROUTES } from "@/lib/routes";
 import {
   connectTrialSSE,
   getTrialToken,
@@ -166,7 +167,7 @@ export default function TrialSessionPage() {
       await convertTrialAccount({ trial_token: token, password, name: name || undefined });
       clearTrialData();
       // Redirect to sign in so they can log in with their new credentials
-      router.push("/auth/signin?converted=true");
+      router.push(`${ROUTES.login}?converted=true`);
     } catch (err) {
       setConvertError(err instanceof Error ? err.message : "Conversion failed");
     } finally {

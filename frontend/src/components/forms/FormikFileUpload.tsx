@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFormikContext } from "formik";
 import type { SessionFormValues } from "@/lib/schemas/session";
 import { parseResume } from "@/lib/api";
+import { FilePicker } from "./FilePicker";
 
 type ParseFn = (file: File) => Promise<{ text: string; filename: string; file_path?: string; resume_uuid?: string }>;
 
@@ -146,10 +147,7 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
     section.pattern.test(values.resumeText || "")
   ).map((section) => section.label);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const handleFileUpload = async (file: File) => {
     setError(null);
     setFieldValue("resumeFileName", file.name);
 
@@ -178,7 +176,6 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
       setError(msg);
       setFieldValue("resumeFileName", "");
       setFieldValue("resumeText", "");
-      e.target.value = "";
     } finally {
       setParsing(false);
     }
@@ -186,85 +183,45 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
 
   return (
     <div>
-      <div className="rounded-2xl border-2 border-dashed border-zinc-300 p-6 dark:border-zinc-700">
-        <input
-          type="file"
-          accept=".txt,.pdf,.docx"
-          onChange={handleFileUpload}
-          className="hidden"
-          id="resume-upload"
-          disabled={parsing}
-        />
-        <label
-          htmlFor="resume-upload"
-          className={`block cursor-pointer text-center ${
-            parsing ? "pointer-events-none opacity-60" : ""
-          }`}
-        >
-          <div className="text-sm text-zinc-600 dark:text-zinc-400">
-            {parsing ? (
-              <span className="text-blue-600 font-medium">Extracting text from your resume...</span>
-            ) : values.resumeFileName ? (
-              <span className="text-green-600 font-medium">{values.resumeFileName}</span>
-            ) : (
-              <>
-                <span className="font-medium text-zinc-900 dark:text-white">Click to upload</span>{" "}
-                your resume
-              </>
-            )}
-          </div>
-          <p className="text-xs text-zinc-500 mt-1">.txt, .pdf, or .docx</p>
-        </label>
-
-        {values.resumeFileName && !parsing && (
-          <div className="mt-4 space-y-3 rounded-xl bg-zinc-50 p-4 text-left dark:bg-zinc-900/60">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-                  Parsed Resume
-                </p>
-                <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-white">
-                  {values.resumeFileName}
-                </p>
-              </div>
-              <label
-                htmlFor="resume-upload"
-                className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-700"
-              >
-                Replace file
-              </label>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
-                <p className="text-xs text-zinc-500">Extracted length</p>
-                <p className="mt-1 text-lg font-semibold">
-                  {values.resumeText.length.toLocaleString()} characters
-                </p>
-              </div>
-              <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
-                <p className="text-xs text-zinc-500">Detected sections</p>
-                <p className="mt-1 text-sm font-medium">
-                  {detectedSections.length > 0
-                    ? detectedSections.join(", ")
-                    : "No standard headings detected yet"}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-                Parsed text preview
-              </p>
-              <div className="mt-2 max-h-40 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-3 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
-                {values.resumeText.slice(0, 1200)}
-                {values.resumeText.length > 1200 ? "..." : ""}
-              </div>
-            </div>
-          </div>
+      <FilePicker
+        id="resume-upload"
+        accept=".txt,.pdf,.docx"
+        onFile={handleFileUpload}
+        disabled={parsing}
+        buttonLabel={values.resumeFileName ? "Replace file" : "Choose resume"}
+        status={parsing ? "Reading your resume…" : error ?? undefined}
+      >
+        {values.resumeFileName ? (
+          <span className="font-medium text-foreground">{values.resumeFileName}</span>
+        ) : (
+          <span>PDF, DOCX or TXT</span>
         )}
-      </div>
-      {error && <p className="text-xs text-red-600 mt-1.5">{error}</p>}
+      </FilePicker>
+      {values.resumeFileName && !parsing && (
+        <div className="mt-3 space-y-3">
+          <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted-foreground">Extracted</dt>
+            <dd className="font-mono tabular-nums">
+              {values.resumeText.length.toLocaleString()} characters
+            </dd>
+            <dt className="text-muted-foreground">Sections found</dt>
+            <dd>
+              {detectedSections.length > 0
+                ? detectedSections.join(", ")
+                : "No standard headings found"}
+            </dd>
+          </dl>
+          <details className="text-sm">
+            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+              Preview parsed text
+            </summary>
+            <div className="mt-2 max-h-40 overflow-y-auto rounded-md border border-border bg-background p-3 text-foreground">
+              {values.resumeText.slice(0, 1200)}
+              {values.resumeText.length > 1200 ? "…" : ""}
+            </div>
+          </details>
+        </div>
+      )}
     </div>
   );
 }

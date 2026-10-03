@@ -1112,7 +1112,7 @@ export default function SessionPage() {
   return (
     <>
       {/* Sticky Subheader — status, latest message, tip */}
-      <div className="shrink-0 z-40 border-b border-border/50 bg-background/95 supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-sm">
+      <div className="shrink-0 border-b border-border/50 bg-background/95 supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-2 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Badge
@@ -1378,8 +1378,8 @@ export default function SessionPage() {
       )}
 
       {/* Main content */}
-      <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-4 py-4 sm:px-5 sm:py-5 xl:grid-cols-[minmax(0,1fr)_340px] overflow-hidden">
-        <div className="min-h-0 flex flex-col order-2 xl:order-1">
+      <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-4 py-4 sm:px-5 sm:py-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 flex flex-col order-2 xl:order-1">
           {liveView && (
             <LiveBrowserPanel
               liveView={liveView}
@@ -1387,7 +1387,7 @@ export default function SessionPage() {
               onHide={() => setLiveView(null)}
             />
           )}
-          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Card className="flex flex-1 flex-col">
             <CardHeader className="border-b border-border/50 pb-2">
               <div className="flex items-center justify-between">
                 <div>
@@ -1398,7 +1398,7 @@ export default function SessionPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-y-auto py-3 space-y-1">
+            <CardContent className="flex-1 py-3 space-y-1 xl:max-h-[calc(100vh-14rem)] xl:overflow-y-auto">
               {surfacedEvents.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <svg
@@ -1500,7 +1500,7 @@ export default function SessionPage() {
           </Card>
         </div>
 
-        <div className="space-y-4 overflow-y-auto overflow-x-hidden min-w-0 min-h-0 xl:border-l border-border/50 bg-card/30 px-4 pb-5 pt-0 sm:px-5 order-1 xl:order-2">
+        <div className="space-y-4 min-w-0 xl:border-l border-border/50 bg-card/30 px-4 pb-5 pt-0 sm:px-5 order-1 xl:order-2">
           <Card className="border-blue-100 bg-gradient-to-br from-blue-50 to-sky-50 dark:border-blue-900 dark:from-blue-950/50 dark:to-sky-950/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">

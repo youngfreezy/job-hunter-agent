@@ -9,6 +9,14 @@ const nextConfig = {
   distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
   output: "standalone",
   reactStrictMode: true,
+  async redirects() {
+    // Old auth paths still linked from emails and bookmarks. Query strings carry over.
+    return [
+      { source: "/login", destination: "/auth/login", permanent: true },
+      { source: "/register", destination: "/auth/signup", permanent: true },
+      { source: "/auth/signin", destination: "/auth/login", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

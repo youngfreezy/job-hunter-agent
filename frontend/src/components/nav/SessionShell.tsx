@@ -9,9 +9,9 @@ export function SessionShell({ children }: { children: React.ReactNode }) {
   const { id } = useParams<{ id: string }>();
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
+    <div className="min-h-screen bg-background flex flex-col">
       <SessionNav sessionId={id} />
-      <div className="flex-1 flex flex-col min-h-0">{children}</div>
+      <div className="flex-1 flex flex-col">{children}</div>
     </div>
   );
 }
