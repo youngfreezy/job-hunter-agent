@@ -103,6 +103,12 @@ def _stagehand(page, decisions):
     agent = MagicMock()
     stage_page = MagicMock()
     stage_page.url = AsyncMock(side_effect=lambda: page.url)
+    stage_page.file_input = MagicMock(count=AsyncMock(return_value=0), set_input_files=AsyncMock())
+    stage_page.control = MagicMock(count=AsyncMock(return_value=1), is_visible=AsyncMock(return_value=True))
+    stage_page.locator.side_effect = lambda selector: stage_page.file_input if selector == 'input[type="file"]' else stage_page.control
+    stage_page.snapshot = AsyncMock(return_value=SimpleNamespace(
+        formatted_tree='[1-1] button: Edit resume',
+        xpath_map={'1-1': 'observed-resume-control'}))
     agent.browser.context.active_page = AsyncMock(return_value=stage_page)
     agent.extract = AsyncMock(side_effect=[SimpleNamespace(data=indeed_mod.NextStep(**d)) for d in decisions])
     agent.act = AsyncMock(return_value=SimpleNamespace(data=SimpleNamespace(success=True)))
@@ -166,8 +172,8 @@ async def test_natural_actions_upload_and_single_submit_need_receipt(monkeypatch
 @pytest.mark.asyncio
 async def test_hidden_file_input_is_reported_to_stagehand(monkeypatch):
     page = _page('https://smartapply.indeed.com/form/resume')
-    page.query_selector_all.return_value = [MagicMock()]
     agent = _stagehand(page, [dict(kind='park', instruction='', reason='Required answer missing')])
+    agent.browser.context.active_page.return_value.file_input.count.return_value = 1
     await IndeedApplier(page, 's1', stagehand=agent).run(
         job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert 'including hidden inputs): 1' in agent.extract.await_args.args[0]
@@ -221,8 +227,8 @@ async def test_prefilled_unknown_answer_blocks_final_submit_even_after_upload(mo
 @pytest.mark.asyncio
 async def test_resume_step_uploads_hidden_input_before_model_can_continue(monkeypatch):
     page = _page('https://smartapply.indeed.com/form/resume-selection-module/resume-selection')
-    page.query_selector_all.return_value = [MagicMock()]
     agent = _stagehand(page, [dict(kind='park', instruction='', reason='Missing field')])
+    agent.browser.context.active_page.return_value.file_input.count.return_value = 1
     applier = IndeedApplier(page, 's1', stagehand=agent)
     upload = AsyncMock()
     monkeypatch.setattr(applier, '_upload_original', upload)
@@ -246,11 +252,18 @@ async def test_receipt_cannot_be_job_description_or_visible_submit():
 @pytest.mark.asyncio
 async def test_upload_uses_saved_original_bytes(monkeypatch):
     page = _page()
-    field = MagicMock(set_input_files=AsyncMock())
-    page.query_selector_all = AsyncMock(return_value=[field])
+    agent = _stagehand(page, [])
+    native_page = agent.browser.context.active_page.return_value
+    native_page.file_input.count.return_value = 1
     monkeypatch.setattr(indeed_mod, 'get_resume_bytes', lambda session: (b'canonical pdf', '.pdf'))
-    await IndeedApplier(page, 's1')._upload_original()
-    assert field.set_input_files.await_args.args[0]['buffer'] == b'canonical pdf'
+    await IndeedApplier(page, 's1', stagehand=agent)._upload_original(native_page)
+    payload = native_page.file_input.set_input_files.await_args.args[0]
+    from stagehand import FilePayload
+    assert isinstance(payload, FilePayload)
+    assert payload.buffer == b'canonical pdf'
+    assert payload.mime_type == 'application/pdf'
+    page.query_selector_all.assert_not_awaited()
+
 
 
 # ---------------------------------------------------------------------------
@@ -388,13 +401,12 @@ async def test_repeated_ineffective_action_still_has_bounded_stop(monkeypatch):
 async def test_direct_review_opens_visible_resume_edit_then_requires_fresh_upload(monkeypatch):
     from types import SimpleNamespace
     page = _page('https://smartapply.indeed.com/form/review')
-    control = SimpleNamespace(is_visible=AsyncMock(return_value=True), evaluate=AsyncMock(return_value='Edit Edit resume'))
-    page.locator = MagicMock(return_value=control)
     from stagehand import Action
     observed = Action(method='click', description='Click Edit resume', selector='observed-resume-control', arguments=[])
     agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k,i in [
         ('submit', 'Submit application'), ('upload', ''), ('submit', 'Submit application')]])
     agent.observe.return_value.data = [observed]
+    control = agent.browser.context.active_page.return_value.control
     applier = IndeedApplier(page, 's1', stagehand=agent)
     upload = AsyncMock()
     monkeypatch.setattr(applier, '_upload_original', upload)
@@ -417,7 +429,6 @@ async def test_direct_review_opens_visible_resume_edit_then_requires_fresh_uploa
 async def test_direct_review_resume_recovery_is_one_attempt_only(monkeypatch):
     from types import SimpleNamespace
     page = _page('https://smartapply.indeed.com/form/review')
-    page.locator = MagicMock(return_value=SimpleNamespace(is_visible=AsyncMock(return_value=True), evaluate=AsyncMock(return_value='Edit resume')))
     agent = _stagehand(page, [dict(kind='submit', instruction='Submit application', reason='')] * 2)
     observed = SimpleNamespace(method='click', description='Click Edit resume', selector='observed-resume-control')
     agent.observe.return_value.data = [observed]
@@ -432,9 +443,9 @@ async def test_direct_review_resume_recovery_is_one_attempt_only(monkeypatch):
 async def test_direct_review_cannot_click_hidden_resume_edit(monkeypatch):
     from types import SimpleNamespace
     page = _page('https://smartapply.indeed.com/form/review')
-    page.locator = MagicMock(return_value=SimpleNamespace(is_visible=AsyncMock(return_value=False)))
     agent = _stagehand(page, [dict(kind='submit', instruction='Submit application', reason='')])
     agent.observe.return_value.data = [SimpleNamespace(method='click', description='Click Edit resume', selector='hidden-control')]
+    agent.browser.context.active_page.return_value.control.is_visible.return_value = False
     result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
     agent.act.assert_not_awaited()
@@ -445,30 +456,48 @@ async def test_direct_review_cannot_click_hidden_resume_edit(monkeypatch):
 async def test_resume_recovery_rejects_submit_other_fields_and_non_clicks(monkeypatch, method, label):
     from types import SimpleNamespace
     page = _page('https://smartapply.indeed.com/form/review')
-    page.locator = MagicMock(return_value=SimpleNamespace(is_visible=AsyncMock(return_value=True), evaluate=AsyncMock(return_value=label)))
     agent = _stagehand(page, [dict(kind='submit', instruction='Submit application', reason='')])
     agent.observe.return_value.data = [SimpleNamespace(method=method, description='Edit resume', selector='observed-control')]
+    agent.browser.context.active_page.return_value.snapshot.return_value = SimpleNamespace(
+        formatted_tree=f'[1-1] button: {label}', xpath_map={'1-1': 'observed-control'})
     result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
     agent.act.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
 
 
-def test_observed_resume_locator_traverses_frames_in_stagehand_xpath():
-    page = MagicMock()
-    nested = page.frame_locator.return_value
-    control = indeed_mod._observed_control(page, 'xpath=/html[1]/body[1]/iframe[1]/html[1]/body[1]/button[1]')
-    page.frame_locator.assert_called_once_with('xpath=/html[1]/body[1]/iframe[1]')
-    nested.locator.assert_called_once_with('xpath=/html[1]/body[1]/button[1]')
-    assert control is nested.locator.return_value
+@pytest.mark.asyncio
+async def test_observed_iframe_selector_is_delegated_unchanged_to_native_stagehand():
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form/review')
+    selector = 'xpath=/html[1]/body[1]/iframe[1]/html[1]/body[1]/button[1]'
+    agent = _stagehand(page, [dict(kind='submit', instruction='Submit application', reason='')] * 2)
+    native_page = agent.browser.context.active_page.return_value
+    native_page.snapshot.return_value = SimpleNamespace(
+        formatted_tree='[11-2319] button: Edit resume\n  [11-2320] StaticText: Edit',
+        xpath_map={'11-2319': selector.removeprefix('xpath=')})
+    observed = SimpleNamespace(method='click', description='Click Edit resume', selector=selector)
+    agent.observe.return_value.data = [observed]
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.SKIPPED  # fresh upload still required
+    native_page.locator.assert_any_call(selector)
+    agent.act.assert_awaited_once_with(observed, page=native_page, timeout=45000)
+    native_page.snapshot.assert_awaited_once_with(include_iframes=True)
     page.locator.assert_not_called()
-
-
-def test_observed_resume_locator_without_frames_preserves_selector():
-    page = MagicMock()
-    assert indeed_mod._observed_control(page, 'xpath=/html[1]/body[1]/button[1]') is page.locator.return_value
-    page.locator.assert_called_once_with('xpath=/html[1]/body[1]/button[1]')
     page.frame_locator.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('count', [0, 2])
+async def test_native_upload_requires_unique_file_input(monkeypatch, count):
+    from backend.shared.application_rules import ApplicationParked
+    agent = _stagehand(_page(), [])
+    native_page = agent.browser.context.active_page.return_value
+    native_page.file_input.count.return_value = count
+    monkeypatch.setattr(indeed_mod, 'get_resume_bytes', lambda session: (b'pdf', '.pdf'))
+    with pytest.raises(ApplicationParked):
+        await IndeedApplier(_page(), 's1', stagehand=agent)._upload_original(native_page)
+    native_page.file_input.set_input_files.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -572,3 +601,33 @@ async def test_visible_frame_read_failure_blocks_final_audit(monkeypatch):
     with pytest.raises(RuntimeError, match='detached'):
         await _check_answer_with_frames(IndeedApplier(page, 's1'), 'Submit', '{}', review=True)
     checker.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_upload_payload_serializes_through_installed_stagehand_sdk(monkeypatch):
+    import base64
+    from stagehand.locator import Locator
+    agent = _stagehand(_page(), [])
+    native_page = agent.browser.context.active_page.return_value
+    rpc = MagicMock(send=AsyncMock(side_effect=[1, None]))
+    native_page.locator.side_effect = lambda selector: Locator(rpc, page_id='native-tab', selector=selector)
+    monkeypatch.setattr(indeed_mod, 'get_resume_bytes', lambda session: (b'canonical pdf', '.pdf'))
+    await IndeedApplier(_page(), 's1', stagehand=agent)._upload_original(native_page)
+    method, params, _ = rpc.send.await_args.args
+    assert method == 'locator.set_input_files'
+    assert params.page_id == 'native-tab'
+    assert params.selector == 'input[type="file"]'
+    assert params.files[0].name == 'Resume.pdf'
+    assert params.files[0].mime_type == 'application/pdf'
+    assert base64.b64decode(params.files[0].data) == b'canonical pdf'
+
+
+@pytest.mark.parametrize('tree,paths', [
+    ('[1-1] button: Edit resume', {'1-1': 'other-control'}),
+    ('[1-1] button: Edit resume\n[1-2] button: Edit resume',
+     {'1-1': 'control', '1-2': 'control'}),
+])
+def test_resume_label_requires_unique_snapshot_match(tree, paths):
+    from types import SimpleNamespace
+    assert indeed_mod._snapshot_control_label(SimpleNamespace(
+        formatted_tree=tree, xpath_map=paths), 'control') == ''
