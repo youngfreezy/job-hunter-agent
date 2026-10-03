@@ -131,11 +131,11 @@ def record_result(
 def check_already_applied(
     job_id: str, user_id: Optional[str] = None, job_url: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
-    """Check if this job was already successfully submitted by this user.
+    """Check for a submitted or uncertain submission by this user.
 
     Returns the prior application record if found, None otherwise.
-    Only matches ``submitted`` status — failed, skipped, and pending results
-    should not block re-attempts (pending is handled by clear_pending).
+    A possible submission remains on hold until its result is reconciled.
+    Ordinary failed, skipped, and pending results do not block re-attempts.
     Checks both by job_id and by job_url (for backward compat with old random IDs).
     """
     try:
@@ -144,9 +144,9 @@ def check_already_applied(
             if user_id:
                 cur = conn.execute(
                     """
-                    SELECT session_id, job_title, job_company, created_at
+                    SELECT session_id, job_title, job_company, created_at, status, error_category
                     FROM application_results
-                    WHERE job_id = %s AND user_id = %s AND status = 'submitted'
+                    WHERE job_id = %s AND user_id = %s AND (status = 'submitted' OR error_category = 'submission_uncertain')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -155,9 +155,9 @@ def check_already_applied(
             else:
                 cur = conn.execute(
                     """
-                    SELECT session_id, job_title, job_company, created_at
+                    SELECT session_id, job_title, job_company, created_at, status, error_category
                     FROM application_results
-                    WHERE job_id = %s AND status = 'submitted'
+                    WHERE job_id = %s AND (status = 'submitted' OR error_category = 'submission_uncertain')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -170,15 +170,17 @@ def check_already_applied(
                     "job_title": row[1],
                     "job_company": row[2],
                     "applied_at": row[3].isoformat() if row[3] else None,
+                    "status": row[4],
+                    "error_category": row[5],
                 }
 
             # Fallback: check by URL (handles old records with random UUIDs)
             if job_url and user_id:
                 cur = conn.execute(
                     """
-                    SELECT session_id, job_title, job_company, created_at
+                    SELECT session_id, job_title, job_company, created_at, status, error_category
                     FROM application_results
-                    WHERE job_url = %s AND user_id = %s AND status = 'submitted'
+                    WHERE job_url = %s AND user_id = %s AND (status = 'submitted' OR error_category = 'submission_uncertain')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -191,6 +193,8 @@ def check_already_applied(
                         "job_title": row[1],
                         "job_company": row[2],
                         "applied_at": row[3].isoformat() if row[3] else None,
+                        "status": row[4],
+                        "error_category": row[5],
                     }
 
             return None

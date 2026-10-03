@@ -872,13 +872,13 @@ async def _apply_to_job(
     except Exception:
         pass  # Don't block on URL parse errors
 
-    # Pre-flight: skip jobs already submitted by this user (checks by ID and URL)
-    # Quick Apply sessions bypass this — user explicitly provided URLs
+    # Pre-flight: never repeat a confirmed or uncertain submission, including Quick Apply.
+    # Providing a URL does not authorize submitting the same application again.
     _app_cfg = state.get("session_config") or {}
     _app_cfg = _app_cfg if isinstance(_app_cfg, dict) else (_app_cfg.model_dump() if hasattr(_app_cfg, "model_dump") else {})
     _is_quick_apply = _app_cfg.get("discovery_mode") == "manual_urls"
 
-    prior = check_already_applied(job_id, user_id=user_id, job_url=job.url) if not _is_quick_apply else None
+    prior = check_already_applied(job_id, user_id=user_id, job_url=job.url)
     if prior:
         raw_at = prior.get("applied_at", "")
         try:
@@ -886,7 +886,11 @@ async def _apply_to_job(
             applied_at = _dt.fromisoformat(raw_at).strftime("%b %d, %Y at %I:%M %p")
         except Exception:
             applied_at = raw_at or "unknown date"
-        msg = f"Already applied on {applied_at}"
+        uncertain = prior.get("error_category") == ApplicationErrorCategory.SUBMISSION_UNCERTAIN.value
+        category = ApplicationErrorCategory.SUBMISSION_UNCERTAIN if uncertain else None
+        msg = ("A previous submission could not be verified. Check the employer or Indeed "
+               "and reconcile its result before applying again." if uncertain
+               else f"Already applied on {applied_at}")
         logger.info("Duplicate skipped: %s — %s", job.title, msg)
         await emit_agent_event(session_id, "application_progress", {
             "job_id": job_id,
@@ -902,12 +906,14 @@ async def _apply_to_job(
             job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
             job_location=job.location or "",
             error_message=f"duplicate: {msg}",
+            error_category=category.value if category else None,
             user_id=user_id,
         )
         return ApplicationResult(
             job_id=job_id,
             status=ApplicationStatus.SKIPPED,
             error_message=f"duplicate: {msg}",
+            error_category=category,
             duration_seconds=int(time.monotonic() - start_time),
         )
 

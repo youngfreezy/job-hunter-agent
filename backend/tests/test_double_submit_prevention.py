@@ -228,3 +228,19 @@ class TestFullLifecycle:
 
         # Should NOT block — failed allows retry
         assert check_already_applied(job_id, user_id=user_id) is None
+
+
+@pytest.mark.parametrize("lookup_by_url", [False, True])
+def test_uncertain_submission_blocks_new_session_until_reconciled(_db_identity, lookup_by_url):
+    session_id, user_id = _db_identity
+    job_id = _unique_id()
+    url = f"https://www.indeed.com/viewjob?jk={job_id}"
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id,
+                  job_url=url, status="failed", error_category="submission_uncertain",
+                  error_message="Submit clicked but receipt not verified")
+    prior = check_already_applied(_unique_id() if lookup_by_url else job_id,
+                                 user_id=user_id, job_url=url)
+    assert prior is not None
+    assert prior["error_category"] == "submission_uncertain"
+    assert prior["status"] == "failed"
+    assert check_already_applied(job_id, user_id=str(uuid.uuid4()), job_url=url) is None
