@@ -55,6 +55,7 @@ class ATSType(str, Enum):
     ICIMS = "icims"
     TALEO = "taleo"
     LINKEDIN = "linkedin"
+    INDEED = "indeed"  # Indeed Apply on a logged-in context (appliers/indeed.py)
     UNKNOWN = "unknown"
 
 
@@ -135,6 +136,10 @@ class JobListing(BaseModel):
     is_easy_apply: bool = False
     external_apply_url: Optional[str] = None  # Direct ATS URL (e.g. boards.greenhouse.io/...)
     discovered_at: datetime = Field(default_factory=datetime.utcnow)
+    # Browserbase Fetch verifier verdict (backend/browser/fetch_verifier.py):
+    # True only when the page was fetched, is not closed and shows an Apply control.
+    verified_open: bool = False
+    verify_note: str = ""  # what decided the verdict, or why it was not checked
 
 
 class ScoredJob(BaseModel):

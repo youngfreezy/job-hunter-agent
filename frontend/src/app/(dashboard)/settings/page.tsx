@@ -7,8 +7,37 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { LiveBrowserPanel } from "@/components/LiveBrowserPanel";
 
-import { API_BASE, getAuthHeaders, apiFetch, updateMinimumSubmitted } from "@/lib/api";
+import {
+  API_BASE,
+  getAuthHeaders,
+  apiFetch,
+  updateApplicationRules,
+  updateMinimumSubmitted,
+  getBrowserbaseSettings,
+  saveBrowserbaseSettings,
+  startBrowserbaseLogin,
+  getBrowserbaseLogin,
+  cancelBrowserbaseLogin,
+  type BrowserbaseSettings,
+  type BrowserbaseLoginSession,
+} from "@/lib/api";
+
+const BROWSERBASE_BOARD_LABELS: Record<string, string> = {
+  indeed: "Indeed",
+  glassdoor: "Glassdoor",
+  ziprecruiter: "ZipRecruiter",
+  default: "Default (any other board)",
+};
+
+const APPLICATION_RULES_MAX = 20000;
+
+const APPLICATION_RULES_PLACEHOLDER = `Eligibility: remote (US) or Austin, TX only. Senior/Staff level. Python or TypeScript stacks. Base pay at least $180k.
+Standard answers: work authorization = yes, sponsorship = no, how did you hear = job board.
+Park and ask me: any question aimed at AI tools or agents, "write this in your own words" essays, any attestation that no AI was used.
+Never invent facts about me that are not in my resume.`;
 
 export default function SettingsPage() {
   const [phone, setPhone] = useState("");
@@ -27,6 +56,17 @@ export default function SettingsPage() {
   const [isPremium, setIsPremium] = useState(false);
   const [minimumSubmitted, setMinimumSubmitted] = useState(0);
   const [savingMinSubmitted, setSavingMinSubmitted] = useState(false);
+  const [browserbase, setBrowserbase] = useState<BrowserbaseSettings | null>(null);
+  const [bbApiKey, setBbApiKey] = useState("");
+  const [bbProjectId, setBbProjectId] = useState("");
+  const [bbProxies, setBbProxies] = useState(false);
+  const [bbContextIds, setBbContextIds] = useState<Record<string, string>>({});
+  const [savingBrowserbase, setSavingBrowserbase] = useState(false);
+  const [loginSession, setLoginSession] = useState<BrowserbaseLoginSession | null>(null);
+  const [startingLogin, setStartingLogin] = useState<string | null>(null);
+  const [applicationRules, setApplicationRules] = useState("");
+  const [savedApplicationRules, setSavedApplicationRules] = useState("");
+  const [savingRules, setSavingRules] = useState(false);
 
 
   useEffect(() => {
@@ -43,6 +83,8 @@ export default function SettingsPage() {
           setBlockedCompanies(user.blocked_companies || []);
           setIsPremium(user.is_premium || false);
           setMinimumSubmitted(user.minimum_submitted_applications || 0);
+          setApplicationRules(user.application_rules || "");
+          setSavedApplicationRules(user.application_rules || "");
           if (user.phone_verified) {
             setVerifyStep("done");
             setPhone(user.phone_number || "");
@@ -52,10 +94,41 @@ export default function SettingsPage() {
         console.error("Failed to load user settings");
       }
 
+      try {
+        const bb = await getBrowserbaseSettings();
+        setBrowserbase(bb);
+        setBbProjectId(bb.project_id || "");
+        setBbProxies(bb.proxies);
+        setBbContextIds(bb.context_ids || {});
+      } catch {
+        console.error("Failed to load Browserbase settings");
+      }
+
       setLoading(false);
     }
     load();
   }, []);
+
+  // Poll an in-flight "Sign in to <board>" capture until the backend stores the Context.
+  useEffect(() => {
+    if (!loginSession || loginSession.status !== "waiting") return;
+    const captureId = loginSession.capture_id;
+    const timer = setInterval(async () => {
+      try {
+        const next = await getBrowserbaseLogin(captureId);
+        setLoginSession(next);
+        if (next.status === "captured" && next.context_id) {
+          setBbContextIds((prev) => ({ ...prev, [next.board]: next.context_id as string }));
+          toast.success(`${BROWSERBASE_BOARD_LABELS[next.board] || next.board} login saved to a persisted Context`);
+        } else if (next.status === "timeout" || next.status === "error") {
+          toast.error(next.error || `Login capture ${next.status}`);
+        }
+      } catch {
+        // transient; keep polling
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [loginSession]);
 
   async function handleSendCode() {
     if (!phone.trim()) return;
@@ -162,6 +235,87 @@ export default function SettingsPage() {
       toast.error("Failed to save minimum submitted preference");
     } finally {
       setSavingMinSubmitted(false);
+    }
+  }
+
+  async function handleSaveBrowserbase() {
+    setSavingBrowserbase(true);
+    try {
+      const saved = await saveBrowserbaseSettings({
+        ...(bbApiKey.trim() ? { api_key: bbApiKey.trim() } : {}),
+        project_id: bbProjectId.trim(),
+        proxies: bbProxies,
+        context_ids: bbContextIds,
+      });
+      setBrowserbase(saved);
+      setBbContextIds(saved.context_ids || {});
+      setBbApiKey("");
+      toast.success("Browserbase settings saved");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save Browserbase settings");
+    } finally {
+      setSavingBrowserbase(false);
+    }
+  }
+
+  async function handleClearBrowserbaseKey() {
+    setSavingBrowserbase(true);
+    try {
+      const saved = await saveBrowserbaseSettings({
+        api_key: "",
+        project_id: bbProjectId.trim(),
+        proxies: bbProxies,
+        context_ids: bbContextIds,
+      });
+      setBrowserbase(saved);
+      setBbApiKey("");
+      toast.success("Browserbase API key removed");
+    } catch {
+      toast.error("Failed to remove Browserbase API key");
+    } finally {
+      setSavingBrowserbase(false);
+    }
+  }
+
+  async function handleStartBrowserbaseLogin(board: string) {
+    setStartingLogin(board);
+    try {
+      const session = await startBrowserbaseLogin(board);
+      setLoginSession(session);
+      toast.info(`Sign in to ${BROWSERBASE_BOARD_LABELS[board] || board} in the live browser below`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to start login session");
+    } finally {
+      setStartingLogin(null);
+    }
+  }
+
+  async function handleCancelBrowserbaseLogin() {
+    if (!loginSession) return;
+    try {
+      await cancelBrowserbaseLogin(loginSession.capture_id);
+    } catch {
+      // the capture times out on its own
+    }
+    setLoginSession(null);
+  }
+
+  async function handleSaveApplicationRules() {
+    const rules = applicationRules.trim();
+    if (rules.length > APPLICATION_RULES_MAX) {
+      toast.error(`Rules must be at most ${APPLICATION_RULES_MAX.toLocaleString()} characters`);
+      return;
+    }
+    setSavingRules(true);
+    try {
+      const saved = await updateApplicationRules(rules);
+      setApplicationRules(saved.application_rules);
+      setSavedApplicationRules(saved.application_rules);
+      toast.success(saved.application_rules ? "Application rules saved" : "Application rules cleared");
+    } catch {
+      toast.error("Failed to save application rules");
+    } finally {
+      setSavingRules(false);
     }
   }
 
@@ -345,6 +499,180 @@ export default function SettingsPage() {
               No companies blocked. Jobs from all companies will appear in your results.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Application rules */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Application Rules</CardTitle>
+          <CardDescription>
+            Plain-text rules the agent must obey when scoring jobs and filling forms: eligibility
+            (location, seniority, stack, pay), standard answers, and when to park an application
+            for you instead of answering. Applied to all sessions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Textarea
+            id="application-rules"
+            aria-label="Application rules"
+            value={applicationRules}
+            onChange={(e) => setApplicationRules(e.target.value)}
+            placeholder={APPLICATION_RULES_PLACEHOLDER}
+            rows={10}
+            maxLength={APPLICATION_RULES_MAX}
+            disabled={savingRules}
+            className="font-mono text-sm"
+          />
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-muted-foreground">
+              {applicationRules.length.toLocaleString()} / {APPLICATION_RULES_MAX.toLocaleString()} characters.
+              A parked application shows up as skipped with the exact question in its error.
+            </p>
+            <Button
+              onClick={handleSaveApplicationRules}
+              disabled={savingRules || applicationRules.trim() === savedApplicationRules}
+              size="sm"
+            >
+              {savingRules ? "Saving..." : "Save rules"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Browserbase cloud browsers */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Browserbase</CardTitle>
+          <CardDescription>
+            Cloud browsers for applying (BROWSER_MODE=browserbase). Your key is stored encrypted and
+            never shown again. Sign in to a job board once; the login is kept in a persisted Context
+            that every later session reuses.
+            {browserbase?.env_configured && !browserbase?.api_key_set && (
+              <> A server-wide key is configured and will be used until you save your own.</>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">API key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={bbApiKey}
+                onChange={(e) => setBbApiKey(e.target.value)}
+                placeholder={browserbase?.api_key_set ? `saved (${browserbase.api_key_hint})` : "bb_live_…"}
+                className="w-full rounded-md border px-3 py-2 text-sm bg-background font-mono"
+                disabled={savingBrowserbase}
+              />
+              {browserbase?.api_key_set && (
+                <button
+                  type="button"
+                  onClick={handleClearBrowserbaseKey}
+                  disabled={savingBrowserbase}
+                  className="text-xs text-muted-foreground underline"
+                >
+                  Remove saved key
+                </button>
+              )}
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Project id</span>
+              <input
+                type="text"
+                value={bbProjectId}
+                onChange={(e) => setBbProjectId(e.target.value)}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                className="w-full rounded-md border px-3 py-2 text-sm bg-background font-mono"
+                disabled={savingBrowserbase}
+              />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={bbProxies}
+              onChange={(e) => setBbProxies(e.target.checked)}
+              disabled={savingBrowserbase}
+              className="accent-primary"
+            />
+            <span>Use Browserbase residential proxies (paid plans; needed for Indeed at volume)</span>
+          </label>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Persisted login Contexts</p>
+            <p className="text-xs text-muted-foreground">
+              One Context id per board. Use &quot;Sign in&quot; to create one by logging in yourself,
+              or paste an id from the Browserbase dashboard.
+            </p>
+            <div className="space-y-2">
+              {(browserbase?.boards || Object.keys(BROWSERBASE_BOARD_LABELS)).map((board) => {
+                const canCapture = (browserbase?.login_capture_boards || []).includes(board);
+                const capturing = loginSession?.board === board && loginSession.status === "waiting";
+                return (
+                  <div key={board} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <span className="w-full sm:w-44 text-sm">{BROWSERBASE_BOARD_LABELS[board] || board}</span>
+                    <input
+                      type="text"
+                      value={bbContextIds[board] || ""}
+                      onChange={(e) =>
+                        setBbContextIds((prev) => ({ ...prev, [board]: e.target.value }))
+                      }
+                      placeholder="context id"
+                      aria-label={`${BROWSERBASE_BOARD_LABELS[board] || board} context id`}
+                      className="flex-1 rounded-md border px-3 py-2 text-sm bg-background font-mono"
+                      disabled={savingBrowserbase}
+                    />
+                    {canCapture && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleStartBrowserbaseLogin(board)}
+                        disabled={
+                          startingLogin !== null || capturing || !browserbase?.effective_configured
+                        }
+                      >
+                        {capturing ? "Waiting for login…" : `Sign in to ${BROWSERBASE_BOARD_LABELS[board] || board}`}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {loginSession && (
+            <div className="space-y-2">
+              {loginSession.live_view_url && loginSession.status === "waiting" ? (
+                <LiveBrowserPanel
+                  liveView={{
+                    url: loginSession.live_view_url,
+                    provider: "browserbase",
+                    browserbaseSessionId: loginSession.browserbase_session_id,
+                    jobId: "",
+                    receivedAt: new Date().toISOString(),
+                  }}
+                  jobLabel={`sign in to ${BROWSERBASE_BOARD_LABELS[loginSession.board] || loginSession.board}`}
+                  onHide={handleCancelBrowserbaseLogin}
+                />
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                {loginSession.status === "waiting" &&
+                  "Log in inside the browser above. Once the board's login cookie appears the browser closes and the Context id is filled in."}
+                {loginSession.status === "captured" && "Login captured. Save to keep the Context id."}
+                {(loginSession.status === "timeout" || loginSession.status === "error") &&
+                  (loginSession.error || `Login capture ${loginSession.status}.`)}
+                {loginSession.status === "cancelled" && "Login capture cancelled."}
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button onClick={handleSaveBrowserbase} disabled={savingBrowserbase} size="sm">
+              {savingBrowserbase ? "Saving..." : "Save Browserbase settings"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

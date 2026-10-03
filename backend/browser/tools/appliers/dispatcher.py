@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from backend.browser.tools.appliers.ashby import AshbyApplier
 from backend.browser.tools.appliers.generic import GenericApplier
 from backend.browser.tools.appliers.greenhouse import GreenhouseApplier
+from backend.browser.tools.appliers.indeed import IndeedApplier
 from backend.browser.tools.appliers.lever import LeverApplier
 from backend.browser.tools.ats_detector import detect_ats_from_url
 from backend.shared.models.schemas import (
@@ -30,6 +31,7 @@ _APPLIER_MAP = {
     ATSType.GREENHOUSE: GreenhouseApplier,
     ATSType.LEVER: LeverApplier,
     ATSType.ASHBY: AshbyApplier,
+    ATSType.INDEED: IndeedApplier,  # needs a logged-in Browserbase Context
 }
 
 
@@ -41,11 +43,14 @@ async def apply_with_playwright(
     resume_file_path: Optional[str],
     session_id: str,
     page: Any,
+    application_rules: str = "",
 ) -> ApplicationResult:
     """Apply to a job using Playwright browser automation + Claude Haiku.
 
     Drop-in replacement for apply_with_skyvern(). Routes to the correct
     ATS-specific applier based on the job URL, falling back to GenericApplier.
+    *application_rules* is the owner's free-text policy, forwarded to the
+    form filler prompt.
     """
     # Detect ATS from current page URL (may have redirected from original)
     url = page.url if hasattr(page, "url") else job.url
@@ -59,7 +64,7 @@ async def apply_with_playwright(
         job.title, job.company, applier_cls.__name__, ats_type,
     )
 
-    applier = applier_cls(page, session_id)
+    applier = applier_cls(page, session_id, application_rules=application_rules)
     return await applier.run(
         job=job,
         user_profile=user_profile,

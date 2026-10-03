@@ -552,6 +552,21 @@ def _find_job_in_state(job_id: str, state: JobHunterState) -> Optional[JobListin
     return None
 
 
+def _board_login_available(board: Any, user_id: Optional[str]) -> bool:
+    """True when a persisted Browserbase Context holds a login for *board*.
+
+    Only then can a board-hosted apply flow (Indeed Apply) run; otherwise the
+    job is skipped as auth_required before any navigation.
+    """
+    if get_settings().BROWSER_MODE != "browserbase":
+        return False
+    key = str(getattr(board, "value", board) or "").lower()
+    if not key:
+        return False
+    from backend.browser import browserbase_client as _bbc
+    return bool(_bbc.config_for_user(user_id).context_ids.get(key))
+
+
 def _is_login_page(url: str) -> bool:
     """Return True if the URL looks like a login/authentication page."""
     url_lower = url.lower()
@@ -849,8 +864,9 @@ async def _apply_to_job(
                 duration_seconds=int(time.monotonic() - start_time),
             )
 
-    # Pre-flight: skip "Easy Apply" jobs (need board login)
-    if getattr(job, "is_easy_apply", False):
+    # Pre-flight: skip "Easy Apply" jobs (need board login) unless this user
+    # has a persisted Browserbase login for the board.
+    if getattr(job, "is_easy_apply", False) and not _board_login_available(job.board, user_id):
         logger.info("Easy Apply job — skipping %s (needs %s login)", job.title, job.board.value)
         await emit_agent_event(session_id, "application_progress", {
             "job_id": job_id,
@@ -878,6 +894,9 @@ async def _apply_to_job(
                     job.title, job.url[:60], job.external_apply_url[:60],
                 )
                 job.url = job.external_apply_url
+            elif _host.endswith("indeed.com") and _board_login_available("indeed", user_id):
+                # Persisted Indeed login: stay on the board and use Indeed Apply.
+                logger.info("Indeed URL with persisted login — using Indeed Apply for %s", job.title)
             else:
                 _board_label = next((d.split(".")[0].title() for d in _BOARD_GATED_DOMAINS if _host.endswith(d)), "Board")
                 logger.info("Board-gated URL — skipping %s (%s requires login, no external link)", job.title, _board_label)
@@ -1265,6 +1284,7 @@ async def _apply_to_job(
             })
 
             from backend.browser.tools.appliers.dispatcher import apply_with_playwright
+            from backend.shared.application_rules import load_application_rules
             result = await apply_with_playwright(
                 job=job,
                 user_profile=user_profile,
@@ -1273,6 +1293,7 @@ async def _apply_to_job(
                 resume_file_path=resume_file,
                 session_id=session_id,
                 page=page,
+                application_rules=load_application_rules(user_id),
             )
 
         finally:
@@ -1718,6 +1739,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 board=job.board,
                 purpose="apply",
                 headless=settings.BROWSER_HEADLESS,
+                user_id=state.get("user_id"),
             )
             _, context = await manager.new_context()
             if manager.live_view_url:

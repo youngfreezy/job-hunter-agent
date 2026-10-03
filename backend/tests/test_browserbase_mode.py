@@ -124,7 +124,9 @@ async def test_manager_start_for_task_uses_browserbase_and_releases_on_stop(monk
         fake_context.route.assert_awaited_once()  # media blocking installed
 
         await mgr.stop()
-        release.assert_awaited_once_with("sess-9")
+        release.assert_awaited_once()
+        assert release.await_args.args[0] == "sess-9"
+        assert release.await_args.kwargs["config"].api_key == "bb_live_test"
         assert mgr.browserbase_session_id is None
 
 
@@ -145,5 +147,6 @@ async def test_manager_releases_session_if_cdp_connect_fails():
         mgr = BrowserManager()
         with pytest.raises(RuntimeError):
             await mgr.start_browserbase()
-        release.assert_awaited_once_with("sess-x")
+        release.assert_awaited_once()
+        assert release.await_args.args[0] == "sess-x"
         assert mgr.browserbase_session_id is None

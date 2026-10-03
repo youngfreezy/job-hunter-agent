@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # URL-pattern -> ATS type mapping
 _URL_PATTERNS = [
     (re.compile(r"linkedin\.com/jobs", re.I), ATSType.LINKEDIN),
+    (re.compile(r"(^|[./])indeed\.com/", re.I), ATSType.INDEED),
     (re.compile(r"myworkday(jobs)?\.com|workday\.com", re.I), ATSType.WORKDAY),
     (re.compile(r"greenhouse\.io|boards\.greenhouse", re.I), ATSType.GREENHOUSE),
     (re.compile(r"lever\.co|jobs\.lever", re.I), ATSType.LEVER),

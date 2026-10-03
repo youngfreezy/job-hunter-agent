@@ -68,8 +68,8 @@ Self-improvement: EvoAgentX optimizes prompts based on session outcomes
 ## Quick Start
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
+- Python 3.11 or 3.12 (CI runs both; the Docker image uses 3.11)
+- Node.js 20+
 - Docker (for Postgres + Redis)
 
 ### Setup
@@ -98,6 +98,16 @@ npm start
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+### Tests
+
+```bash
+# Backend (from the repo root; Postgres-backed tests skip with a reason when no DB is up)
+python -m pytest backend/tests -q
+
+# Frontend unit tests, lint, typecheck, production build
+cd frontend && npm test && npx next lint && npx tsc --noEmit && npm run build
+```
 
 ### Environment Variables
 

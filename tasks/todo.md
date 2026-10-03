@@ -10,26 +10,27 @@
       myjobs.indeed.com/saved signed in through the persisted Indeed context (PPID cookie present).
 - [x] Repo boots locally: uv venv (Python 3.12), docker compose postgres+redis, 159 unit tests pass.
 
-## Next (cloud agent)
-- [ ] Fix the 5 failing tests in tests/test_gmail_persistence.py (redis mock) and the 8 errors in
+## Next (cloud agent) — worked 2026-10-03, see tasks/review.md
+- [x] Fix the 5 failing tests in tests/test_gmail_persistence.py (redis mock) and the 8 errors in
       tests/test_double_submit_prevention.py (DB fixture). Both predate this work.
-- [ ] Application policy: a free-text "application rules" field per user (model + alembic migration +
+- [x] Application policy: a free-text "application rules" field per user (model + alembic migration +
       API + Settings UI textarea). Inject it into the scoring prompt (orchestrator/agents/scoring.py) and the
       form filler prompt (backend/browser/tools/form_filler.py FORM_ANALYSIS_PROMPT) so the owner can paste the
       rules they give a coding assistant: eligibility (location, seniority, stack, pay), standard answers,
       park conditions (AI-attestation questions, own-voice essays), and never-invent-facts.
-- [ ] Discovery: add a Browserbase Fetch API verifier (POST /v1/fetch, markdown) that confirms a requisition is
+- [x] Discovery: add a Browserbase Fetch API verifier (POST /v1/fetch, markdown) that confirms a requisition is
       open and has an Apply control before it enters the shortlist. Store the verdict on the JobListing.
-- [ ] Frontend: render the browser_live_view SSE event as an iframe panel in the session view (the Live View
+- [x] Frontend: render the browser_live_view SSE event as an iframe panel in the session view (the Live View
       URL is embeddable), replacing the screenshot feed when provider == browserbase.
-- [ ] Settings UI: Browserbase section (API key, project id, proxies toggle, per-board Context ids) and a
+- [x] Settings UI: Browserbase section (API key, project id, proxies toggle, per-board Context ids) and a
       "Sign in to <board>" flow that opens a persisted-context session's Live View for the user to log in,
       then stores the Context id (mirror of ~/Desktop/browserbase-demo/login-capture.mjs, as a backend route).
 - [ ] Skyvern: default SKYVERN_ENABLED stays false; Browserbase mode uses the Playwright appliers
       (backend/browser/tools/appliers). Remove the Skyvern-credits abort path from the Browserbase branch.
-- [ ] Indeed applier: backend/browser/tools/appliers has greenhouse, lever, ashby, generic. Add indeed.py
+- [x] Indeed applier: backend/browser/tools/appliers has greenhouse, lever, ashby, generic. Add indeed.py
       (Indeed Apply flow on a logged-in context). LinkedIn stays discovery-only (account-ban risk).
-- [ ] Dependency refresh: pin versions that moved since April 2026; CI green on GitHub Actions.
+      Selectors are UNVERIFIED (TODO(unverified-selectors) in indeed.py); failures name the selector group.
+- [x] Dependency refresh: pin versions that moved since April 2026; CI green on GitHub Actions.
 
 ## Rules carried over
 - No AI attribution in commit messages (project-memory.md).

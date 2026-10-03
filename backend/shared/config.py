@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     BROWSERBASE_SESSION_TIMEOUT: int = 900  # seconds, 60-900 on Free; longer on paid plans
     BROWSERBASE_CONTEXT_IDS: str = ""  # "indeed=<ctx>,linkedin=<ctx>,default=<ctx>": persisted logins per board
     BROWSERBASE_BLOCK_MEDIA: bool = True  # abort image/font/media requests to cut proxy bandwidth
+    BROWSERBASE_VERIFY_LISTINGS: bool = True  # verify shortlist candidates via the Fetch API (needs the API key)
 
     # --- CAPTCHA solving (2captcha) ---
     CAPTCHA_API_KEY: Optional[str] = None  # 2captcha.com API key
