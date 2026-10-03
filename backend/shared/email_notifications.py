@@ -84,8 +84,8 @@ _SESSION_COMPLETE_TEMPLATE = """\
           <!-- Body -->
           <tr>
             <td style="padding:32px;">
-              <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e;">Session Complete</h2>
-              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">Here's a summary of your latest job search run.</p>
+              <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e;">{outcome_title}</h2>
+              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">{outcome_description}</p>
 
               <!-- Stats row -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
@@ -183,7 +183,17 @@ async def send_session_complete_email(
     duration_minutes: float,
 ) -> bool:
     """Send a summary email when a job-search session finishes."""
-    subject = f"Your job search session is complete — {total_applied} applications sent"
+    if total_applied == 0:
+        subject = "Your job search ended without submitting any applications"
+        outcome_title = "No applications submitted"
+        outcome_description = (
+            "This run ended without a confirmed submission. Review the session details "
+            "for blocked, failed, or skipped jobs before starting another run."
+        )
+    else:
+        subject = f"Your job search session is complete — {total_applied} applications sent"
+        outcome_title = "Session Complete"
+        outcome_description = "Here's a summary of your latest job search run."
 
     companies_str = ", ".join(escape(c) for c in top_companies) if top_companies else "—"
 
@@ -193,6 +203,8 @@ async def send_session_complete_email(
     time_saved_str = _format_duration(time_saved_minutes)
 
     html = _SESSION_COMPLETE_TEMPLATE.format(
+        outcome_title=outcome_title,
+        outcome_description=outcome_description,
         total_applied=total_applied,
         total_failed=total_failed,
         total_skipped=total_skipped,

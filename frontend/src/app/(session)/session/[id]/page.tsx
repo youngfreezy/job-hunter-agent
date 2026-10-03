@@ -1128,7 +1128,9 @@ export default function SessionPage() {
               {isActive && (
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse" />
               )}
-              {STATUS_LABELS[session.status] || session.status}
+              {session.status === "completed" && sessionSummary?.total_applied === 0
+                ? "No applications submitted"
+                : STATUS_LABELS[session.status] || session.status}
             </Badge>
             {/* Latest event message */}
             {isActive && events.length > 0 && (
@@ -1804,7 +1806,9 @@ export default function SessionPage() {
           )}
 
           {sessionSummary && session.status === "completed" && (
-            <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 dark:border-emerald-800 dark:from-emerald-950/50 dark:to-teal-950/50">
+            <Card className={sessionSummary.total_applied === 0
+              ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/50"
+              : "border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 dark:border-emerald-800 dark:from-emerald-950/50 dark:to-teal-950/50"}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
                   <svg
@@ -1820,10 +1824,13 @@ export default function SessionPage() {
                       d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  Session Complete
+                  {sessionSummary.total_applied === 0 ? "No applications submitted" : "Session Complete"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
+                {sessionSummary.total_applied === 0 && (
+                  <p>This run ended without a confirmed submission. Review the activity and any blocked or failed jobs before retrying.</p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     {
