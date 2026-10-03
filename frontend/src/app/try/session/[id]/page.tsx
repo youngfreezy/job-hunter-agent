@@ -223,23 +223,20 @@ export default function TrialSessionPage() {
                       isCompleted
                         ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
                         : isFailed
-                        ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                        ? "bg-red-500 text-white"
                         : isCurrent
-                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
+                        ? "bg-primary text-white"
                         : "text-zinc-400 dark:text-zinc-500"
                     }
                   `}
                 >
-                  {isCurrent && !isFailed && (
-                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[gradient-shift_2s_ease_infinite] bg-[length:200%_100%]" />
-                  )}
                   {isCompleted ? (
                     <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   ) : isCurrent && !isFailed ? (
                     <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                      
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
                     </span>
                   ) : (
@@ -402,14 +399,14 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 function EventBadge({ event }: { event: string }) {
   const colors: Record<string, string> = {
     status: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-    discovery_progress: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+    discovery_progress: "bg-secondary text-foreground dark:bg-secondary dark:text-foreground",
     scoring_progress: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
     tailoring_progress: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
     application_progress: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
     application_submitted: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
     application_failed: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
     application_start: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-    coaching_progress: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+    coaching_progress: "bg-secondary text-foreground dark:bg-secondary dark:text-foreground",
     verification_progress: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
     reporting_progress: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
     error: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",

@@ -2,6 +2,7 @@
 
 "use client";
 
+import { Wordmark } from "@/components/brand/Wordmark";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -104,12 +105,7 @@ export function GlobalNav() {
       <NavShell>
         {/* Row 1: Branding + Actions */}
         <div className="flex items-center justify-between py-2.5">
-          <Link
-            href="/"
-            className="text-lg font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent"
-          >
-            JobHunter Agent
-          </Link>
+          <Wordmark href="/dashboard" />
           <div className="flex items-center gap-2 md:gap-3">
             {credits !== null && (
               <Link

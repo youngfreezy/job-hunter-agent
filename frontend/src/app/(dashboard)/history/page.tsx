@@ -2,6 +2,7 @@
 
 "use client";
 
+import { MetricStrip } from "@/components/ui/metric-strip";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -262,59 +263,37 @@ export default function HistoryPage() {
         </Card>
       ) : (
         <>
-          {/* Time Saved Hero Card */}
-          <Card className="mb-6 overflow-hidden rounded-2xl border-0 bg-gradient-to-r from-blue-50 to-emerald-50 dark:from-blue-950/30 dark:to-emerald-950/30">
-            <CardContent className="p-6">
-              <div className="text-center mb-4">
-                <p className="text-4xl font-bold text-emerald-600 dark:text-emerald-400">
-                  {formatTime(totals.timeSaved)}
-                </p>
-                <p className="text-sm font-medium text-muted-foreground mt-1">Total time saved</p>
-              </div>
-              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-sm text-muted-foreground">
-                <span>
-                  <span className="font-semibold text-foreground">{totals.sessions}</span> sessions
-                  completed
-                </span>
-                <span className="text-border">|</span>
-                <span>
-                  <span className="font-semibold text-foreground">{totals.applications}</span> total
-                  applications
-                </span>
-                <span className="text-border">|</span>
-                <span>
-                  ~
-                  <span className="font-semibold text-foreground">
-                    {Math.round(totals.avgPerApp)} min
-                  </span>{" "}
-                  saved per application
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground/70 text-center mt-4">
-                Based on data from{" "}
-                <a
-                  href="https://www.hrdive.com/news/job-application-process-should-take-less-than-30-minutes/747352/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-muted-foreground"
-                >
-                  HR Dive
-                </a>{" "}
-                and the{" "}
-                <a
-                  href="https://www.bls.gov/opub/btn/volume-9/how-do-jobseekers-search-for-jobs.htm"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-muted-foreground"
-                >
-                  U.S. Bureau of Labor Statistics
-                </a>
-                , we estimate each manual application takes about an hour including research,
-                writing a custom resume and cover letter, and form filling. Your actual time saved
-                is based on real session data.
-              </p>
-            </CardContent>
-          </Card>
+          <MetricStrip
+            className="mb-2"
+            metrics={[
+              { label: "Searches", value: totals.sessions },
+              { label: "Applications sent", value: totals.applications },
+              ...(totals.timeSaved > 0
+                ? [{ label: "Time saved, estimated", value: formatTime(totals.timeSaved) }]
+                : []),
+            ]}
+          />
+          <p className="mb-6 text-xs text-muted-foreground">
+            Time saved assumes about an hour per manual application (
+            <a
+              href="https://www.hrdive.com/news/job-application-process-should-take-less-than-30-minutes/747352/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              HR Dive
+            </a>
+            ,{" "}
+            <a
+              href="https://www.bls.gov/opub/btn/volume-9/how-do-jobseekers-search-for-jobs.htm"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              BLS
+            </a>
+            ).
+          </p>
 
           {/* Archive toggle + Session List */}
           <div className="flex items-center justify-end mb-3">
@@ -371,7 +350,7 @@ export default function HistoryPage() {
                                 {(session.keywords || []).join(", ") || "Untitled"}
                               </span>
                               {session.is_autopilot && (
-                                <Badge className="text-[10px] py-0 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                                <Badge className="text-[10px] py-0 bg-secondary text-foreground dark:bg-secondary dark:text-foreground">
                                   Autopilot
                                 </Badge>
                               )}
