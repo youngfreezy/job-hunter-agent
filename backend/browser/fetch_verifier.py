@@ -3,7 +3,8 @@
 """Discovery verifier built on the Browserbase Fetch API.
 
 Before a scored job enters the shortlist we fetch its page as markdown through
-Browserbase (``POST /v1/fetch``), which renders JavaScript and goes through
+Browserbase (``POST /v1/fetch``, reference:
+https://docs.browserbase.com/reference/api/fetch-a-page), which goes through
 Browserbase's own IPs instead of ours, and check two things:
 
 1. the requisition is still open (no HTTP error, no "no longer available" copy)
@@ -12,14 +13,22 @@ Browserbase's own IPs instead of ours, and check two things:
 
 The verdict is stored on the JobListing as ``verified_open`` / ``verify_note``.
 Jobs the verifier positively finds closed or apply-less are removed from the
-shortlist.  Jobs it could not check (verifier disabled, API error) stay, with
-the reason in ``verify_note``: an outage must not empty every shortlist, but it
-is never hidden.
+shortlist.  Jobs it could not check (verifier disabled, API error, upstream
+block, a page too thin to judge) stay, with the reason in ``verify_note``: an
+outage must not empty every shortlist, but it is never hidden.
+
+Fetch does not execute JavaScript and returns at most 5 MB, so a page that is
+rendered client-side comes back as a near-empty shell.  Such pages are
+reported as unverified, never as closed.  ``format: "markdown"`` (Fetch
+Extract) has to be enabled on the Browserbase project; when it is not (HTTP
+402/403) the verifier fetches the raw HTML instead and reduces it to text
+itself.
 """
 
 from __future__ import annotations
 
 import asyncio
+import html as _html
 import logging
 import re
 from dataclasses import dataclass
@@ -32,6 +41,7 @@ from backend.browser.browserbase_client import (
     BrowserbaseConfig,
     BrowserbaseError,
     _headers,
+    _resolve,
     config_for_user,
 )
 from backend.shared.config import settings
@@ -45,6 +55,10 @@ VERIFY_CONCURRENCY = 4
 # How many candidates past the session's max_jobs cap we verify, so a few
 # closed listings do not leave the shortlist short.
 VERIFY_HEADROOM = 10
+# Below this many characters of text a page without an Apply control is more
+# likely a client-rendered shell (Fetch runs no JavaScript) than an apply-less
+# requisition, so it is left unverified instead of being dropped.
+MIN_TEXT_CHARS = 300
 
 # Copy that ATS pages and boards show for closed requisitions.
 _CLOSED_INDICATORS: Tuple[str, ...] = (
@@ -80,7 +94,8 @@ _APPLY_LINE_RE = re.compile(r"^\W*" + _APPLY_PHRASE + r"\W*$", re.IGNORECASE | r
 class FetchResult:
     markdown: str
     status_code: Optional[int] = None
-    final_url: Optional[str] = None
+    content_type: Optional[str] = None
+    source_format: str = "markdown"  # "markdown" or "raw" (HTML reduced locally)
 
 
 def verifier_disabled_reason(config: Optional[BrowserbaseConfig] = None) -> Optional[str]:
@@ -93,105 +108,134 @@ def verifier_disabled_reason(config: Optional[BrowserbaseConfig] = None) -> Opti
     return None
 
 
-def _extract_markdown(data: Any) -> Optional[str]:
-    """Pull the markdown body out of a Fetch API response.
+_TAG_SCRIPT_RE = re.compile(r"<(script|style|svg|head)\b[^>]*>.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
+_TAG_ANCHOR_RE = re.compile(r"<a\b[^>]*?href\s*=\s*([\"\'])(.*?)\1[^>]*>(.*?)</a\s*>", re.IGNORECASE | re.DOTALL)
+_TAG_BUTTON_RE = re.compile(r"<(button|input)\b([^>]*)>(.*?)(?:</button\s*>|$)", re.IGNORECASE | re.DOTALL)
+_TAG_INPUT_VALUE_RE = re.compile(r"value\s*=\s*([\"\'])(.*?)\1", re.IGNORECASE)
+_TAG_BLOCK_RE = re.compile(
+    r"</?(?:p|div|br|li|ul|ol|h[1-6]|tr|td|th|section|article|header|footer|nav|main|aside|form|label|span)\b[^>]*>",
+    re.IGNORECASE,
+)
+_TAG_ANY_RE = re.compile(r"<[^>]+>")
 
-    TODO(unverified): the response field names below are not confirmed against
-    the Browserbase Fetch API reference (docs were unreachable when this was
-    written).  Unknown shapes raise instead of being treated as an empty page.
+
+def _strip_tags(fragment: str) -> str:
+    return _html.unescape(_TAG_ANY_RE.sub(" ", fragment))
+
+
+def _html_to_markdown(raw: str) -> str:
+    """Reduce an HTML document to the text the judge needs.
+
+    Used when the Browserbase project has no markdown (Fetch Extract)
+    enablement.  Anchors become ``[text](href)`` so ``_APPLY_LINK_RE`` still
+    applies, buttons and inputs become their own line, block elements become
+    line breaks, everything else is stripped.
     """
-    if isinstance(data, str):
-        return data
-    if not isinstance(data, dict):
-        return None
-    for key in ("markdown", "content", "text"):
-        value = data.get(key)
-        if isinstance(value, str):
-            return value
-    for key in ("data", "result"):
-        nested = data.get(key)
-        if isinstance(nested, dict):
-            found = _extract_markdown(nested)
-            if found is not None:
-                return found
-    return None
+    text = _TAG_SCRIPT_RE.sub(" ", raw)
+    text = _TAG_ANCHOR_RE.sub(lambda m: f" [{_strip_tags(m.group(3)).strip()}]({m.group(2).strip()}) ", text)
+
+    def _button(m: "re.Match[str]") -> str:
+        if m.group(1).lower() == "input":
+            value = _TAG_INPUT_VALUE_RE.search(m.group(2) or "")
+            return f"\n{_html.unescape(value.group(2))}\n" if value else "\n"
+        return f"\n{_strip_tags(m.group(3)).strip()}\n"
+
+    text = _TAG_BUTTON_RE.sub(_button, text)
+    text = _TAG_BLOCK_RE.sub("\n", text)
+    text = _strip_tags(text)
+    lines = [re.sub(r"[ \t\r\f\v]+", " ", line).strip() for line in text.split("\n")]
+    return "\n".join(line for line in lines if line)
 
 
-def _extract_int(data: Any, keys: Iterable[str]) -> Optional[int]:
-    if not isinstance(data, dict):
-        return None
-    for key in keys:
-        value = data.get(key)
-        if isinstance(value, int):
-            return value
-    for key in ("data", "result"):
-        nested = data.get(key)
-        if isinstance(nested, dict):
-            found = _extract_int(nested, keys)
-            if found is not None:
-                return found
-    return None
+def _request_body(url: str, fmt: str, cfg: BrowserbaseConfig) -> Dict[str, Any]:
+    body: Dict[str, Any] = {"url": url, "format": fmt, "allowRedirects": True}
+    if cfg.proxies:
+        body["proxies"] = True
+    return body
 
 
-def _extract_str(data: Any, keys: Iterable[str]) -> Optional[str]:
-    if not isinstance(data, dict):
-        return None
-    for key in keys:
-        value = data.get(key)
-        if isinstance(value, str):
-            return value
-    for key in ("data", "result"):
-        nested = data.get(key)
-        if isinstance(nested, dict):
-            found = _extract_str(nested, keys)
-            if found is not None:
-                return found
-    return None
+def _parse_fetch_response(r: httpx.Response) -> Tuple[str, Optional[int], Optional[str]]:
+    """Return (content, statusCode, contentType) from a 200 Fetch response."""
+    try:
+        data = r.json()
+    except ValueError as exc:
+        raise BrowserbaseError(f"fetch response is not JSON: {r.text[:120]!r}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("content"), str):
+        keys = sorted(data.keys()) if isinstance(data, dict) else type(data).__name__
+        raise BrowserbaseError(f"fetch response has no string content (keys: {keys})")
+    status_code = data.get("statusCode")
+    content_type = data.get("contentType")
+    return (
+        data["content"],
+        status_code if isinstance(status_code, int) else None,
+        content_type if isinstance(content_type, str) else None,
+    )
 
 
 async def fetch_markdown(url: str, config: Optional[BrowserbaseConfig] = None) -> FetchResult:
-    """Render *url* through the Browserbase Fetch API and return its markdown.
+    """Fetch *url* through the Browserbase Fetch API and return it as markdown.
 
-    TODO(unverified): request body field names (``url``, ``format``) follow
-    the owner's description of the endpoint, not the published reference.
-    A response without a markdown body raises BrowserbaseError so a schema
-    mismatch surfaces as an error on every listing, never as "verified".
+    Request and response shapes follow the published reference: the body is
+    ``{url, format, allowRedirects, proxies}`` and a 200 response carries the
+    page in ``content`` (a string for ``markdown`` and ``raw``) with the
+    upstream ``statusCode`` and ``contentType``.  Redirects are followed
+    because job URLs routinely redirect to the live posting.
+
+    When the project cannot use ``format: "markdown"`` (402 quota, 403 not
+    enabled) the raw HTML is fetched instead and reduced to text locally, so
+    the verifier keeps working on any plan.  Any other error raises
+    BrowserbaseError: an unreadable response is an error on the listing,
+    never a verdict.
     """
-    project_id = config.project_id if config is not None else settings.BROWSERBASE_PROJECT_ID
-    body: Dict[str, Any] = {"url": url, "format": "markdown"}
-    if project_id:
-        body["projectId"] = project_id
+    cfg = _resolve(config)
+    headers = _headers(cfg)
     async with httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS) as client:
-        r = await client.post(f"{API_BASE}/fetch", headers=_headers(config), json=body)
+        r = await client.post(f"{API_BASE}/fetch", headers=headers, json=_request_body(url, "markdown", cfg))
+        if r.status_code in (402, 403):
+            logger.info(
+                "Browserbase Fetch markdown format unavailable (%s): fetching raw HTML for %s",
+                r.status_code, url,
+            )
+            r = await client.post(f"{API_BASE}/fetch", headers=headers, json=_request_body(url, "raw", cfg))
+            if r.status_code >= 400:
+                raise BrowserbaseError(f"fetch failed: {r.status_code} {r.text[:200]}")
+            content, status_code, content_type = _parse_fetch_response(r)
+            if content_type and "html" not in content_type.lower() and "text" not in content_type.lower():
+                raise BrowserbaseError(f"fetch returned non-text content ({content_type})")
+            return FetchResult(
+                markdown=_html_to_markdown(content),
+                status_code=status_code,
+                content_type=content_type,
+                source_format="raw",
+            )
     if r.status_code >= 400:
         raise BrowserbaseError(f"fetch failed: {r.status_code} {r.text[:200]}")
-    try:
-        data = r.json()
-    except ValueError:
-        data = r.text
-    markdown = _extract_markdown(data)
-    if markdown is None:
-        keys = sorted(data.keys()) if isinstance(data, dict) else type(data).__name__
-        raise BrowserbaseError(f"fetch response has no markdown body (keys: {keys})")
-    return FetchResult(
-        markdown=markdown,
-        status_code=_extract_int(data, ("statusCode", "status_code", "status")),
-        final_url=_extract_str(data, ("finalUrl", "final_url", "url")),
-    )
+    content, status_code, content_type = _parse_fetch_response(r)
+    return FetchResult(markdown=content, status_code=status_code, content_type=content_type)
 
 
 def judge_listing(result: FetchResult) -> Tuple[bool, str]:
     """Decide whether a fetched page is an open requisition with an Apply control.
 
-    Returns (verified_open, note).  The note always says what decided it.
+    Returns (verified_open, note).  The note always says what decided it, and
+    only notes starting with ``closed:`` or ``no Apply control`` count as a
+    positive finding that removes the listing (see ``_is_positively_closed``).
+    HTTP 404/410 mean the posting is gone; every other upstream error (a bot
+    block, an outage) and a page with too little text to judge are reported as
+    unverified, because Fetch runs no JavaScript and cannot tell a
+    client-rendered posting from an empty one.
     """
-    if result.status_code is not None and result.status_code >= 400:
-        return False, f"closed: page returned HTTP {result.status_code}"
+    sc = result.status_code
+    if sc is not None:
+        if sc in (404, 410):
+            return False, f"closed: page returned HTTP {sc}"
+        if sc >= 400:
+            return False, f"unverified: page returned HTTP {sc}"
 
     text = result.markdown or ""
     lowered = text.lower()
     if not lowered.strip():
-        return False, "closed: page rendered empty"
+        return False, "unverified: page has no text (client-rendered or blocked)"
 
     for phrase in _CLOSED_INDICATORS:
         if phrase in lowered:
@@ -204,6 +248,8 @@ def judge_listing(result: FetchResult) -> Tuple[bool, str]:
     line = _APPLY_LINE_RE.search(text)
     if line:
         return True, f"open: apply control '{line.group(0).strip()[:60]}'"
+    if len(lowered.strip()) < MIN_TEXT_CHARS:
+        return False, f"unverified: page too thin to judge ({len(lowered.strip())} chars, likely client-rendered)"
     return False, "no Apply control found in page text"
 
 
