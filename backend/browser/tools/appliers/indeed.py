@@ -75,6 +75,17 @@ Do not change account settings, passwords, notifications, profile visibility, or
 """
 
 
+def _observed_control(page, selector):
+    """Resolve Stagehand's observed XPath across iframe document boundaries."""
+    if not selector.startswith('xpath='):
+        return page.locator(selector)
+    parts = re.split(r'(/iframe\[\d+\])(?=/html(?:\[1\])?/)', selector[6:])
+    scope = page
+    for index in range(0, len(parts) - 1, 2):
+        scope = scope.frame_locator('xpath=' + parts[index] + parts[index + 1])
+    return scope.locator('xpath=' + parts[-1])
+
+
 class IndeedApplier(BaseApplier):
     PLATFORM = 'indeed'
 
@@ -277,7 +288,7 @@ class IndeedApplier(BaseApplier):
                 if len(actions) != 1 or actions[0].method != 'click':
                     raise ApplicationParked('The supplied resume has not been uploaded, and no unique resume-edit control was found.')
                 action = actions[0]
-                control = self.page.locator(action.selector)
+                control = _observed_control(self.page, action.selector)
                 if not await control.is_visible():
                     raise ApplicationParked('The supplied resume has not been uploaded, and the resume-edit control is not visible.')
                 label = await control.evaluate("el => [el.innerText, el.getAttribute('aria-label'), el.getAttribute('title')].filter(Boolean).join(' ')")

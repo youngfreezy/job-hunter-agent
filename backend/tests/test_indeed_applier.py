@@ -452,3 +452,20 @@ async def test_resume_recovery_rejects_submit_other_fields_and_non_clicks(monkey
     assert result.status == ApplicationStatus.SKIPPED
     agent.act.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
+
+
+def test_observed_resume_locator_traverses_frames_in_stagehand_xpath():
+    page = MagicMock()
+    nested = page.frame_locator.return_value
+    control = indeed_mod._observed_control(page, 'xpath=/html[1]/body[1]/iframe[1]/html[1]/body[1]/button[1]')
+    page.frame_locator.assert_called_once_with('xpath=/html[1]/body[1]/iframe[1]')
+    nested.locator.assert_called_once_with('xpath=/html[1]/body[1]/button[1]')
+    assert control is nested.locator.return_value
+    page.locator.assert_not_called()
+
+
+def test_observed_resume_locator_without_frames_preserves_selector():
+    page = MagicMock()
+    assert indeed_mod._observed_control(page, 'xpath=/html[1]/body[1]/button[1]') is page.locator.return_value
+    page.locator.assert_called_once_with('xpath=/html[1]/body[1]/button[1]')
+    page.frame_locator.assert_not_called()
