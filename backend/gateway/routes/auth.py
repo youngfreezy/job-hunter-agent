@@ -107,8 +107,8 @@ async def update_minimum_submitted(request: Request, body: MinimumSubmittedUpdat
     user = get_current_user(request)
     if not user.get("is_premium", False):
         return JSONResponse(status_code=403, content={"detail": "Premium feature only."})
-    if body.minimum_submitted_applications < 0 or body.minimum_submitted_applications > 10:
-        return JSONResponse(status_code=400, content={"detail": "Must be between 0 and 10."})
+    if body.minimum_submitted_applications < 0 or body.minimum_submitted_applications > 20:
+        return JSONResponse(status_code=400, content={"detail": "Must be between 0 and 20."})
     from backend.shared.billing_store import update_minimum_submitted as _update_min
     _update_min(user["id"], body.minimum_submitted_applications)
     return {"minimum_submitted_applications": body.minimum_submitted_applications}

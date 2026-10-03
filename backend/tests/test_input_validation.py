@@ -43,8 +43,8 @@ class TestSessionConfig:
             SessionConfig(max_jobs=5, minimum_submitted_applications=6)
 
     def test_minimum_submitted_valid(self):
-        c = SessionConfig(max_jobs=10, minimum_submitted_applications=10)
-        assert c.minimum_submitted_applications == 10
+        c = SessionConfig(max_jobs=20, minimum_submitted_applications=20)
+        assert c.minimum_submitted_applications == 20
 
     def test_defaults(self):
         c = SessionConfig()

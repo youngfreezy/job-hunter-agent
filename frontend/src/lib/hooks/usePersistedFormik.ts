@@ -41,7 +41,7 @@ export function usePersistedFormik<T extends FormikValues>({
         if ("maxJobs" in parsed && typeof (parsed as Record<string, unknown>).maxJobs === "number") {
           (parsed as Record<string, unknown>).maxJobs = Math.min(
             Math.max((parsed as Record<string, unknown>).maxJobs as number, 3),
-            10,
+            20,
           );
         }
         if (
@@ -50,7 +50,7 @@ export function usePersistedFormik<T extends FormikValues>({
         ) {
           (parsed as Record<string, unknown>).minimumSubmittedApplications = Math.min(
             Math.max((parsed as Record<string, unknown>).minimumSubmittedApplications as number, 0),
-            10,
+            20,
           );
         }
         const merged = { ...initialValues, ...parsed };

@@ -691,7 +691,7 @@ export default function SettingsPage() {
               <input
                 type="range"
                 min={0}
-                max={10}
+                max={20}
                 step={1}
                 value={minimumSubmitted}
                 onChange={(e) => {
@@ -710,7 +710,7 @@ export default function SettingsPage() {
             <p className="text-xs text-muted-foreground">
               {minimumSubmitted === 0
                 ? "Disabled — the agent will attempt each job once and move on."
-                : `The agent will backfill and retry until ${minimumSubmitted} application${minimumSubmitted !== 1 ? "s are" : " is"} successfully submitted.`}
+                : `The agent will try additional matching jobs toward a target of ${minimumSubmitted} application${minimumSubmitted !== 1 ? "s are" : " is"} successfully submitted.`}
             </p>
           </CardContent>
         </Card>

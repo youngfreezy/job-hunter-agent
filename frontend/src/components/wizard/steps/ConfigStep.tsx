@@ -133,7 +133,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
                 Minimum submitted applications
               </label>
               <p className="text-xs text-zinc-500 mt-1">
-                We’ll keep discovering and retrying until at least this many applications are actually submitted.
+                We’ll try additional matching jobs toward this submission target, within retry and discovery limits.
               </p>
               <input
                 id="minimumSubmittedApplications"

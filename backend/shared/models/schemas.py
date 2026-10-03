@@ -251,7 +251,7 @@ class SSEEvent(BaseModel):
 class SessionConfig(BaseModel):
     """User-configurable session parameters controlling cost and behavior."""
     max_jobs: int = Field(default=5, ge=1, le=20)
-    minimum_submitted_applications: int = Field(default=0, ge=0, le=10)
+    minimum_submitted_applications: int = Field(default=0, ge=0, le=20)
     tailoring_quality: TailoringQuality = TailoringQuality.STANDARD
     application_mode: ApplicationMode = ApplicationMode.AUTO_APPLY
     discovery_mode: DiscoveryMode = DiscoveryMode.AI_SEARCH

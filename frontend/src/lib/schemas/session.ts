@@ -59,7 +59,7 @@ export const configSchema = Yup.object({
   maxJobs: Yup.number().min(3).max(20).default(5),
   minimumSubmittedApplications: Yup.number()
     .min(0)
-    .max(10)
+    .max(20)
     .test(
       "min-submitted-lte-max-jobs",
       "Minimum submitted applications cannot exceed jobs to apply to.",
