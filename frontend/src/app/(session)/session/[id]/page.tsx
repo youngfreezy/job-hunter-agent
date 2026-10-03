@@ -1059,7 +1059,7 @@ export default function SessionPage() {
     discoveredFromEvents;
   const phaseKey = currentPhase(status, session.pause_resume_node, session.status_before_pause);
   const pastShortlist = ["apply", "report"].includes(phaseKey) || status === "awaiting_review";
-  const shortlisted = sessionSummary
+  const scoredCount = sessionSummary
     ? sessionSummary.total_scored
     : pastShortlist
     ? session.scored_jobs?.length ?? shortlistJobs.length
@@ -1072,12 +1072,16 @@ export default function SessionPage() {
     statusBeforePause: session.status_before_pause,
     coachScore: session.coach_output?.resume_score?.overall ?? null,
     found,
-    shortlisted,
+    shortlisted: scoredCount,
+    selectedJobUrls: session.session_config?.discovery_mode === "manual_urls"
+      ? session.session_config.job_urls ?? session.job_urls ?? []
+      : undefined,
     attempted,
     submitted: finished || phaseKey === "apply" || phaseKey === "report" ? submittedCount : null,
     failed: failedCount,
     threshold,
   });
+  const shortlisted = ledger.phases.find((phase) => phase.key === "shortlist")?.count ?? null;
 
   const durationMin =
     sessionSummary?.duration_minutes ??
@@ -1091,7 +1095,7 @@ export default function SessionPage() {
     if (submittedCount > 0)
       return failedCount > 0 ? `${submittedCount} sent, ${failedCount} failed` : `${submittedCount} sent`;
     if (found === 0) return "no postings matched your roles and location";
-    if (shortlisted === 0) return "no jobs met your score threshold";
+    if (shortlisted === 0) return session.session_config?.discovery_mode === "manual_urls" ? "no job links were selected" : "no jobs met your score threshold";
     if (questionCount > 0) return `${questionCount} ${questionCount === 1 ? "application needs" : "applications need"} your answers · nothing sent`;
     if (queuedEmployerCount > 0) return `${queuedEmployerCount} employer ${queuedEmployerCount === 1 ? "application" : "applications"} queued · nothing sent`;
     if (skippedCount > 0) return `${skippedCount} skipped${failedCount > 0 ? `, ${failedCount} failed` : ""} · nothing sent`;

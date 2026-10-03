@@ -98,7 +98,7 @@ export function PipelineLedger({
       )
     );
     if (i === 0) items.push(<Gate key="g1" state={gates.coach} label="Resume" compact={compact} />);
-    if (i === 2) items.push(<Gate key="g2" state={gates.shortlist} label="Shortlist" compact={compact} />);
+    if (i === 2) items.push(<Gate key="g2" state={gates.shortlist} label={p.label} compact={compact} />);
   });
 
   if (compact) {

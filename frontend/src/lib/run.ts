@@ -102,6 +102,7 @@ export interface LedgerInput {
   coachScore?: number | null;
   found?: number | null;
   shortlisted?: number | null;
+  selectedJobUrls?: string[];
   attempted?: number | null;
   submitted?: number | null;
   failed?: number | null;
@@ -114,6 +115,7 @@ export function buildLedger(input: LedgerInput): {
   gates: { coach: GateState; shortlist: GateState };
 } {
   const { status } = input;
+  const shortlisted = input.selectedJobUrls ? new Set(input.selectedJobUrls.filter(Boolean)).size : input.shortlisted;
   const finished = TERMINAL.has(status);
   let idx = PHASES.findIndex(
     (p) => p.key === currentPhase(status, input.pauseNode, input.statusBeforePause)
@@ -122,7 +124,7 @@ export function buildLedger(input: LedgerInput): {
   const counts: Record<PhaseKey, { count: number | null; unit: string }> = {
     resume: { count: input.coachScore ?? null, unit: input.coachScore != null ? "of 100" : "" },
     search: { count: input.found ?? null, unit: "postings" },
-    shortlist: { count: input.shortlisted ?? null, unit: input.shortlisted === 1 ? "job" : "jobs" },
+    shortlist: { count: shortlisted ?? null, unit: shortlisted === 1 ? "job" : "jobs" },
     apply: { count: input.attempted ?? null, unit: "attempted" },
     report: { count: input.submitted ?? null, unit: "submitted" },
   };
@@ -138,7 +140,7 @@ export function buildLedger(input: LedgerInput): {
 
   // Once a later phase has started, earlier unknown counts that must be zero
   // (nothing shortlisted means nothing attempted) are filled in.
-  if (finished && input.shortlisted === 0) {
+  if (finished && shortlisted === 0) {
     counts.apply.count = counts.apply.count ?? 0;
     counts.report.count = counts.report.count ?? 0;
   }
@@ -151,7 +153,7 @@ export function buildLedger(input: LedgerInput): {
     else state = "todo";
     if ((state === "done" || finished) && c.count === 0 && p.key !== "resume") state = "empty";
     if (finished && i > idx) state = c.count === 0 ? "empty" : "todo";
-    return { ...p, count: c.count, unit: c.unit, state };
+    return { ...p, label: p.key === "shortlist" && input.selectedJobUrls ? "Selected jobs" : p.label, count: c.count, unit: c.unit, state };
   });
 
   // The reason line goes under the first phase whose count drops to zero.
@@ -161,8 +163,9 @@ export function buildLedger(input: LedgerInput): {
     const before = firstZero > 0 ? phases[firstZero - 1].count : null;
     if (p.key === "search") p.reason = "No postings matched your roles and location";
     else if (p.key === "shortlist")
-      p.reason =
-        before && input.threshold != null
+      p.reason = input.selectedJobUrls
+        ? "No job links were selected"
+        : before && input.threshold != null
           ? `0 of ${before} scored ${input.threshold} or higher`
           : before
           ? `0 of ${before} passed your filters`
@@ -177,7 +180,7 @@ export function buildLedger(input: LedgerInput): {
   const shortlist: GateState =
     status === "awaiting_review"
       ? "open"
-      : idx > 2 && input.shortlisted !== 0 && !(finished && input.attempted === 0)
+      : idx > 2 && shortlisted !== 0 && !(finished && input.attempted === 0)
       ? "passed"
       : "todo";
 
@@ -248,6 +251,6 @@ export function scoreThreshold(config?: { scoring_strictness?: unknown; discover
 
 /** Result events carry job details, not cumulative counts. Reload durable state. */
 export function shouldRefreshSession(event: { event: string; status?: string }) {
-  return ["done", "application_submitted", "application_failed", "shortlist_review"].includes(event.event)
+  return ["done", "application_start", "application_submitted", "application_failed", "shortlist_review"].includes(event.event)
     || (event.event === "status" && ["completed", "failed", "awaiting_review", "awaiting_coach_review"].includes(event.status ?? ""));
 }

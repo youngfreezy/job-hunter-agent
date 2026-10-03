@@ -42,6 +42,16 @@ describe("buildLedger", () => {
     expect(gates).toEqual({ coach: "passed", shortlist: "todo" });
   });
 
+  it("counts explicit Quick Apply links even before scoring state arrives", () => {
+    const { phases, gates } = buildLedger({
+      status: "applying", found: 2, shortlisted: 0, attempted: 1,
+      selectedJobUrls: ["https://indeed.com/a", "https://indeed.com/b", "https://indeed.com/a"],
+    });
+    expect(phases[2]).toMatchObject({ label: "Selected jobs", count: 2, state: "done" });
+    expect(phases[2].reason).toBeUndefined();
+    expect(gates.shortlist).toBe("passed");
+  });
+
   it("opens the shortlist gate while waiting for approval", () => {
     const { phases, gates } = buildLedger({ status: "awaiting_review", found: 58, shortlisted: 6 });
     expect(gates.shortlist).toBe("open");
@@ -72,7 +82,7 @@ describe("scoreThreshold and formatElapsed", () => {
 // local counters; replaying them therefore cannot count an application twice.
 describe("durable application totals", () => {
   it("refreshes sparse results and a circuit-breaker shortlist", () => {
-    for (const event of ["application_failed", "application_submitted", "shortlist_review"]) {
+    for (const event of ["application_start", "application_failed", "application_submitted", "shortlist_review"]) {
       expect(shouldRefreshSession({ event })).toBe(true);
     }
   });
