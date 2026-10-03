@@ -20,6 +20,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
+import { LiveBrowserPanel } from "@/components/LiveBrowserPanel";
+import { liveViewEnds, liveViewFromEvent, type LiveViewState } from "@/lib/liveView";
 import ResumeScoreRadar from "@/components/charts/ResumeScoreRadar";
 import ScoreDistribution from "@/components/charts/ScoreDistribution";
 import JobComparisonChart from "@/components/charts/JobComparisonChart";
@@ -205,6 +207,7 @@ const AGENT_DISPLAY_NAMES: Record<string, string> = {
   resume_tailor: "Tailor",
   tailoring: "Tailor",
   application: "Apply",
+  browser_live_view: "Browser",
   verification: "Verify",
   reporting: "Summary",
   backfill: "Backfill",
@@ -475,6 +478,8 @@ export default function SessionPage() {
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [rewindLoading, setRewindLoading] = useState(false);
   const [sseKey, setSseKey] = useState(0);
+  // Browserbase mode: the cloud browser's Live View for the job being applied to.
+  const [liveView, setLiveView] = useState<LiveViewState | null>(null);
   const [sseConnected, setSseConnected] = useState(true);
   const [sseFailCount, setSseFailCount] = useState(0);
   const [tipDismissed, setTipDismissed] = useState(false);
@@ -595,6 +600,11 @@ export default function SessionPage() {
     const cleanup = connectSSE(sessionId, (event) => {
       const evt = event as unknown as SSEEvent;
       if (evt.event === "ping") return;
+
+      // Browserbase live view: embed the cloud browser instead of a screenshot feed.
+      const nextLiveView = liveViewFromEvent(evt);
+      if (nextLiveView) setLiveView(nextLiveView);
+      if (liveViewEnds(evt)) setLiveView(null);
 
       setEvents((prev) => {
         const last = prev[prev.length - 1];
@@ -983,6 +993,11 @@ export default function SessionPage() {
   };
 
   const surfacedEvents = useMemo(() => compressEvents(events), [events]);
+  const liveViewJobLabel = useMemo(() => {
+    if (!liveView) return undefined;
+    const match = (session?.scored_jobs || []).find((sj) => sj.job.id === liveView.jobId);
+    return match ? `${match.job.title} at ${match.job.company}` : undefined;
+  }, [liveView, session?.scored_jobs]);
 
   const activePane = useMemo(() => {
     if (!session) return "overview";
@@ -1311,8 +1326,9 @@ export default function SessionPage() {
                 {interventionData.reason}
               </p>
               <p className="text-xs text-amber-500 mt-2">
-                Use Browser Takeover below to interact with the live page, or fix it directly on the
-                desktop browser, then click Resume.
+                {liveView
+                  ? "Use the live browser panel below to interact with the page, then click Resume."
+                  : "Use Browser Takeover below to interact with the live page, or fix it directly on the desktop browser, then click Resume."}
               </p>
             </div>
             <Button
@@ -1357,8 +1373,9 @@ export default function SessionPage() {
                 window before submitting.
               </p>
               <p className="text-xs text-blue-500 mt-2">
-                Review the live page below in Browser Takeover, then submit or skip this
-                application.
+                {liveView
+                  ? "Review the form in the live browser panel below, then submit or skip this application."
+                  : "Review the live page below in Browser Takeover, then submit or skip this application."}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -1383,6 +1400,13 @@ export default function SessionPage() {
       {/* Main content */}
       <div className="mx-auto grid max-w-7xl flex-1 w-full gap-5 px-4 py-4 sm:px-5 sm:py-5 xl:grid-cols-[minmax(0,1fr)_340px] overflow-hidden">
         <div className="min-h-0 flex flex-col order-2 xl:order-1">
+          {liveView && (
+            <LiveBrowserPanel
+              liveView={liveView}
+              jobLabel={liveViewJobLabel}
+              onHide={() => setLiveView(null)}
+            />
+          )}
           <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <CardHeader className="border-b border-border/50 pb-2">
               <div className="flex items-center justify-between">
