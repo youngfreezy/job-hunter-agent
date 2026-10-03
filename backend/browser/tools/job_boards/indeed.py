@@ -71,6 +71,27 @@ async def _read_cards(page: Any) -> list[dict]:
     }""")
 
 
+def _search_query(query: str, search: SearchConfig, excluded_companies: Optional[set[str]] = None) -> str:
+    """Send explicit exclusions upstream so unwanted ads do not consume every page.
+
+    Indeed supports combining minus, title, company, phrase and OR operators:
+    https://www.indeed.com/career-advice/finding-a-job/tips-on-how-to-get-better-search-results-on-indeed.com
+    """
+    arrangements = [a for a in search.work_arrangements if a in {'hybrid', 'remote'}]
+    parts = [f"{query} ({' OR '.join(arrangements)})" if arrangements else query]
+    for field, terms in (
+        ('title', search.exclude_title_keywords),
+        ('company', [*search.exclude_companies, *sorted(excluded_companies or ())]),
+    ):
+        seen = set()
+        for term in terms:
+            phrase = ' '.join(re.sub(r'["\\]', ' ', term).split())
+            if phrase and phrase.casefold() not in seen:
+                seen.add(phrase.casefold())
+                parts.append(f'-{field}:"{phrase}"')
+    return ' '.join(parts)
+
+
 def matches_search(listing: JobListing, search: SearchConfig) -> bool:
     if any(term.lower() in listing.title.lower() for term in search.exclude_title_keywords):
         return False
@@ -142,10 +163,8 @@ async def scrape_indeed(
             if len(listings) >= max_results:
                 break
 
-            # Indeed supports OR groups in the keyword query. Bias discovery
-            # toward the requested work setting before validating each card.
-            arrangements = [a for a in search_config.work_arrangements if a in {"hybrid", "remote"}]
-            query_text = f"{query} ({' OR '.join(arrangements)})" if arrangements else query
+            # Keep local eligibility checks: promoted results may ignore search operators.
+            query_text = _search_query(query, search_config, excluded_companies)
             params = {**base_params, "q": query_text}
             param_str = urlencode(params)
             search_url = f"{INDEED_SEARCH}?{param_str}"

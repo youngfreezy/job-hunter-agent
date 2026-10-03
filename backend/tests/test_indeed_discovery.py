@@ -185,3 +185,41 @@ async def test_scraper_counts_only_new_eligible_jobs_and_reaches_next_page(monke
     assert [job.id for job in result] == ['new']
     assert len(page.goto.await_args_list) == 2
     assert 'start=10' in page.goto.await_args_list[1].args[0]
+
+
+@pytest.mark.asyncio
+async def test_scraper_sends_exclusions_in_each_indeed_query(monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+    from backend.browser.tools.job_boards import indeed as scraper
+    monkeypatch.setattr(scraper, 'MAX_PAGES', 1)
+    monkeypatch.setattr(scraper.settings, 'BROWSER_MODE', 'browserbase')
+    monkeypatch.setattr(scraper, '_is_blocked', AsyncMock(return_value=False))
+    monkeypatch.setattr(scraper, '_read_cards', AsyncMock(return_value=[]))
+    page = SimpleNamespace(goto=AsyncMock(), wait_for_timeout=AsyncMock(),
+                           wait_for_selector=AsyncMock(), close=AsyncMock())
+    search = SearchConfig(keywords=['Applied AI Engineer', 'AI Software Engineer'],
+                          locations=['San Francisco, CA'], salary_min=220000,
+                          work_arrangements=['hybrid', 'remote'],
+                          exclude_title_keywords=['AI Trainer', 'Data Annotation'],
+                          exclude_companies=['DataAnnotation'])
+    await scraper.scrape_indeed(SimpleNamespace(pages=[page]), search,
+                               excluded_companies={'Blocked Company', 'dataannotation'})
+    assert page.goto.await_count == 2
+    for call in page.goto.await_args_list:
+        params = parse_qs(urlsplit(call.args[0]).query)
+        query = params['q'][0]
+        assert '(hybrid OR remote)' in query
+        assert '-title:"AI Trainer"' in query
+        assert '-title:"Data Annotation"' in query
+        assert '-company:"Blocked Company"' in query
+        assert query.lower().count('-company:"dataannotation"') == 1
+        assert params['salary'] == ['220000']
+        assert params['l'] == ['San Francisco, CA']
+
+
+def test_query_exclusions_are_literal_phrases_not_injected_operators():
+    from backend.browser.tools.job_boards.indeed import _search_query
+    search = SearchConfig(keywords=['Engineer'], locations=[],
+                          exclude_title_keywords=['  AI "Trainer"  ', ''],
+                          exclude_companies=['Acme "Research"'])
+    assert _search_query('Engineer', search) == 'Engineer -title:"AI Trainer" -company:"Acme Research"'
