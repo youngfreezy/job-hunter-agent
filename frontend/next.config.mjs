@@ -1,5 +1,12 @@
+import nextEnv from "@next/env";
+import { fileURLToPath } from "node:url";
+
+// Quick Start keeps shared auth configuration in the repository root.
+nextEnv.loadEnvConfig(fileURLToPath(new URL("..", import.meta.url)), process.env.NODE_ENV === "development", console, true);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
   output: "standalone",
   reactStrictMode: true,
   async headers() {

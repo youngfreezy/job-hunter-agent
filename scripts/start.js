@@ -267,7 +267,7 @@ function findNpmCommand() {
     // 2. Start Postgres + Redis containers
     log(DB_TAG, "Starting Postgres + Redis containers…");
     try {
-      run("docker compose up -d", { cwd: ROOT });
+      run("docker compose up -d postgres redis", { cwd: ROOT });
     } catch (e) {
       log(DB_TAG, `docker compose: ${e.message.split("\n")[0]}`);
     }
@@ -317,6 +317,9 @@ function findNpmCommand() {
   // 5. FastAPI backend
   log(API_TAG, "Starting FastAPI backend on :8000…");
   const python = findPython();
+  // Migrate before store startup can create tables outside Alembic's history.
+  log(DB_TAG, "Applying database migrations…");
+  execSync(`"${python}" -m alembic upgrade head`, { cwd: BACKEND, stdio: "inherit" });
   spawnChild(
     "backend",
     API_TAG,
@@ -329,6 +332,8 @@ function findNpmCommand() {
       "0.0.0.0",
       "--port",
       "8000",
+      "--timeout-graceful-shutdown",
+      "5",
       "--reload",
       "--reload-dir",
       "backend/gateway",

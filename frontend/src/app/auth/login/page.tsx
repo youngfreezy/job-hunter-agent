@@ -3,7 +3,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { signIn, getProviders } from "next-auth/react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +12,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const [demoEnabled, setDemoEnabled] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  useEffect(() => { getProviders().then((providers) => setDemoEnabled(!!providers?.credentials)); }, []);
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center px-4">
@@ -22,6 +27,21 @@ export default function LoginPage() {
           <CardTitle className="text-lg">Welcome back</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {demoEnabled && (
+            <form className="space-y-3" onSubmit={(event) => {
+              event.preventDefault();
+              signIn("credentials", { email, password, callbackUrl: "/session/new" });
+            }}>
+              <p className="text-sm text-zinc-500">Local demo sign-in</p>
+              <label className="block text-sm">Demo email
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-md border p-2 text-black" autoComplete="username" />
+              </label>
+              <label className="block text-sm">Demo password
+                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 w-full rounded-md border p-2 text-black" autoComplete="current-password" />
+              </label>
+              <Button type="submit" className="w-full">Sign in to local demo</Button>
+            </form>
+          )}
           {error && (
             <p className="text-sm text-red-500 text-center">
               {error === "OAuthAccountNotLinked"
@@ -61,9 +81,9 @@ export default function LoginPage() {
 
           <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 px-4 py-3">
             <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-              <span className="font-semibold">Tip:</span> Google sign-in enables automatic
-              verification code entry. Some job sites send email codes during applications — we can
-              read and enter them automatically with Gmail access.
+              <span className="font-semibold">Tip:</span> Sign in with Google, then connect your
+              Indeed account in Settings. If Indeed requests a verification code, enter it in
+              the Browserbase live browser.
             </p>
           </div>
 

@@ -7,6 +7,7 @@ __pycache__/
 .env
 .env.*
 .next/
+.next-dev/
 .runtime/
 screenshots/
 test_screenshots/
