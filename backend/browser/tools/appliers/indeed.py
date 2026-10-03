@@ -127,12 +127,20 @@ class IndeedApplier(BaseApplier):
             'we have received your application', 'application successfully submitted',
         ))
 
+    async def _check_answer(self, instruction, applicant_facts, *, review=False):
+        from backend.browser.application_answers import check_application_answer
+        review_text = await self.page.evaluate('() => document.body.innerText') if review else ''
+        await check_application_answer(instruction, applicant_facts, self.application_rules,
+                                       review_text=review_text)
+
     async def _drive(self, job, user_profile, resume_text, cover_letter):
         if self.stagehand is None:
             return self._fail(str(job.id), 'Stagehand is unavailable; start a Browserbase application session.')
         supplied = json.dumps({'job_title': job.title, 'company': job.company,
                                'application_date': datetime.now(timezone.utc).date().isoformat(),
                                'profile': user_profile, 'resume': resume_text, 'cover_letter': cover_letter})
+        grounding_facts = json.dumps({'application_date': datetime.now(timezone.utc).date().isoformat(),
+                                     'profile': user_profile, 'resume': resume_text})
         prompt = POLICY + '\n' + format_rules_block(self.application_rules, 'form')
         if self.employer_site:
             prompt += ('\nThis is the employer-site path for an Indeed-discovered job. '
@@ -235,6 +243,8 @@ class IndeedApplier(BaseApplier):
                 continue
             if step.kind == 'submit' and not uploaded:
                 raise ApplicationParked('The supplied resume has not been uploaded; application was not submitted.')
+            await self._check_answer(step.instruction, grounding_facts, review=(
+                step.kind == 'submit' or bool(re.search(r'\b(signature|sign|certify|attest)\b', step.instruction, re.I))))
             await self._emit_step('Stagehand: submitting the reviewed application...' if step.kind == 'submit'
                                   else f'Stagehand: {step.instruction[:240]}')
             if step.kind == 'submit':

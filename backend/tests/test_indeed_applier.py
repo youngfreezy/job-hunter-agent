@@ -43,6 +43,7 @@ def _no_selector_db(monkeypatch):
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_success", lambda *a, **k: None)
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_failure", lambda *a, **k: None)
     monkeypatch.setattr("backend.browser.tools.appliers.base.emit_agent_event", AsyncMock())
+    monkeypatch.setattr(IndeedApplier, '_check_answer', AsyncMock())
     monkeypatch.setattr(indeed_mod, "mark_submission_intent", MagicMock(), raising=False)
 
 
@@ -182,6 +183,38 @@ async def test_saved_resume_cannot_continue_without_fresh_upload():
     assert agent.act.await_count == 1
     assert 'Resume options' in agent.act.await_args.args[0]
     assert 'Continue' not in agent.act.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_unsupported_factual_answer_is_queued_before_browser_action(monkeypatch):
+    from backend.shared.application_rules import ApplicationParked
+    page = _page()
+    instruction = 'Select No for Is your current employer a customer of ServiceNow?'
+    agent = _stagehand(page, [dict(kind='act', instruction=instruction, reason='Not mentioned')])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_check_answer', AsyncMock(side_effect=ApplicationParked(
+        'Is your current employer a customer of ServiceNow?')), raising=False)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='V2 Software LLC', cover_letter='')
+    assert result.status == ApplicationStatus.SKIPPED
+    assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prefilled_unknown_answer_blocks_final_submit_even_after_upload(monkeypatch):
+    from backend.shared.application_rules import ApplicationParked
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason='Attach resume'),
+                              dict(kind='submit', instruction='Submit application', reason='Ready')])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    checker = AsyncMock(side_effect=ApplicationParked('Is your employer a ServiceNow customer?'))
+    monkeypatch.setattr(applier, '_check_answer', checker)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
+    assert checker.await_args.kwargs['review'] is True
+    agent.act.assert_not_awaited()
+    assert not applier._submission_attempted
 
 
 @pytest.mark.asyncio
