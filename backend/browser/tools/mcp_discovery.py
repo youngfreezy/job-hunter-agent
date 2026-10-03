@@ -1,10 +1,11 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Search-based agentic discovery -- uses Serper (Google Search API) to find jobs.
+"""Search-based agentic discovery -- uses web search to find jobs.
 
 Instead of scraping LinkedIn/Indeed/Glassdoor (auth-walled), searches for jobs
-directly on ATS platforms (Greenhouse, Lever, Ashby, Workday, etc.) using
-Serper's Google Search API with site: operators.
+directly on ATS platforms (Greenhouse, Lever, Ashby, Workday, etc.) with site:
+operators.  The search runs on Serper (Google) when SERPER_API_KEY is set and
+on the Browserbase Search API otherwise; see backend/browser/tools/web_search.py.
 
 The LLM generates smart search queries targeting ATS sites, then parses
 results into JobListing objects. Combined with the Greenhouse API scraper
@@ -21,7 +22,7 @@ from typing import Any, Dict, List, Optional
 import hashlib
 from uuid import uuid4
 
-from backend.browser.tools.serper_client import serper_search
+from backend.browser.tools.web_search import search_backend, web_search
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.llm import build_llm, HAIKU_MODEL
 from backend.shared.models.schemas import ATSType, JobBoard, JobListing, SearchConfig
@@ -295,7 +296,17 @@ async def _mcp_discover(
     applied_urls: set[str] | None = None,
     round_number: int = 0,
 ) -> List[JobListing]:
-    """Discover jobs using Serper Google Search + LLM parsing."""
+    """Discover jobs using web search (Serper or Browserbase Search) + LLM parsing."""
+
+    backend = search_backend()
+    if backend is None:
+        logger.error("Search discovery skipped: no web search backend configured (SERPER_API_KEY or BROWSERBASE_API_KEY)")
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": "search",
+            "step": "Web search skipped: no search backend configured",
+            "error": True,
+        })
+        return []
 
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "search",
@@ -308,12 +319,12 @@ async def _mcp_discover(
         applied_companies=applied_companies,
         round_number=round_number,
     )
-    logger.info("Serper discovery: generated %d search queries (round %d)", len(queries), round_number)
+    logger.info("Search discovery (%s): generated %d search queries (round %d)", backend, len(queries), round_number)
 
-    # 2. Run searches via Serper (all queries in parallel)
+    # 2. Run searches (all queries in parallel)
     # Broader time window on subsequent rounds; more results per query
     tbs = "qdr:m" if round_number > 0 else "qdr:w"
-    num_results = 20  # Serper max is 20 per request
+    num_results = 20  # Serper max is 20 per request; Browserbase allows up to 25
 
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "search",
@@ -322,16 +333,16 @@ async def _mcp_discover(
 
     async def _safe_search(query: str, page: int = 1) -> Optional[str]:
         try:
-            return await serper_search(query, num_results=num_results, tbs=tbs, page=page)
+            return await web_search(query, num_results=num_results, tbs=tbs, page=page)
         except Exception:
-            logger.warning("Serper search failed for query: %s (page %d)", query, page, exc_info=True)
+            logger.warning("%s search failed for query: %s (page %d)", backend, query, page, exc_info=True)
             return None
 
     results = await asyncio.gather(*[_safe_search(q) for q in queries])
     all_results = [r for r in results if r is not None]
 
     if not all_results:
-        logger.error("Serper discovery: all searches failed")
+        logger.error("Search discovery (%s): all searches failed", backend)
         return []
 
     combined_results = "\n---\n".join(all_results)
@@ -343,7 +354,7 @@ async def _mcp_discover(
     })
 
     parsed_jobs = await _parse_search_results(combined_results)
-    logger.info("Serper discovery: parsed %d jobs from search results", len(parsed_jobs))
+    logger.info("Search discovery: parsed %d jobs from search results", len(parsed_jobs))
 
     # 4. Convert to JobListing objects, filtering to ATS URLs only
     listings: List[JobListing] = []
@@ -426,7 +437,7 @@ async def _mcp_discover(
     _applied = applied_urls or set()
     new_count = sum(1 for j in listings if j.url not in _applied)
     if new_count < 15 and queries:
-        logger.info("Serper discovery: only %d new jobs after filter, fetching page 2", new_count)
+        logger.info("Search discovery: only %d new jobs after filter, fetching page 2", new_count)
         await emit_agent_event(session_id, "discovery_progress", {
             "board": "search",
             "step": f"Only {new_count} new jobs found, searching deeper...",
@@ -462,7 +473,7 @@ async def _mcp_discover(
                     description_snippet=raw.get("description", "")[:500] or None,
                     is_remote=is_remote, discovered_at=datetime.utcnow(),
                 ))
-            logger.info("Serper discovery: %d total after page 2", len(listings))
+            logger.info("Search discovery: %d total after page 2", len(listings))
 
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "search",
@@ -470,7 +481,7 @@ async def _mcp_discover(
         "count": len(listings),
     })
 
-    logger.info("Serper discovery: %d valid ATS listings", len(listings))
+    logger.info("Search discovery: %d valid ATS listings", len(listings))
     return listings
 
 
