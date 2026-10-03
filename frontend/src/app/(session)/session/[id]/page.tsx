@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { CoachPanel } from "@/components/CoachPanel";
 import { LiveBrowserPanel } from "@/components/LiveBrowserPanel";
+import { ApplicationFollowups, type ApplicationQuestion, type EmployerApplication } from "@/components/ApplicationFollowups";
 import { liveViewEnds, liveViewFromEvent, type LiveViewState } from "@/lib/liveView";
 import ResumeScoreRadar from "@/components/charts/ResumeScoreRadar";
 import ScoreDistribution from "@/components/charts/ScoreDistribution";
@@ -42,6 +43,8 @@ import type { Checkpoint } from "@/lib/api";
 import type { CoachOutput } from "@/lib/api";
 
 type SessionData = {
+  employer_application_queue?: Record<string, EmployerApplication>;
+  application_questions?: Record<string, ApplicationQuestion>;
   session_summary?: boolean;
   session_id: string;
   status: string;
@@ -119,6 +122,8 @@ type ScoredJobData = {
 };
 
 type SSEEvent = {
+  employer_application_queue?: Record<string, EmployerApplication>;
+  application_questions?: Record<string, ApplicationQuestion>;
   event: string;
   agent?: string;
   status?: string;
@@ -667,6 +672,8 @@ export default function SessionPage() {
             error_message: "",
           });
           updates.applications_skipped = skip;
+          if (evt.employer_application_queue) updates.employer_application_queue = evt.employer_application_queue;
+          if (evt.application_questions) updates.application_questions = evt.application_questions;
         }
         return { ...prev, ...updates };
       });
@@ -1642,6 +1649,7 @@ export default function SessionPage() {
             </CardContent>
           </Card>
 
+          <ApplicationFollowups questions={session.application_questions} employers={session.employer_application_queue} />
           <Card className="overflow-hidden">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between gap-2">
