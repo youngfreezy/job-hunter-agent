@@ -140,3 +140,21 @@ location San Francisco, auto-approved gates, `max_jobs 10`):
 The workspace header is sent (without it the API returns a different error asking for it), so the key and
 header are right; the organization or workspace behind the key has no prepaid API credit. The run resumes
 once credit is added or the env points at a key that has it. Nothing was faked; no application was submitted.
+
+
+## Addendum (same day): discovery fixes after the first scored run
+
+With API credit restored, a second session scored all 21 discovered listings below the shortlist cut. The new
+per-job score log showed the cause was the input, not the rules: search results carried no location, and the
+Lever/Greenhouse board scrapers matched on keywords alone (the Anthropic "Applied AI Engineer" returned was the
+Tokyo posting). Commit `Give the scorer real locations: posting-API hydration and a location filter`:
+
+- `backend/browser/tools/ats_posting_api.py` fills location, remote flag, pay and a description from the Lever,
+  Greenhouse and Ashby public posting APIs and reports postings the vendor no longer serves.
+- `backend/browser/tools/job_boards/location_filter.py` keeps postings in the requested city, remote ones and
+  unknown ones; drops other cities. Used by both board scrapers and after hydration in `discover_all_boards`.
+- Search queries must carry the city; 12 are generated per round instead of 8.
+- Suite: **300 passed**.
+
+Not done in this pass: no Indeed Apply submissions were attempted and the Indeed applier selectors remain
+unverified; the Indeed login-capture flow was not exercised. Live applications: none submitted yet in this pass.
