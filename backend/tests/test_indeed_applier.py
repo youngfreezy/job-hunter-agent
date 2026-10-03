@@ -211,3 +211,16 @@ async def test_exception_during_submit_is_not_retryable(monkeypatch):
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
     agent.act.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_loading_page_waits_without_actions_or_premature_failure(monkeypatch):
+    page = _page()
+    agent = _stagehand(page, [dict(kind='wait', instruction='', reason='The form is loading')]*3 +
+                       [dict(kind='auth', instruction='', reason='Sign in required')])
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.AUTH_REQUIRED
+    assert agent.extract.await_count == 4
+    agent.act.assert_not_awaited()
