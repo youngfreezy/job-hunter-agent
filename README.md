@@ -309,6 +309,18 @@ external application site cannot complete in this mode. An expired login,
 CAPTCHA, or unsupported form can still stop a run; a successful submission must
 have a confirmation page, not merely a click on Apply.
 
+Indeed applications use [Stagehand v4](https://docs.stagehand.dev/), Browserbase's
+AI SDK, to read each page and act on natural-language instructions. The application
+flow does not depend on hard-coded Indeed wizard selectors. The original uploaded
+resume is transferred from encrypted storage, required unknown answers stop for
+review, and an independent check of the Indeed receipt determines success. Each
+application is limited to 40 actions and 10 minutes. An uncertain submission is
+never automatically retried; check Indeed before starting another attempt.
+
+For the temporary interview explainer, set `NEXT_PUBLIC_BROWSERBASE_DEMO=true`
+on the frontend **before building**. Set it to `false` and rebuild after the demo.
+The links are ordinary product/documentation links, not referral links.
+
 No special prompt phrase is required to select Browserbase or preserve auth.
 Those are configuration and code constraints. The prompt controls what jobs to
 find and how to rank them. Inspect the shortlist because job-board metadata can

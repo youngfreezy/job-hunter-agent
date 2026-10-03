@@ -13,3 +13,6 @@
 - Track plan/progress/review in `tasks/todo.md` for non-trivial tasks.
 - Before `npm run start` or Playwright runs, assert Node version with `nvm use 20` (or project-required version).
 - For live browser streaming, verify the actual image decode path and click-coordinate mapping against a real rendered frame; a visible `<img>` tag is not proof that takeover input will land correctly.
+
+## Browserbase product scope (2026-10-03)
+Before implementing site-specific application selectors, inspect Browserbase's current Stagehand SDK. Browserbase provides both cloud browser infrastructure and natural-language browser automation tools. Explain which layer this app actually uses, and verify current package APIs with a live smoke test rather than relying on older examples.
