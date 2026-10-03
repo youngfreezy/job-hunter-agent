@@ -41,11 +41,14 @@ async def apply_with_playwright(
     resume_file_path: Optional[str],
     session_id: str,
     page: Any,
+    application_rules: str = "",
 ) -> ApplicationResult:
     """Apply to a job using Playwright browser automation + Claude Haiku.
 
     Drop-in replacement for apply_with_skyvern(). Routes to the correct
     ATS-specific applier based on the job URL, falling back to GenericApplier.
+    *application_rules* is the owner's free-text policy, forwarded to the
+    form filler prompt.
     """
     # Detect ATS from current page URL (may have redirected from original)
     url = page.url if hasattr(page, "url") else job.url
@@ -59,7 +62,7 @@ async def apply_with_playwright(
         job.title, job.company, applier_cls.__name__, ats_type,
     )
 
-    applier = applier_cls(page, session_id)
+    applier = applier_cls(page, session_id, application_rules=application_rules)
     return await applier.run(
         job=job,
         user_profile=user_profile,

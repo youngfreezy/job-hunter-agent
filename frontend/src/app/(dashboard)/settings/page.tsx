@@ -7,8 +7,16 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 
-import { API_BASE, getAuthHeaders, apiFetch, updateMinimumSubmitted } from "@/lib/api";
+import { API_BASE, getAuthHeaders, apiFetch, updateApplicationRules, updateMinimumSubmitted } from "@/lib/api";
+
+const APPLICATION_RULES_MAX = 20000;
+
+const APPLICATION_RULES_PLACEHOLDER = `Eligibility: remote (US) or Austin, TX only. Senior/Staff level. Python or TypeScript stacks. Base pay at least $180k.
+Standard answers: work authorization = yes, sponsorship = no, how did you hear = job board.
+Park and ask me: any question aimed at AI tools or agents, "write this in your own words" essays, any attestation that no AI was used.
+Never invent facts about me that are not in my resume.`;
 
 export default function SettingsPage() {
   const [phone, setPhone] = useState("");
@@ -27,6 +35,9 @@ export default function SettingsPage() {
   const [isPremium, setIsPremium] = useState(false);
   const [minimumSubmitted, setMinimumSubmitted] = useState(0);
   const [savingMinSubmitted, setSavingMinSubmitted] = useState(false);
+  const [applicationRules, setApplicationRules] = useState("");
+  const [savedApplicationRules, setSavedApplicationRules] = useState("");
+  const [savingRules, setSavingRules] = useState(false);
 
 
   useEffect(() => {
@@ -43,6 +54,8 @@ export default function SettingsPage() {
           setBlockedCompanies(user.blocked_companies || []);
           setIsPremium(user.is_premium || false);
           setMinimumSubmitted(user.minimum_submitted_applications || 0);
+          setApplicationRules(user.application_rules || "");
+          setSavedApplicationRules(user.application_rules || "");
           if (user.phone_verified) {
             setVerifyStep("done");
             setPhone(user.phone_number || "");
@@ -162,6 +175,25 @@ export default function SettingsPage() {
       toast.error("Failed to save minimum submitted preference");
     } finally {
       setSavingMinSubmitted(false);
+    }
+  }
+
+  async function handleSaveApplicationRules() {
+    const rules = applicationRules.trim();
+    if (rules.length > APPLICATION_RULES_MAX) {
+      toast.error(`Rules must be at most ${APPLICATION_RULES_MAX.toLocaleString()} characters`);
+      return;
+    }
+    setSavingRules(true);
+    try {
+      const saved = await updateApplicationRules(rules);
+      setApplicationRules(saved.application_rules);
+      setSavedApplicationRules(saved.application_rules);
+      toast.success(saved.application_rules ? "Application rules saved" : "Application rules cleared");
+    } catch {
+      toast.error("Failed to save application rules");
+    } finally {
+      setSavingRules(false);
     }
   }
 
@@ -345,6 +377,44 @@ export default function SettingsPage() {
               No companies blocked. Jobs from all companies will appear in your results.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Application rules */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Application Rules</CardTitle>
+          <CardDescription>
+            Plain-text rules the agent must obey when scoring jobs and filling forms: eligibility
+            (location, seniority, stack, pay), standard answers, and when to park an application
+            for you instead of answering. Applied to all sessions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Textarea
+            id="application-rules"
+            aria-label="Application rules"
+            value={applicationRules}
+            onChange={(e) => setApplicationRules(e.target.value)}
+            placeholder={APPLICATION_RULES_PLACEHOLDER}
+            rows={10}
+            maxLength={APPLICATION_RULES_MAX}
+            disabled={savingRules}
+            className="font-mono text-sm"
+          />
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-muted-foreground">
+              {applicationRules.length.toLocaleString()} / {APPLICATION_RULES_MAX.toLocaleString()} characters.
+              A parked application shows up as skipped with the exact question in its error.
+            </p>
+            <Button
+              onClick={handleSaveApplicationRules}
+              disabled={savingRules || applicationRules.trim() === savedApplicationRules}
+              size="sm"
+            >
+              {savingRules ? "Saving..." : "Save rules"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

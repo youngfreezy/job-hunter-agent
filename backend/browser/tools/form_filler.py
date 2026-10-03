@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Literal, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
+from backend.shared.application_rules import ApplicationParked, format_rules_block
 from backend.shared.llm import build_llm, default_model, invoke_with_retry
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,14 @@ class FormAnalysisResult(BaseModel):
     """Result of analysing a job application form."""
     instructions: List[FillInstruction] = Field(
         description="List of fill instructions for each form field"
+    )
+    park_question: str = Field(
+        default="",
+        description=(
+            "Leave empty unless the owner's application rules say this form must be "
+            "parked for a human. Then set it to the exact label text of the question "
+            "that triggered the rule and return an empty instructions list."
+        ),
     )
 
 
@@ -460,11 +469,17 @@ async def analyse_form(
     job_company: str = "",
     ats_strategy: Optional[str] = None,
     user_profile: Optional[Dict[str, str]] = None,
+    application_rules: str = "",
 ) -> List[Dict[str, Any]]:
     """Send form fields to Claude for intelligent fill-value determination.
 
     Uses structured output (tool calling) to guarantee valid JSON responses.
     Returns a list of fill instructions.
+
+    When *application_rules* is non-empty it is appended to the system prompt
+    as a delimited "Owner's application rules" block.  If the model reports
+    that a rule says to park (``park_question``), ``ApplicationParked`` is
+    raised with that question instead of returning instructions.
     """
     llm = build_llm(model=default_model(), max_tokens=8192, temperature=0.0)
     structured_llm = llm.with_structured_output(FormAnalysisResult)
@@ -478,10 +493,25 @@ async def analyse_form(
     if ats_strategy:
         user_content += f"## ATS Strategy\n{ats_strategy}\n\n"
 
+    system_prompt = FORM_ANALYSIS_PROMPT
+    rules_block = format_rules_block(application_rules, purpose="form")
+    if rules_block:
+        system_prompt = f"{FORM_ANALYSIS_PROMPT}\n{rules_block}"
+
     result: FormAnalysisResult = await invoke_with_retry(structured_llm, [
-        SystemMessage(content=FORM_ANALYSIS_PROMPT),
+        SystemMessage(content=system_prompt),
         HumanMessage(content=user_content),
     ])
+
+    park_question = (result.park_question or "").strip()
+    if park_question:
+        if not rules_block:
+            # Only the owner's rules may park an application; without them a
+            # park_question is a model error, so keep filling as if unset.
+            logger.warning("Model set park_question without owner rules; ignoring: %s", park_question[:120])
+        else:
+            logger.info("Application parked by owner rule on question: %s", park_question[:200])
+            raise ApplicationParked(park_question)
 
     instructions = [instr.model_dump() for instr in result.instructions]
     instructions = _enforce_required_field_fallbacks(fields, instructions, user_profile)

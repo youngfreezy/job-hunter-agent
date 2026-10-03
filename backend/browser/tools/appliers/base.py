@@ -27,6 +27,7 @@ from backend.browser.tools.form_filler import (
     extract_form_fields,
     fill_form,
 )
+from backend.shared.application_rules import ApplicationParked
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     ApplicationResult,
@@ -91,9 +92,11 @@ class BaseApplier(ABC):
 
     PLATFORM: str = "unknown"
 
-    def __init__(self, page: Any, session_id: str) -> None:
+    def __init__(self, page: Any, session_id: str, application_rules: str = "") -> None:
         self.page = page
         self.session_id = session_id
+        # Owner's free-text rules, forwarded to every analyse_form() call.
+        self.application_rules = application_rules
         self._step_count = 0
         self._start_time = time.monotonic()
         self._screenshot_path: Optional[str] = None
@@ -107,15 +110,27 @@ class BaseApplier(ABC):
         cover_letter: str,
         resume_file_path: Optional[str] = None,
     ) -> ApplicationResult:
-        """Entry point — sets context then delegates to platform-specific apply()."""
+        """Entry point — sets context then delegates to platform-specific apply().
+
+        An ``ApplicationParked`` raised anywhere inside ``apply()`` (the owner's
+        rules said a human must answer a question) becomes a SKIPPED result
+        whose error_message is that exact question.
+        """
         self._current_company = getattr(job, "company", "") or ""
-        return await self.apply(
-            job=job,
-            user_profile=user_profile,
-            resume_text=resume_text,
-            cover_letter=cover_letter,
-            resume_file_path=resume_file_path,
-        )
+        try:
+            return await self.apply(
+                job=job,
+                user_profile=user_profile,
+                resume_text=resume_text,
+                cover_letter=cover_letter,
+                resume_file_path=resume_file_path,
+            )
+        except ApplicationParked as parked:
+            await self._emit_step(f"Parked for you: {parked.question[:160]}")
+            return self._make_result(
+                str(job.id), ApplicationStatus.SKIPPED,
+                error_message=parked.question,
+            )
 
     @abstractmethod
     async def apply(
@@ -217,6 +232,7 @@ class BaseApplier(ABC):
             job_title=job_title,
             job_company=job_company,
             user_profile=user_profile,
+            application_rules=self.application_rules,
         )
 
         await self._emit_step(f"Filling {len(instructions)} fields...")

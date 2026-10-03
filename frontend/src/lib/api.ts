@@ -742,6 +742,17 @@ export async function updateMinimumSubmitted(value: number): Promise<{ minimum_s
   return res.json();
 }
 
+export async function updateApplicationRules(rules: string): Promise<{ application_rules: string }> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/auth/me/application-rules`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify({ application_rules: rules }),
+  });
+  if (!res.ok) throw new Error("Failed to update application rules");
+  return res.json();
+}
+
 // ---------- Billing API ----------
 
 export async function getWallet(): Promise<{

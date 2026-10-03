@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Optional
 
 from backend.browser.tools.appliers.base import BaseApplier
+from backend.shared.application_rules import ApplicationParked
 from backend.shared.models.schemas import (
     ApplicationResult,
     ApplicationStatus,
@@ -89,6 +90,8 @@ class LeverApplier(BaseApplier):
             await self._capture_screenshot(job)
             return await self._post_submit_check(job_id, cover_letter)
 
+        except ApplicationParked:
+            raise  # BaseApplier.run() turns this into a SKIPPED result
         except Exception as exc:
             logger.error("Lever apply failed for %s: %s", job.title, exc, exc_info=True)
             return self._make_result(

@@ -331,6 +331,16 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 else (search_config.get("keywords", []) if isinstance(search_config, dict) else [])
             )
 
+        # Owner's application rules (Settings -> Application rules). Loaded once
+        # per run; a DB error here propagates because scoring without the
+        # owner's eligibility filters would shortlist jobs they excluded.
+        rules_section = ""
+        if user_id and user_id != "unknown":
+            from backend.shared.application_rules import format_rules_block, load_application_rules
+            rules_section = format_rules_block(load_application_rules(user_id), purpose="scoring")
+            if rules_section:
+                logger.info("Injecting owner's application rules into scoring prompt")
+
         async def _score_batch(batch_idx: int, batch_jobs: List[JobListing]) -> List[dict]:
             """Score a single batch via LLM."""
 
@@ -380,6 +390,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 f"{keywords_section}"
                 f"{experience_section}"
                 f"{blocklist_section}"
+                f"{rules_section}"
                 f"## Job Listings (batch {batch_idx + 1}/{total_batches})\n\n{jobs_text}\n\n"
             )
             if _strategy_context:
@@ -518,11 +529,12 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 strictness, before_filter, len(scored_jobs), min_score,
             )
 
-        # Cap to max_jobs from session config
         max_jobs = 20  # default
         if config:
             cfg = config if isinstance(config, dict) else config.model_dump()
             max_jobs = cfg.get("max_jobs", 20)
+
+        # Cap to max_jobs from session config
         if len(scored_jobs) > max_jobs:
             logger.info("Capping scored jobs from %d to %d (session config)", len(scored_jobs), max_jobs)
             scored_jobs = scored_jobs[:max_jobs]

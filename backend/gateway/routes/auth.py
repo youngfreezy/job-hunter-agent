@@ -68,6 +68,35 @@ async def update_blocked_companies(request: Request, body: BlockedCompaniesUpdat
     return {"blocked_companies": body.blocked_companies}
 
 
+class ApplicationRulesUpdate(BaseModel):
+    application_rules: str
+
+
+@router.get("/me/application-rules")
+async def get_application_rules(request: Request):
+    """Return the owner's free-text application rules (empty string when unset)."""
+    user = get_current_user(request)
+    from backend.shared.billing_store import get_application_rules as _get_rules
+    return {"application_rules": _get_rules(user["id"])}
+
+
+@router.put("/me/application-rules")
+async def update_application_rules(request: Request, body: ApplicationRulesUpdate):
+    """Replace the owner's application rules. Injected into scoring and form filling."""
+    from backend.shared.application_rules import MAX_RULES_CHARS
+
+    user = get_current_user(request)
+    rules = body.application_rules.strip()
+    if len(rules) > MAX_RULES_CHARS:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": f"Application rules must be at most {MAX_RULES_CHARS} characters."},
+        )
+    from backend.shared.billing_store import update_application_rules as _update_rules
+    _update_rules(user["id"], rules)
+    return {"application_rules": rules}
+
+
 class MinimumSubmittedUpdate(BaseModel):
     minimum_submitted_applications: int
 

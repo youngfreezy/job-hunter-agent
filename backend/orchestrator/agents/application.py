@@ -1265,6 +1265,7 @@ async def _apply_to_job(
             })
 
             from backend.browser.tools.appliers.dispatcher import apply_with_playwright
+            from backend.shared.application_rules import load_application_rules
             result = await apply_with_playwright(
                 job=job,
                 user_profile=user_profile,
@@ -1273,6 +1274,7 @@ async def _apply_to_job(
                 resume_file_path=resume_file,
                 session_id=session_id,
                 page=page,
+                application_rules=load_application_rules(user_id),
             )
 
         finally:
