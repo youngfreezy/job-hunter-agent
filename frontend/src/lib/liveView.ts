@@ -62,5 +62,5 @@ export function liveViewFromEvent(evt: LiveViewEventLike): LiveViewState | null 
 
 /** Events after which the cloud browser is gone and the panel should close. */
 export function liveViewEnds(evt: { event?: string }): boolean {
-  return evt.event === "done" || evt.event === "error";
+  return evt.event === "done" || evt.event === "error" || evt.event === "browser_live_view_ended";
 }

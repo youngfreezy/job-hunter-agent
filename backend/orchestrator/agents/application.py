@@ -1843,6 +1843,13 @@ async def run_application_agent(state: JobHunterState) -> dict:
     finally:
         if manager:
             try:
+                if manager.browserbase_session_id:
+                    await emit_agent_event(session_id, "browser_live_view_ended", {
+                        "browserbase_session_id": manager.browserbase_session_id,
+                    })
+            except Exception:
+                pass
+            try:
                 await manager.stop()
             except Exception:
                 pass

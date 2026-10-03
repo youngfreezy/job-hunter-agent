@@ -51,6 +51,7 @@ describe("liveViewEnds", () => {
   it("closes on terminal events only", () => {
     expect(liveViewEnds({ event: "done" })).toBe(true);
     expect(liveViewEnds({ event: "error" })).toBe(true);
+    expect(liveViewEnds({ event: "browser_live_view_ended" })).toBe(true);
     expect(liveViewEnds({ event: "application_submitted" })).toBe(false);
     expect(liveViewEnds({ event: "browser_live_view" })).toBe(false);
   });

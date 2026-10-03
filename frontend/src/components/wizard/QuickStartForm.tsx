@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormikFileUpload } from "@/components/forms/FormikFileUpload";
 import { DiscoveryPrompt } from "./DiscoveryPrompt";
-import { analyzeResume, startSession } from "@/lib/api";
+import { analyzeResume, getWallet, startSession } from "@/lib/api";
+import { buildQuickStartConfig } from "@/lib/quick-start-config";
 import type { SessionFormValues } from "@/lib/schemas/session";
 import { sessionInitialValues } from "@/lib/schemas/session";
 
@@ -125,6 +126,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
         savedSettings = JSON.parse(localStorage.getItem("jh_session_settings") || "{}");
       } catch {}
 
+      const wallet = await getWallet();
       const session = await startSession({
         keywords,
         locations,
@@ -135,15 +137,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
         resume_uuid: values.resumeFileUuid || null,
         linkedin_url: null,
         preferences: { discovery_prompt: values.discoveryPrompt || "" },
-        config: {
-          max_jobs: maxJobs,
-          tailoring_quality: "standard",
-          application_mode: (savedSettings.application_mode as string) ?? "auto_apply",
-          generate_cover_letters: (savedSettings.generate_cover_letters as boolean) ?? true,
-          job_boards: (savedSettings.job_boards as string[]) ?? ["indeed"],
-          ai_temperature: (savedSettings.ai_temperature as number) ?? 0.0,
-          scoring_strictness: (savedSettings.scoring_strictness as number) ?? 0.5,
-        },
+        config: buildQuickStartConfig(maxJobs, wallet.is_premium === true, savedSettings),
       });
       window.umami?.track("quickstart-complete");
       router.push(`/session/${session.session_id}`);
@@ -269,11 +263,11 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
             </div>
 
             <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-500 dark:bg-zinc-900/60">
-              <label htmlFor="application-count" className="block font-medium text-foreground">Applications to prepare</label>
+              <label htmlFor="application-count" className="block font-medium text-foreground">Application target</label>
               <select id="application-count" value={maxJobs} onChange={(event) => setMaxJobs(Number(event.target.value))} className="mt-2 rounded-md border bg-background p-2 text-foreground">
                 {[5, 10, 15, 20].map((count) => <option key={count} value={count}>{count} applications</option>)}
               </select>
-              <p className="mt-2">Indeed only. Review the shortlist before applying. Actual submissions depend on suitable jobs, available credits, and each application form.</p>
+              <p className="mt-2">Indeed only. Review the shortlist before applying. Premium searches try additional matching jobs and limited retries toward this submission target. Other accounts target this many attempts. Actual submissions depend on suitable jobs, available credits, and each application form.</p>
             </div>
           </CardContent>
         </Card>

@@ -27,4 +27,10 @@ async def discover_indeed(*, search_config: SearchConfig, session_id: str,
             excluded_job_keys=excluded_job_keys,
         )
     finally:
-        await manager.stop()
+        try:
+            if manager.browserbase_session_id:
+                await emit_agent_event(session_id, "browser_live_view_ended", {
+                    "browserbase_session_id": manager.browserbase_session_id,
+                })
+        finally:
+            await manager.stop()
