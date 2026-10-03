@@ -173,6 +173,31 @@ async def test_hidden_file_input_is_reported_to_stagehand(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_saved_resume_cannot_continue_without_fresh_upload():
+    page = _page('https://smartapply.indeed.com/form/resume-selection-module/resume-selection')
+    agent = _stagehand(page, [dict(kind='act', instruction='Click Continue with the selected resume', reason='Same filename'),
+                              dict(kind='park', instruction='', reason='Missing field')])
+    await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert agent.act.await_count == 1
+    assert 'Resume options' in agent.act.await_args.args[0]
+    assert 'Continue' not in agent.act.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_resume_step_uploads_hidden_input_before_model_can_continue(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/resume-selection-module/resume-selection')
+    page.query_selector_all.return_value = [MagicMock()]
+    agent = _stagehand(page, [dict(kind='park', instruction='', reason='Missing field')])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    upload = AsyncMock()
+    monkeypatch.setattr(applier, '_upload_original', upload)
+    await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    upload.assert_awaited_once()
+    assert 'uploaded in this application: True' in agent.extract.await_args.args[0]
+
+
+@pytest.mark.asyncio
 async def test_receipt_cannot_be_job_description_or_visible_submit():
     page = _page()
     page.evaluate = AsyncMock(return_value={'text': 'application submitted', 'submitting': False})

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import traceback
 from datetime import datetime, timezone
 from typing import Literal
@@ -52,6 +53,8 @@ Use act to open Indeed Apply, fill ONE field, choose an existing truthful option
 Do not use act to submit the final application: classify that action as submit.
 When the resume page appears, choose the upload option and return upload when a file input exists.
 The application must use the supplied resume, not an older saved Indeed resume.
+An existing file with the same name is not proof of a fresh upload. Open Resume options
+and choose to replace or upload the resume when the old file is already selected.
 Do not continue beyond the resume step until the supplied file is attached.
 Return submit ONLY after all required fields are complete, the supplied resume is attached,
 and the form displays the final application review for this job. Return done only for an actual receipt.
@@ -159,6 +162,13 @@ class IndeedApplier(BaseApplier):
                 return self._fail(str(job.id), 'Stopped navigation outside the authorized application path.')
             await self._emit_step(f'Stagehand: reading {self.PLATFORM} application (action {index + 1}/{MAX_ACTIONS})')
             file_inputs = await self.page.query_selector_all('input[type="file"]')
+            on_indeed_resume = (not self.employer_site and
+                                'resume-selection' in urlparse(active_url).path)
+            if on_indeed_resume and not uploaded and len(file_inputs) == 1:
+                await self._upload_original()
+                uploaded = True
+                await self._emit_step('Attached your uploaded resume to the application.')
+                continue
             decision = await self.stagehand.extract(
                 prompt + f'\nSupplied resume uploaded in this application: {uploaded}. '
                 + f'File inputs available for upload (including hidden inputs): {len(file_inputs)}. '
@@ -170,6 +180,11 @@ class IndeedApplier(BaseApplier):
                 'Read the current page and choose the next step.', NextStep, page=stage_page,
             )
             step = decision.data
+            if (on_indeed_resume and not uploaded and step.kind == 'act'
+                    and re.search(r'\b(continue|next|proceed)\b', step.instruction, re.I)):
+                # Do not let a model equate an old selected filename with the supplied PDF.
+                step = NextStep(kind='act', reason='The supplied PDF must replace the saved resume.',
+                                instruction='Click the Resume options button for the selected resume to reveal the replace or upload option.')
             signature = (active_url, step.kind, step.instruction)
             repetitions = repetitions + 1 if signature == previous else 0
             previous = signature
