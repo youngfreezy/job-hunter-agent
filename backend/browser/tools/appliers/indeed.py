@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from stagehand import FilePayload
 
 from backend.browser.indeed_policy import is_indeed_url
+from backend.browser.application_answers import RESUME_REASONING_POLICY, resolve_application_question
 from backend.browser.application_routing import is_public_application_url
 from backend.browser.tools.appliers.base import BaseApplier
 from backend.shared.application_rules import ApplicationParked, format_rules_block
@@ -193,7 +194,7 @@ class IndeedApplier(BaseApplier):
                                'profile': user_profile, 'resume': resume_text, 'cover_letter': cover_letter})
         grounding_facts = json.dumps({'application_date': datetime.now(timezone.utc).date().isoformat(),
                                      'profile': user_profile, 'resume': resume_text})
-        prompt = POLICY + '\n' + format_rules_block(self.application_rules, 'form')
+        prompt = POLICY + '\n' + RESUME_REASONING_POLICY + '\n' + format_rules_block(self.application_rules, 'form')
         if self.employer_site:
             prompt += ('\nThis is the employer-site path for an Indeed-discovered job. '
                        'Confirm that the page matches the authorized company and role before entering applicant data. '
@@ -203,6 +204,28 @@ class IndeedApplier(BaseApplier):
         prompt += '\nApplicant facts and authorized job:\n' + supplied
         uploaded = False
         resume_recovery_attempted = False
+        answer_resolution_attempted = False
+        async def resolve_parked_answer(question):
+            nonlocal answer_resolution_attempted, prompt
+            if answer_resolution_attempted:
+                return False
+            answer_resolution_attempted = True
+            try:
+                suggestion = await resolve_application_question(
+                    question, grounding_facts, self.application_rules)
+            except Exception as exc:
+                logger.warning('Resume-grounded answer resolution failed (%s); retaining question queue', type(exc).__name__)
+                return False
+            if suggestion is None:
+                return False
+            # Context only: never execute a judge answer as a browser instruction.
+            prompt += ('\nResume-grounded answer suggestion for this exact question. '
+                       'Find and correct its field if necessary before proceeding. '
+                       'Use normal act/submit safeguards; this does not authorize submission:\n'
+                       + json.dumps({'question': question, **suggestion.model_dump()}))
+            await self._emit_step('Found supporting resume facts; checking the application answer.')
+            return True
+
         captcha_waits = 0
         loading_waits = 0
         previous = None
@@ -285,6 +308,8 @@ class IndeedApplier(BaseApplier):
                 continue
             loading_waits = 0
             if step.kind == 'park':
+                if await resolve_parked_answer(step.reason):
+                    continue
                 raise ApplicationParked(step.reason)
             if step.kind == 'auth':
                 return self._fail(str(job.id), step.reason, ApplicationErrorCategory.AUTH_REQUIRED)
@@ -347,8 +372,13 @@ class IndeedApplier(BaseApplier):
                 if not recovery.data.success:
                     raise ApplicationParked('The supplied resume has not been uploaded; the resume editor could not be opened.')
                 continue
-            await self._check_answer(step.instruction, grounding_facts, review=(
-                step.kind == 'submit' or bool(re.search(r'\b(signature|sign|certify|attest)\b', step.instruction, re.I))))
+            try:
+                await self._check_answer(step.instruction, grounding_facts, review=(
+                    step.kind == 'submit' or bool(re.search(r'\b(signature|sign|certify|attest)\b', step.instruction, re.I))))
+            except ApplicationParked as parked:
+                if await resolve_parked_answer(parked.question):
+                    continue
+                raise
             await self._emit_step('Stagehand: submitting the reviewed application...' if step.kind == 'submit'
                                   else f'Stagehand: {step.instruction[:240]}')
             if step.kind == 'submit':

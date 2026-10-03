@@ -44,6 +44,7 @@ def _no_selector_db(monkeypatch):
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_failure", lambda *a, **k: None)
     monkeypatch.setattr("backend.browser.tools.appliers.base.emit_agent_event", AsyncMock())
     monkeypatch.setattr(IndeedApplier, '_check_answer', AsyncMock())
+    monkeypatch.setattr(indeed_mod, 'resolve_application_question', AsyncMock(return_value=None))
     monkeypatch.setattr(indeed_mod, "mark_submission_intent", MagicMock(), raising=False)
 
 
@@ -699,3 +700,101 @@ async def test_snapshot_node_id_changes_do_not_bypass_unchanged_form_stop(monkey
     agent.act.assert_awaited_once()
     assert result.status == ApplicationStatus.FAILED
     assert 'not progressing' in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_parked_resume_fact_gets_one_judge_suggestion_then_normal_action_audit(monkeypatch):
+    from backend.browser.application_answers import AnswerSuggestion, AnswerEvidence
+    question = 'Do you have Anthropic experience?'
+    resume = 'Built an application using Anthropic APIs.'
+    suggestion = AnswerSuggestion(supported=True, answer='Yes', reason='Hands-on API project.',
+        evidence=[AnswerEvidence(source='resume', quote=resume)])
+    resolver = AsyncMock(return_value=suggestion)
+    monkeypatch.setattr(indeed_mod, 'resolve_application_question', resolver)
+    page = _page()
+    agent = _stagehand(page, [dict(kind='park', instruction='', reason=question),
+                             dict(kind='act', instruction='Choose Yes for Anthropic experience', reason='Resume supports it'),
+                             dict(kind='auth', instruction='', reason='Sign in')])
+    applier = IndeedApplier(page, 's1')
+    applier.stagehand = agent
+    check = AsyncMock()
+    monkeypatch.setattr(applier, '_check_answer', check)
+    await applier.run(job=_job(), user_profile={}, resume_text=resume, cover_letter='')
+    resolver.assert_awaited_once()
+    assert resume in resolver.await_args.args[1]
+    assert 'Resume-grounded answer suggestion' in agent.extract.await_args_list[1].args[0]
+    assert '"answer": "Yes"' in agent.extract.await_args_list[1].args[0]
+    check.assert_awaited_once()
+    agent.act.assert_awaited_once()
+    indeed_mod.mark_submission_intent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_park_adjudication_cannot_repeat_or_force_an_answer(monkeypatch):
+    from backend.browser.application_answers import AnswerSuggestion, AnswerEvidence
+    suggestion = AnswerSuggestion(supported=True, answer='Yes', reason='Resume support.',
+        evidence=[AnswerEvidence(source='resume', quote='API project')])
+    resolver = AsyncMock(return_value=suggestion)
+    monkeypatch.setattr(indeed_mod, 'resolve_application_question', resolver)
+    agent = _stagehand(_page(), [dict(kind='park', instruction='', reason='Exact required question?')] * 2)
+    result = await IndeedApplier(_page(), 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='API project', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
+    assert result.error_message == 'Exact required question?'
+    resolver.assert_awaited_once()
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rejected_prefilled_answer_is_corrected_before_any_submit(monkeypatch):
+    from backend.browser.application_answers import AnswerSuggestion, AnswerEvidence
+    question = 'Do you possess Anthropic Experience and Certifications?'
+    rules = 'No formal Anthropic certification; answer No to the combined question.'
+    resolver = AsyncMock(return_value=AnswerSuggestion(supported=True, answer='No', reason='Owner rule.',
+        evidence=[AnswerEvidence(source='application_rules', quote=rules)]))
+    monkeypatch.setattr(indeed_mod, 'resolve_application_question', resolver)
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit application'),
+        ('act', 'Change combined Anthropic experience and certification answer to No'),
+        ('submit', 'Submit application')]])
+    applier = IndeedApplier(page, 's1', application_rules=rules, stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    check = AsyncMock(side_effect=[indeed_mod.ApplicationParked(question), None, None])
+    monkeypatch.setattr(applier, '_check_answer', check)
+    monkeypatch.setattr(applier, '_receipt', AsyncMock(return_value=True))
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='Anthropic APIs', cover_letter='')
+    assert result.status == ApplicationStatus.SUBMITTED
+    assert [c.args[0] for c in agent.act.await_args_list] == [
+        'Change combined Anthropic experience and certification answer to No', 'Submit application']
+    assert check.await_count == 3
+    indeed_mod.mark_submission_intent.assert_called_once()
+    resolver.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_real_but_irrelevant_resume_quote_cannot_override_certification_audit(monkeypatch):
+    from backend.browser.application_answers import AnswerSuggestion, AnswerEvidence
+    question = 'Do you hold an Anthropic certification?'
+    # A genuine quote proves provenance, not that the suggested credential is true.
+    resolver = AsyncMock(return_value=AnswerSuggestion(supported=True, answer='Yes',
+        reason='Incorrect inference from API use.',
+        evidence=[AnswerEvidence(source='resume', quote='Built an application using Anthropic APIs.')]))
+    monkeypatch.setattr(indeed_mod, 'resolve_application_question', resolver)
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit application'), ('submit', 'Submit application')]])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    audit = AsyncMock(side_effect=indeed_mod.ApplicationParked(question))
+    monkeypatch.setattr(applier, '_check_answer', audit)
+    result = await applier.run(job=_job(), user_profile={},
+        resume_text='Built an application using Anthropic APIs.', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
+    assert result.error_message == question
+    assert audit.await_count == 2
+    resolver.assert_awaited_once()
+    agent.act.assert_not_awaited()
+    indeed_mod.mark_submission_intent.assert_not_called()

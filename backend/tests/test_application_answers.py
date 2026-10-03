@@ -71,3 +71,47 @@ async def test_unsupported_check_without_question_fails_closed_without_inventing
     checker(monkeypatch, answers.AnswerCheck(reason='Unsupported.', supported=False, question=''))
     with pytest.raises(ValueError, match='question'):
         await answers.check_application_answer('Choose No', '{}', '')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('question,answer,resume', [
+    ('Do you have Anthropic experience?', 'Yes', 'Built an application using Anthropic APIs.'),
+    ('Do you have at least three years of software engineering experience?', 'Yes', 'Software Engineer, January 2020 - December 2023.'),
+])
+async def test_resume_synthesis_returns_source_evidence(monkeypatch, question, answer, resume):
+    invoke = checker(monkeypatch, answers.AnswerSuggestion(supported=True, answer=answer,
+        reason='The quoted work supports the requested experience.',
+        evidence=[answers.AnswerEvidence(source='resume', quote=resume)]))
+    result = await answers.resolve_application_question(question, json.dumps({'resume': resume}), '')
+    assert result.answer == answer
+    assert result.evidence[0].quote == resume
+    payload = json.loads(invoke.await_args.args[0][1].content)
+    assert payload['question'] == question
+    policy = invoke.await_args.args[0][0].content
+    assert 'never\nsum overlapping periods' in policy
+    assert 'formal certification' in policy
+
+
+@pytest.mark.asyncio
+async def test_experience_without_certification_remains_unknown(monkeypatch):
+    checker(monkeypatch, answers.AnswerSuggestion(supported=False, answer='',
+        reason='API usage supports experience but does not establish certification.'))
+    assert await answers.resolve_application_question('Do you have an Anthropic certification?',
+        '{"resume":"Built applications using Anthropic APIs."}', '') is None
+
+
+@pytest.mark.asyncio
+async def test_explicit_no_certification_rule_can_correct_prefilled_yes(monkeypatch):
+    rule = 'I have Anthropic experience but no formal Anthropic certification; answer No to the combined question.'
+    checker(monkeypatch, answers.AnswerSuggestion(supported=True, answer='No', reason='Explicit owner rule.',
+        evidence=[answers.AnswerEvidence(source='application_rules', quote=rule)]))
+    result = await answers.resolve_application_question('Do you possess Anthropic Experience and Certifications?', '{}', rule)
+    assert result.answer == 'No'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('evidence', [[], [answers.AnswerEvidence(source='resume', quote='Anthropic certified')]])
+async def test_suggested_answer_cannot_use_missing_or_fabricated_evidence(monkeypatch, evidence):
+    checker(monkeypatch, answers.AnswerSuggestion(supported=True, answer='Yes', reason='Claimed evidence.', evidence=evidence))
+    with pytest.raises(ValueError, match='evidence'):
+        await answers.resolve_application_question('Are you certified?', '{"resume":"Anthropic API project"}', '')
