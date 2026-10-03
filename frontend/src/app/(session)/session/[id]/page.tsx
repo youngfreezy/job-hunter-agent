@@ -1473,8 +1473,13 @@ export default function SessionPage() {
               )}
               <dt className="text-muted-foreground">Approval</dt>
               <dd>You approve the shortlist before anything is sent</dd>
-              <dt className="text-muted-foreground">Credits used</dt>
-              <dd className="font-mono">{submittedCount + failedCount * 0.5}</dd>
+              <dt className="text-muted-foreground">Credit estimate</dt>
+              <dd>
+                <span className="font-mono">{submittedCount + failedCount * 0.5}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Before free applications or plan coverage. <Link href="/billing" className="underline">View actual charges</Link>.
+                </span>
+              </dd>
               {session.coach_output?.resume_score && (
                 <>
                   <dt className="text-muted-foreground">Resume</dt>
