@@ -31,6 +31,7 @@ from backend.shared.application_rules import ApplicationParked
 from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
+    ApplicationErrorCategory,
     ApplicationResult,
     ApplicationStatus,
     JobListing,
@@ -140,10 +141,12 @@ class BaseApplier(ABC):
             )
         except ApplicationParked as parked:
             await self._emit_step(f"Parked for you: {parked.question[:160]}")
-            return self._make_result(
+            result = self._make_result(
                 str(job.id), ApplicationStatus.SKIPPED,
                 error_message=parked.question,
             )
+            result.error_category = ApplicationErrorCategory.NEEDS_INPUT
+            return result
 
     @abstractmethod
     async def apply(

@@ -779,6 +779,7 @@ async def _apply_to_job(
     session_id: str,
     context: Any = None,
     stagehand: Any = None,
+    employer_url: str | None = None,
 ) -> ApplicationResult:
     """Apply to a single job using direct Playwright + LLM form analysis.
 
@@ -797,9 +798,13 @@ async def _apply_to_job(
 
     if get_settings().INDEED_ONLY:
         from backend.browser.indeed_policy import is_indeed_url
+        from backend.browser.application_routing import is_public_application_url
         if not is_indeed_url(job.url):
             return ApplicationResult(job_id=job_id, status=ApplicationStatus.SKIPPED,
                                      error_message="Indeed-only mode does not apply on external sites.")
+        if employer_url and not is_public_application_url(employer_url):
+            return ApplicationResult(job_id=job_id, status=ApplicationStatus.SKIPPED,
+                                     error_message="Invalid employer application destination.")
 
     # Pre-flight: check if user has sufficient credits
     user_id = state.get("user_id", "")
@@ -1105,7 +1110,7 @@ async def _apply_to_job(
 
         try:
             # Strip tracking params from LinkedIn URLs (they can cause redirects)
-            nav_url = job.url
+            nav_url = employer_url or job.url
             if "linkedin.com/jobs/view/" in nav_url:
                 from urllib.parse import urlparse, urlunparse
                 parsed = urlparse(nav_url)
@@ -1113,7 +1118,7 @@ async def _apply_to_job(
                 logger.info("Cleaned LinkedIn URL: %s", nav_url)
             await page.goto(nav_url, wait_until="domcontentloaded", timeout=90000)
             await asyncio.sleep(2)  # settle
-            if settings.INDEED_ONLY:
+            if settings.INDEED_ONLY and not employer_url:
                 from backend.browser.indeed_policy import wait_for_indeed_page
                 await wait_for_indeed_page(page)
             logger.info("Final page URL after navigation: %s", page.url)
@@ -1254,11 +1259,20 @@ async def _apply_to_job(
                 page=page,
                 application_rules=load_application_rules(user_id),
                 stagehand=stagehand,
+                employer_site=bool(employer_url),
             )
 
         finally:
             if page and not page.is_closed() and not use_managed_page:
                 await page.close()
+
+        if result.status == ApplicationStatus.QUEUED and result.external_application_url:
+            clear_pending(session_id, job_id)
+            await emit_agent_event(session_id, "application_progress", {
+                "job_id": job_id,
+                "step": f"Queued employer-site application for {job.title} at {job.company}.",
+            })
+            return result
 
         # --- Step 8: Record to Neo4j ---
         success = result.status == ApplicationStatus.SUBMITTED
@@ -1449,6 +1463,8 @@ async def run_application_agent(state: JobHunterState) -> dict:
     submitted: List[ApplicationResult] = []
     failed: List[ApplicationResult] = []
     skipped: List[ApplicationResult] = []
+    employer_queue = dict(state.get("employer_application_queue") or {})
+    questions = dict(state.get("application_questions") or {})
     consecutive_failures: int = state.get("consecutive_failures", 0)
     session_id: str = state.get("session_id", "unknown")
     user_id: str = state.get("user_id", "")
@@ -1485,7 +1501,8 @@ async def run_application_agent(state: JobHunterState) -> dict:
             if job_for_r:
                 session_applied_companies.add(job_for_r.company.lower().strip())
 
-        remaining = [job_id for job_id in application_queue if job_id not in done_ids]
+        from backend.browser.application_routing import ordered_pending_jobs
+        remaining = ordered_pending_jobs(application_queue, done_ids, employer_queue)
         if not remaining:
             return {
                 "applications_submitted": [],
@@ -1700,7 +1717,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
             manager = BrowserManager()
             await manager.start_for_task(
                 board=job.board,
-                purpose="apply",
+                purpose="apply_external" if job_id in employer_queue else "apply",
                 headless=settings.BROWSER_HEADLESS,
                 user_id=state.get("user_id"),
             )
@@ -1721,8 +1738,20 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         job_id=job_id, job=job, state=state,
                         session_id=session_id, context=context,
                         stagehand=manager.stagehand,
+                        employer_url=(employer_queue.get(job_id) or {}).get("url"),
                     )
-                    if result.status == ApplicationStatus.SUBMITTED:
+                    if result.status != ApplicationStatus.QUEUED and job_id in employer_queue:
+                        employer_queue[job_id] = {**employer_queue[job_id], "status": result.status.value}
+                    if result.status == ApplicationStatus.QUEUED and result.external_application_url:
+                        employer_queue[job_id] = {
+                            "url": result.external_application_url,
+                            "source_url": job.url,
+                            "title": job.title,
+                            "company": job.company,
+                            "status": "queued",
+                        }
+                        consecutive_failures = 0
+                    elif result.status == ApplicationStatus.SUBMITTED:
                         submitted.append(result)
                         consecutive_failures = 0
                     elif result.status == ApplicationStatus.FAILED:
@@ -1757,6 +1786,13 @@ async def run_application_agent(state: JobHunterState) -> dict:
                             errors.append(f"Application failed for {job_id}: {result.error_message}")
                     else:
                         skipped.append(result)
+                        if result.error_category == ApplicationErrorCategory.NEEDS_INPUT:
+                            questions[job_id] = {
+                                "question": result.error_message or "Required answer missing.",
+                                "title": job.title, "company": job.company,
+                                "source_url": job.url,
+                                "application_url": (employer_queue.get(job_id) or {}).get("url", job.url),
+                            }
                         consecutive_failures = 0
                 except Exception as exc:
                     error_msg = f"Application failed for job {job_id}: {exc}"
@@ -1844,9 +1880,11 @@ async def run_application_agent(state: JobHunterState) -> dict:
         await emit_agent_event(session_id, "application_progress", {
             "step": status_label,
             "progress": done_pct,
-            "submitted": len(submitted),
-            "failed": len(failed),
-            "skipped": len(skipped),
+            "submitted": len(state.get("applications_submitted") or []) + len(submitted),
+            "failed": len(state.get("applications_failed") or []) + len(failed),
+            "skipped": len(state.get("applications_skipped") or []) + len(skipped),
+            "employer_application_queue": employer_queue,
+            "application_questions": questions,
         })
 
         agent_status = f"processed -- {total_processed} jobs ({status_label})"
@@ -1906,6 +1944,8 @@ async def run_application_agent(state: JobHunterState) -> dict:
         "skip_next_job_requested": False,
         "api_failed_job_ids": list(api_failed_ids),
         "active_retry_job_ids": [],
+        "employer_application_queue": employer_queue,
+        "application_questions": questions,
     }
 
 

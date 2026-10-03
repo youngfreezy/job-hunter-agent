@@ -173,6 +173,7 @@ class CoverLetter(BaseModel):
 class ApplicationErrorCategory(str, Enum):
     """Structured error categories for application failures."""
     AUTH_REQUIRED = "auth_required"
+    NEEDS_INPUT = "needs_input"
     FORM_NAVIGATION = "form_navigation"
     FORM_FILL_ERROR = "form_fill_error"
     SUBMIT_FAILED = "submit_failed"
@@ -200,6 +201,7 @@ class ApplicationResult(BaseModel):
     cover_letter_used: Optional[str] = None
     duration_seconds: Optional[int] = None
     submitted_at: Optional[datetime] = None
+    external_application_url: Optional[str] = None
 
 
 class ResumeScore(BaseModel):

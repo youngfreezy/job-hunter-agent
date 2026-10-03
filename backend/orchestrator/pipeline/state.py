@@ -89,6 +89,8 @@ class JobHunterState(TypedDict):
     api_failed_job_ids: Annotated[List[str], operator.add]  # jobs where API path failed, skip to Skyvern
     application_retry_counts: Dict[str, int]
     active_retry_job_ids: List[str]
+    employer_application_queue: Annotated[Dict[str, Dict[str, str]], _merge_dicts]
+    application_questions: Annotated[Dict[str, Dict[str, str]], _merge_dicts]
 
     # --- Browser state ---
     browser_session_id: Optional[str]

@@ -45,6 +45,7 @@ async def apply_with_playwright(
     page: Any,
     application_rules: str = "",
     stagehand: Any = None,
+    employer_site: bool = False,
 ) -> ApplicationResult:
     """Apply to a job using Playwright browser automation + Claude Haiku.
 
@@ -59,14 +60,14 @@ async def apply_with_playwright(
     if ats_type == ATSType.UNKNOWN and job.ats_type:
         ats_type = job.ats_type if isinstance(job.ats_type, ATSType) else ATSType(job.ats_type)
 
-    applier_cls = _APPLIER_MAP.get(ats_type, GenericApplier)
+    applier_cls = IndeedApplier if employer_site and stagehand is not None else _APPLIER_MAP.get(ats_type, GenericApplier)
     logger.info(
         "Playwright apply: %s @ %s — using %s (ats=%s)",
         job.title, job.company, applier_cls.__name__, ats_type,
     )
 
     if applier_cls is IndeedApplier:
-        applier = applier_cls(page, session_id, application_rules=application_rules, stagehand=stagehand)
+        applier = applier_cls(page, session_id, application_rules=application_rules, stagehand=stagehand, employer_site=employer_site)
     else:
         applier = applier_cls(page, session_id, application_rules=application_rules)
     return await applier.run(

@@ -50,6 +50,8 @@ downstream agents will use to discover job listings.
    phrases (e.g. 'Applied AI Engineer', 'AI Software Engineer'), not isolated
    skills like 'AI', 'LLM', or 'AI-Native'. Use at most three focused phrases.
    Populate exclude_title_keywords and exclude_companies from explicit exclusions.
+6. A target or desired salary is not a minimum. Only populate salary_min from
+   an explicit minimum, including the owner's saved application rules.
 """
 
 
@@ -120,6 +122,10 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
         preferences = state.get("preferences", {})
         if preferences:
             parts.append(f"Additional preferences: {json.dumps(preferences)}")
+        from backend.shared.application_rules import load_application_rules
+        owner_rules = load_application_rules(state.get("user_id"))
+        if owner_rules:
+            parts.append(f"Owner's saved application rules:\n{owner_rules}")
 
         resume_text = state.get("resume_text", "")
         if resume_text:
