@@ -48,8 +48,17 @@ Resolve your decision before returning its kind. Do not park when your conclusio
 A listed base salary range qualifies if its upper end meets the owner's minimum; a desired/target
 salary is not a hard minimum. Apply any explicit owner-authorized salary exception.
 For optional demographic fields choose 'Decline to answer' if available, otherwise leave blank.
+If an optional demographic control cannot be changed, leave it blank and continue;
+do not block the application or invent a demographic answer.
 Do not accept a claim that no AI was used or write an answer required to be entirely the applicant's own words.
 Use act to open Indeed Apply, fill ONE field, choose an existing truthful option, or Continue.
+For a custom dropdown/combobox, use TWO separate actions: first click the closed
+control to open it ONLY; after reading the open menu, click the visible option.
+Never combine opening and selecting in one instruction. Only an actual native
+HTML select should use a direct select-option instruction. A reported action
+success is not proof the field changed: confirm the selected value on the page.
+If the old value remains, choose a different atomic action instead of repeating
+the same selection. Required unanswered fields must remain blocked.
 Do not use act to submit the final application: classify that action as submit.
 When the resume page appears, choose the upload option and return upload when a file input exists.
 The application must use the supplied resume, not an older saved Indeed resume.
@@ -199,6 +208,16 @@ class IndeedApplier(BaseApplier):
             if repetitions >= 2 and step.kind not in ('captcha', 'wait'):
                 await self._capture_screenshot(job)
                 return self._fail(str(job.id), 'Stagehand stopped because the application is not progressing.')
+            if repetitions == 1 and step.kind == 'act':
+                # SDK success means the command ran, not that the form accepted it.
+                # Re-observe once before replaying an ineffective browser mutation.
+                history.append({'instruction': step.instruction, 'success': False,
+                                'message': 'Not executed: repeated instruction after an earlier attempt. '
+                                'Verify the visible field value and choose a different atomic action. '
+                                'For custom dropdowns, click open first, then click a visible option. '
+                                'Leave an unchangeable optional demographic field blank.'})
+                await self._emit_step('The field did not progress; checking the control before another action...')
+                continue
             if step.kind == 'wait':
                 loading_waits += 1
                 if loading_waits > 6:

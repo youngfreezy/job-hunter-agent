@@ -349,3 +349,35 @@ async def test_submit_never_clicks_when_durable_intent_cannot_be_written(monkeyp
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.FAILED
     agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_repeated_ineffective_selection_reobserves_before_atomic_dropdown_actions(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/demographics')
+    select = 'Select Decline To Self Identify in the Race/Ethnicity dropdown'
+    agent = _stagehand(page, [dict(kind='act', instruction=i, reason='Optional demographic') for i in [
+        select, select, 'Click the Race/Ethnicity dropdown to open it only',
+        'Click the visible Decline To Self Identify option',
+    ]] + [dict(kind='auth', instruction='', reason='Sign in required')])
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert [call.args[0] for call in agent.act.await_args_list] == [
+        select, 'Click the Race/Ethnicity dropdown to open it only',
+        'Click the visible Decline To Self Identify option',
+    ]
+    recovery_prompt = agent.extract.await_args_list[2].args[0]
+    assert 'Not executed: repeated instruction' in recovery_prompt
+    assert result.error_category == ApplicationErrorCategory.AUTH_REQUIRED
+
+
+@pytest.mark.asyncio
+async def test_repeated_ineffective_action_still_has_bounded_stop(monkeypatch):
+    page = _page()
+    decision = dict(kind='act', instruction='Select the same dropdown option', reason='Required field')
+    agent = _stagehand(page, [decision] * 3)
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    agent.act.assert_awaited_once()
+    assert result.status == ApplicationStatus.FAILED
+    assert 'not progressing' in result.error_message
