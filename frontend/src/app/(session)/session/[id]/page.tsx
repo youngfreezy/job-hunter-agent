@@ -1608,23 +1608,23 @@ export default function SessionPage() {
                 {[
                   {
                     value: session.applications_used ?? 0,
-                    label: "Applied",
+                    label: "Attempted",
                     color: "text-blue-600 dark:text-blue-400",
                   },
                   {
-                    value: session.applications_submitted?.length ?? 0,
+                    value: sessionSummary?.total_applied ?? session.applications_submitted?.length ?? 0,
                     label: "Submitted",
                     color: "text-emerald-600 dark:text-emerald-400",
                   },
                   {
-                    value: session.applications_failed?.length ?? 0,
+                    value: sessionSummary?.total_failed ?? session.applications_failed?.length ?? 0,
                     label: "Failed",
                     color: "text-red-500",
                   },
                   {
-                    value: Array.isArray(session.applications_skipped)
+                    value: sessionSummary?.total_skipped ?? (Array.isArray(session.applications_skipped)
                       ? session.applications_skipped.length
-                      : session.applications_skipped ?? 0,
+                      : session.applications_skipped ?? 0),
                     label: "Skipped",
                     color: "text-amber-600 dark:text-amber-400",
                   },
