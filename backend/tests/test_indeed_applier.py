@@ -224,3 +224,22 @@ async def test_loading_page_waits_without_actions_or_premature_failure(monkeypat
     assert result.error_category == ApplicationErrorCategory.AUTH_REQUIRED
     assert agent.extract.await_count == 4
     agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_action_is_reobserved_with_history_and_bounded(monkeypatch):
+    from types import SimpleNamespace
+    page = _page()
+    agent = _stagehand(page, [dict(kind='act', instruction=f'Choose option {n}', reason='Required field')
+                              for n in range(3)])
+    agent.act.return_value = SimpleNamespace(data=SimpleNamespace(success=False, message='Option not found'))
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    capture = AsyncMock()
+    monkeypatch.setattr(applier, '_capture_screenshot', capture)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert agent.extract.await_count == 3
+    assert 'Option not found' in agent.extract.await_args.args[0]
+    assert 'Choose option 1' in agent.extract.await_args.args[0]
+    assert result.status == ApplicationStatus.FAILED
+    assert 'Choose option 2' in result.error_message
+    capture.assert_awaited_once()
