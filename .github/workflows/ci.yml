@@ -2,13 +2,18 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging, browserbase-mode]
   pull_request:
-    branches: [main]
+    branches: [main, staging, browserbase-mode]
 
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is what Dockerfile.backend ships; 3.12 is the local dev venv.
+        python-version: ["3.11", "3.12"]
     services:
       postgres:
         image: postgres:16-alpine
@@ -38,7 +43,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
@@ -49,7 +54,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://jobhunter:jobhunter_dev@localhost:5433/jobhunter
           REDIS_URL: redis://localhost:6379
-        run: python -m pytest backend/tests/ -x -q
+          NEXTAUTH_SECRET: ci-test-secret
+          BROWSER_MODE: cdp
+        # Tests marked requires_postgres run against the service above;
+        # Browserbase, LLM and network calls are mocked in the suite.
+        run: python -m pytest backend/tests/ -x -q -p no:cacheprovider
 
   frontend-build:
     runs-on: ubuntu-latest
@@ -64,7 +73,13 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: npm ci
+
+      - name: Unit tests (vitest)
+        working-directory: frontend
+        run: npm test
 
       - name: Build frontend
         working-directory: frontend
@@ -86,8 +101,14 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: npm ci
 
       - name: Lint frontend
         working-directory: frontend
         run: npx next lint
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npx tsc --noEmit -p tsconfig.json
