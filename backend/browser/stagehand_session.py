@@ -12,7 +12,8 @@ from stagehand import Stagehand, browserbase
 
 from backend.browser.browserbase_client import BrowserbaseConfig, BrowserbaseSession
 from backend.shared.config import get_settings
-from backend.shared.llm import anthropic_default_headers, default_model, get_llm_provider
+from backend.shared.llm import get_llm_provider
+from backend.browser.stagehand_model import generate
 
 
 async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
@@ -33,9 +34,7 @@ async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
         )
         cleanup.push_async_callback(browser.close)
         agent = await Stagehand.create(
-            browser=browser, model=f"{provider}/{default_model()}",
-            model_api_key=key,
-            model_headers=anthropic_default_headers() if provider == "anthropic" else None,
+            browser=browser, model=generate,
             logging={"level": "off"},  # Prompts contain applicant personal information.
             self_heal=True,
         )

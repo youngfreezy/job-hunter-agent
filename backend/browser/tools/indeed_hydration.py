@@ -60,14 +60,18 @@ async def hydrate_indeed_urls(urls: list[str], *, user_id: str, session_id: str)
                     await asyncio.sleep(10)
                 if data.blocked or not data.title.strip() or not data.company.strip():
                     raise ValueError("Indeed could not display the listing. Check your saved Indeed login in Settings.")
-                if data.expired or not data.can_apply_on_indeed:
-                    raise ValueError(f"{data.title} is closed or requires an employer-site application.")
+                if data.expired:
+                    raise ValueError(f"{data.title} is closed.")
                 key = parse_qs(urlparse(url).query).get("jk", [hashlib.sha256(url.encode()).hexdigest()[:16]])[0]
                 jobs.append(JobListing(
                     id=f"indeed_{key}", title=data.title, company=data.company,
                     location=data.location, url=url, board=JobBoard.INDEED,
                     ats_type=ATSType.INDEED, description_snippet=data.description,
-                    is_remote=data.is_remote, is_easy_apply=True, verified_open=True,
+                    # Some listings reveal the application destination only
+                    # after Apply is clicked. The navigation guard and applier
+                    # enforce Indeed-only at that point; uncertainty is not expiry.
+                    is_remote=data.is_remote, is_easy_apply=data.can_apply_on_indeed,
+                    verified_open=data.can_apply_on_indeed,
                     verify_note="Read through authenticated Browserbase with Stagehand.",
                 ))
         return jobs

@@ -47,13 +47,22 @@ async def test_quick_apply_reads_listing_in_owner_cloud_context(monkeypatch, clo
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["blocked", "expired", "can_apply_on_indeed"])
+@pytest.mark.parametrize("field", ["blocked", "expired"])
 async def test_unavailable_listing_fails_without_fabricated_job(cloud, field):
-    setattr(cloud.stagehand.extract.return_value.data, field, field != "can_apply_on_indeed")
+    setattr(cloud.stagehand.extract.return_value.data, field, True)
     with pytest.raises(ValueError):
         await module.hydrate_indeed_urls([URL], user_id="owner", session_id="session")
     cloud.stop.assert_awaited_once()
     assert module.emit_agent_event.await_args.args[1] == "browser_live_view_ended"
+
+
+@pytest.mark.asyncio
+async def test_unknown_apply_destination_is_checked_by_application_browser(cloud):
+    cloud.stagehand.extract.return_value.data.can_apply_on_indeed = False
+    jobs = await module.hydrate_indeed_urls([URL], user_id="owner", session_id="session")
+    assert jobs[0].url == URL
+    assert not jobs[0].is_easy_apply
+    assert not jobs[0].verified_open
 
 
 @pytest.mark.asyncio
