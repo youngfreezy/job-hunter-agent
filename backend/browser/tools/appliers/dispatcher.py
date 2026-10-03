@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from backend.browser.tools.appliers.ashby import AshbyApplier
 from backend.browser.tools.appliers.generic import GenericApplier
 from backend.browser.tools.appliers.greenhouse import GreenhouseApplier
+from backend.browser.tools.appliers.indeed import IndeedApplier
 from backend.browser.tools.appliers.lever import LeverApplier
 from backend.browser.tools.ats_detector import detect_ats_from_url
 from backend.shared.models.schemas import (
@@ -30,6 +31,7 @@ _APPLIER_MAP = {
     ATSType.GREENHOUSE: GreenhouseApplier,
     ATSType.LEVER: LeverApplier,
     ATSType.ASHBY: AshbyApplier,
+    ATSType.INDEED: IndeedApplier,  # needs a logged-in Browserbase Context
 }
 
 

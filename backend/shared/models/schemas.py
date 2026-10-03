@@ -55,6 +55,7 @@ class ATSType(str, Enum):
     ICIMS = "icims"
     TALEO = "taleo"
     LINKEDIN = "linkedin"
+    INDEED = "indeed"  # Indeed Apply on a logged-in context (appliers/indeed.py)
     UNKNOWN = "unknown"
 
 
