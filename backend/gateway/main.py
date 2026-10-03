@@ -377,6 +377,9 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.waitlist import router as waitlist_router
     app.include_router(waitlist_router)
 
+    from backend.gateway.routes.browserbase import router as browserbase_router
+    app.include_router(browserbase_router)
+
     return app
 
 

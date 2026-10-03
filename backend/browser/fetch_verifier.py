@@ -27,7 +27,13 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import httpx
 
-from backend.browser.browserbase_client import API_BASE, BrowserbaseError, _headers
+from backend.browser.browserbase_client import (
+    API_BASE,
+    BrowserbaseConfig,
+    BrowserbaseError,
+    _headers,
+    config_for_user,
+)
 from backend.shared.config import settings
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import JobListing
@@ -77,11 +83,12 @@ class FetchResult:
     final_url: Optional[str] = None
 
 
-def verifier_disabled_reason() -> Optional[str]:
+def verifier_disabled_reason(config: Optional[BrowserbaseConfig] = None) -> Optional[str]:
     """Why the verifier will not run right now, or None when it will."""
     if not settings.BROWSERBASE_VERIFY_LISTINGS:
         return "verifier disabled (BROWSERBASE_VERIFY_LISTINGS=false)"
-    if not settings.BROWSERBASE_API_KEY:
+    api_key = config.api_key if config is not None else settings.BROWSERBASE_API_KEY
+    if not api_key:
         return "verifier skipped: BROWSERBASE_API_KEY not set"
     return None
 
@@ -142,7 +149,7 @@ def _extract_str(data: Any, keys: Iterable[str]) -> Optional[str]:
     return None
 
 
-async def fetch_markdown(url: str) -> FetchResult:
+async def fetch_markdown(url: str, config: Optional[BrowserbaseConfig] = None) -> FetchResult:
     """Render *url* through the Browserbase Fetch API and return its markdown.
 
     TODO(unverified): request body field names (``url``, ``format``) follow
@@ -150,11 +157,12 @@ async def fetch_markdown(url: str) -> FetchResult:
     A response without a markdown body raises BrowserbaseError so a schema
     mismatch surfaces as an error on every listing, never as "verified".
     """
+    project_id = config.project_id if config is not None else settings.BROWSERBASE_PROJECT_ID
     body: Dict[str, Any] = {"url": url, "format": "markdown"}
-    if settings.BROWSERBASE_PROJECT_ID:
-        body["projectId"] = settings.BROWSERBASE_PROJECT_ID
+    if project_id:
+        body["projectId"] = project_id
     async with httpx.AsyncClient(timeout=FETCH_TIMEOUT_SECONDS) as client:
-        r = await client.post(f"{API_BASE}/fetch", headers=_headers(), json=body)
+        r = await client.post(f"{API_BASE}/fetch", headers=_headers(config), json=body)
     if r.status_code >= 400:
         raise BrowserbaseError(f"fetch failed: {r.status_code} {r.text[:200]}")
     try:
@@ -199,11 +207,11 @@ def judge_listing(result: FetchResult) -> Tuple[bool, str]:
     return False, "no Apply control found in page text"
 
 
-async def verify_listing(job: JobListing) -> JobListing:
+async def verify_listing(job: JobListing, config: Optional[BrowserbaseConfig] = None) -> JobListing:
     """Verify one job in place. Errors are recorded in verify_note, not raised."""
     url = job.external_apply_url or job.url
     try:
-        fetched = await fetch_markdown(url)
+        fetched = await fetch_markdown(url, config)
     except (BrowserbaseError, httpx.HTTPError) as exc:
         job.verified_open = False
         job.verify_note = f"verifier error: {str(exc)[:160]}"
@@ -226,16 +234,19 @@ async def verify_shortlist_candidates(
     scored_jobs: List[Any],
     session_id: str = "",
     limit: Optional[int] = None,
+    user_id: Optional[str] = None,
 ) -> List[Any]:
     """Verify the top *limit* scored jobs and drop the ones found closed.
 
     *scored_jobs* are ScoredJob objects (``.job`` is the JobListing), already
     sorted by score.  Jobs past *limit* are left unverified with a note.
+    *user_id* selects that user's Browserbase credentials when they saved any.
     """
     if not scored_jobs:
         return scored_jobs
 
-    disabled = verifier_disabled_reason()
+    config = config_for_user(user_id)
+    disabled = verifier_disabled_reason(config)
     if disabled:
         for sj in scored_jobs:
             sj.job.verified_open = False
@@ -252,7 +263,7 @@ async def verify_shortlist_candidates(
 
     async def _one(sj: Any) -> None:
         async with semaphore:
-            await verify_listing(sj.job)
+            await verify_listing(sj.job, config)
 
     if session_id:
         await emit_agent_event(session_id, "scoring_progress", {

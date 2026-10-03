@@ -178,7 +178,7 @@ async def test_verify_shortlist_drops_closed_keeps_open_and_errored(monkeypatch)
         "https://boards.greenhouse.io/co/jobs/noapply": fv.FetchResult("Email us.", 200),
     }
 
-    async def fake_fetch(url):
+    async def fake_fetch(url, config=None):
         if url.endswith("/errored"):
             raise BrowserbaseError("fetch failed: 503 upstream")
         return pages[url]
@@ -212,7 +212,7 @@ async def test_verify_shortlist_drops_closed_keeps_open_and_errored(monkeypatch)
 async def test_verify_shortlist_respects_limit(monkeypatch):
     seen: list[str] = []
 
-    async def fake_fetch(url):
+    async def fake_fetch(url, config=None):
         seen.append(url)
         return fv.FetchResult("[Apply](x)", 200)
 
@@ -260,7 +260,7 @@ async def test_verify_shortlist_honours_disable_flag(monkeypatch):
 async def test_verify_listing_prefers_external_apply_url(monkeypatch):
     seen: list[str] = []
 
-    async def fake_fetch(url):
+    async def fake_fetch(url, config=None):
         seen.append(url)
         return fv.FetchResult("[Apply](x)", 200)
 
@@ -296,7 +296,7 @@ async def test_scoring_runs_verifier_before_capping_shortlist(monkeypatch):
     monkeypatch.setattr(scoring, "emit_agent_event", AsyncMock())
     monkeypatch.setattr(scoring, "get_active_prompt", lambda _key: None)
 
-    async def fake_fetch(url):
+    async def fake_fetch(url, config=None):
         if url.endswith("/1"):
             return fv.FetchResult("This job is no longer available", 200)
         return fv.FetchResult("[Apply now](x)", 200)

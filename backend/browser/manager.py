@@ -101,6 +101,7 @@ class BrowserManager:
         self._launched_chrome: bool = False
         self._mode: str = "patchright"  # "patchright", "cdp" or "browserbase"
         self._bb_session: Optional[browserbase_client.BrowserbaseSession] = None
+        self._bb_config: Optional[browserbase_client.BrowserbaseConfig] = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -186,20 +187,24 @@ class BrowserManager:
         context_id: Optional[str] = None,
         persist: bool = True,
         proxies: Optional[bool] = None,
+        config: Optional[browserbase_client.BrowserbaseConfig] = None,
     ) -> None:
         """Create a Browserbase cloud session and connect Playwright to it over CDP.
 
         With *context_id*, the session starts with that Context's cookies and
         storage (a persisted login) and writes them back on close when
-        *persist* is true.  Bot detection and proxies are Browserbase's job in
-        this mode, so no local stealth or proxy configuration applies.
+        *persist* is true.  *config* carries a user's own Browserbase
+        credentials; without it the env settings apply.  Bot detection and
+        proxies are Browserbase's job in this mode, so no local stealth or
+        proxy configuration applies.
         """
         if self._running:
             logger.warning("BrowserManager.start_browserbase() called but already running")
             return
 
+        self._bb_config = config
         bb_session = await browserbase_client.create_session(
-            context_id=context_id, persist=persist, proxies=proxies,
+            context_id=context_id, persist=persist, proxies=proxies, config=config,
         )
         self._playwright = await async_playwright().start()
         try:
@@ -207,7 +212,7 @@ class BrowserManager:
                 bb_session.connect_url, timeout=45_000,
             )
         except Exception:
-            await browserbase_client.release_session(bb_session.id)
+            await browserbase_client.release_session(bb_session.id, config=config)
             await self._playwright.stop()
             self._playwright = None
             raise
@@ -238,12 +243,19 @@ class BrowserManager:
         board: Optional[str] = None,
         purpose: str = "apply",
         headless: Optional[bool] = None,
+        user_id: Optional[str] = None,
     ) -> None:
-        """Start the best browser backend for the requested task."""
+        """Start the best browser backend for the requested task.
+
+        In Browserbase mode *user_id* selects that user's saved API key,
+        project, proxy preference and per-board Context ids (Settings UI),
+        layered over the ``BROWSERBASE_*`` env settings.
+        """
         resolved_headless = settings.BROWSER_HEADLESS if headless is None else headless
         if settings.BROWSER_MODE == "browserbase":
-            context_id = browserbase_client.context_id_for_board(board)
-            await self.start_browserbase(context_id=context_id)
+            config = browserbase_client.config_for_user(user_id)
+            context_id = browserbase_client.context_id_for_board(board, config)
+            await self.start_browserbase(context_id=context_id, config=config)
         elif settings.BROWSER_MODE == "cdp":
             await self.start_cdp(headless=resolved_headless)
         else:
@@ -288,7 +300,7 @@ class BrowserManager:
         if self._bb_session:
             # Closing the CDP connection ends the session and, with persist=True,
             # flushes cookies to the Context.  The release call is belt and braces.
-            await browserbase_client.release_session(self._bb_session.id)
+            await browserbase_client.release_session(self._bb_session.id, config=self._bb_config)
             self._bb_session = None
 
         # Keep an existing Chrome debugger alive across runs to preserve session

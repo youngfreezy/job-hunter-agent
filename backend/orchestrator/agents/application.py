@@ -1720,6 +1720,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 board=job.board,
                 purpose="apply",
                 headless=settings.BROWSER_HEADLESS,
+                user_id=state.get("user_id"),
             )
             _, context = await manager.new_context()
             if manager.live_view_url:

@@ -539,6 +539,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
         from backend.browser.fetch_verifier import VERIFY_HEADROOM, verify_shortlist_candidates
         scored_jobs = await verify_shortlist_candidates(
             scored_jobs, session_id=session_id, limit=max_jobs + VERIFY_HEADROOM,
+            user_id=user_id or None,
         )
 
         # Cap to max_jobs from session config
