@@ -202,3 +202,45 @@ async def test_search_discovery_skips_cleanly_without_a_backend(monkeypatch):
     assert listings == []
     generate.assert_not_awaited()  # no LLM call when nothing could run the queries
     assert any(p.get("error") for _, p in events)
+
+
+# ---------------------------------------------------------------------------
+# hydration and location filtering in discover_all_boards
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_discover_all_boards_hydrates_drops_gone_and_other_cities(monkeypatch):
+    from datetime import datetime
+    from backend.browser.tools import ats_posting_api as api
+    from backend.shared.models.schemas import JobBoard, JobListing, SearchConfig
+
+    def _job(i, location=""):
+        return JobListing(id=str(i), title=f"AI Engineer {i}", company=f"Co{i}", location=location,
+                          url=f"https://jobs.lever.co/co{i}/{i:08d}-1111-1111-1111-111111111111",
+                          board=JobBoard.GOOGLE_JOBS, discovered_at=datetime.utcnow())
+
+    jobs = [_job(1), _job(2), _job(3), _job(4, "Unknown")]
+    monkeypatch.setattr(mcp_discovery, "emit_agent_event", AsyncMock())
+    monkeypatch.setattr(mcp_discovery, "_lever_discover", AsyncMock(return_value=jobs[:2]))
+    monkeypatch.setattr(mcp_discovery, "_greenhouse_discover", AsyncMock(return_value=jobs[2:]))
+    monkeypatch.setattr(mcp_discovery, "_mcp_discover", AsyncMock(return_value=[]))
+
+    async def fake_hydrate(items, concurrency=6):
+        out = []
+        for j in items:
+            if j.id == "1":
+                j.location = "San Francisco, CA"; out.append(api.Hydration(j, True, "lever"))
+            elif j.id == "2":
+                out.append(api.Hydration(j, False, "lever"))           # gone
+            elif j.id == "3":
+                j.location = "Tokyo, Japan"; out.append(api.Hydration(j, True, "lever"))  # other city
+            else:
+                out.append(api.Hydration(j, None, "lever"))            # vendor error, unknown location kept
+        return out
+
+    monkeypatch.setattr(mcp_discovery, "hydrate_listings", fake_hydrate)
+    out = await mcp_discovery.discover_all_boards(
+        ["lever", "greenhouse"], SearchConfig(keywords=["AI Engineer"], locations=["San Francisco, CA"]), "s1",
+    )
+    assert sorted(j.id for j in out) == ["1", "4"]  # Greenhouse results are ordered before Lever ones

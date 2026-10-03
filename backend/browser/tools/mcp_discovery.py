@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 import hashlib
 from uuid import uuid4
 
+from backend.browser.tools.ats_posting_api import hydrate_listings, unknown_location
+from backend.browser.tools.job_boards.location_filter import location_allowed
 from backend.browser.tools.web_search import search_backend, web_search
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.llm import build_llm, HAIKU_MODEL
@@ -67,6 +69,8 @@ Job criteria:
 {round_block}
 Generate queries using site: operators. Each query MUST include at least one \
 of the exact keywords above — do NOT broaden or substitute with related terms. \
+When the location is a city, every query MUST also include that city name \
+(for example "San Francisco"); never drop it. \
 Each query should target a different ATS platform. \
 Focus on finding CURRENT job postings (2026).
 
@@ -121,7 +125,7 @@ def _is_board_url(url: str) -> bool:
 
 async def _generate_search_queries(
     search_config: SearchConfig,
-    num_queries: int = 8,
+    num_queries: int = 12,
     applied_companies: set[str] | None = None,
     round_number: int = 0,
 ) -> List[str]:
@@ -183,13 +187,19 @@ async def _generate_search_queries(
     # Fallback queries — prioritize Lever and Ashby (no reCAPTCHA)
     kw = search_config.keywords[0] if search_config.keywords else "Software Engineer"
     remote = " remote" if search_config.remote_only else ""
+    city = ""
+    for loc in search_config.locations or []:
+        c = loc.split(",")[0].strip()
+        if c and c.lower() not in ("remote", "anywhere", "united states", "us", "usa"):
+            city = f" {c}"
+            break
     return [
-        f"{kw}{remote} site:jobs.lever.co",
-        f"{kw}{remote} site:jobs.lever.co 2026",
-        f"{kw}{remote} site:jobs.ashbyhq.com",
-        f"{kw}{remote} site:jobs.ashbyhq.com 2026",
-        f"{kw}{remote} site:boards.greenhouse.io",
-        f"{kw}{remote} apply now lever OR ashby 2026",
+        f"{kw}{city}{remote} site:jobs.lever.co",
+        f"{kw}{city}{remote} site:jobs.lever.co 2026",
+        f"{kw}{city}{remote} site:jobs.ashbyhq.com",
+        f"{kw}{city}{remote} site:jobs.ashbyhq.com 2026",
+        f"{kw}{city}{remote} site:boards.greenhouse.io",
+        f"{kw}{city}{remote} apply now lever OR ashby 2026",
     ]
 
 
@@ -547,6 +557,10 @@ async def discover_all_boards(
     logger.info("Discovery sources: %d Lever API, %d Serper, %d Greenhouse API",
                 len(lever_jobs), len(serper_jobs), len(greenhouse_jobs))
 
+    # Hydrate from the vendors' posting APIs: location, remote flag, pay and a
+    # description for the scorer, and a verdict on postings that are gone.
+    all_jobs = await _hydrate_and_filter(all_jobs, search_config, session_id)
+
     # Deduplicate across sources (by title + company)
     seen: set = set()
     deduped: List[JobListing] = []
@@ -565,6 +579,46 @@ async def discover_all_boards(
 
     logger.info("Total discovery: %d raw -> %d deduped jobs", len(all_jobs), len(deduped))
     return deduped
+
+
+async def _hydrate_and_filter(
+    jobs: List[JobListing], search_config: SearchConfig, session_id: str,
+) -> List[JobListing]:
+    """Fill listings from the posting APIs, drop gone postings and other cities.
+
+    Postings whose location is still unknown afterwards are kept: the scorer
+    sees "Unknown" and the owner's rules decide.  Postings the vendor no
+    longer serves (404) are dropped before any scoring or verification.
+    """
+    if not jobs:
+        return jobs
+    await emit_agent_event(session_id, "discovery_progress", {
+        "board": "all",
+        "step": f"Reading {len(jobs)} postings from the ATS posting APIs...",
+    })
+    hydrated = await hydrate_listings(jobs)
+    kept: List[JobListing] = []
+    gone = other_city = still_unknown = 0
+    for h in hydrated:
+        if h.found is False:
+            gone += 1
+            continue
+        if not location_allowed(h.job.location, search_config.locations):
+            other_city += 1
+            continue
+        if unknown_location(h.job):
+            still_unknown += 1
+        kept.append(h.job)
+    logger.info(
+        "Posting API hydration: %d listings -> %d kept (%d gone, %d other city, %d location unknown)",
+        len(jobs), len(kept), gone, other_city, still_unknown,
+    )
+    if gone or other_city:
+        await emit_agent_event(session_id, "discovery_progress", {
+            "board": "all",
+            "step": f"Dropped {gone} closed and {other_city} out-of-area postings",
+        })
+    return kept
 
 
 async def _lever_discover(

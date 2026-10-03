@@ -14,10 +14,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from typing import Any, Dict, List
+from typing import Optional, Any, Dict, List
 
 import aiohttp
 
+from backend.browser.tools.job_boards.location_filter import location_allowed
 from backend.shared.models.schemas import ATSType, JobBoard, JobListing, SearchConfig
 
 logger = logging.getLogger(__name__)
@@ -146,8 +147,10 @@ def _normalize(text: str) -> str:
     return text.lower().replace("-", "").replace("–", "").replace("—", "")
 
 
-def _matches_keywords(posting: Dict, keywords: List[str], remote_only: bool) -> bool:
-    """Check if a Lever posting matches any of the search keywords."""
+def _matches_keywords(
+    posting: Dict, keywords: List[str], remote_only: bool, locations: Optional[List[str]] = None,
+) -> bool:
+    """Check if a Lever posting matches any of the search keywords and the requested location."""
     title = (posting.get("text") or "").lower()
     title_norm = _normalize(title)
 
@@ -156,6 +159,12 @@ def _matches_keywords(posting: Dict, keywords: List[str], remote_only: bool) -> 
     location = (categories.get("location") or "").lower()
     commitment = (categories.get("commitment") or "").lower()
     team = (categories.get("team") or "").lower()
+    workplace = (posting.get("workplaceType") or "").lower()
+
+    # Location filter: a posting in a different city is not a match for a
+    # city request; remote postings and unknown locations pass to the scorer.
+    if not location_allowed(f"{location} {workplace}".strip() if workplace == "remote" else location, locations):
+        return False
 
     # Remote filter
     if remote_only:
@@ -229,7 +238,7 @@ async def scrape_lever(
                 if company_count >= max_per_company:
                     break
 
-                if not _matches_keywords(posting, keywords, remote_only):
+                if not _matches_keywords(posting, keywords, remote_only, search_config.locations):
                     continue
 
                 title = posting.get("text", "Unknown")

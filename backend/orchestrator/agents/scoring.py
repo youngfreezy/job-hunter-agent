@@ -508,6 +508,15 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 before_company_dedup, len(scored_jobs), before_company_dedup - len(scored_jobs),
             )
 
+        # One line per job so a shortlist that comes out empty can be explained
+        # from the log (which rule or mismatch the scorer named).
+        for sj in scored_jobs:
+            logger.info(
+                "Score %3d  %s @ %s  [%s]  %s",
+                sj.score, sj.job.title[:60], sj.job.company[:40], sj.job.location or "-",
+                (sj.reasons[0] if sj.reasons else sj.fit_summary or "")[:160],
+            )
+
         # Apply scoring_strictness as a minimum score threshold
         # 0.0 = lenient (min 30), 0.5 = moderate (min 50), 1.0 = strict (min 70)
         # Quick Apply (manual_urls): skip filtering — user chose these jobs explicitly
