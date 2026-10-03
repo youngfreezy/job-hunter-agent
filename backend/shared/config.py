@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "openai"  # "openai" or "anthropic"
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
+    ANTHROPIC_WORKSPACE_ID: Optional[str] = None  # required when the key is org-scoped (sent as anthropic-workspace-id)
     OPENAI_DEFAULT_MODEL: str = "gpt-5-mini"
     OPENAI_PREMIUM_MODEL: str = "gpt-5"
     OPENAI_BROWSER_MODEL: str = "gpt-5-mini"

@@ -31,6 +31,18 @@ def get_llm_provider() -> str:
     return provider
 
 
+
+def anthropic_default_headers() -> dict[str, str]:
+    """Headers every Anthropic request needs.
+
+    An organization-scoped API key must name the workspace it bills to, or the
+    API answers 400 asking for ``anthropic-workspace-id``.
+    """
+    settings = get_settings()
+    if settings.ANTHROPIC_WORKSPACE_ID:
+        return {"anthropic-workspace-id": settings.ANTHROPIC_WORKSPACE_ID}
+    return {}
+
 def default_model() -> str:
     settings = get_settings()
     return (
@@ -110,6 +122,9 @@ def build_llm(
     }
     if timeout:
         kwargs["timeout"] = timeout
+    headers = anthropic_default_headers()
+    if headers:
+        kwargs["default_headers"] = headers
     return ChatAnthropic(**kwargs)
 
 
@@ -141,12 +156,16 @@ def build_browser_use_llm(
         raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
     from browser_use import ChatAnthropic as BrowserUseChatAnthropic
 
-    return BrowserUseChatAnthropic(
-        model=resolved_model,
-        api_key=settings.ANTHROPIC_API_KEY,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
+    bu_kwargs: dict[str, Any] = {
+        "model": resolved_model,
+        "api_key": settings.ANTHROPIC_API_KEY,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    headers = anthropic_default_headers()
+    if headers:
+        bu_kwargs["default_headers"] = headers
+    return BrowserUseChatAnthropic(**bu_kwargs)
 
 
 _RETRYABLE_STATUS_CODES = {"429", "500", "502", "503", "529"}

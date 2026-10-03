@@ -162,14 +162,12 @@ async def _call_llm_for_reflection(prompt: str) -> List[str]:
     Uses the same ChatAnthropic pattern as the rest of the JobHunter backend.
     """
     try:
-        from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            temperature=0.7,
-        )
+        from backend.shared.llm import build_llm
+
+        # Shared builder: provider, retries and the workspace header come from settings.
+        llm = build_llm(max_tokens=1024, temperature=0.7)
 
         messages = [
             SystemMessage(content=(

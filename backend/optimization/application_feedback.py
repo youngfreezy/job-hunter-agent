@@ -149,7 +149,8 @@ def _generate_strategy_with_llm(ats_type: str, stats: Dict[str, Any]) -> str:
     try:
         import anthropic
 
-        client = anthropic.Anthropic()
+        from backend.shared.llm import anthropic_default_headers
+        client = anthropic.Anthropic(default_headers=anthropic_default_headers() or None)
         prompt = (
             f"You are an expert at filling out job application forms on ATS platforms.\n\n"
             f"Here are our historical results for {ats_type.upper()} forms:\n"
