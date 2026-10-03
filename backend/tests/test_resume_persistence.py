@@ -14,6 +14,9 @@ import pytest
 
 import backend.shared.resume_crypto as _crypto
 
+# Skipped with a reason by backend/tests/conftest.py when Postgres is down.
+pytestmark = pytest.mark.requires_postgres
+
 
 @pytest.fixture(autouse=True)
 def _set_nextauth_secret(monkeypatch):

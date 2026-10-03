@@ -25,7 +25,7 @@ class TestStoreGmailToken:
         with patch("backend.shared.gmail_client.redis_client", mock_redis):
             from backend.shared.gmail_client import store_gmail_token
 
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 store_gmail_token(
                     session_id="sess-123",
                     access_token="at_abc",
@@ -49,7 +49,7 @@ class TestStoreGmailToken:
         with patch("backend.shared.gmail_client.redis_client", mock_redis):
             from backend.shared.gmail_client import store_gmail_token
 
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 store_gmail_token(
                     session_id="sess-456",
                     access_token="at_only",
@@ -70,7 +70,7 @@ class TestGetService:
         with patch("backend.shared.gmail_client.redis_client", mock_redis):
             from backend.shared.gmail_client import _get_service
 
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 _get_service("no-such-session")
             )
             assert result is None
@@ -89,7 +89,7 @@ class TestGetService:
             mock_build.return_value = MagicMock()
             from backend.shared.gmail_client import _get_service
 
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 _get_service("sess-789")
             )
 
@@ -107,7 +107,7 @@ class TestClearGmailToken:
         with patch("backend.shared.gmail_client.redis_client", mock_redis):
             from backend.shared.gmail_client import clear_gmail_token
 
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 clear_gmail_token("sess-del")
             )
 

@@ -142,6 +142,53 @@ def _make_job(ats_type: ATSType, url: str = "", **kwargs) -> JobListing:
     )
 
 
+class _FakeAiohttpResponse:
+    def __init__(self, status: int, body: str = ""):
+        self.status = status
+        self._body = body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def json(self):
+        return {}
+
+    async def text(self):
+        return self._body
+
+
+class _FakeAiohttpSession:
+    """Stands in for aiohttp.ClientSession so tests never hit live ATS APIs."""
+
+    def __init__(self, status: int):
+        self.status = status
+        self.requests: list[tuple[str, str]] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    def get(self, url, **kwargs):
+        self.requests.append(("GET", url))
+        return _FakeAiohttpResponse(self.status)
+
+    def post(self, url, **kwargs):
+        self.requests.append(("POST", url))
+        return _FakeAiohttpResponse(self.status, "not found")
+
+
+def _patch_aiohttp(status: int) -> tuple[_FakeAiohttpSession, object]:
+    fake = _FakeAiohttpSession(status)
+    return fake, patch(
+        "backend.browser.tools.api_applier.aiohttp.ClientSession", return_value=fake
+    )
+
+
 class TestApplyViaApiDispatch:
     @pytest.mark.asyncio
     async def test_unsupported_ats_returns_none(self):
@@ -209,10 +256,15 @@ class TestGreenhouseApi:
     async def test_greenhouse_returns_none(self):
         """Greenhouse job with fake job_id returns FAILED/JOB_EXPIRED (404 from API)."""
         job = _make_job(ATSType.GREENHOUSE, url="https://boards.greenhouse.io/anthropic/jobs/12345")
-        result = await apply_via_api(
-            job, {"name": "Test User", "email": "test@test.com"},
-            "Resume text", "Cover letter", None, "session-1",
-        )
+        fake, patcher = _patch_aiohttp(404)
+        with patcher:
+            result = await apply_via_api(
+                job, {"name": "Test User", "email": "test@test.com"},
+                "Resume text", "Cover letter", None, "session-1",
+            )
+        assert fake.requests == [
+            ("GET", "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs/12345?questions=true")
+        ]
         # Handler is now enabled — fake job_id returns 404
         assert result is not None
         assert result.status.value == "failed"
@@ -232,19 +284,24 @@ class TestGreenhouseApi:
 
 
 class TestLeverApi:
-    """Lever API handlers are enabled. Uses public api.lever.co endpoint."""
+    """Lever API handler exists but is not dispatched (see _ATS_HANDLERS)."""
 
     @pytest.mark.asyncio
     async def test_lever_fake_posting_returns_none_or_error(self):
         """Lever job with fake posting_id — API returns error or None."""
         job = _make_job(ATSType.LEVER, url="https://jobs.lever.co/openai/abc-def-123")
-        result = await apply_via_api(
-            job, {"name": "Test User", "email": "test@test.com"},
-            "Resume text", "Cover letter", None, "session-1",
-        )
-        # Fake posting returns 404 or other error — result may be None (fallback) or FAILED
-        if result is not None:
-            assert result.status.value == "failed"
+        fake, patcher = _patch_aiohttp(404)
+        with patcher, patch(
+            "backend.browser.tools.api_applier._read_resume_bytes", return_value=None
+        ):
+            result = await apply_via_api(
+                job, {"name": "Test User", "email": "test@test.com"},
+                "Resume text", "Cover letter", None, "session-1",
+            )
+        # Lever is not registered in _ATS_HANDLERS (its public apply endpoint
+        # 404s for every company), so dispatch returns None with no network call.
+        assert fake.requests == []
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_unparseable_lever_url_returns_none(self):
