@@ -174,7 +174,7 @@ export default function PrivacyPage() {
               For questions or requests regarding this Privacy Policy, contact us at{" "}
               <a
                 href="mailto:support@jobhunteragent.com"
-                className="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+                className="text-blue-600 hover:text-primary dark:text-blue-400 dark:hover:text-blue-300"
               >
                 support@jobhunteragent.com
               </a>

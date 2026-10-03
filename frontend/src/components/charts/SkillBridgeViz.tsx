@@ -26,7 +26,7 @@ interface SkillBridgeVizProps {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Technical: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  Technical: "bg-primary/20 text-blue-400 border-primary/30",
   Interpersonal: "bg-purple-500/20 text-purple-400 border-purple-500/30",
   Cognitive: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   Physical: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",

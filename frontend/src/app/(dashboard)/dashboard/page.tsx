@@ -232,7 +232,7 @@ export default function Dashboard() {
                 </p>
                 <p className="mt-1 text-xs text-blue-700 dark:text-blue-400">
                   {hasActive && (
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1" />
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse mr-1" />
                   )}
                   Actively running
                 </p>
@@ -586,7 +586,7 @@ function SessionCard({
               <div className="mt-3">
                 {launched && (
                   <div className="mb-2 flex items-center justify-center gap-1.5 rounded-full bg-blue-50 py-1 text-xs font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                     Running
                   </div>
                 )}

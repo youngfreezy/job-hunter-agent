@@ -169,7 +169,7 @@ export default function QuickApplyPage() {
             </p>
           </div>
           <textarea
-            className="w-full min-h-[180px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm font-mono placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            className="w-full min-h-[180px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm font-mono placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-ring resize-y"
             placeholder={INDEED_DEMO ? "https://www.indeed.com/viewjob?jk=job-id" : `https://jobs.ashbyhq.com/company/job-id\nhttps://boards.greenhouse.io/company/jobs/12345\nhttps://jobs.lever.co/company/job-id`}
             value={urls}
             onChange={(e) => handleUrlChange(e.target.value)}

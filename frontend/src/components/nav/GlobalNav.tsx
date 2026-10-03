@@ -157,7 +157,7 @@ export function GlobalNav() {
                 href={href}
                 className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
                   isActive
-                    ? "border-blue-500 text-foreground font-semibold"
+                    ? "border-primary text-foreground font-semibold"
                     : "border-transparent text-muted-foreground hover:text-foreground hover:border-blue-200 dark:hover:border-blue-800"
                 }`}
               >

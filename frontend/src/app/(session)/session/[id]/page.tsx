@@ -369,7 +369,7 @@ function QuickApplyUrls({
       {/* Progress bar */}
       <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
         <div
-          className="h-full rounded-full bg-blue-500 transition-all duration-500"
+          className="h-full rounded-full bg-primary transition-all duration-500"
           style={{ width: `${total > 0 ? (processed / total) * 100 : 0}%` }}
         />
       </div>
@@ -1126,7 +1126,7 @@ export default function SessionPage() {
               }`}
             >
               {isActive && (
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse" />
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary mr-1.5 animate-pulse" />
               )}
               {session.status === "completed" && sessionSummary?.total_applied === 0
                 ? "No applications submitted"
@@ -1255,7 +1255,7 @@ export default function SessionPage() {
                               ? "bg-amber-400 dark:bg-amber-500"
                               : isCurrent && isActive
                               ? "bg-gradient-to-r from-blue-500 to-blue-600 animate-progress-pulse"
-                              : "bg-blue-400 dark:bg-blue-500"
+                              : "bg-blue-400 dark:bg-primary"
                           }`}
                           style={{
                             width: isCompleted
@@ -1327,7 +1327,7 @@ export default function SessionPage() {
           <div className="max-w-7xl mx-auto flex items-start gap-4">
             <div className="shrink-0 mt-0.5">
               <svg
-                className="w-6 h-6 text-blue-500"
+                className="w-6 h-6 text-primary"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -1352,7 +1352,7 @@ export default function SessionPage() {
                 {submitConfirmData.fields_filled} fields filled. Review the form in the browser
                 window before submitting.
               </p>
-              <p className="text-xs text-blue-500 mt-2">
+              <p className="text-xs text-primary mt-2">
                 {liveView
                   ? "Review the form in the live browser panel below, then submit or skip this application."
                   : "Review the live page below in Browser Takeover, then submit or skip this application."}
@@ -1505,7 +1505,7 @@ export default function SessionPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <svg
-                  className="w-4 h-4 text-blue-500"
+                  className="w-4 h-4 text-primary"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -2192,7 +2192,7 @@ export default function SessionPage() {
                       <div
                         className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
                           selected
-                            ? "border-blue-500 bg-blue-500 text-white shadow-sm shadow-blue-500/30"
+                            ? "border-primary bg-primary text-white shadow-sm shadow-blue-500/30"
                             : "border-muted-foreground/30"
                         }`}
                       >

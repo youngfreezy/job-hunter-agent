@@ -143,7 +143,7 @@ export function CoachPanel({ coach }: CoachPanelProps) {
                 <ul className="space-y-2">
                   {coach.linkedin_advice.map((advice, i) => (
                     <li key={i} className="text-sm flex items-start gap-2">
-                      <span className="text-blue-500 mt-0.5 shrink-0">-</span>
+                      <span className="text-primary mt-0.5 shrink-0">-</span>
                       <span>{advice}</span>
                     </li>
                   ))}

@@ -341,7 +341,7 @@ export default function InterviewPrepSessionPage() {
               size="sm"
               onClick={handleGetCoaching}
               disabled={coachingLoading}
-              className="text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
+              className="text-blue-400 border-primary/30 hover:bg-primary/10"
             >
               {coachingLoading ? (
                 <>
@@ -355,7 +355,7 @@ export default function InterviewPrepSessionPage() {
           )}
 
           {coaching[q.id] && (
-            <div className="border border-blue-500/30 bg-blue-500/5 rounded-lg p-4 space-y-3 text-sm">
+            <div className="border border-primary/30 bg-primary/5 rounded-lg p-4 space-y-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-blue-400">AI Coach</span>
                 <button
@@ -381,7 +381,7 @@ export default function InterviewPrepSessionPage() {
                     {coaching[q.id].resume_highlights.map((h, i) => (
                       <li
                         key={i}
-                        className="text-muted-foreground pl-3 border-l-2 border-blue-500/30"
+                        className="text-muted-foreground pl-3 border-l-2 border-primary/30"
                       >
                         {h}
                       </li>
@@ -417,7 +417,7 @@ export default function InterviewPrepSessionPage() {
                     {coaching[q.id].key_points.map((p, i) => (
                       <span
                         key={i}
-                        className="px-2 py-0.5 bg-blue-500/10 text-blue-300 text-xs rounded-full border border-blue-500/20"
+                        className="px-2 py-0.5 bg-primary/10 text-blue-300 text-xs rounded-full border border-primary/20"
                       >
                         {p}
                       </span>

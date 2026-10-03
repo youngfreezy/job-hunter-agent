@@ -206,7 +206,7 @@ export default function AgentDetailPage() {
             placeholder="Share your experience (optional)"
             rows={3}
             maxLength={2000}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           />
           <Button
             size="sm"

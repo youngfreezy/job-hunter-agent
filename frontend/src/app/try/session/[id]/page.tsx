@@ -253,7 +253,7 @@ export default function TrialSessionPage() {
                     <div className="h-0.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-700 ease-out ${
-                          isFailed ? "bg-red-400" : "bg-blue-500"
+                          isFailed ? "bg-red-400" : "bg-primary"
                         }`}
                         style={{ width: isCompleted ? "100%" : isCurrent ? "50%" : "0%" }}
                       />
@@ -327,7 +327,7 @@ export default function TrialSessionPage() {
               </div>
               <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-3 text-center">
                 <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{discovered}</p>
-                <p className="text-xs text-blue-600 dark:text-blue-500">Jobs Found</p>
+                <p className="text-xs text-blue-600 dark:text-primary">Jobs Found</p>
               </div>
             </div>
 

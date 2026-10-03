@@ -41,7 +41,7 @@ export function JobCard({ job, score, breakdown, selected, onToggle, compact }: 
       <div
         className={`border rounded p-2 text-xs cursor-pointer transition-colors ${
           selected
-            ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
+            ? "border-primary bg-blue-50 dark:bg-blue-950"
             : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
         }`}
         onClick={() => onToggle?.(job.id)}
@@ -58,7 +58,7 @@ export function JobCard({ job, score, breakdown, selected, onToggle, compact }: 
   }
 
   return (
-    <Card className={selected ? "border-blue-500" : ""}>
+    <Card className={selected ? "border-primary" : ""}>
       <CardContent className="py-3">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">

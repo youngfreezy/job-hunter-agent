@@ -79,8 +79,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Follow the system colour scheme before first paint, and when it changes. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var m=window.matchMedia("(prefers-color-scheme: dark)");var a=function(){document.documentElement.classList.toggle("dark",m.matches)};a();m.addEventListener("change",a)}catch(e){}})();`,
+          }}
+        />
         {process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID && (
           <script
             defer
@@ -89,9 +95,9 @@ export default function RootLayout({
           />
         )}
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <NextTopLoader color="#3b82f6" showSpinner={false} height={2} />
-        <Toaster position="top-right" richColors />
+      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
+        <NextTopLoader color="#2563eb" showSpinner={false} height={2} />
+        <Toaster position="top-right" />
         <div className="flex min-h-screen flex-col">
           <div className="flex-1">{children}</div>
           <Footer />
