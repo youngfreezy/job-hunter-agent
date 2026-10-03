@@ -14,6 +14,7 @@ const RESUME_TEXT_KEY = "jh_resume_text";
 const RESUME_FILENAME_KEY = "jh_resume_filename";
 const RESUME_UUID_KEY = "jh_resume_uuid";
 const URLS_STORAGE_KEY = "jh_quick_apply_urls";
+const INDEED_DEMO = process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true";
 
 export default function QuickApplyPage() {
   const router = useRouter();
@@ -162,13 +163,14 @@ export default function QuickApplyPage() {
           <div>
             <h2 className="text-lg font-semibold">Job URLs</h2>
             <p className="text-sm text-zinc-500 mt-1">
-              Paste one URL per line. Supports Greenhouse, Lever, Ashby,
-              Workday, LinkedIn, and any direct job posting.
+              {INDEED_DEMO
+                ? "Paste one Indeed job URL per line. Applications use Browserbase and your saved Indeed login."
+                : "Paste one URL per line. Supports Greenhouse, Lever, Ashby, Workday, LinkedIn, and any direct job posting."}
             </p>
           </div>
           <textarea
             className="w-full min-h-[180px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm font-mono placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-            placeholder={`https://jobs.ashbyhq.com/company/job-id\nhttps://boards.greenhouse.io/company/jobs/12345\nhttps://jobs.lever.co/company/job-id`}
+            placeholder={INDEED_DEMO ? "https://www.indeed.com/viewjob?jk=job-id" : `https://jobs.ashbyhq.com/company/job-id\nhttps://boards.greenhouse.io/company/jobs/12345\nhttps://jobs.lever.co/company/job-id`}
             value={urls}
             onChange={(e) => handleUrlChange(e.target.value)}
           />
@@ -207,8 +209,8 @@ export default function QuickApplyPage() {
       </Button>
 
       <p className="text-xs text-zinc-400 text-center mt-3">
-        Your resume will be tailored for each position. You&apos;ll review the
-        shortlist before any applications are submitted.
+        Clicking Apply starts applications to these jobs using your resume.
+        Check session activity for questions that need your input and each application&apos;s result.
       </p>
     </div>
   );
