@@ -124,68 +124,6 @@ logger = logging.getLogger(__name__)
 # Circuit-breaker threshold
 MAX_CONSECUTIVE_FAILURES = 3
 
-# Track SSE and notification alerts separately so a failed SMS doesn't block retries.
-_skyvern_sse_alerted = False
-_skyvern_notified = False
-
-
-async def _alert_skyvern_credits_exhausted(session_id: str) -> None:
-    """Send an SSE + SMS/email alert when Skyvern credits are exhausted.
-
-    SSE fires once (first call). SMS/email retries on subsequent calls until
-    at least one succeeds — the old code set a single flag before sending, so
-    a transient SMS failure permanently silenced the alert.
-    """
-    global _skyvern_sse_alerted, _skyvern_notified
-
-    if not _skyvern_sse_alerted:
-        _skyvern_sse_alerted = True
-        logger.critical("Skyvern credits exhausted — aborting remaining applications for session %s", session_id)
-        await emit_agent_event(session_id, "system_alert", {
-            "message": "Skyvern credits exhausted. Remaining applications aborted. Top up at https://app.skyvern.com",
-            "severity": "critical",
-        })
-
-    if _skyvern_notified:
-        return
-
-    settings = get_settings()
-    alert_body = (
-        f"[JobHunter] Skyvern credits exhausted! Session {session_id[:8]}… "
-        f"aborted remaining applications. Top up at https://app.skyvern.com"
-    )
-
-    # Try SMS first
-    sms_ok = False
-    if settings.ADMIN_PHONE:
-        try:
-            from backend.shared.sms import send_sms
-            sms_ok = await send_sms(settings.ADMIN_PHONE, alert_body)
-            if sms_ok:
-                logger.info("Skyvern credits alert SMS sent to %s", settings.ADMIN_PHONE)
-        except Exception as exc:
-            logger.warning("Skyvern credits SMS failed: %s", exc)
-
-    # Email fallback (always attempt if SMS failed)
-    email_ok = False
-    if not sms_ok and settings.ADMIN_EMAIL:
-        try:
-            from backend.shared.email_notifications import send_email
-            email_ok = await send_email(
-                settings.ADMIN_EMAIL,
-                "[JobHunter] Skyvern credits exhausted",
-                f"<p>{alert_body}</p>",
-            )
-            if email_ok:
-                logger.info("Skyvern credits alert email sent to %s", settings.ADMIN_EMAIL)
-        except Exception as exc:
-            logger.warning("Skyvern credits email failed: %s", exc)
-
-    if sms_ok or email_ok:
-        _skyvern_notified = True
-    else:
-        logger.warning("All alert channels failed — will retry on next credits-exhausted event")
-
 
 def _infer_error_category(error_message: str | None) -> ApplicationErrorCategory | None:
     """Infer a structured error category from a free-text error message."""
@@ -536,7 +474,6 @@ async def _record_result_to_neo4j(
         await driver.close()
     except Exception:
         logger.debug("Neo4j record write failed", exc_info=True)
-
 
 
 def _find_job_in_state(job_id: str, state: JobHunterState) -> Optional[JobListing]:
@@ -1763,20 +1700,6 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         consecutive_failures = 0
                     elif result.status == ApplicationStatus.FAILED:
                         failed.append(result)
-                        # Skyvern credits exhausted — abort immediately, no point retrying
-                        if result.error_message == "skyvern_credits_exhausted":
-                            await _alert_skyvern_credits_exhausted(session_id)
-                            return {
-                                "applications_submitted": submitted,
-                                "applications_failed": failed,
-                                "applications_skipped": skipped,
-                                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
-                                "status": "paused",
-                                "agent_statuses": {"application": "aborted — Skyvern credits exhausted"},
-                                "errors": ["Skyvern credits exhausted. Top up at https://app.skyvern.com"],
-                                "skip_next_job_requested": False,
-                                "active_retry_job_ids": [],
-                            }
                         # --- LLM Supervisor decides whether to continue ---
                         all_failed = list(state.get("applications_failed") or []) + failed
                         remaining_count = len(remaining) - (app_idx + 1)
@@ -1852,19 +1775,6 @@ async def run_application_agent(state: JobHunterState) -> dict:
                         consecutive_failures = 0
                     elif res.status == ApplicationStatus.FAILED:
                         failed.append(res)
-                        if res.error_message == "skyvern_credits_exhausted":
-                            await _alert_skyvern_credits_exhausted(session_id)
-                            return {
-                                "applications_submitted": submitted,
-                                "applications_failed": failed,
-                                "applications_skipped": skipped,
-                                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
-                                "status": "paused",
-                                "agent_statuses": {"application": "aborted — Skyvern credits exhausted"},
-                                "errors": ["Skyvern credits exhausted. Top up at https://app.skyvern.com"],
-                                "skip_next_job_requested": False,
-                                "active_retry_job_ids": [],
-                            }
                         # --- LLM Supervisor decides whether to continue ---
                         all_failed_batch = list(state.get("applications_failed") or []) + failed
                         remaining_batch = len(remaining) - (i + 1)
