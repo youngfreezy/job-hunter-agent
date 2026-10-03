@@ -117,6 +117,7 @@ async def scrape_indeed(
     excluded_urls: Optional[set[str]] = None,
     excluded_companies: Optional[set[str]] = None,
     excluded_job_keys: Optional[set[str]] = None,
+    page_offset: int = 0,
 ) -> List[JobListing]:
     """Scrape Indeed for job listings matching *search_config*.
 
@@ -175,9 +176,11 @@ async def scrape_indeed(
                 if len(listings) >= max_results:
                     break
 
-                url = search_url if page_num == 0 else f"{search_url}&start={page_num * 10}"
+                # Backfill advances its window; MAX_PAGES remains the per-query budget.
+                absolute_page = max(0, page_offset) + page_num
+                url = search_url if absolute_page == 0 else f"{search_url}&start={absolute_page * 10}"
                 await page.goto(url, wait_until="domcontentloaded", timeout=90000)
-                logger.info("Indeed results page %d loaded (query: %s)", page_num + 1, query)
+                logger.info("Indeed results page %d loaded (query: %s)", absolute_page + 1, query)
                 # Browserbase's managed solver runs in the cloud browser.
                 await page.wait_for_timeout(random.randint(3000, 6000))
 

@@ -75,6 +75,7 @@ async def test_indeed_selection_routes_discovery_to_authenticated_browser(offlin
         user_id="signed-in-user",
         max_results=3,
         excluded_urls=set(), excluded_companies=set(), excluded_job_keys=set(),
+        round_number=0,
     )
 
 
@@ -136,6 +137,7 @@ async def test_indeed_scraper_uses_user_context_and_always_releases_session(monk
     scraper.assert_awaited_once_with(
         authenticated_context, search, max_results=3,
         excluded_urls=None, excluded_companies=None, excluded_job_keys=None,
+        page_offset=0,
     )
     manager.stop.assert_awaited_once()
 
@@ -155,6 +157,7 @@ async def test_indeed_receives_application_and_backfill_exclusions(offline_disco
     assert kwargs['excluded_urls'] == {prior.url}
     assert kwargs['excluded_companies'] == {'blocked company'}
     assert kwargs['excluded_job_keys'] == {'solutions engineer|example company'}
+    assert kwargs['round_number'] == 1
 
 
 @pytest.mark.asyncio
@@ -223,3 +226,42 @@ def test_query_exclusions_are_literal_phrases_not_injected_operators():
                           exclude_title_keywords=['  AI "Trainer"  ', ''],
                           exclude_companies=['Acme "Research"'])
     assert _search_query('Engineer', search) == 'Engineer -title:"AI Trainer" -company:"Acme Research"'
+
+
+@pytest.mark.asyncio
+async def test_backfill_round_advances_one_bounded_page_window(monkeypatch):
+    module = importlib.import_module('backend.browser.tools.indeed_discovery')
+    manager = MagicMock(start_for_task=AsyncMock(), new_context=AsyncMock(return_value=('ctx', object())), stop=AsyncMock())
+    manager.live_view_url = None
+    manager.browserbase_session_id = None
+    monkeypatch.setattr(module, 'BrowserManager', lambda: manager)
+    scrape = AsyncMock(return_value=[])
+    monkeypatch.setattr(module, 'scrape_indeed', scrape)
+    await module.discover_indeed(search_config=SearchConfig(keywords=['Engineer'], locations=[]),
+                                session_id='s', user_id='u', max_results=20, round_number=2,
+                                excluded_job_keys={'known engineer|known'})
+    assert scrape.await_args.kwargs['page_offset'] == 2 * module.MAX_PAGES
+    assert scrape.await_args.kwargs['excluded_job_keys'] == {'known engineer|known'}
+    manager.stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_backfill_scraper_keeps_page_budget_and_cumulative_exclusions(monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+    from backend.browser.tools.job_boards import indeed as scraper
+    monkeypatch.setattr(scraper, 'MAX_PAGES', 2)
+    monkeypatch.setattr(scraper.settings, 'BROWSER_MODE', 'browserbase')
+    monkeypatch.setattr(scraper, '_is_blocked', AsyncMock(return_value=False))
+    old = _listing()
+    new = old.model_copy(update={'id': 'new', 'title': 'New Engineer', 'url': 'https://www.indeed.com/viewjob?jk=new'})
+    monkeypatch.setattr(scraper, '_read_cards', AsyncMock(return_value=[old, new]))
+    monkeypatch.setattr(scraper, '_parse_indeed_card', lambda card: card)
+    page = SimpleNamespace(goto=AsyncMock(), wait_for_timeout=AsyncMock(), wait_for_selector=AsyncMock(), close=AsyncMock())
+    result = await scraper.scrape_indeed(
+        SimpleNamespace(pages=[page]), SearchConfig(keywords=['Engineer', 'AI Engineer'], locations=[]),
+        max_results=20, page_offset=5, excluded_job_keys={'solutions engineer|example company'},
+    )
+    assert [job.id for job in result] == ['new']
+    assert page.goto.await_count == 4  # Two pages per query, not pages 0 through 6.
+    offsets = [parse_qs(urlsplit(call.args[0]).query)['start'][0] for call in page.goto.await_args_list]
+    assert offsets == ['50', '60', '50', '60']

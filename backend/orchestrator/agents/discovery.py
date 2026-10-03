@@ -138,6 +138,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
                 excluded_job_keys={
                     _dedup_key(job) for job in (state.get("discovered_jobs") or [])
                 } if round_number > 0 else set(),
+                round_number=round_number,
             )
         else:
             all_jobs = await discover_all_boards(
