@@ -15,7 +15,7 @@ export function BrowserbaseExplainer({ compact = false }: { compact?: boolean })
           <div className="flex items-start gap-3">
             <Cloud className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
             <div>
-              <p className="text-sm font-semibold">A real browser, powered by Browserbase</p>
+              <p className="text-sm font-semibold">A real browser, powered by <a href="https://www.browserbase.com/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 focus-visible:outline focus-visible:outline-2">Browserbase<span className="sr-only"> (opens in a new tab)</span></a></p>
               <p className="mt-1 text-sm text-muted-foreground">Watch the agent search Indeed and work through applications.</p>
             </div>
           </div>
