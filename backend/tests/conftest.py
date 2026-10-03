@@ -14,7 +14,23 @@ import functools
 import psycopg
 import pytest
 
-from backend.shared.config import get_settings
+from backend.shared.config import get_settings, settings
+
+
+@pytest.fixture(autouse=True)
+def _no_live_browserbase(monkeypatch):
+    """Keep every test off the live Browserbase API.
+
+    Settings read the repo's ``.env``; with a real ``BROWSERBASE_API_KEY`` in
+    it the listing verifier would fetch the test fixtures' fake job URLs for
+    real (and spend quota) inside tests that never meant to touch the network.
+    Tests that exercise Browserbase code set the values they need themselves.
+    """
+    monkeypatch.setattr(settings, "BROWSERBASE_API_KEY", None)
+    monkeypatch.setattr(settings, "BROWSERBASE_PROJECT_ID", None)
+    monkeypatch.setattr(settings, "BROWSERBASE_CONTEXT_IDS", "")
+    monkeypatch.setattr(settings, "BROWSERBASE_PROXIES", False)
+    monkeypatch.setattr(settings, "BROWSERBASE_VERIFY_LISTINGS", False)
 
 
 def pytest_configure(config: pytest.Config) -> None:
