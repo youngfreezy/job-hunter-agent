@@ -1103,6 +1103,9 @@ async def _apply_to_job(
                 logger.info("Cleaned LinkedIn URL: %s", nav_url)
             await page.goto(nav_url, wait_until="domcontentloaded", timeout=90000)
             await asyncio.sleep(2)  # settle
+            if settings.INDEED_ONLY:
+                from backend.browser.indeed_policy import wait_for_indeed_page
+                await wait_for_indeed_page(page)
             logger.info("Final page URL after navigation: %s", page.url)
 
             # Skyvern handles CAPTCHAs natively — no manual intervention needed.

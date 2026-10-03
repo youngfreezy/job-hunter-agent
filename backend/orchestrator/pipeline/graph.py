@@ -25,7 +25,8 @@ import httpx
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
-from backend.shared.config import MAX_APPLICATION_JOBS
+from backend.shared.config import MAX_APPLICATION_JOBS, get_settings
+from backend.browser.indeed_policy import is_indeed_url
 from backend.shared.event_bus import emit_agent_event
 
 from backend.orchestrator.pipeline.backfill import should_backfill
@@ -71,7 +72,12 @@ RETRYABLE_ERROR_CATEGORIES = {
 
 async def intake_node(state: JobHunterState) -> dict:
     """Parse user inputs into a structured SearchConfig."""
-    return await intake.run(state)
+    result = await intake.run(state)
+    if result.get("agent_statuses", {}).get("intake") == "failed":
+        # Do not continue coaching/discovery after a supplied job could not be
+        # read: that could spend tokens or apply outside the requested URL list.
+        raise RuntimeError("; ".join(result.get("errors") or ["Could not read the job search inputs."]))
+    return result
 
 
 async def career_coach_node(state: JobHunterState) -> dict:
@@ -412,6 +418,11 @@ async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
         url = sj.job.url if hasattr(sj.job, "url") else sj.get("job", {}).get("url", "")
         if not url:
             return (sj, False)
+        if get_settings().INDEED_ONLY:
+            # Indeed listings were read in Browserbase. Anonymous HTTP probes
+            # receive anti-bot 401s, not evidence that the listing is expired.
+            # The application browser checks expiry again before applying.
+            return (sj, is_indeed_url(url))
         title = sj.job.title if hasattr(sj.job, "title") else "unknown"
         try:
             skip_content = any(domain in url for domain in _SKIP_CONTENT_CHECK)

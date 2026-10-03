@@ -13,6 +13,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.llm import build_llm, default_model, invoke_with_retry
 from backend.shared.models.schemas import SearchConfig
+from backend.shared.config import get_settings
 
 # SearchConfig is already a Pydantic model -- use it directly with structured output
 
@@ -66,7 +67,14 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
     if job_urls:
         from backend.orchestrator.agents.url_hydrator import hydrate_urls
         try:
-            hydrated = await hydrate_urls(job_urls)
+            if get_settings().INDEED_ONLY:
+                from backend.browser.tools.indeed_hydration import hydrate_indeed_urls
+                hydrated = await hydrate_indeed_urls(
+                    job_urls, user_id=state.get("user_id", ""),
+                    session_id=state.get("session_id", ""),
+                )
+            else:
+                hydrated = await hydrate_urls(job_urls)
             logger.info("Quick Apply: hydrated %d URLs into JobListings", len(hydrated))
             return {
                 "search_config": SearchConfig(

@@ -281,7 +281,7 @@ class BrowserManager:
         if settings.BROWSER_MODE == "browserbase":
             config = browserbase_client.config_for_user(user_id)
             context_id = browserbase_client.context_id_for_board(board, config)
-            use_stagehand = purpose == "apply" and str(getattr(board, "value", board)).lower() == "indeed"
+            use_stagehand = purpose in ("apply", "hydrate") and str(getattr(board, "value", board)).lower() == "indeed"
             await self.start_browserbase(context_id=context_id, config=config, use_stagehand=use_stagehand)
         elif settings.BROWSER_MODE == "cdp":
             await self.start_cdp(headless=resolved_headless)

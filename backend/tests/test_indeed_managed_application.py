@@ -27,7 +27,7 @@ async def test_indeed_application_uses_managed_default_tab_without_local_stealth
     monkeypatch.setattr(application.asyncio, 'sleep', AsyncMock())
     stealth = AsyncMock()
     monkeypatch.setattr(application, 'apply_stealth', stealth)
-    page = SimpleNamespace(goto=AsyncMock(), url=listing('one').url, is_closed=lambda: False, close=AsyncMock())
+    page = SimpleNamespace(goto=AsyncMock(), wait_for_function=AsyncMock(), url=listing('one').url, is_closed=lambda: False, close=AsyncMock())
     context = SimpleNamespace(pages=[page], new_page=AsyncMock(return_value=page))
     result = await application._apply_to_job('one', listing('one'), {}, 'session', context=context)
     assert result.status == ApplicationStatus.SKIPPED
