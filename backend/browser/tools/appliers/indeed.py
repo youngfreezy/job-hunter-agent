@@ -24,9 +24,10 @@ MAX_SECONDS = 600
 
 
 class NextStep(BaseModel):
-    kind: Literal['act', 'upload', 'submit', 'done', 'park', 'auth', 'external', 'captcha', 'wait']
-    instruction: str = Field(description='One precise natural-language action; no CSS selectors or JavaScript.')
     reason: str = Field(description='One short sentence explaining the final decision, with no deliberation. For park, copy the exact unanswered question or identify the violated rule.')
+    instruction: str = Field(description='One precise natural-language action; no CSS selectors or JavaScript. Empty only when no action is appropriate.')
+    kind: Literal['act', 'upload', 'submit', 'done', 'park', 'auth', 'external', 'captcha', 'wait'] = Field(
+        description='Classify the FINAL decision above. If the instruction is to click Apply or continue, use act, never park.')
 
 
 POLICY = """You operate ONE Indeed application for the authorized applicant.
