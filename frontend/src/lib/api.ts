@@ -121,6 +121,7 @@ export type SSEEventType =
   | "login_complete"
   | "captcha_detected"
   | "browser_live_view"
+  | "browser_live_view_ended"
   | "done"
   | "error"
   | "ping";
@@ -628,6 +629,7 @@ export function connectSSE(
     "login_complete",
     "captcha_detected",
     "browser_live_view",
+    "browser_live_view_ended",
     "done",
     "error",
   ];
@@ -1090,7 +1092,7 @@ export function connectTrialSSE(
     "application_failed", "application_start", "application_browser_action",
     "verification_progress", "backfill_progress", "reporting_progress",
     "needs_intervention", "ready_to_submit", "login_required",
-    "login_complete", "captcha_detected", "browser_live_view", "done", "error",
+    "login_complete", "captcha_detected", "browser_live_view", "browser_live_view_ended", "done", "error",
   ];
 
   const source = createTrialSSEConnection(sessionId);
