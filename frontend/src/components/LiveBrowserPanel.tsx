@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LiveViewState } from "@/lib/liveView";
+import { BrowserbaseExplainer } from "@/components/BrowserbaseExplainer";
 
 interface LiveBrowserPanelProps {
   liveView: LiveViewState;
@@ -47,6 +48,9 @@ export function LiveBrowserPanel({ liveView, jobLabel, onHide }: LiveBrowserPane
           </div>
         </div>
       </CardHeader>
+      {process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true" && (
+        <div className="border-b border-border/50 px-3 py-1"><BrowserbaseExplainer compact /></div>
+      )}
       <CardContent className="p-0 bg-zinc-900">
         <iframe
           key={liveView.url}

@@ -5,6 +5,7 @@
 import { useCallback, useState } from "react";
 import { SessionWizard } from "@/components/wizard/SessionWizard";
 import { QuickStartForm } from "@/components/wizard/QuickStartForm";
+import { BrowserbaseExplainer } from "@/components/BrowserbaseExplainer";
 
 export default function NewSession() {
   const [mode, setMode] = useState<"quick" | "advanced">("quick");
@@ -53,6 +54,7 @@ export default function NewSession() {
         </div>
       </div>
 
+      <BrowserbaseExplainer />
       {/* Mode toggle */}
       <div className="mb-6 flex items-center gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-900">
         <button
