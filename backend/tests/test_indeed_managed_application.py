@@ -99,3 +99,15 @@ async def test_indeed_batch_processes_only_one_job_on_shared_default_tab(monkeyp
     assert result['applications_skipped'] == ['one']
     assert apply.await_count == 1
     manager.stop.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_quick_apply_does_not_pay_to_rewrite_an_unused_resume(monkeypatch):
+    monkeypatch.setattr(settings,'INDEED_ONLY',True)
+    coach=AsyncMock()
+    monkeypatch.setattr(graph.career_coach,'run',coach)
+    monkeypatch.setattr(graph,'emit_agent_event',AsyncMock())
+    result=await graph.career_coach_node({'resume_text':'Canonical facts','session_config':{'discovery_mode':'manual_urls'}})
+    assert result['coached_resume'] == 'Canonical facts'
+    coach.assert_not_awaited()
+    await graph.career_coach_node({'resume_text':'Canonical facts','session_config':{'discovery_mode':'manual_urls','application_mode':'materials_only'}})
+    coach.assert_awaited_once()

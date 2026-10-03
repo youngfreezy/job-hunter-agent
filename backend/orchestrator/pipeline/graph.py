@@ -82,6 +82,16 @@ async def intake_node(state: JobHunterState) -> dict:
 
 async def career_coach_node(state: JobHunterState) -> dict:
     """Analyse resume, rewrite, generate cover-letter template."""
+    config = state.get("session_config") or {}
+    config = config if isinstance(config, dict) else config.model_dump()
+    if (get_settings().INDEED_ONLY and config.get("discovery_mode") == "manual_urls"
+            and config.get("application_mode") != "materials_only"):
+        await emit_agent_event(state.get("session_id", ""), "agent_progress", {
+            "agent": "career_coach", "progress": 100,
+            "message": "Quick Apply uses your uploaded resume and saved answers directly.",
+        })
+        return {"coached_resume": state.get("resume_text", ""), "status": "discovering",
+                "agent_statuses": {"career_coach": "skipped — using original resume"}}
     return await career_coach.run(state)
 
 
