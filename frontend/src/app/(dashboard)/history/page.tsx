@@ -2,6 +2,8 @@
 
 "use client";
 
+import { StatusDot } from "@/components/ui/status-dot";
+import { runName, runOutcome } from "@/lib/run";
 import { MetricStrip } from "@/components/ui/metric-strip";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
@@ -44,36 +46,6 @@ type SessionWithApps = {
   timeSaved: number;
   automationTime: number;
   manualEstimate: number;
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  intake: "Starting",
-  coaching: "Coaching",
-  discovering: "Discovering",
-  scoring: "Scoring",
-  tailoring: "Tailoring",
-  applying: "Applying",
-  awaiting_coach_review: "Resume Review",
-  awaiting_review: "Shortlist Review",
-  needs_intervention: "Needs Help",
-  paused: "Paused",
-  completed: "Completed",
-  failed: "Failed",
-};
-
-const STATUS_COLORS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  completed: "default",
-  applying: "secondary",
-  failed: "destructive",
-  paused: "outline",
-  intake: "outline",
-  coaching: "secondary",
-  discovering: "secondary",
-  scoring: "secondary",
-  tailoring: "secondary",
-  awaiting_coach_review: "outline",
-  awaiting_review: "outline",
-  needs_intervention: "destructive",
 };
 
 const APP_STATUS_COLORS: Record<string, string> = {
@@ -192,9 +164,8 @@ export default function HistoryPage() {
   const totals = useMemo(() => {
     const active = sessionsWithApps.filter((s) => !s.session.archived_at);
     const totalTimeSaved = active.reduce((sum, s) => sum + s.timeSaved, 0);
-    const totalApps = active.reduce(
-      (sum, s) => sum + s.session.applications_submitted + s.session.applications_failed, 0
-    );
+    // Only confirmed submissions count as sent; failed attempts are not applications.
+    const totalApps = active.reduce((sum, s) => sum + s.session.applications_submitted, 0);
     const avgSavedPerApp = totalApps > 0 ? totalTimeSaved / totalApps : 0;
     return {
       timeSaved: totalTimeSaved,
@@ -343,12 +314,15 @@ export default function HistoryPage() {
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant={STATUS_COLORS[session.status] || "outline"}>
-                                {STATUS_LABELS[session.status] || session.status}
-                              </Badge>
-                              <span className="text-sm font-semibold">
-                                {(session.keywords || []).join(", ") || "Untitled"}
-                              </span>
+                              <span className="text-sm font-semibold">{runName(session)}</span>
+                              {(() => {
+                                const o = runOutcome({
+                                  status: session.status,
+                                  submitted: session.applications_submitted,
+                                  failed: session.applications_failed,
+                                });
+                                return <StatusDot tone={o.tone}>{o.label}</StatusDot>;
+                              })()}
                               {session.is_autopilot && (
                                 <Badge className="text-[10px] py-0 bg-secondary text-foreground dark:bg-secondary dark:text-foreground">
                                   Autopilot

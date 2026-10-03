@@ -195,18 +195,21 @@ export default function SettingsPage() {
     }
   }
 
-  async function saveBlockedCompanies(updated: string[]) {
+  async function saveBlockedCompanies(updated: string[]): Promise<boolean> {
     setSavingBlocklist(true);
     try {
       const auth = await getAuthHeaders();
-      await apiFetch(`${API_BASE}/api/auth/me/blocked-companies`, {
+      const res = await apiFetch(`${API_BASE}/api/auth/me/blocked-companies`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify({ blocked_companies: updated }),
       });
+      if (!res.ok) throw new Error(res.statusText);
       setBlockedCompanies(updated);
+      return true;
     } catch {
-      toast.error("Failed to update company blocklist");
+      toast.error("Couldn't save the blocklist. Nothing was changed. Try again in a minute.");
+      return false;
     } finally {
       setSavingBlocklist(false);
     }
@@ -220,9 +223,11 @@ export default function SettingsPage() {
       return;
     }
     const updated = [...blockedCompanies, name];
-    setNewCompany("");
-    saveBlockedCompanies(updated);
-    toast.success(`${name} added to blocklist`);
+    void saveBlockedCompanies(updated).then((ok) => {
+      if (!ok) return;
+      setNewCompany("");
+      toast(`${name} added to your blocklist`);
+    });
   }
 
   async function handleSaveMinSubmitted(value: number) {
@@ -320,9 +325,14 @@ export default function SettingsPage() {
   }
 
   function handleRemoveCompany(company: string) {
-    const updated = blockedCompanies.filter((c) => c !== company);
-    saveBlockedCompanies(updated);
-    toast.success(`${company} removed from blocklist`);
+    const before = blockedCompanies;
+    const updated = before.filter((c) => c !== company);
+    void saveBlockedCompanies(updated).then((ok) => {
+      if (!ok) return;
+      toast(`${company} removed from your blocklist`, {
+        action: { label: "Undo", onClick: () => void saveBlockedCompanies(before) },
+      });
+    });
   }
 
   if (loading) return null;

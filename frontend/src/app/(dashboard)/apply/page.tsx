@@ -2,6 +2,8 @@
 
 "use client";
 
+import Link from "next/link";
+import { runName } from "@/lib/run";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -144,14 +146,29 @@ export default function ApplyPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-lg font-medium text-muted-foreground">No applications yet</p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              Start a session to begin your job search.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border bg-card px-4 py-6 text-sm">
+          <p className="font-medium">
+            {tab === "all" ? "No applications yet." : `No ${tab} applications.`}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            {sessions.length === 0
+              ? "Applications appear here once you approve a shortlist and the agent sends them."
+              : "Your runs so far haven't sent anything. Open a run to see where its jobs dropped out."}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {sessions.length === 0 ? (
+              <Button asChild size="sm">
+                <Link href="/session/new">Start a search</Link>
+              </Button>
+            ) : (
+              sessions.slice(0, 3).map((s) => (
+                <Button key={s.session_id} asChild size="sm" variant="outline">
+                  <Link href={`/session/${s.session_id}`}>{runName(s)}</Link>
+                </Button>
+              ))
+            )}
+          </div>
+        </div>
       ) : (
         <div className="space-y-3">
           {filtered.map((entry, idx) => {

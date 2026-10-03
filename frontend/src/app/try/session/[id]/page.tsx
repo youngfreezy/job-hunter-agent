@@ -49,7 +49,7 @@ const STATUS_DESCRIPTIONS: Record<string, string> = {
   scoring: "Ranking every job against your resume for the best fit.",
   tailoring: "Customizing your resume for each top-scored position.",
   applying: "Submitting applications to your best-matched jobs.",
-  done: "All done! Your applications have been submitted.",
+  done: "Finished.",
   error: "Something went wrong. Please try again.",
 };
 
@@ -193,7 +193,11 @@ export default function TrialSessionPage() {
 
       <div className="max-w-4xl mx-auto px-6 py-10">
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-1">
-          {status === "done" ? "Session Complete!" : "Your AI Job Hunt is in Progress"}
+          {status === "done"
+            ? submitted > 0
+              ? `Finished · ${submitted} ${submitted === 1 ? "application" : "applications"} sent`
+              : "Finished · nothing sent"
+            : "Your trial search is running"}
         </h1>
         {status !== "done" && (
           <div className="mb-6">
@@ -205,7 +209,15 @@ export default function TrialSessionPage() {
             </p>
           </div>
         )}
-        {status === "done" && <div className="mb-6" />}
+        {status === "done" && (
+          <p className="mb-6 text-sm text-muted-foreground">
+            {submitted > 0
+              ? "Create an account to track replies and run more searches."
+              : discovered > 0
+              ? `${discovered} postings were found and none were sent. Create an account to see the reason for each one and adjust the search.`
+              : "No postings matched this search. Try broader roles or another location."}
+          </p>
+        )}
 
         {/* Progress pipeline */}
         <div className="flex items-center gap-0.5 mb-8">
@@ -300,7 +312,7 @@ export default function TrialSessionPage() {
         {status === "done" && !showConvert && (
           <div className="mt-6 text-center">
             <Button onClick={() => setShowConvert(true)} size="lg">
-              Create Account to See Full Results
+              Create an account
             </Button>
           </div>
         )}
@@ -310,7 +322,9 @@ export default function TrialSessionPage() {
       <Dialog open={showConvert} onOpenChange={setShowConvert}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Your applications are in!</DialogTitle>
+            <DialogTitle>
+              {submitted > 0 ? "Keep your results" : "Create an account to try again"}
+            </DialogTitle>
             <DialogDescription>
               Create an account to track responses, run more sessions, and enable email
               auto-verification.
