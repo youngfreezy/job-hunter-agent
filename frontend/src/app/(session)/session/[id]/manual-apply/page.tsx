@@ -60,49 +60,27 @@ export default function ManualApplyPage() {
   };
 
   return (
-    <div className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Review & Apply</h1>
-        <p className="text-muted-foreground mt-1">
-          Every application in one place. Download your tailored materials or finish applying to
-          jobs that need a human touch.
-        </p>
-      </div>
+    <div className="w-full">
+      <p className="mb-4 text-sm text-muted-foreground">
+        Every application from this run. Download the tailored materials or finish an application
+        yourself.
+      </p>
 
-      <div className="mb-6 grid gap-3 md:grid-cols-3">
-        <Card className="border-emerald-200 dark:border-emerald-900">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Submitted</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Successfully submitted. Open any entry to see the exact resume and cover letter that
-              were sent.
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-200 dark:border-amber-900">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Skipped</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Jobs skipped before any work was done (already applied, duplicate, rate-limited). No
-              credits charged. You can still apply manually.
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-200 dark:border-amber-900">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Failed{" "}
-              <span className="text-[10px] normal-case tracking-normal text-amber-600">
-                (0.5 credits)
-              </span>
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Work was done on your behalf — resume tailored and cover letter generated. Charged at
-              half rate (0.5 credits). Use the saved materials to apply directly.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <dl className="mb-6 grid gap-x-6 gap-y-2 rounded-xl border border-border bg-card p-4 text-sm sm:grid-cols-[8rem_1fr]">
+        <dt className="font-medium">Submitted</dt>
+        <dd className="text-muted-foreground">
+          Sent to the employer. Open one to see the exact resume and cover letter. 1 credit.
+        </dd>
+        <dt className="font-medium">Failed</dt>
+        <dd className="text-muted-foreground">
+          Materials were written but the form could not be sent. Use them to apply yourself. 0.5
+          credits.
+        </dd>
+        <dt className="font-medium">Skipped</dt>
+        <dd className="text-muted-foreground">
+          Dropped before any work, for example already applied or a duplicate. No charge.
+        </dd>
+      </dl>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6">

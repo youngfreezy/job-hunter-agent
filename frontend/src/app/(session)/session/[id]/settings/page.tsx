@@ -87,13 +87,12 @@ export default function SessionSettingsPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-2xl p-6 space-y-6">
+    <div className="max-w-2xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Session Settings</h1>
+          <h2 className="text-base font-semibold">Search parameters</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Configure AI behavior and job search preferences. Settings apply to
-            your next session.
+            Changes apply to your next search, not to this run.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleReset}>
