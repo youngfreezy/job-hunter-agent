@@ -28,6 +28,7 @@ from backend.browser.tools.form_filler import (
     fill_form,
 )
 from backend.shared.application_rules import ApplicationParked
+from backend.shared.config import get_settings
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
     ApplicationResult,
@@ -38,6 +39,18 @@ from backend.shared.models.schemas import (
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 logger = logging.getLogger(__name__)
+
+# Browserbase sessions solve CAPTCHA challenges inside the browser.  After a
+# submit that met a widget, wait this long before polling for confirmation,
+# and poll this many times (3 s apart).
+CLOUD_CAPTCHA_SETTLE_SECONDS = 8
+CLOUD_CAPTCHA_CONFIRM_ATTEMPTS = 10
+
+
+def cloud_browser_solves_captchas() -> bool:
+    """True when the browser backend handles CAPTCHAs itself (Browserbase)."""
+    return get_settings().BROWSER_MODE == "browserbase"
+
 
 
 async def goto_with_retry(page: Any, url: str, *, max_retries: int = 2, **kwargs) -> None:
@@ -487,8 +500,11 @@ class BaseApplier(ABC):
             await self._random_delay(1.0, 2.0)
             await self._wait_for_navigation()
 
-        # 2. CAPTCHA check — try to solve via 2captcha if API key is set
+        # 2. CAPTCHA check — solve via 2captcha when a key is set; in
+        # Browserbase mode the cloud browser solves challenges itself, so a
+        # widget on the page is not a failure and the submit gets time to land.
         captcha_attempted = False
+        cloud_solver = False
         if await self._has_recaptcha():
             captcha_attempted = True
             from backend.browser.tools.captcha_solver import solve_captcha
@@ -498,28 +514,37 @@ class BaseApplier(ABC):
                 # Re-click submit after CAPTCHA solved
                 await self._click_selectors("submit_button")
                 await asyncio.sleep(5)
+            elif cloud_browser_solves_captchas():
+                cloud_solver = True
+                logger.info("CAPTCHA widget on %s page — leaving it to the Browserbase session", self.PLATFORM)
+                await self._emit_step("Waiting for the cloud browser to clear the CAPTCHA...")
+                await asyncio.sleep(CLOUD_CAPTCHA_SETTLE_SECONDS)
             else:
                 logger.info("CAPTCHA detected and unsolvable — submission blocked")
                 return self._make_result(
                     job_id, ApplicationStatus.FAILED,
-                    error_message="CAPTCHA unsolvable (2captcha failed)",
+                    error_message="CAPTCHA unsolvable (no solver: set CAPTCHA_API_KEY or use BROWSER_MODE=browserbase)",
                 )
 
-        # 3. Poll for confirmation (AJAX submissions may take a moment)
-        for attempt in range(5):
+        # 3. Poll for confirmation (AJAX submissions may take a moment; a
+        # cloud-solved challenge needs longer)
+        attempts = CLOUD_CAPTCHA_CONFIRM_ATTEMPTS if cloud_solver else 5
+        for attempt in range(attempts):
             if await self._detect_confirmation():
                 await self._emit_step("Application submitted!")
                 return self._make_result(
                     job_id, ApplicationStatus.SUBMITTED,
                     cover_letter_used=cover_letter,
                 )
-            if attempt < 4:
+            if attempt < attempts - 1:
                 await asyncio.sleep(3)
 
         # 4. Failure? (skip captcha check if we already solved it — DOM element persists)
         failure = await self._detect_failure()
         if failure:
-            if failure == "captcha" and captcha_attempted:
+            if failure == "captcha" and cloud_solver:
+                failure = "no_confirmation_after_captcha (Browserbase session did not clear it in time)"
+            elif failure == "captcha" and captcha_attempted:
                 # CAPTCHA was solved but form still didn't submit — likely a
                 # different issue (validation error, JS callback didn't fire)
                 failure = "no_confirmation_after_captcha_solve"
