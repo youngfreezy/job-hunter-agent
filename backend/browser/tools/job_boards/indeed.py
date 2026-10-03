@@ -39,23 +39,36 @@ _BLOCK_SELECTORS = [
 
 
 async def _is_blocked(page: Any) -> bool:
-    """Return True if Indeed is showing a captcha or block page."""
-    for sel in _BLOCK_SELECTORS:
-        try:
-            element = await page.query_selector(sel)
-            if element and await element.is_visible():
-                logger.warning("Indeed: block/captcha detected (selector: %s)", sel)
-                return True
-        except Exception:
-            continue
-    try:
-        title = (await page.title() or "").lower()
-        if any(kw in title for kw in ("captcha", "blocked", "denied", "robot", "just a moment")):
-            logger.warning("Indeed: block detected via page title '%s'", title)
-            return True
-    except Exception:
-        pass
-    return False
+    """Inspect the current DOM once, avoiding many cloud protocol round trips."""
+    return await page.evaluate("""selectors => {
+        const visible = el => !!el && el.getClientRects().length > 0
+            && getComputedStyle(el).visibility !== 'hidden';
+        return selectors.some(s => Array.from(document.querySelectorAll(s)).some(visible))
+            || /captcha|blocked|denied|robot|just a moment/i.test(document.title);
+    }""", _BLOCK_SELECTORS)
+
+
+async def _read_cards(page: Any) -> list[dict]:
+    """Read one serializable snapshot rather than remote handles for every field."""
+    return await page.evaluate("""() => {
+        let cards = Array.from(document.querySelectorAll('div.job_seen_beacon'));
+        if (!cards.length) cards = Array.from(document.querySelectorAll('td.resultContent'));
+        if (!cards.length) cards = Array.from(document.querySelectorAll('div[class*="cardOutline"]'));
+        return cards.map(card => {
+            const text = selector => card.querySelector(selector)?.innerText?.trim() || null;
+            const link = card.querySelector('h2.jobTitle a, a[data-jk]');
+            return {
+                title: text('h2.jobTitle a span[title], h2.jobTitle span, a[data-jk] span'),
+                company: text('span[data-testid="company-name"], span.companyName, span.company'),
+                location: text('div[data-testid="text-location"], div.companyLocation'),
+                href: link?.getAttribute('href'), job_key: link?.getAttribute('data-jk'),
+                salary_range: text('div[class*="salary-snippet"], div.metadata.salary-snippet-container span'),
+                description_snippet: text('div.job-snippet, div[class*="job-snippet"], td.snip') || card.innerText.trim(),
+                posted_date: text('span.date, span[class*="date"]'),
+                is_easy_apply: !!card.querySelector('span[class*="easily-apply"], span.iaLabel') || /easily apply/i.test(card.innerText)
+            };
+        });
+    }""")
 
 
 def matches_search(listing: JobListing, search: SearchConfig) -> bool:
@@ -162,16 +175,14 @@ async def scrape_indeed(
                     logger.warning("Indeed: no job cards found on page %d (query: %s)", page_num + 1, query)
                     break
 
-                cards = await page.query_selector_all(
-                    'div.job_seen_beacon, div[class*="cardOutline"], td.resultContent'
-                )
+                cards = await _read_cards(page)
                 logger.info("Indeed reading %d cards on page %d", len(cards), page_num + 1)
 
                 for card in cards:
                     if len(listings) >= max_results:
                         break
                     try:
-                        listing = await _parse_indeed_card(card, page)
+                        listing = _parse_indeed_card(card)
                         if not listing or listing.url in seen:
                             continue
                         seen.add(listing.url)
@@ -201,36 +212,13 @@ async def scrape_indeed(
     return listings
 
 
-async def _parse_indeed_card(
-    card: Any,  # ElementHandle
-    page: Any,
-) -> Optional[JobListing]:
-    """Parse a single Indeed job card into a JobListing."""
-
-    # Title
-    title_el = await card.query_selector(
-        'h2.jobTitle a span[title], h2.jobTitle span, a[data-jk] span'
-    )
-    title = (await title_el.inner_text()).strip() if title_el else None
+def _parse_indeed_card(card: dict) -> Optional[JobListing]:
+    """Validate a job card snapshot and normalize its Indeed URL."""
+    title = card.get("title")
     if not title:
         return None
-
-    # Company
-    company_el = await card.query_selector(
-        'span[data-testid="company-name"], span.companyName, span.company'
-    )
-    company = (await company_el.inner_text()).strip() if company_el else "Unknown"
-
-    # Location
-    location_el = await card.query_selector(
-        'div[data-testid="text-location"], div.companyLocation'
-    )
-    location = (await location_el.inner_text()).strip() if location_el else "Unknown"
-
-    # URL -- look for the job link
-    link_el = await card.query_selector('h2.jobTitle a, a[data-jk]')
-    href = await link_el.get_attribute("href") if link_el else None
-    job_key = await link_el.get_attribute("data-jk") if link_el else None
+    href = card.get("href")
+    job_key = card.get("job_key")
     if job_key and re.fullmatch(r"[a-zA-Z0-9]+", job_key):
         href = f"{INDEED_BASE}/viewjob?jk={job_key}"
     if href and not href.startswith("http"):
@@ -238,44 +226,12 @@ async def _parse_indeed_card(
     from backend.browser.indeed_policy import is_indeed_url
     if not href or not is_indeed_url(href):
         return None
-    url = href
-
-    # Salary (optional)
-    salary_el = await card.query_selector(
-        'div[class*="salary-snippet"], div.metadata.salary-snippet-container span'
-    )
-    salary_range = (await salary_el.inner_text()).strip() if salary_el else None
-
-    # Snippet
-    snippet_el = await card.query_selector(
-        'div.job-snippet, div[class*="job-snippet"], td.snip'
-    )
-    snippet = (await snippet_el.inner_text()).strip() if snippet_el else (await card.inner_text()).strip()
-
-    # Date
-    date_el = await card.query_selector('span.date, span[class*="date"]')
-    posted_date = (await date_el.inner_text()).strip() if date_el else None
-
-    # Remote detection
-    is_remote = bool(location and "remote" in location.lower())
-
-    # Easy apply badge
-    easy_apply_el = await card.query_selector(
-        'span[class*="easily-apply"], span.iaLabel'
-    )
-    is_easy_apply = easy_apply_el is not None or "easily apply" in (await card.inner_text()).lower()
-
+    location = card.get("location") or "Unknown"
     return JobListing(
-        id=str(uuid4()),
-        title=title,
-        company=company,
-        location=location,
-        url=url,
-        board=JobBoard.INDEED,
-        ats_type=ATSType.INDEED,
-        salary_range=salary_range,
-        description_snippet=snippet,
-        posted_date=posted_date,
-        is_remote=is_remote,
-        is_easy_apply=is_easy_apply,
+        id=str(uuid4()), title=title, company=card.get("company") or "Unknown",
+        location=location, url=href, board=JobBoard.INDEED, ats_type=ATSType.INDEED,
+        salary_range=card.get("salary_range"),
+        description_snippet=card.get("description_snippet"),
+        posted_date=card.get("posted_date"), is_remote="remote" in location.lower(),
+        is_easy_apply=bool(card.get("is_easy_apply")),
     )

@@ -173,7 +173,8 @@ async def test_scraper_counts_only_new_eligible_jobs_and_reaches_next_page(monke
     monkeypatch.setattr(scraper, 'apply_stealth', stealth)
     monkeypatch.setattr(scraper.settings, 'BROWSER_MODE', 'browserbase')
     monkeypatch.setattr(scraper, '_is_blocked', AsyncMock(return_value=False))
-    monkeypatch.setattr(scraper, '_parse_indeed_card', AsyncMock(side_effect=lambda card, _: card))
+    monkeypatch.setattr(scraper, '_read_cards', AsyncMock(side_effect=[[prior, blocked, previous_round], [new]]))
+    monkeypatch.setattr(scraper, '_parse_indeed_card', lambda card: card)
     result = await scraper.scrape_indeed(
         context, SearchConfig(keywords=['Engineer'], locations=[]), max_results=1,
         excluded_urls={prior.url}, excluded_companies={'blocked'},
