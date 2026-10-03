@@ -58,6 +58,8 @@ the results and produce a structured QA decision.
 Rules:
 - If >60% of failures on a specific board are "auth_required", add that board
   to boards_to_skip (the user hasn't provided credentials for it).
+- Pending applicant answers are per-job queue items, not automation failures. Never
+  halt or exclude a board because of pending_answers; they are excluded from total_attempts.
 - If the overall success rate is 0% and total attempts >= 5, set decision=halt.
 - Jobs that failed with "timeout" or "form_navigation" are retryable.
 - Jobs that failed with "auth_required", "job_expired", "duplicate", or
@@ -80,6 +82,11 @@ def _summarise_results(state: JobHunterState) -> Dict[str, Any]:
     failed = state.get("applications_failed") or []
     skipped = state.get("applications_skipped") or []
 
+    # A job awaiting an unknown personal fact must not halt unrelated applications.
+    # Resolved/stale question entries do not hide a later submission or real failure.
+    resolved_ids = {app.job_id for app in submitted + failed}
+    pending_ids = (set(state.get("application_questions") or {}) & set(skipped)) - resolved_ids
+    skipped = [job_id for job_id in skipped if job_id not in pending_ids]
     total = len(submitted) + len(failed) + len(skipped)
 
     # Error category breakdown
@@ -105,6 +112,7 @@ def _summarise_results(state: JobHunterState) -> Dict[str, Any]:
 
     return {
         "total_attempts": total,
+        "pending_answers": len(pending_ids),
         "submitted": len(submitted),
         "failed": len(failed),
         "skipped": len(skipped),
@@ -132,8 +140,9 @@ async def run_qa_agent(state: JobHunterState) -> dict:
 
         if summary["total_attempts"] == 0:
             qa_decision = QADecision(
-                decision="halt",
-                reasoning="No applications were attempted.",
+                decision="continue" if summary["pending_answers"] else "halt",
+                reasoning=("Jobs awaiting applicant answers remain queued; continue eligible discovery."
+                           if summary["pending_answers"] else "No applications were attempted."),
             )
         else:
             await emit_agent_event(session_id, "qa_progress", {
