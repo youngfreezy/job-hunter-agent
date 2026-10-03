@@ -1,60 +1,37 @@
-# Task Plan
+# JobHunter Agent: Browserbase rebuild (started 2026-10-03)
 
-## Current Run
-- [x] Commit verified steering/integration fixes and push to `main`
-- [x] Save user-provided workflow/project memory into persistent memory
-- [x] Run live (non-mock) Playwright integration tests for steering and pipeline checkpoints
-- [x] Verify backend/frontend startup and streaming paths in live environment
-- [x] Run extended live automated application + manual intervention scenario
-- [x] Verify manual-apply log shows submitted jobs with cover letter + tailored resume
-- [x] Validate full UI workflow using iCloud resume file and confirm real submitted job on UI
-- [x] Re-read docs and repo state after user edits
-- [x] Re-run broad live Playwright coverage against the real app
-- [x] Fix stale full-flow assertions after UI copy changes
-- [x] Add live-verification documentation separating proven runtime behavior from roadmap claims
-- [x] Harden screenshot-stream shutdown behavior when pages close
-- [x] Improve Greenhouse confirmation heuristics for real confirmation pages
-- [x] Harden Chrome CDP startup to reuse an existing debugger endpoint before fallback
-- [ ] Re-establish a reproducible fresh live ATS submission target for manual-apply E2E
-- [x] Switch shared LLM/provider wiring to OpenAI-first defaults
-- [x] Update browser-use LLM construction to use OpenAI by default
-- [x] Update env/docs examples for OpenAI-first configuration
-- [ ] Live-verify OpenAI-backed workflow execution with a real `OPENAI_API_KEY`
-- [x] Document startup-packaging plan to replace terminal-first UX
+## Done (local, branch browserbase-mode)
+- [x] BROWSER_MODE=browserbase: backend/browser/browserbase_client.py (REST, httpx), settings in shared/config.py,
+      BrowserManager.start_browserbase / start_for_task / new_context / stop in backend/browser/manager.py.
+- [x] Persisted logins via Browserbase Contexts, mapped per board with BROWSERBASE_CONTEXT_IDS.
+- [x] Media blocking in Browserbase mode (saves proxy bytes).
+- [x] SSE event browser_live_view emitted by the application node when a cloud session starts.
+- [x] tests/test_browserbase_mode.py (6 tests). Live check passed 2026-10-03: manager opened
+      myjobs.indeed.com/saved signed in through the persisted Indeed context (PPID cookie present).
+- [x] Repo boots locally: uv venv (Python 3.12), docker compose postgres+redis, 159 unit tests pass.
 
-## Review
-- Live tests passed:
-  - `frontend/tests/e2e/steering-live.spec.ts`
-  - `frontend/tests/e2e/manual-apply-live.spec.ts`
-  - `frontend/tests/e2e/pipeline-e2e.spec.ts`:
-    - `wizard creates session and coaching events stream`
-    - `coach review modal appears and can be approved`
-    - `GET session caps scored_jobs to 20`
-- Additional live verification passed:
-  - `frontend/tests/e2e/steering-live.spec.ts`
-    - verified steering chat returns live LLM-judge status output rather than a canned echo
-  - `frontend/tests/e2e/takeover-live.spec.ts`
-    - verified Browser Takeover can request control, render live frames, type into the controlled page, and click a real button end-to-end through the UI
-- Live backend/apply verification passed:
-  - `/api/sessions/test-apply` end-to-end with manual intervention streaming (`needs_intervention` -> resume -> submitted)
-  - `application-log` persisted submitted entry with non-empty `cover_letter` and `tailored_resume`
-- Live UI workflow verification passed:
-  - Session started from `/session/new` using a test resume PDF
-  - Session `5ebabbc4-7efd-4165-aee0-3899a692a6eb` reached real `submitted` application
-  - `/session/5ebabbc4-7efd-4165-aee0-3899a692a6eb/manual-apply` displayed submitted row in UI
-- Additional current-run live verification:
-  - `frontend/tests/e2e/full-flow.spec.ts` stale copy assertions fixed to match live UI text
-  - `frontend/tests/e2e/manual-apply-live.spec.ts` now verifies the manual-apply UI against a real previously submitted session instead of a drifting fresh ATS target
-  - `docs/live-verification.md` added to document what is actually proven end-to-end
-  - `backend/browser/tools/appliers/base.py` updated so strong confirmation signals are checked before generic submit/apply-button negatives
-  - `backend/browser/manager.py` updated so CDP startup reuses an existing debugger endpoint and attempts a clean restart before falling back
-- Remaining live gap:
-  - Fresh Greenhouse submissions are still not reproducible on demand across repeated runs. Existing live submitted sessions and historical live runs prove the flow can work, but current external targets remain variable and the local CDP path is still intermittently failing into Patchright.
-- Provider migration update:
-  - Shared orchestration agents now default to OpenAI models via `LLM_PROVIDER=openai`
-  - `browser-use` callsites now construct `ChatOpenAI` by default
-  - Backend imports and model construction were verified locally under an explicit `OPENAI_API_KEY=test-key` env override
-  - Full live OpenAI API execution is not yet verified on this machine because the repo `.env` does not currently contain a real `OPENAI_API_KEY`
-- Startup UX plan update:
-  - Added `docs/startup-packaging-plan.md`
-  - Recommended path is macOS app wrapper after a one-click startup script, then broader packaged runner work
+## Next (cloud agent)
+- [ ] Fix the 5 failing tests in tests/test_gmail_persistence.py (redis mock) and the 8 errors in
+      tests/test_double_submit_prevention.py (DB fixture). Both predate this work.
+- [ ] Application policy: a free-text "application rules" field per user (model + alembic migration +
+      API + Settings UI textarea). Inject it into the scoring prompt (orchestrator/agents/scoring.py) and the
+      form filler prompt (backend/browser/tools/form_filler.py FORM_ANALYSIS_PROMPT) so the owner can paste the
+      rules they give a coding assistant: eligibility (location, seniority, stack, pay), standard answers,
+      park conditions (AI-attestation questions, own-voice essays), and never-invent-facts.
+- [ ] Discovery: add a Browserbase Fetch API verifier (POST /v1/fetch, markdown) that confirms a requisition is
+      open and has an Apply control before it enters the shortlist. Store the verdict on the JobListing.
+- [ ] Frontend: render the browser_live_view SSE event as an iframe panel in the session view (the Live View
+      URL is embeddable), replacing the screenshot feed when provider == browserbase.
+- [ ] Settings UI: Browserbase section (API key, project id, proxies toggle, per-board Context ids) and a
+      "Sign in to <board>" flow that opens a persisted-context session's Live View for the user to log in,
+      then stores the Context id (mirror of ~/Desktop/browserbase-demo/login-capture.mjs, as a backend route).
+- [ ] Skyvern: default SKYVERN_ENABLED stays false; Browserbase mode uses the Playwright appliers
+      (backend/browser/tools/appliers). Remove the Skyvern-credits abort path from the Browserbase branch.
+- [ ] Indeed applier: backend/browser/tools/appliers has greenhouse, lever, ashby, generic. Add indeed.py
+      (Indeed Apply flow on a logged-in context). LinkedIn stays discovery-only (account-ban risk).
+- [ ] Dependency refresh: pin versions that moved since April 2026; CI green on GitHub Actions.
+
+## Rules carried over
+- No AI attribution in commit messages (project-memory.md).
+- Never write scraping selectors without verifying against the live DOM.
+- No silent mock fallback in production paths.

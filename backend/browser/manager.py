@@ -33,6 +33,7 @@ from backend.browser.anti_detect.stealth import (
     get_random_viewport,
     get_stealth_config,
 )
+from backend.browser import browserbase_client
 from backend.shared.config import settings
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,8 @@ class BrowserManager:
         self._running: bool = False
         self._chrome_process: Optional[subprocess.Popen] = None
         self._launched_chrome: bool = False
-        self._mode: str = "patchright"  # "patchright" or "cdp"
+        self._mode: str = "patchright"  # "patchright", "cdp" or "browserbase"
+        self._bb_session: Optional[browserbase_client.BrowserbaseSession] = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -178,6 +180,58 @@ class BrowserManager:
             self._playwright = None
         await self.start(headless=headless)
 
+    async def start_browserbase(
+        self,
+        *,
+        context_id: Optional[str] = None,
+        persist: bool = True,
+        proxies: Optional[bool] = None,
+    ) -> None:
+        """Create a Browserbase cloud session and connect Playwright to it over CDP.
+
+        With *context_id*, the session starts with that Context's cookies and
+        storage (a persisted login) and writes them back on close when
+        *persist* is true.  Bot detection and proxies are Browserbase's job in
+        this mode, so no local stealth or proxy configuration applies.
+        """
+        if self._running:
+            logger.warning("BrowserManager.start_browserbase() called but already running")
+            return
+
+        bb_session = await browserbase_client.create_session(
+            context_id=context_id, persist=persist, proxies=proxies,
+        )
+        self._playwright = await async_playwright().start()
+        try:
+            self._browser = await self._playwright.chromium.connect_over_cdp(
+                bb_session.connect_url, timeout=45_000,
+            )
+        except Exception:
+            await browserbase_client.release_session(bb_session.id)
+            await self._playwright.stop()
+            self._playwright = None
+            raise
+        self._bb_session = bb_session
+        self._running = True
+        self._mode = "browserbase"
+        logger.info(
+            "Connected to Browserbase session %s (context=%s, live view=%s)",
+            bb_session.id, context_id or "none", bb_session.live_view_url,
+        )
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @property
+    def browserbase_session_id(self) -> Optional[str]:
+        return self._bb_session.id if self._bb_session else None
+
+    @property
+    def live_view_url(self) -> Optional[str]:
+        """Browserbase Live View URL for the running session (None in other modes)."""
+        return self._bb_session.live_view_url if self._bb_session else None
+
     async def start_for_task(
         self,
         *,
@@ -187,7 +241,10 @@ class BrowserManager:
     ) -> None:
         """Start the best browser backend for the requested task."""
         resolved_headless = settings.BROWSER_HEADLESS if headless is None else headless
-        if settings.BROWSER_MODE == "cdp":
+        if settings.BROWSER_MODE == "browserbase":
+            context_id = browserbase_client.context_id_for_board(board)
+            await self.start_browserbase(context_id=context_id)
+        elif settings.BROWSER_MODE == "cdp":
             await self.start_cdp(headless=resolved_headless)
         else:
             await self.start(headless=resolved_headless)
@@ -228,6 +285,12 @@ class BrowserManager:
             await self._playwright.stop()
             self._playwright = None
 
+        if self._bb_session:
+            # Closing the CDP connection ends the session and, with persist=True,
+            # flushes cookies to the Context.  The release call is belt and braces.
+            await browserbase_client.release_session(self._bb_session.id)
+            self._bb_session = None
+
         # Keep an existing Chrome debugger alive across runs to preserve session
         # state and avoid repeated profile/port contention on ATS flows.
         if self._launched_chrome:
@@ -256,11 +319,15 @@ class BrowserManager:
 
         ctx_id = uuid4().hex[:12]
 
-        # In CDP mode, reuse the default context if available
-        if self._mode == "cdp" and self._browser.contexts:
+        # In CDP and Browserbase modes, reuse the default context: Browserbase
+        # loads the persisted Context's cookies into it, and Chrome CDP exposes
+        # existing contexts rather than creating new ones.
+        if self._mode in ("cdp", "browserbase") and self._browser.contexts:
             context = self._browser.contexts[0]
             self._contexts[ctx_id] = context
-            logger.info("Reusing Chrome CDP default context as %s", ctx_id)
+            if self._mode == "browserbase" and settings.BROWSERBASE_BLOCK_MEDIA:
+                await self._block_media(context)
+            logger.info("Reusing %s default context as %s", self._mode, ctx_id)
             return ctx_id, context
 
         # Randomise fingerprint
@@ -328,6 +395,23 @@ class BrowserManager:
         )
         return ctx_id, context
 
+    @staticmethod
+    async def _block_media(context: BrowserContext) -> None:
+        """Abort image, font and media requests to save proxy bandwidth.
+
+        Form filling never needs them; a job page is mostly images by bytes.
+        """
+        async def _route(route: Any) -> None:
+            if route.request.resource_type in ("image", "media", "font"):
+                await route.abort()
+            else:
+                await route.continue_()
+
+        try:
+            await context.route("**/*", _route)
+        except Exception:
+            logger.debug("Could not install media-blocking route", exc_info=True)
+
     async def close_context(self, context_id: str) -> None:
         """Close and remove the context identified by *context_id*.
 
@@ -341,8 +425,8 @@ class BrowserManager:
             return
 
         # In CDP mode, don't close the default context — just remove tracking
-        if self._mode == "cdp" and self._browser and context in self._browser.contexts:
-            logger.info("Released CDP context %s (not closing — it's Chrome's default)", context_id)
+        if self._mode in ("cdp", "browserbase") and self._browser and context in self._browser.contexts:
+            logger.info("Released %s default context %s (not closing it)", self._mode, context_id)
             return
 
         try:

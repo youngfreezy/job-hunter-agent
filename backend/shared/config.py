@@ -82,7 +82,15 @@ class Settings(BaseSettings):
     PROXY_URL: Optional[str] = None  # BrightData: http://brd-customer-{ID}-zone-{ZONE}:{PASS}@brd.superproxy.io:33335
     BROWSER_HEADLESS: bool = False
     BROWSER_SLOW_MO: int = 0  # ms delay between Playwright actions (smoother in headed mode)
-    BROWSER_MODE: str = "cdp"  # "cdp" (real Chrome) or "patchright" (built-in Chromium)
+    BROWSER_MODE: str = "cdp"  # "cdp" (real Chrome), "patchright" (built-in Chromium) or "browserbase" (cloud)
+
+    # --- Browserbase (cloud browsers; BROWSER_MODE=browserbase) ---
+    BROWSERBASE_API_KEY: Optional[str] = None
+    BROWSERBASE_PROJECT_ID: Optional[str] = None
+    BROWSERBASE_PROXIES: bool = False  # residential proxies (paid plans); needed for Indeed/LinkedIn at volume
+    BROWSERBASE_SESSION_TIMEOUT: int = 900  # seconds, 60-900 on Free; longer on paid plans
+    BROWSERBASE_CONTEXT_IDS: str = ""  # "indeed=<ctx>,linkedin=<ctx>,default=<ctx>": persisted logins per board
+    BROWSERBASE_BLOCK_MEDIA: bool = True  # abort image/font/media requests to cut proxy bandwidth
 
     # --- CAPTCHA solving (2captcha) ---
     CAPTCHA_API_KEY: Optional[str] = None  # 2captcha.com API key

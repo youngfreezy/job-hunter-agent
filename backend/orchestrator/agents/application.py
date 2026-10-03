@@ -1720,6 +1720,14 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 headless=settings.BROWSER_HEADLESS,
             )
             _, context = await manager.new_context()
+            if manager.live_view_url:
+                # Browserbase mode: the UI can embed this to watch the cloud browser.
+                await emit_agent_event(session_id, "browser_live_view", {
+                    "url": manager.live_view_url,
+                    "provider": "browserbase",
+                    "browserbase_session_id": manager.browserbase_session_id,
+                    "job_id": job_id,
+                })
 
             if len(skyvern_batch) == 1:
                 # Single Skyvern job (common case)
