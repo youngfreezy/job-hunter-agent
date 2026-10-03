@@ -64,6 +64,8 @@ When the resume page appears, choose the upload option and return upload when a 
 The application must use the supplied resume, not an older saved Indeed resume.
 An existing file with the same name is not proof of a fresh upload. Open Resume options
 and choose to replace or upload the resume when the old file is already selected.
+If the application opens directly on final review before a fresh upload, click the
+visible Edit resume control to return to the resume step, then attach the supplied file.
 Do not continue beyond the resume step until the supplied file is attached.
 Return submit ONLY after all required fields are complete, the supplied resume is attached,
 and the form displays the final application review for this job. Return done only for an actual receipt.
@@ -159,6 +161,7 @@ class IndeedApplier(BaseApplier):
                        'Do not create an account, accept new account terms, or send email. Return auth if required.')
         prompt += '\nApplicant facts and authorized job:\n' + supplied
         uploaded = False
+        resume_recovery_attempted = False
         captcha_waits = 0
         loading_waits = 0
         previous = None
@@ -261,7 +264,33 @@ class IndeedApplier(BaseApplier):
                 await self._emit_step('Attached your uploaded resume to the application.')
                 continue
             if step.kind == 'submit' and not uploaded:
-                raise ApplicationParked('The supplied resume has not been uploaded; application was not submitted.')
+                if resume_recovery_attempted:
+                    raise ApplicationParked('The supplied resume has not been uploaded; application was not submitted.')
+                resume_recovery_attempted = True
+                observed = await self.stagehand.observe(
+                    'Find the visible Edit resume, Change resume, or Replace resume control on this application review. '
+                    'Return only its click action. Do not return a submit, apply, continue, or review action. '
+                    'Return no actions if the resume-edit control is absent or ambiguous.',
+                    page=stage_page, cache=False,
+                )
+                actions = observed.data
+                if len(actions) != 1 or actions[0].method != 'click':
+                    raise ApplicationParked('The supplied resume has not been uploaded, and no unique resume-edit control was found.')
+                action = actions[0]
+                control = self.page.locator(action.selector)
+                if not await control.is_visible():
+                    raise ApplicationParked('The supplied resume has not been uploaded, and the resume-edit control is not visible.')
+                label = await control.evaluate("el => [el.innerText, el.getAttribute('aria-label'), el.getAttribute('title')].filter(Boolean).join(' ')")
+                if (not re.search(r'\b(edit|change|replace)\b', label, re.I)
+                        or not re.search(r'\b(resume|résumé|cv)\b', label, re.I)
+                        or re.search(r'\b(submit|apply|send)\b', label, re.I)):
+                    raise ApplicationParked('The supplied resume has not been uploaded; the observed control was not a resume editor.')
+                await self._check_answer('Click the visible resume-edit control to replace the resume', grounding_facts)
+                await self._emit_step('Opening the resume editor to attach your supplied file...')
+                recovery = await self.stagehand.act(action, page=stage_page, timeout=45000)
+                if not recovery.data.success:
+                    raise ApplicationParked('The supplied resume has not been uploaded; the resume editor could not be opened.')
+                continue
             await self._check_answer(step.instruction, grounding_facts, review=(
                 step.kind == 'submit' or bool(re.search(r'\b(signature|sign|certify|attest)\b', step.instruction, re.I))))
             await self._emit_step('Stagehand: submitting the reviewed application...' if step.kind == 'submit'

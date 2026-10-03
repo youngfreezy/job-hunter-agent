@@ -106,6 +106,7 @@ def _stagehand(page, decisions):
     agent.browser.context.active_page = AsyncMock(return_value=stage_page)
     agent.extract = AsyncMock(side_effect=[SimpleNamespace(data=indeed_mod.NextStep(**d)) for d in decisions])
     agent.act = AsyncMock(return_value=SimpleNamespace(data=SimpleNamespace(success=True)))
+    agent.observe = AsyncMock(return_value=SimpleNamespace(data=[]))
     agent.metrics = AsyncMock()
     page.context.pages = [page]
     return agent
@@ -381,3 +382,73 @@ async def test_repeated_ineffective_action_still_has_bounded_stop(monkeypatch):
     agent.act.assert_awaited_once()
     assert result.status == ApplicationStatus.FAILED
     assert 'not progressing' in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_direct_review_opens_visible_resume_edit_then_requires_fresh_upload(monkeypatch):
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form/review')
+    control = SimpleNamespace(is_visible=AsyncMock(return_value=True), evaluate=AsyncMock(return_value='Edit Edit resume'))
+    page.locator = MagicMock(return_value=control)
+    from stagehand import Action
+    observed = Action(method='click', description='Click Edit resume', selector='observed-resume-control', arguments=[])
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k,i in [
+        ('submit', 'Submit application'), ('upload', ''), ('submit', 'Submit application')]])
+    agent.observe.return_value.data = [observed]
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    upload = AsyncMock()
+    monkeypatch.setattr(applier, '_upload_original', upload)
+    monkeypatch.setattr(applier, '_receipt', AsyncMock(return_value=True))
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    check_answer = AsyncMock()
+    monkeypatch.setattr(applier, '_check_answer', check_answer)
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.SUBMITTED
+    upload.assert_awaited_once()
+    agent.observe.assert_awaited_once()
+    assert agent.act.await_args_list[0].args[0] is observed
+    assert agent.act.await_args_list[1].args[0] == 'Submit application'
+    control.is_visible.assert_awaited_once()
+    assert 'resume-edit' in check_answer.await_args_list[0].args[0]
+
+
+@pytest.mark.asyncio
+async def test_direct_review_resume_recovery_is_one_attempt_only(monkeypatch):
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form/review')
+    page.locator = MagicMock(return_value=SimpleNamespace(is_visible=AsyncMock(return_value=True), evaluate=AsyncMock(return_value='Edit resume')))
+    agent = _stagehand(page, [dict(kind='submit', instruction='Submit application', reason='')] * 2)
+    observed = SimpleNamespace(method='click', description='Click Edit resume', selector='observed-resume-control')
+    agent.observe.return_value.data = [observed]
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.SKIPPED
+    agent.act.assert_awaited_once_with(observed, page=agent.browser.context.active_page.return_value, timeout=45000)
+    agent.observe.assert_awaited_once()
+    indeed_mod.mark_submission_intent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_direct_review_cannot_click_hidden_resume_edit(monkeypatch):
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form/review')
+    page.locator = MagicMock(return_value=SimpleNamespace(is_visible=AsyncMock(return_value=False)))
+    agent = _stagehand(page, [dict(kind='submit', instruction='Submit application', reason='')])
+    agent.observe.return_value.data = [SimpleNamespace(method='click', description='Click Edit resume', selector='hidden-control')]
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.SKIPPED
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('method,label', [('click', 'Submit application'), ('click', 'Edit contact information'), ('fill', 'Edit resume')])
+async def test_resume_recovery_rejects_submit_other_fields_and_non_clicks(monkeypatch, method, label):
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form/review')
+    page.locator = MagicMock(return_value=SimpleNamespace(is_visible=AsyncMock(return_value=True), evaluate=AsyncMock(return_value=label)))
+    agent = _stagehand(page, [dict(kind='submit', instruction='Submit application', reason='')])
+    agent.observe.return_value.data = [SimpleNamespace(method=method, description='Edit resume', selector='observed-control')]
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.SKIPPED
+    agent.act.assert_not_awaited()
+    indeed_mod.mark_submission_intent.assert_not_called()
