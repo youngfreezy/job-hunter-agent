@@ -534,6 +534,13 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
             cfg = config if isinstance(config, dict) else config.model_dump()
             max_jobs = cfg.get("max_jobs", 20)
 
+        # Confirm the top candidates are still open and show an Apply control
+        # (Browserbase Fetch API) before they enter the shortlist.
+        from backend.browser.fetch_verifier import VERIFY_HEADROOM, verify_shortlist_candidates
+        scored_jobs = await verify_shortlist_candidates(
+            scored_jobs, session_id=session_id, limit=max_jobs + VERIFY_HEADROOM,
+        )
+
         # Cap to max_jobs from session config
         if len(scored_jobs) > max_jobs:
             logger.info("Capping scored jobs from %d to %d (session config)", len(scored_jobs), max_jobs)

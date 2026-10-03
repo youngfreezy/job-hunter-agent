@@ -15,6 +15,8 @@ interface Job {
   board: string;
   salary_range?: string | null;
   is_remote?: boolean;
+  verified_open?: boolean;
+  verify_note?: string;
 }
 
 interface JobCardProps {
@@ -67,6 +69,19 @@ export function JobCard({ job, score, breakdown, selected, onToggle, compact }: 
                   Remote
                 </Badge>
               )}
+              {job.verified_open ? (
+                <Badge
+                  variant="secondary"
+                  className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100"
+                  title={job.verify_note}
+                >
+                  Verified open
+                </Badge>
+              ) : job.verify_note ? (
+                <Badge variant="outline" className="text-xs" title={job.verify_note}>
+                  Unverified
+                </Badge>
+              ) : null}
             </div>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">{job.company}</p>
             <p className="text-xs text-zinc-500">{job.location}</p>

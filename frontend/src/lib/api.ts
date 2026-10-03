@@ -40,6 +40,8 @@ export interface JobListing {
   salary_range: string | null;
   description_snippet: string | null;
   is_remote: boolean;
+  verified_open?: boolean;
+  verify_note?: string;
 }
 
 export interface ScoredJob {
