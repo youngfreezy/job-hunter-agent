@@ -181,6 +181,23 @@ async def test_hidden_file_input_is_reported_to_stagehand(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_empty_native_receipt_after_submit_preserves_uncertainty(monkeypatch):
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit this application')]])
+    agent.browser.context.active_page.return_value.snapshot.return_value = SimpleNamespace(formatted_tree='')
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='Facts', cover_letter='')
+    assert result.status == ApplicationStatus.FAILED
+    assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
+    agent.act.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_saved_resume_cannot_continue_without_fresh_upload():
     page = _page('https://smartapply.indeed.com/form/resume-selection-module/resume-selection')
     agent = _stagehand(page, [dict(kind='act', instruction='Click Continue with the selected resume', reason='Same filename'),
@@ -239,14 +256,18 @@ async def test_resume_step_uploads_hidden_input_before_model_can_continue(monkey
 
 @pytest.mark.asyncio
 async def test_receipt_cannot_be_job_description_or_visible_submit():
+    from types import SimpleNamespace
     page = _page()
-    page.evaluate = AsyncMock(return_value={'text': 'application submitted', 'submitting': False})
-    applier = IndeedApplier(page, 's1')
+    agent = _stagehand(page, [])
+    native_page = agent.browser.context.active_page.return_value
+    native_page.snapshot.return_value = SimpleNamespace(formatted_tree='[1-1] StaticText: application submitted')
+    applier = IndeedApplier(page, 's1', stagehand=agent)
     assert not await applier._receipt()
     page.url = 'https://smartapply.indeed.com/form'
     assert await applier._receipt()
-    page.evaluate.return_value['submitting'] = True
+    native_page.snapshot.return_value.formatted_tree += '\n[1-2] button: Submit application'
     assert not await applier._receipt()
+
 
 
 @pytest.mark.asyncio
@@ -542,65 +563,75 @@ async def test_observed_employer_redirect_requires_indeed_source():
     assert not result.external_application_url
 
 
-def _visible_frame(page, text, *, submitting=False, visible=True, parent=None):
-    frame = MagicMock()
-    frame.parent_frame = parent if parent is not None else page.main_frame
-    element = MagicMock(is_visible=AsyncMock(return_value=visible), dispose=AsyncMock())
-    frame.frame_element = AsyncMock(return_value=element)
-    frame.evaluate = AsyncMock(return_value={'text': text, 'submitting': submitting})
-    return frame
-
-
 # Preserve the implementation before the autouse fixture replaces this method.
 _check_answer_with_frames = IndeedApplier._check_answer
 
 
 @pytest.mark.asyncio
-async def test_visible_frames_are_included_in_final_answer_audit(monkeypatch):
+async def test_native_iframe_snapshot_is_used_for_final_answer_audit(monkeypatch):
+    from types import SimpleNamespace
     page = _page('https://smartapply.indeed.com/form/review')
-    page.main_frame.parent_frame = None
-    page.evaluate = AsyncMock(return_value={'text': 'Review', 'submitting': False})
-    visible = _visible_frame(page, 'Work authorization: Yes')
-    hidden = _visible_frame(page, 'Hidden answer: No', visible=False)
-    hidden_child = _visible_frame(page, 'Nested hidden answer', parent=hidden)
-    page.frames = [page.main_frame, visible, hidden, hidden_child]
+    agent = _stagehand(page, [])
+    native_page = agent.browser.context.active_page.return_value
+    tree = '[1-1] heading: Review\n[1-2] Iframe\n  [2-1] StaticText: Work authorization: Yes'
+    native_page.snapshot.return_value = SimpleNamespace(formatted_tree=tree)
     checker = AsyncMock()
     monkeypatch.setattr('backend.browser.application_answers.check_application_answer', checker)
-    await _check_answer_with_frames(IndeedApplier(page, 's1'), 'Submit', '{}', review=True)
-    assert checker.await_args.kwargs['review_text'] == 'Review\nWork authorization: Yes'
-    hidden.evaluate.assert_not_awaited()
-    hidden_child.evaluate.assert_not_awaited()
+    await _check_answer_with_frames(IndeedApplier(page, 's1', stagehand=agent), 'Submit', '{}', review=True)
+    assert checker.await_args.kwargs['review_text'] == tree
+    native_page.snapshot.assert_awaited_once_with(include_iframes=True)
+    page.evaluate.assert_not_awaited()
+    page.frame_locator.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_visible_frame_receipt_requires_no_submit_button_in_any_visible_frame():
+async def test_native_receipt_requires_no_submit_button_in_visible_snapshot():
+    from types import SimpleNamespace
     page = _page('https://smartapply.indeed.com/form/review')
-    page.main_frame.parent_frame = None
-    page.evaluate = AsyncMock(return_value={'text': 'Application', 'submitting': False})
-    receipt = _visible_frame(page, 'Your application has been submitted')
-    button = _visible_frame(page, 'Submit application', submitting=True)
-    page.frames = [page.main_frame, receipt, button]
-    applier = IndeedApplier(page, 's1')
+    agent = _stagehand(page, [])
+    native_page = agent.browser.context.active_page.return_value
+    native_page.snapshot.return_value = SimpleNamespace(formatted_tree=(
+        '[1-1] Iframe\n  [2-1] StaticText: Your application has been submitted\n'
+        '[1-2] Iframe\n  [3-1] button: Submit application'))
+    applier = IndeedApplier(page, 's1', stagehand=agent)
     assert not await applier._receipt()
-    button.frame_element.return_value.is_visible.return_value = False
+    native_page.snapshot.return_value.formatted_tree = '[2-1] StaticText: Your application has been submitted'
     assert await applier._receipt()
-    receipt.frame_element.return_value.is_visible.return_value = False
+    native_page.snapshot.return_value.formatted_tree = '[2-1] heading: Review application'
     assert not await applier._receipt()
 
 
 @pytest.mark.asyncio
-async def test_visible_frame_read_failure_blocks_final_audit(monkeypatch):
+async def test_native_snapshot_read_retries_detached_frame_without_browser_actions(monkeypatch):
+    from types import SimpleNamespace
     page = _page('https://smartapply.indeed.com/form/review')
-    page.main_frame.parent_frame = None
-    page.evaluate = AsyncMock(return_value={'text': 'Review', 'submitting': False})
-    frame = _visible_frame(page, '')
-    frame.evaluate.side_effect = RuntimeError('detached during inspection')
-    page.frames = [page.main_frame, frame]
+    agent = _stagehand(page, [])
+    native_page = agent.browser.context.active_page.return_value
+    native_page.snapshot.side_effect = [RuntimeError('frame detached'), SimpleNamespace(formatted_tree='[1-1] heading: Review')]
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await IndeedApplier(page, 's1', stagehand=agent)._visible_application_snapshot()
+    assert result['text'] == '[1-1] heading: Review'
+    assert native_page.snapshot.await_count == 2
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('error', [RuntimeError('detached during inspection'), None])
+async def test_native_snapshot_read_failure_or_empty_content_blocks_final_audit(monkeypatch, error):
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [])
+    native_page = agent.browser.context.active_page.return_value
+    native_page.snapshot.side_effect = error
+    native_page.snapshot.return_value = SimpleNamespace(formatted_tree='')
     checker = AsyncMock()
     monkeypatch.setattr('backend.browser.application_answers.check_application_answer', checker)
-    with pytest.raises(RuntimeError, match='detached'):
-        await _check_answer_with_frames(IndeedApplier(page, 's1'), 'Submit', '{}', review=True)
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    with pytest.raises((RuntimeError, indeed_mod.ApplicationParked)):
+        await _check_answer_with_frames(IndeedApplier(page, 's1', stagehand=agent), 'Submit', '{}', review=True)
+    assert native_page.snapshot.await_count == 3
     checker.assert_not_awaited()
+    agent.act.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -137,11 +137,11 @@ class IndeedApplier(BaseApplier):
         ))
 
     async def _receipt(self):
-        if not self._allowed_url(self.page.url):
-            return False
-        if not self.employer_site and urlparse(self.page.url).hostname != 'smartapply.indeed.com':
-            return False
         snapshot = await self._visible_application_snapshot()
+        if not self._allowed_url(snapshot['url']):
+            return False
+        if not self.employer_site and urlparse(snapshot['url']).hostname != 'smartapply.indeed.com':
+            return False
         return not snapshot['submitting'] and any(phrase in snapshot['text'].lower() for phrase in (
             'your application has been submitted', 'your application was submitted',
             'application submitted', 'thank you for applying', 'thanks for applying',
@@ -150,36 +150,34 @@ class IndeedApplier(BaseApplier):
         ))
 
     async def _visible_application_snapshot(self):
-        """Include visible iframe documents in the independent audit and receipt."""
-        script = """() => ({
-          text: document.body ? document.body.innerText : '',
-          submitting: [...document.querySelectorAll('button')].some(el =>
-            el.getClientRects().length > 0 &&
-            getComputedStyle(el).visibility !== 'hidden' &&
-            /submit.*application/i.test(el.innerText))
-        })"""
-        snapshots = [await self.page.evaluate(script)]
-        for frame in self.page.frames:
-            if frame == self.page.main_frame:
-                continue
-            ancestor = frame
-            visible = True
-            while ancestor.parent_frame is not None:
-                element = await ancestor.frame_element()
-                try:
-                    if not await element.is_visible():
-                        visible = False
-                        break
-                finally:
-                    await element.dispose()
-                ancestor = ancestor.parent_frame
-            if visible:
-                # Do not silently skip unreadable visible frames: review must fail closed.
-                snapshots.append(await frame.evaluate(script))
-        return {
-            'text': '\n'.join(snapshot['text'] for snapshot in snapshots),
-            'submitting': any(snapshot['submitting'] for snapshot in snapshots),
-        }
+        """Read visible application content through Stagehand, without model inference.
+
+        Native snapshots include accessible iframe content and form values while
+        omitting hidden documents/controls. Retry only this read when a transient
+        iframe detaches; never replay an application action or submit.
+        """
+        for attempt in range(3):
+            try:
+                stage_page = await self.stagehand.browser.context.active_page()
+                snapshot = await asyncio.wait_for(
+                    stage_page.snapshot(include_iframes=True), timeout=15)
+                text = snapshot.formatted_tree
+                if not isinstance(text, str) or not text.strip():
+                    # This reader is also used after submit. A read failure must
+                    # retain submission uncertainty, not become a new input request.
+                    raise RuntimeError('Could not read the application state.')
+                return {
+                    'text': text,
+                    'url': await stage_page.url(),
+                    'submitting': bool(re.search(
+                        r'^\s*\[[^]\n]+\]\s+button:\s*[^\n]*submit[^\n]*application',
+                        text, re.I | re.M)),
+                }
+            except Exception:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(0.25)
+
 
     async def _check_answer(self, instruction, applicant_facts, *, review=False):
         from backend.browser.application_answers import check_application_answer
