@@ -97,6 +97,21 @@ def build_llm(
     provider = get_llm_provider()
     resolved_model = model or default_model()
 
+    from backend.shared.model_budget import configured_ledger, BudgetChatAnthropic, BudgetStopped, Ledger, MODEL
+    budget_path = configured_ledger()
+    if budget_path:
+        if provider != 'anthropic' or not settings.ANTHROPIC_API_KEY:
+            raise BudgetStopped('Budget mode requires the approved Anthropic provider.')
+        Ledger(budget_path).snapshot()  # Missing/corrupt ledgers must never silently reset.
+        return BudgetChatAnthropic(
+            model=MODEL, api_key=settings.ANTHROPIC_API_KEY,
+            anthropic_api_url='https://api.anthropic.com',
+            max_tokens=max_tokens, temperature=temperature, max_retries=0,
+            disable_streaming=True, timeout=timeout or 90,
+            default_headers=anthropic_default_headers() or None,
+            budget_ledger_path=budget_path,
+        )
+
     if provider == "openai":
         if not settings.OPENAI_API_KEY:
             raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
@@ -135,6 +150,9 @@ def build_browser_use_llm(
     temperature: float = 0.0,
 ) -> Any:
     """Build a browser-use-compatible LLM instance for the configured provider."""
+    from backend.shared.model_budget import configured_ledger, BudgetStopped
+    if configured_ledger():
+        raise BudgetStopped('Alternate browser-use provider is disabled in budget mode; use Stagehand.')
     settings = get_settings()
     provider = get_llm_provider()
     resolved_model = model or browser_model()

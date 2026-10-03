@@ -147,10 +147,7 @@ def analyze_ats_outcomes() -> Dict[str, Dict[str, Any]]:
 def _generate_strategy_with_llm(ats_type: str, stats: Dict[str, Any]) -> str:
     """Use Haiku to synthesize outcome data into a strategy tip."""
     try:
-        import anthropic
-
-        from backend.shared.llm import anthropic_default_headers
-        client = anthropic.Anthropic(default_headers=anthropic_default_headers() or None)
+        from backend.shared.llm import build_llm, light_model
         prompt = (
             f"You are an expert at filling out job application forms on ATS platforms.\n\n"
             f"Here are our historical results for {ats_type.upper()} forms:\n"
@@ -166,12 +163,8 @@ def _generate_strategy_with_llm(ats_type: str, stats: Dict[str, Any]) -> str:
             f"Do NOT include any preamble — just the guidance."
         )
 
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=256,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text.strip()
+        response = build_llm(model=light_model(), max_tokens=256).invoke(prompt)
+        return response.content.strip()
 
     except Exception:
         logger.warning("LLM strategy generation failed for %s, using fallback", ats_type, exc_info=True)
