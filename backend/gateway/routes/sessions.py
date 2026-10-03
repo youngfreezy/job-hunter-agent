@@ -611,6 +611,12 @@ async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) ->
 
     Uses None as input to continue from the last checkpoint.
     """
+    from backend.shared.session_store import get_session_by_id
+    durable = get_session_by_id(session_id)
+    if durable and durable['status'] in ('completed', 'failed'):
+        if session_id in session_registry:
+            session_registry[session_id]['status'] = durable['status']
+        return
     register_emitter(session_id, _emit)
 
     try:
@@ -679,6 +685,12 @@ async def _synthesise_snapshot(session_id: str, checkpointer, graph=None):
                     status = "awaiting_review"
             except Exception:
                 logger.debug("Could not check interrupt status for %s", session_id)
+
+        # A checkpoint describes past work; it cannot undo a durable stop/completion.
+        from backend.shared.session_store import get_session_by_id
+        durable = get_session_by_id(session_id)
+        if durable and durable['status'] in ('completed', 'failed'):
+            status = durable['status']
 
         # Update registry with correct status
         _set_session_status(session_id, status)
@@ -1193,7 +1205,8 @@ async def kill_session(session_id: str, request: Request):
     await cancel_pipeline(session_id)
     unregister_emitter(session_id)
     # Update DB
-    update_session_status(session_id, "completed")
+    update_session_status(session_id, "completed", raise_on_error=True)
+    session_registry.setdefault(session_id, {"session_id": session_id, "user_id": user_id})["status"] = "completed"
     # Release Redis concurrency slot
     await _release_task_slot(session_id)
 
@@ -1455,6 +1468,11 @@ async def get_session(session_id: str, request: Request):
             elif "shortlist_review" in next_nodes:
                 result["status"] = "awaiting_review"
 
+            from backend.shared.session_store import get_session_by_id
+            durable = get_session_by_id(session_id)
+            if durable and durable['status'] in ('completed', 'failed'):
+                result['status'] = durable['status']
+
         # Overlay live application counts from the DB (checkpointer only
         # updates when the full application node completes, so mid-run the
         # counts would be stale/empty).
@@ -1635,7 +1653,8 @@ async def stream_session(session_id: str, request: Request):
         session_registry[session_id] = {
             "session_id": session_id,
             "user_id": db_row["user_id"] if db_row else cv.get("user_id", ""),
-            "status": cv.get("status", "unknown"),
+            "status": (db_row['status'] if db_row and db_row['status'] in ('completed', 'failed')
+                       else cv.get("status", "unknown")),
             "keywords": cv.get("keywords", []),
             "locations": cv.get("locations", []),
             "remote_only": cv.get("remote_only", False),
@@ -2145,6 +2164,11 @@ async def resume_session(session_id: str, request: Request):
     from backend.gateway.deps import get_current_user, verify_session_owner
     user = get_current_user(request)
     await verify_session_owner(session_id, user, request)
+
+    from backend.shared.session_store import get_session_by_id
+    durable = get_session_by_id(session_id)
+    if durable and durable['status'] in ('completed', 'failed'):
+        raise HTTPException(status_code=409, detail="Session is already stopped or complete. Start a new session to run again.")
 
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}

@@ -64,7 +64,7 @@ def upsert_session(session_id: str, data: Dict[str, Any]) -> None:
             logger.error("Failed to upsert session %s", session_id, exc_info=True)
 
 
-def update_session_status(session_id: str, status: str) -> None:
+def update_session_status(session_id: str, status: str, *, raise_on_error: bool = False) -> None:
     """Update just the status field for a session."""
     with _connect() as conn:
         try:
@@ -76,6 +76,8 @@ def update_session_status(session_id: str, status: str) -> None:
         except Exception:
             conn.rollback()
             logger.error("Failed to update session status %s", session_id, exc_info=True)
+            if raise_on_error:
+                raise
 
 
 def update_session_counts(
@@ -270,7 +272,10 @@ def mark_sessions_interrupted(session_ids: List[str]) -> None:
     with _connect() as conn:
         try:
             conn.execute(
-                "UPDATE sessions SET status = 'interrupted', updated_at = NOW() WHERE id = ANY(%s)",
+                """UPDATE sessions SET status = 'interrupted', updated_at = NOW()
+                   WHERE id = ANY(%s)
+                     AND status IN ('intake', 'coaching', 'discovering', 'scoring',
+                                    'tailoring', 'applying', 'running', 'recovering')""",
                 (session_ids,),
             )
             conn.commit()
