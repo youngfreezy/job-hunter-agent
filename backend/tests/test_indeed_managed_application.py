@@ -143,3 +143,20 @@ async def test_quick_apply_blocks_prior_submitted_or_uncertain_before_browser(mo
         assert 'Check the employer or Indeed' in result.error_message
     else:
         assert 'Already applied' in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_resumed_queue_progress_excludes_previous_shortlist_failures(monkeypatch):
+    events = AsyncMock()
+    monkeypatch.setattr(application, 'emit_agent_event', events)
+    monkeypatch.setattr(application, '_db_record_result', MagicMock())
+    await application.run_application_agent({
+        'session_id': 'session', 'application_queue': ['remaining'],
+        'discovered_jobs': [listing('remaining')],
+        'applications_failed': [ApplicationResult(job_id='old', status=ApplicationStatus.FAILED)],
+        'skip_next_job_requested': True,
+    })
+    progress = [call.args[2] for call in events.await_args_list if call.args[1] == 'application_progress']
+    assert progress[0]['current'] == 1
+    assert progress[0]['total'] == 1
+    assert progress[0]['progress'] == 0

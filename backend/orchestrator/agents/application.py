@@ -960,7 +960,7 @@ async def _apply_to_job(
             | {r.job_id for r in (state.get("applications_failed") or [])}
             | set(state.get("applications_skipped") or [])
         )
-        _app_idx = len(_done_ids)
+        _app_idx = len((_done_ids - set(state.get("active_retry_job_ids") or [])) & set(_queue))
         _total_q = len(_queue)
         _pct = int((_app_idx / _total_q) * 100) if _total_q else 0
 
@@ -1530,7 +1530,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
             len(application_queue),
         )
         total_in_queue = len(application_queue)
-        processed_count = len(done_ids)
+        processed_count = len(done_ids & set(application_queue))
         app_idx = processed_count
         job_id = remaining[0]
         pct = int((app_idx / total_in_queue) * 100) if total_in_queue else 0
