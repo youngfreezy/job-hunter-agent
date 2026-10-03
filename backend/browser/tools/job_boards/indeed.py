@@ -24,7 +24,7 @@ INDEED_BASE = "https://www.indeed.com"
 INDEED_SEARCH = f"{INDEED_BASE}/jobs"
 
 # Continue beyond previously seen results, with a bounded cloud-session cost.
-MAX_PAGES = 3
+MAX_PAGES = 5
 
 # Captcha / block selectors
 _BLOCK_SELECTORS = [
@@ -77,7 +77,15 @@ def matches_search(listing: JobListing, search: SearchConfig) -> bool:
     if listing.company.lower() in {c.lower() for c in search.exclude_companies}:
         return False
     text = f"{listing.location} {listing.description_snippet or ''}".lower()
-    return not search.work_arrangements or any(a in text for a in search.work_arrangements)
+    if search.work_arrangements and not any(a in text for a in search.work_arrangements):
+        return False
+    # A wide search radius must not turn a requested city into the entire region.
+    # Remote listings can serve the requested location without a local office.
+    cities = [location.split(',')[0].strip().lower() for location in search.locations
+              if location.strip().lower() != 'remote']
+    if search.work_arrangements and cities and 'remote' not in listing.location.lower():
+        return any(city in listing.location.lower() for city in cities)
+    return True
 
 
 async def scrape_indeed(
@@ -134,7 +142,11 @@ async def scrape_indeed(
             if len(listings) >= max_results:
                 break
 
-            params = {**base_params, "q": query}
+            # Indeed supports OR groups in the keyword query. Bias discovery
+            # toward the requested work setting before validating each card.
+            arrangements = [a for a in search_config.work_arrangements if a in {"hybrid", "remote"}]
+            query_text = f"{query} ({' OR '.join(arrangements)})" if arrangements else query
+            params = {**base_params, "q": query_text}
             param_str = urlencode(params)
             search_url = f"{INDEED_SEARCH}?{param_str}"
 

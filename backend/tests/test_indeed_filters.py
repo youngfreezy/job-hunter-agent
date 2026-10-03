@@ -10,6 +10,8 @@ def test_prompt_exclusions_and_arrangements():
  assert not matches_search(job(title='Application Engineer - AI Trainer'),search)
  assert not matches_search(job(location='San Francisco, CA'),search)
  assert matches_search(job(location='Remote in San Francisco, CA'),search)
+ assert not matches_search(job(location='Hybrid work in San Carlos, CA'),search)
+ assert not matches_search(job(location='Hybrid work in Mountain View, CA'),search)
 
 
 def test_card_snapshot_normalizes_job_key_and_rejects_external_link():
