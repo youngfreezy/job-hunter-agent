@@ -2,7 +2,9 @@
 
 import { useField } from "formik";
 
-const DEFAULT_DISCOVERY_PROMPT = "Find applied AI and AI-native software engineering positions in San Francisco that are hybrid or remote.";
+const demoTargetSalary = Number(process.env.NEXT_PUBLIC_DEMO_TARGET_BASE_SALARY || 0);
+const DEFAULT_DISCOVERY_PROMPT = "Find applied AI and AI-native software engineering positions in San Francisco that are hybrid or remote."
+  + (demoTargetSalary > 0 ? ` Target base salary: $${demoTargetSalary.toLocaleString("en-US")}. Use my saved application rules for eligibility.` : "");
 
 export function DiscoveryPrompt() {
   const [field, meta, helpers] = useField<string>("discoveryPrompt");
