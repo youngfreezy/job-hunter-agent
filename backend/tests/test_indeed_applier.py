@@ -631,3 +631,40 @@ def test_resume_label_requires_unique_snapshot_match(tree, paths):
     from types import SimpleNamespace
     assert indeed_mod._snapshot_control_label(SimpleNamespace(
         formatted_tree=tree, xpath_map=paths), 'control') == ''
+
+
+@pytest.mark.asyncio
+async def test_same_continue_instruction_progresses_across_wizard_steps_at_same_url():
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form')
+    instruction = 'Click Continue'
+    agent = _stagehand(page, [dict(kind='act', instruction=instruction, reason='Next step')] * 3 +
+                       [dict(kind='auth', instruction='', reason='Sign in required')])
+    native_page = agent.browser.context.active_page.return_value
+    native_page.snapshot.side_effect = [SimpleNamespace(formatted_tree=tree) for tree in [
+        '[1-1] heading: Contact information\n[1-2] button: Continue',
+        '[2-1] heading: Experience\n[2-2] button: Continue',
+        '[3-1] heading: Voluntary demographics\n[3-2] button: Continue',
+    ]]
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert agent.act.await_count == 3
+    assert all(call.args[0] == instruction for call in agent.act.await_args_list)
+    assert result.error_category == ApplicationErrorCategory.AUTH_REQUIRED
+
+
+@pytest.mark.asyncio
+async def test_snapshot_node_id_changes_do_not_bypass_unchanged_form_stop(monkeypatch):
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form')
+    agent = _stagehand(page, [dict(kind='act', instruction='Click Continue', reason='Next')] * 3)
+    native_page = agent.browser.context.active_page.return_value
+    native_page.snapshot.side_effect = [SimpleNamespace(formatted_tree=(
+        f'[{n}-1] heading: Experience\n  [{n}-2] textbox: Required answer\n'
+        f'[{n}-3] button: Continue')) for n in range(1, 4)]
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    agent.act.assert_awaited_once()
+    assert result.status == ApplicationStatus.FAILED
+    assert 'not progressing' in result.error_message

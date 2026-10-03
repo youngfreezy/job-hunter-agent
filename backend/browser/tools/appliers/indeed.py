@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -254,7 +255,14 @@ class IndeedApplier(BaseApplier):
                 # Do not let a model equate an old selected filename with the supplied PDF.
                 step = NextStep(kind='act', reason='The supplied PDF must replace the saved resume.',
                                 instruction='Click the Resume options button for the selected resume to reveal the replace or upload option.')
-            signature = (active_url, step.kind, step.instruction)
+            progress_fingerprint = None
+            if step.kind == 'act':
+                # Wizard steps can change inside an iframe without changing the tab URL.
+                # Ignore ephemeral AX node IDs, but retain labels, values and structure.
+                snapshot = await stage_page.snapshot(include_iframes=True)
+                content = re.sub(r'(?m)^(\s*)\[[^]\n]+\]\s*', r'\1', snapshot.formatted_tree)
+                progress_fingerprint = hashlib.sha256(content.encode()).hexdigest()
+            signature = (active_url, progress_fingerprint, step.kind, step.instruction)
             repetitions = repetitions + 1 if signature == previous else 0
             previous = signature
             if repetitions >= 2 and step.kind not in ('captcha', 'wait'):
