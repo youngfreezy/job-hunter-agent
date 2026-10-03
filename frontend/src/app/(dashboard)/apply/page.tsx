@@ -2,12 +2,12 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { runName } from "@/lib/run";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   listSessions,
   getApplicationLog,
@@ -17,6 +17,7 @@ import {
 } from "@/lib/api";
 import { downloadResumePdf, downloadCoverLetterPdf } from "@/lib/pdf";
 import { toast } from "sonner";
+import { MetricStrip } from "@/components/ui/metric-strip";
 
 type Tab = "all" | "submitted" | "failed" | "skipped";
 
@@ -108,79 +109,18 @@ export default function ApplyPage() {
         </p>
       </div>
 
-      {/* Stat cards */}
-      <div className="mb-6 grid gap-3 md:grid-cols-3">
-        <Card className="border-emerald-200 dark:border-emerald-900">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Total Applications
-            </p>
-            <p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-              {counts.all}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-200 dark:border-amber-900">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Ready to Apply
-            </p>
-            <p className="mt-1 text-2xl font-bold text-amber-600 dark:text-amber-400">
-              {readyToApplyCount}
-            </p>
-          </CardContent>
-        </Card>
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Card className="border-blue-200 dark:border-blue-900 cursor-pointer transition-colors hover:bg-muted/40">
-                <CardContent className="p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    Sessions
-                  </p>
-                  <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    {sessions.length}
-                  </p>
-                </CardContent>
-              </Card>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              className="bg-popover text-popover-foreground border border-border shadow-lg p-0 rounded-xl"
-            >
-              {sessions.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-muted-foreground">No sessions yet</p>
-              ) : (
-                <div className="py-1">
-                  <p className="px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-medium">
-                    Recent Sessions
-                  </p>
-                  {sessions.slice(0, 5).map((s) => (
-                    <Link
-                      key={s.session_id}
-                      href={`/session/${s.session_id}`}
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors"
-                    >
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                          s.status === "running"
-                            ? "bg-emerald-500"
-                            : s.status === "paused"
-                            ? "bg-amber-500"
-                            : "bg-zinc-400"
-                        }`}
-                      />
-                      <span className="truncate max-w-[180px]">
-                        {s.keywords.length > 0 ? s.keywords.join(", ") : s.session_id.slice(0, 8)}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <MetricStrip
+        className="mb-6"
+        metrics={[
+          { label: "Applications", value: counts.all },
+          {
+            label: "Ready to apply",
+            value: readyToApplyCount,
+            tone: readyToApplyCount > 0 ? "warning" : "default",
+          },
+          { label: "Searches", value: sessions.length },
+        ]}
+      />
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 mb-6">
@@ -206,14 +146,29 @@ export default function ApplyPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-lg font-medium text-muted-foreground">No applications yet</p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              Start a session to begin your job search.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border bg-card px-4 py-6 text-sm">
+          <p className="font-medium">
+            {tab === "all" ? "No applications yet." : `No ${tab} applications.`}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            {sessions.length === 0
+              ? "Applications appear here once you approve a shortlist and the agent sends them."
+              : "Your runs so far haven't sent anything. Open a run to see where its jobs dropped out."}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {sessions.length === 0 ? (
+              <Button asChild size="sm">
+                <Link href="/session/new">Start a search</Link>
+              </Button>
+            ) : (
+              sessions.slice(0, 3).map((s) => (
+                <Button key={s.session_id} asChild size="sm" variant="outline">
+                  <Link href={`/session/${s.session_id}`}>{runName(s)}</Link>
+                </Button>
+              ))
+            )}
+          </div>
+        </div>
       ) : (
         <div className="space-y-3">
           {filtered.map((entry, idx) => {

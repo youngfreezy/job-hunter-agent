@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormikFileUpload } from "@/components/forms/FormikFileUpload";
 import { FormikInput } from "@/components/forms/FormikInput";
 import { parseResumeTrial, startFreeTrialSession } from "@/lib/api";
+import { ROUTES } from "@/lib/routes";
 
 // Simplified 3-step schema for free trial
 const step1Schema = Yup.object({
@@ -81,7 +82,7 @@ export default function FreeTrialPage() {
             JobHunter Agent
           </Link>
           <Link
-            href="/auth/signin"
+            href={ROUTES.login}
             className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
           >
             Sign in
@@ -130,7 +131,7 @@ export default function FreeTrialPage() {
           <p className="text-sm text-amber-800 dark:text-amber-200">
             <span className="font-medium">Note:</span> Some job applications may require email verification codes.
             Without a connected email account, those applications will be skipped.{" "}
-            <Link href="/auth/signin" className="underline font-medium">
+            <Link href={ROUTES.signup} className="underline font-medium">
               Sign up
             </Link>{" "}
             to enable auto-verification for all jobs.

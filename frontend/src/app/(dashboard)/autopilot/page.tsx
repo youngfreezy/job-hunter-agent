@@ -26,6 +26,7 @@ import {
   getAuthHeaders,
 } from "@/lib/api";
 import { toast } from "sonner";
+import { ROUTES } from "@/lib/routes";
 
 const CRON_PRESETS = [
   { label: "Weekdays at 8 AM", value: "0 8 * * 1-5" },
@@ -174,7 +175,7 @@ export default function AutopilotPage() {
     try {
       const headers = await getAuthHeaders();
       if (!headers.Authorization) {
-        router.push("/login");
+        router.push(ROUTES.login);
         return;
       }
       const data = await listAutopilotSchedules();
@@ -244,7 +245,7 @@ export default function AutopilotPage() {
     try {
       await triggerAutopilotNow(id);
       await load();
-      toast.success("Schedule triggered — check your dashboard");
+      toast("Schedule started. The run appears on Home.");
     } catch (err) {
       console.error("Failed to trigger run", err);
       toast.error("Failed to trigger schedule");

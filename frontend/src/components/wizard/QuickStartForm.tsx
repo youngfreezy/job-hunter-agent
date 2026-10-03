@@ -183,7 +183,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
           <CardContent className="p-6 space-y-4">
             <div>
               <p className="text-sm font-medium mb-2">Search Keywords</p>
-              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500">
+              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-ring/30 focus-within:border-primary">
                 {keywords.map((kw, i) => (
                   <Badge
                     key={i}
@@ -217,7 +217,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
 
             <div>
               <p className="text-sm font-medium mb-2">Locations</p>
-              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500">
+              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-ring/30 focus-within:border-primary">
                 {locations.map((loc, i) => (
                   <Badge
                     key={i}

@@ -34,7 +34,7 @@ export function NotificationBanner({ message, label, action, onDismiss }: Notifi
           )}
           <button
             onClick={onDismiss}
-            className="text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300"
+            className="text-blue-400 hover:text-blue-600 dark:text-primary dark:hover:text-blue-300"
             aria-label="Dismiss"
           >
             <svg

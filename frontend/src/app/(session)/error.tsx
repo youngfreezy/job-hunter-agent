@@ -23,7 +23,7 @@ export default function SessionError({
       </p>
       <button
         onClick={reset}
-        className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+        className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-hover"
       >
         Try again
       </button>

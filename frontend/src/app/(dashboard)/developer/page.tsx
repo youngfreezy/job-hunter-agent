@@ -3,7 +3,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -137,12 +136,6 @@ export default function DeveloperPage() {
             Manage API keys, webhooks, and integrate with the JobHunter platform.
           </p>
         </div>
-        <Link
-          href="/developer/docs"
-          className="text-sm text-blue-600 hover:underline"
-        >
-          API Docs
-        </Link>
       </div>
 
       {/* Tabs */}
@@ -153,7 +146,7 @@ export default function DeveloperPage() {
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t
-                ? "border-blue-500 text-foreground"
+                ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -171,7 +164,7 @@ export default function DeveloperPage() {
               value={newKeyName}
               onChange={(e) => setNewKeyName(e.target.value)}
               placeholder="Key name (e.g. Production)"
-              className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               onKeyDown={(e) => e.key === "Enter" && handleCreateKey()}
             />
             <Button size="sm" onClick={handleCreateKey} disabled={!newKeyName.trim()}>
@@ -269,7 +262,7 @@ export default function DeveloperPage() {
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
               placeholder="https://your-server.com/webhook"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <div className="flex flex-wrap gap-2">
               {WEBHOOK_EVENTS.map((event) => (

@@ -146,7 +146,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
                   const clamped = Math.min(Math.max(Number.isNaN(next) ? 0 : next, 0), values.maxJobs ?? 5);
                   setFieldValue("minimumSubmittedApplications", clamped);
                 }}
-                className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 dark:border-zinc-800 dark:bg-zinc-950"
+                className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary dark:border-zinc-800 dark:bg-zinc-950"
               />
               <p className="text-xs text-zinc-400 mt-1">Set to 0 to disable. Premium only.</p>
             </div>
@@ -168,7 +168,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
                   onClick={() => setFieldValue("tailoringQuality", opt.value)}
                   className={`rounded-xl border p-4 text-left transition-all ${
                     values.tailoringQuality === opt.value
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                      ? "border-primary bg-blue-50 dark:bg-blue-950/30"
                       : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800"
                   }`}
                 >
@@ -203,7 +203,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
                   onClick={() => setFieldValue("applicationMode", opt.value)}
                   className={`rounded-xl border p-4 text-left transition-all ${
                     values.applicationMode === opt.value
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                      ? "border-primary bg-blue-50 dark:bg-blue-950/30"
                       : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800"
                   }`}
                 >
@@ -246,7 +246,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
                     }}
                     className={`rounded-full px-4 py-1.5 text-sm border transition-all ${
                       active
-                        ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300"
+                        ? "border-primary bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300"
                         : "border-zinc-200 text-zinc-500 hover:border-zinc-300 dark:border-zinc-700"
                     }`}
                   >

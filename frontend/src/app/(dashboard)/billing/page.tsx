@@ -454,7 +454,7 @@ export default function BillingPage() {
                   <p
                     className={`text-sm font-bold ${
                       tx.type === "free_application"
-                        ? "text-blue-500"
+                        ? "text-primary"
                         : tx.amount > 0
                         ? "text-green-600"
                         : tx.type === "application_partial"

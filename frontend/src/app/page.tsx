@@ -346,7 +346,7 @@ function WaitlistBanner() {
   if (status === "success") return null;
 
   return (
-    <div className="sticky top-0 z-[60] bg-gradient-to-r from-orange-500 to-amber-600 px-4 py-3 text-white shadow-md">
+    <div className="sticky top-0 z-[60] bg-zinc-900 px-4 py-3 text-white">
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
         <p className="text-sm font-medium">
           We&apos;re launching soon &mdash; get early access and 5 free application credits.
@@ -434,7 +434,7 @@ export default function Home() {
       <section className="px-6 py-10">
         <div className="mx-auto max-w-7xl">
           <div className="relative overflow-hidden rounded-[36px] border border-zinc-200/80 bg-white px-8 py-10 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.35)] dark:border-zinc-800 dark:bg-zinc-950 lg:px-12 lg:py-12">
-            <div className="absolute -left-24 top-10 h-64 w-64 rounded-full bg-blue-200/40 blur-3xl dark:bg-blue-500/10" />
+            <div className="absolute -left-24 top-10 h-64 w-64 rounded-full bg-blue-200/40 blur-3xl dark:bg-primary/10" />
             <div className="absolute right-0 top-0 h-80 w-80 rounded-full bg-emerald-200/35 blur-3xl dark:bg-emerald-500/10" />
             <div className="relative mx-auto max-w-3xl text-center">
               <Badge
@@ -775,8 +775,8 @@ export default function Home() {
                     <p className="font-bold text-blue-700 dark:text-blue-300">8.5</p>
                     <p className="text-zinc-500">Clarity</p>
                   </div>
-                  <div className="rounded-lg bg-violet-50 p-2 dark:bg-violet-950/30">
-                    <p className="font-bold text-violet-700 dark:text-violet-300">8.8</p>
+                  <div className="rounded-lg bg-secondary p-2 dark:bg-secondary">
+                    <p className="font-bold text-foreground dark:text-foreground">8.8</p>
                     <p className="text-zinc-500">Keywords</p>
                   </div>
                 </div>
@@ -932,8 +932,8 @@ export default function Home() {
                     <p className="text-xl font-bold text-blue-700 dark:text-blue-300">12</p>
                     <p className="text-xs text-zinc-500">Callbacks</p>
                   </div>
-                  <div className="rounded-xl bg-violet-50 p-3 dark:bg-violet-950/30">
-                    <p className="text-xl font-bold text-violet-700 dark:text-violet-300">26%</p>
+                  <div className="rounded-xl bg-secondary p-3 dark:bg-secondary">
+                    <p className="text-xl font-bold text-foreground dark:text-foreground">26%</p>
                     <p className="text-xs text-zinc-500">Success Rate</p>
                   </div>
                 </div>
@@ -1105,7 +1105,7 @@ export default function Home() {
               <CardContent className="p-6">
                 <Badge
                   variant="secondary"
-                  className="mb-3 bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+                  className="mb-3 bg-secondary text-foreground dark:bg-secondary dark:text-foreground"
                 >
                   Career Pivot
                 </Badge>
@@ -1130,8 +1130,8 @@ export default function Home() {
                     compensation.
                   </div>
                 </div>
-                <div className="mt-4 rounded-xl bg-violet-50 p-3 text-center dark:bg-violet-950/30">
-                  <p className="text-lg font-bold text-violet-700 dark:text-violet-300">
+                <div className="mt-4 rounded-xl bg-secondary p-3 text-center dark:bg-secondary">
+                  <p className="text-lg font-bold text-foreground dark:text-foreground">
                     40% salary increase
                   </p>
                   <p className="text-xs text-zinc-500">3% → 17% callback rate</p>
@@ -1419,9 +1419,9 @@ export default function Home() {
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-950/40">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-secondary dark:bg-secondary">
                 <svg
-                  className="h-5 w-5 text-violet-600"
+                  className="h-5 w-5 text-foreground"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -1570,9 +1570,9 @@ export default function Home() {
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-center dark:border-zinc-800 dark:bg-zinc-950">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-950">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary dark:bg-secondary">
                 <svg
-                  className="h-6 w-6 text-violet-600"
+                  className="h-6 w-6 text-foreground"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -1697,7 +1697,7 @@ export default function Home() {
       {/* Final CTA */}
       <section className="px-6 py-20">
         <div className="mx-auto max-w-4xl">
-          <Card className="rounded-[28px] border-emerald-200 bg-gradient-to-r from-emerald-50 to-blue-50 shadow-sm dark:border-emerald-900 dark:from-emerald-950/30 dark:to-blue-950/30">
+          <Card className="rounded-[28px] border-emerald-200 bg-card dark:border-emerald-900">
             <CardContent className="py-10 text-center">
               <h3 className="text-2xl font-bold">Ready to automate your job search?</h3>
               <p className="mx-auto mt-3 max-w-xl text-sm text-zinc-600 dark:text-zinc-400">

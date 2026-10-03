@@ -2,6 +2,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ROUTES } from "@/lib/routes";
 
 export const metadata: Metadata = {
   title: "How It Works",
@@ -51,7 +52,7 @@ export default function AboutPage() {
           <Link href="/" className="text-lg font-bold text-zinc-900 dark:text-white">
             JobHunter Agent
           </Link>
-          <Link href="/login">
+          <Link href={ROUTES.login}>
             <span className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
               Log in
             </span>
@@ -111,7 +112,7 @@ export default function AboutPage() {
           </p>
           <div className="mt-6 flex justify-center gap-4">
             <Link
-              href="/register"
+              href={ROUTES.signup}
               className="inline-flex h-10 items-center rounded-lg bg-blue-600 px-6 text-sm font-medium text-white hover:bg-blue-700"
             >
               Get started

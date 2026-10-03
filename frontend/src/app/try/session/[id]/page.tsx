@@ -16,6 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ROUTES } from "@/lib/routes";
 import {
   connectTrialSSE,
   getTrialToken,
@@ -48,7 +49,7 @@ const STATUS_DESCRIPTIONS: Record<string, string> = {
   scoring: "Ranking every job against your resume for the best fit.",
   tailoring: "Customizing your resume for each top-scored position.",
   applying: "Submitting applications to your best-matched jobs.",
-  done: "All done! Your applications have been submitted.",
+  done: "Finished.",
   error: "Something went wrong. Please try again.",
 };
 
@@ -166,7 +167,7 @@ export default function TrialSessionPage() {
       await convertTrialAccount({ trial_token: token, password, name: name || undefined });
       clearTrialData();
       // Redirect to sign in so they can log in with their new credentials
-      router.push("/auth/signin?converted=true");
+      router.push(`${ROUTES.login}?converted=true`);
     } catch (err) {
       setConvertError(err instanceof Error ? err.message : "Conversion failed");
     } finally {
@@ -192,7 +193,11 @@ export default function TrialSessionPage() {
 
       <div className="max-w-4xl mx-auto px-6 py-10">
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-1">
-          {status === "done" ? "Session Complete!" : "Your AI Job Hunt is in Progress"}
+          {status === "done"
+            ? submitted > 0
+              ? `Finished · ${submitted} ${submitted === 1 ? "application" : "applications"} sent`
+              : "Finished · nothing sent"
+            : "Your trial search is running"}
         </h1>
         {status !== "done" && (
           <div className="mb-6">
@@ -204,7 +209,15 @@ export default function TrialSessionPage() {
             </p>
           </div>
         )}
-        {status === "done" && <div className="mb-6" />}
+        {status === "done" && (
+          <p className="mb-6 text-sm text-muted-foreground">
+            {submitted > 0
+              ? "Create an account to track replies and run more searches."
+              : discovered > 0
+              ? `${discovered} postings were found and none were sent. Create an account to see the reason for each one and adjust the search.`
+              : "No postings matched this search. Try broader roles or another location."}
+          </p>
+        )}
 
         {/* Progress pipeline */}
         <div className="flex items-center gap-0.5 mb-8">
@@ -222,23 +235,20 @@ export default function TrialSessionPage() {
                       isCompleted
                         ? "bg-blue-50 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300"
                         : isFailed
-                        ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                        ? "bg-red-500 text-white"
                         : isCurrent
-                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30"
+                        ? "bg-primary text-white"
                         : "text-zinc-400 dark:text-zinc-500"
                     }
                   `}
                 >
-                  {isCurrent && !isFailed && (
-                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[gradient-shift_2s_ease_infinite] bg-[length:200%_100%]" />
-                  )}
                   {isCompleted ? (
                     <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   ) : isCurrent && !isFailed ? (
                     <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                      
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
                     </span>
                   ) : (
@@ -252,7 +262,7 @@ export default function TrialSessionPage() {
                     <div className="h-0.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-700 ease-out ${
-                          isFailed ? "bg-red-400" : "bg-blue-500"
+                          isFailed ? "bg-red-400" : "bg-primary"
                         }`}
                         style={{ width: isCompleted ? "100%" : isCurrent ? "50%" : "0%" }}
                       />
@@ -302,7 +312,7 @@ export default function TrialSessionPage() {
         {status === "done" && !showConvert && (
           <div className="mt-6 text-center">
             <Button onClick={() => setShowConvert(true)} size="lg">
-              Create Account to See Full Results
+              Create an account
             </Button>
           </div>
         )}
@@ -312,7 +322,9 @@ export default function TrialSessionPage() {
       <Dialog open={showConvert} onOpenChange={setShowConvert}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Your applications are in!</DialogTitle>
+            <DialogTitle>
+              {submitted > 0 ? "Keep your results" : "Create an account to try again"}
+            </DialogTitle>
             <DialogDescription>
               Create an account to track responses, run more sessions, and enable email
               auto-verification.
@@ -326,7 +338,7 @@ export default function TrialSessionPage() {
               </div>
               <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-3 text-center">
                 <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{discovered}</p>
-                <p className="text-xs text-blue-600 dark:text-blue-500">Jobs Found</p>
+                <p className="text-xs text-blue-600 dark:text-primary">Jobs Found</p>
               </div>
             </div>
 
@@ -401,14 +413,14 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 function EventBadge({ event }: { event: string }) {
   const colors: Record<string, string> = {
     status: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-    discovery_progress: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+    discovery_progress: "bg-secondary text-foreground dark:bg-secondary dark:text-foreground",
     scoring_progress: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
     tailoring_progress: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
     application_progress: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
     application_submitted: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
     application_failed: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
     application_start: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-    coaching_progress: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+    coaching_progress: "bg-secondary text-foreground dark:bg-secondary dark:text-foreground",
     verification_progress: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
     reporting_progress: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
     error: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
