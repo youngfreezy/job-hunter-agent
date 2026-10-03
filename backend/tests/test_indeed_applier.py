@@ -89,6 +89,7 @@ def _page(url: str = "https://www.indeed.com/viewjob?jk=abc123"):
     page = MagicMock()
     page.url = url
     page.query_selector = AsyncMock(return_value=None)
+    page.query_selector_all = AsyncMock(return_value=[])
     page.wait_for_selector = AsyncMock(side_effect=TimeoutError("no element"))
     page.evaluate = AsyncMock(return_value=[])
     page.wait_for_load_state = AsyncMock()
@@ -157,6 +158,17 @@ async def test_natural_actions_upload_and_single_submit_need_receipt(monkeypatch
     assert agent.act.await_count == 2
     upload.assert_awaited_once()
     assert 'Never guess required answers' in agent.extract.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_hidden_file_input_is_reported_to_stagehand(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/resume')
+    page.query_selector_all.return_value = [MagicMock()]
+    agent = _stagehand(page, [dict(kind='park', instruction='', reason='Required answer missing')])
+    await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert 'including hidden inputs): 1' in agent.extract.await_args.args[0]
+    agent.act.assert_not_awaited()
 
 
 @pytest.mark.asyncio
