@@ -18,9 +18,11 @@ interface ChatPanelProps {
   disabled?: boolean;
   placeholder?: string;
   isLoading?: boolean;
+  /** Shown before the first message. */
+  emptyText?: string;
 }
 
-export function ChatPanel({ messages, onSend, disabled, placeholder, isLoading }: ChatPanelProps) {
+export function ChatPanel({ messages, onSend, disabled, placeholder, isLoading, emptyText }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +44,7 @@ export function ChatPanel({ messages, onSend, disabled, placeholder, isLoading }
       <div ref={containerRef} className="flex-1 overflow-y-auto space-y-2 p-3 min-h-0">
         {messages.length === 0 && (
           <p className="text-zinc-400 text-sm text-center py-4">
-            Chat with the agent to steer it in real-time.
+            {emptyText ?? "Messages to the agent appear here."}
           </p>
         )}
         {messages.map((msg, i) => (
