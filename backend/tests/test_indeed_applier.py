@@ -43,6 +43,7 @@ def _no_selector_db(monkeypatch):
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_success", lambda *a, **k: None)
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_failure", lambda *a, **k: None)
     monkeypatch.setattr("backend.browser.tools.appliers.base.emit_agent_event", AsyncMock())
+    monkeypatch.setattr(indeed_mod, "mark_submission_intent", MagicMock(), raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -255,3 +256,38 @@ async def test_failed_action_is_reobserved_with_history_and_bounded(monkeypatch)
     assert result.status == ApplicationStatus.FAILED
     assert 'Choose option 2' in result.error_message
     capture.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_submit_intent_is_durable_before_click_and_survives_cancellation(monkeypatch):
+    import asyncio
+    order = []
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
+                              dict(kind='submit', instruction='Submit application', reason='')])
+    async def cancel_after_click(*args, **kwargs):
+        order.append('click')
+        raise asyncio.CancelledError()
+    agent.act.side_effect = cancel_after_click
+    marker = MagicMock(side_effect=lambda *args: order.append('durable intent'))
+    monkeypatch.setattr(indeed_mod, 'mark_submission_intent', marker)
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    with pytest.raises(asyncio.CancelledError):
+        await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    marker.assert_called_once_with('s1', 'indeed-1')
+    assert order == ['durable intent', 'click']
+
+
+@pytest.mark.asyncio
+async def test_submit_never_clicks_when_durable_intent_cannot_be_written(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
+                              dict(kind='submit', instruction='Submit application', reason='')])
+    monkeypatch.setattr(indeed_mod, 'mark_submission_intent', MagicMock(side_effect=RuntimeError('database offline')))
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.FAILED
+    agent.act.assert_not_awaited()

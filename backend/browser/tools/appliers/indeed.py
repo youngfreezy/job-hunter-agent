@@ -18,6 +18,7 @@ from backend.browser.tools.appliers.base import BaseApplier
 from backend.shared.application_rules import ApplicationParked, format_rules_block
 from backend.shared.models.schemas import ApplicationErrorCategory, ApplicationStatus
 from backend.shared.resume_store import get_resume_bytes
+from backend.shared.application_store import mark_submission_intent
 
 logger = logging.getLogger(__name__)
 MAX_ACTIONS = 40
@@ -222,6 +223,8 @@ class IndeedApplier(BaseApplier):
             await self._emit_step('Stagehand: submitting the reviewed application...' if step.kind == 'submit'
                                   else f'Stagehand: {step.instruction[:240]}')
             if step.kind == 'submit':
+                # Commit before clicking: cancellation or restart must not lose the hold.
+                mark_submission_intent(self.session_id, str(job.id))
                 self._submission_attempted = True
             try:
                 action = await self.stagehand.act(step.instruction, page=stage_page, timeout=45000)

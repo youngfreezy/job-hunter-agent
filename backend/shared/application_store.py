@@ -123,6 +123,15 @@ def record_result(
                  failure_step, cover_letter, tailored_resume_text, duration_seconds,
                  screenshot_path),
             )
+            # Replace intent in the same transaction as its blocking final result.
+            # A failed write leaves the intent intact and prevents an unsafe retry.
+            if status == "submitted" or error_category == "submission_uncertain":
+                conn.execute(
+                    """DELETE FROM application_results
+                       WHERE session_id = %s AND job_id = %s AND status = 'pending'
+                         AND error_category = 'submission_uncertain'""",
+                    (session_id, job_id),
+                )
             conn.commit()
     except Exception:
         logger.exception("Failed to record application result for %s", job_id)
@@ -203,12 +212,32 @@ def check_already_applied(
         return None
 
 
+def mark_submission_intent(session_id: str, job_id: str) -> None:
+    """Durably mark the existing attempt immediately before its final submit.
+
+    Keep the attempt's owner and original source URL for cross-session dedup.
+    Unlike ordinary result logging, any persistence failure must stop the click.
+    """
+    with _connect() as conn:
+        updated = conn.execute(
+            """UPDATE application_results
+               SET error_category = 'submission_uncertain',
+                   error_message = 'Final submission started; receipt not yet verified.'
+               WHERE session_id = %s AND job_id = %s AND status = 'pending'""",
+            (session_id, job_id),
+        )
+        if updated.rowcount == 0:
+            raise RuntimeError("Cannot submit without a persisted pending application")
+        conn.commit()
+
+
 def clear_pending(session_id: str, job_id: str) -> None:
-    """Delete the pending record for a job so the final result can be inserted cleanly."""
+    """Clear preparation records while retaining any unresolved submission intent."""
     try:
         with _connect() as conn:
             conn.execute(
-                "DELETE FROM application_results WHERE session_id = %s AND job_id = %s AND status = 'pending'",
+                """DELETE FROM application_results WHERE session_id = %s AND job_id = %s
+                   AND status = 'pending' AND error_category IS DISTINCT FROM 'submission_uncertain'""",
                 (session_id, job_id),
             )
             conn.commit()
