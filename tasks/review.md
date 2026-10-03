@@ -88,3 +88,55 @@ npm start                                      # from the repo root (Docker + ba
   `frontend/src/app/(session)/session/[id]/page.tsx`, `frontend/src/app/(dashboard)/settings/page.tsx`
 - Tests: `backend/tests/test_application_rules.py`, `test_fetch_verifier.py`, `test_browserbase_settings.py`,
   `test_indeed_applier.py`, `conftest.py`; `frontend/src/lib/liveView.test.ts`
+
+
+---
+
+# Second cloud pass (2026-10-03, later the same day)
+
+Branch `browserbase-mode`, five commits after the merge of the first pass. Postgres 16 and Redis 7 ran as
+local services; the suite ran against them with the repo's `.env` present.
+
+## What changed
+
+| Commit | Summary |
+|--------|---------|
+| `Match the listing verifier to the published Fetch API` | Request is `{url, format, allowRedirects, proxies}` (no `projectId`), response read from `content`/`statusCode`/`contentType`. Raw-HTML fallback when markdown is refused (402/403). 401/403/429/5xx and thin or empty pages are *unverified* (kept), only 404/410, closed-requisition copy or a full page without an Apply control removes a listing. Fetch runs no JavaScript, so client-rendered boards (Ashby) come back empty and stay unverified. |
+| `Keep the test suite off the live Browserbase API` | Autouse conftest fixture clears the `BROWSERBASE_*` settings for every test; a real key in `.env` had the scoring tests fetching fixture URLs for real. |
+| `Drop the Skyvern-credits abort from the application node` | Last open todo item. A `skyvern_credits_exhausted` result is an ordinary FAILED result for the supervisor. |
+| `Search for postings through Browserbase when Serper is not configured` | `backend/browser/tools/web_search.py`: Serper when `SERPER_API_KEY` is set, otherwise Browserbase Search (`POST /v1/search`, `{query, numResults}`), normalised to the `{"organic": [...]}` document the LLM parser reads. No paging or time filter on Browserbase. Discovery reports a missing backend instead of spending an LLM call. |
+| `Let Browserbase sessions clear CAPTCHAs instead of failing the submit` | In Browserbase mode without `CAPTCHA_API_KEY`, a CAPTCHA widget after submit is left to the cloud browser: settle 8 s, then poll confirmation 10 times. Local browsers without a solver still fail fast. |
+
+## Verified
+
+- `python -m pytest backend/tests -q`: **269 passed** (Python 3.12, local Postgres + Redis). CI on the branch green on 3.11 and 3.12.
+- `alembic upgrade head` on an empty database: clean through `n1a2b3c4d5e6` and `o2b3c4d5e6f7` (17 tables).
+- **Fetch API field names, live**: a current Greenhouse posting returned `statusCode 200`, `contentType text/markdown`,
+  10 kB of markdown and the verdict `open: apply control 'Apply'`; a removed Lever posting returned 404 and
+  `closed: page returned HTTP 404`; an Ashby posting returned 200 with empty content (client-rendered) and stayed
+  `unverified`; a Greenhouse board page without a posting returned 200 with no Apply control and was dropped.
+- **Browserbase Search, live**: `site:jobs.lever.co` and Ashby/Greenhouse queries for San Francisco AI roles returned
+  10 postings each, all on the ATS hosts.
+- Backend boots with the cloud env, creates the user on first request, stores application rules and the
+  blocked-company list (3,571 names from the canonical Applications tab, read-only), parses the resume PDF.
+
+## Unverified (still needs a live run)
+
+- Indeed Apply selectors (`SELECTORS_VERIFIED = False`), login capture end to end, Live View iframe embedding.
+- The CAPTCHA pass-through in Browserbase mode has not seen a real Greenhouse submit yet.
+
+## Live run (Part B) status
+
+Blocked before any application. Session 1 (`ai_search`, keywords for applied AI and AI-native engineering,
+location San Francisco, auto-approved gates, `max_jobs 10`):
+
+| Stage | Result |
+|-------|--------|
+| Discovery | 28 postings (15 Greenhouse API, 13 Lever API); 10 left after the blocked-company filter; search leg skipped |
+| Scoring / coaching / search queries | every Anthropic API call refused: `400 invalid_request_error`, "Your credit balance is too low to access the Anthropic API" |
+| Applications | attempted 0, submitted 0, skipped 0, failed 0 |
+| Browserbase browser minutes | 0 (no cloud browser was opened) |
+
+The workspace header is sent (without it the API returns a different error asking for it), so the key and
+header are right; the organization or workspace behind the key has no prepaid API credit. The run resumes
+once credit is added or the env points at a key that has it. Nothing was faked; no application was submitted.

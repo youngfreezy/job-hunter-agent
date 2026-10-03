@@ -25,12 +25,19 @@
 - [x] Settings UI: Browserbase section (API key, project id, proxies toggle, per-board Context ids) and a
       "Sign in to <board>" flow that opens a persisted-context session's Live View for the user to log in,
       then stores the Context id (mirror of ~/Desktop/browserbase-demo/login-capture.mjs, as a backend route).
-- [ ] Skyvern: default SKYVERN_ENABLED stays false; Browserbase mode uses the Playwright appliers
-      (backend/browser/tools/appliers). Remove the Skyvern-credits abort path from the Browserbase branch.
+- [x] Skyvern: default SKYVERN_ENABLED stays false; Browserbase mode uses the Playwright appliers
+      (backend/browser/tools/appliers). Skyvern-credits abort path removed from the application node.
 - [x] Indeed applier: backend/browser/tools/appliers has greenhouse, lever, ashby, generic. Add indeed.py
       (Indeed Apply flow on a logged-in context). LinkedIn stays discovery-only (account-ban risk).
       Selectors are UNVERIFIED (TODO(unverified-selectors) in indeed.py); failures name the selector group.
 - [x] Dependency refresh: pin versions that moved since April 2026; CI green on GitHub Actions.
+
+## Second cloud pass (2026-10-03, see tasks/review.md "Second cloud pass")
+- [x] Listing verifier matched to the published Fetch API reference and checked live.
+- [x] Test suite isolated from a developer .env with a real Browserbase key.
+- [x] Browserbase Search API as the discovery search backend when SERPER_API_KEY is unset.
+- [x] Browserbase mode no longer fails a submit because a CAPTCHA widget is on the page.
+- [ ] Live run (Part B): blocked, the app's Anthropic API key has no credit balance. See review.md.
 
 ## Rules carried over
 - No AI attribution in commit messages (project-memory.md).
