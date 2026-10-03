@@ -136,22 +136,49 @@ class IndeedApplier(BaseApplier):
             return False
         if not self.employer_site and urlparse(self.page.url).hostname != 'smartapply.indeed.com':
             return False
-        # Read actual visible text, independent of the model's success claim.
-        snapshot = await self.page.evaluate('''() => ({
-          text: document.body.innerText.toLowerCase(),
-          submitting: [...document.querySelectorAll('button')].some(el =>
-            el.offsetParent !== null && /submit.*application/i.test(el.innerText))
-        })''')
-        return not snapshot['submitting'] and any(phrase in snapshot['text'] for phrase in (
+        snapshot = await self._visible_application_snapshot()
+        return not snapshot['submitting'] and any(phrase in snapshot['text'].lower() for phrase in (
             'your application has been submitted', 'your application was submitted',
             'application submitted', 'thank you for applying', 'thanks for applying',
             'your application has been sent', 'your application was sent',
             'we have received your application', 'application successfully submitted',
         ))
 
+    async def _visible_application_snapshot(self):
+        """Include visible iframe documents in the independent audit and receipt."""
+        script = """() => ({
+          text: document.body ? document.body.innerText : '',
+          submitting: [...document.querySelectorAll('button')].some(el =>
+            el.getClientRects().length > 0 &&
+            getComputedStyle(el).visibility !== 'hidden' &&
+            /submit.*application/i.test(el.innerText))
+        })"""
+        snapshots = [await self.page.evaluate(script)]
+        for frame in self.page.frames:
+            if frame == self.page.main_frame:
+                continue
+            ancestor = frame
+            visible = True
+            while ancestor.parent_frame is not None:
+                element = await ancestor.frame_element()
+                try:
+                    if not await element.is_visible():
+                        visible = False
+                        break
+                finally:
+                    await element.dispose()
+                ancestor = ancestor.parent_frame
+            if visible:
+                # Do not silently skip unreadable visible frames: review must fail closed.
+                snapshots.append(await frame.evaluate(script))
+        return {
+            'text': '\n'.join(snapshot['text'] for snapshot in snapshots),
+            'submitting': any(snapshot['submitting'] for snapshot in snapshots),
+        }
+
     async def _check_answer(self, instruction, applicant_facts, *, review=False):
         from backend.browser.application_answers import check_application_answer
-        review_text = await self.page.evaluate('() => document.body.innerText') if review else ''
+        review_text = (await self._visible_application_snapshot())['text'] if review else ''
         await check_application_answer(instruction, applicant_facts, self.application_rules,
                                        review_text=review_text)
 
@@ -190,6 +217,13 @@ class IndeedApplier(BaseApplier):
             if candidates:
                 self.page = candidates[-1]
             if not self._allowed_url(active_url):
+                # Redirect chains can bypass the route callback. Queue the observed
+                # employer destination, without entering applicant data in this phase.
+                if (not self.employer_site and is_indeed_url(job.url)
+                        and is_public_application_url(active_url)):
+                    result = self._make_result(str(job.id), ApplicationStatus.QUEUED)
+                    result.external_application_url = active_url
+                    return result
                 return self._fail(str(job.id), 'Stopped navigation outside the authorized application path.')
             await self._emit_step(f'Stagehand: reading {self.PLATFORM} application (action {index + 1}/{MAX_ACTIONS})')
             file_inputs = await self.page.query_selector_all('input[type="file"]')

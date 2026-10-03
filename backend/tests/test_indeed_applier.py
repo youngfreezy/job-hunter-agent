@@ -469,3 +469,106 @@ def test_observed_resume_locator_without_frames_preserves_selector():
     assert indeed_mod._observed_control(page, 'xpath=/html[1]/body[1]/button[1]') is page.locator.return_value
     page.locator.assert_called_once_with('xpath=/html[1]/body[1]/button[1]')
     page.frame_locator.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_observed_employer_redirect_queues_without_filling():
+    url = 'https://openai.com/careers/applied-ai-engineer-enterprise-san-francisco/'
+    page = _page(url)
+    page.context._jobhunter_external_redirect = None
+    agent = _stagehand(page, [])
+    result = await IndeedApplier(page, 's1', stagehand=agent)._drive(_job(), {}, '', '')
+    assert result.status == ApplicationStatus.QUEUED
+    assert result.external_application_url == url
+    agent.extract.assert_not_awaited()
+    agent.act.assert_not_awaited()
+    page.query_selector_all.assert_not_awaited()
+    page.evaluate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('url', [
+    'http://openai.com/careers/role', 'https://127.0.0.1/apply',
+    'https://example.local/apply', 'https://user:pass@openai.com/apply', 'about:blank',
+])
+async def test_observed_employer_redirect_rejects_unsafe_destinations(url):
+    page = _page(url)
+    page.context._jobhunter_external_redirect = None
+    agent = _stagehand(page, [])
+    result = await IndeedApplier(page, 's1', stagehand=agent)._drive(_job(), {}, '', '')
+    assert result.status == ApplicationStatus.FAILED
+    assert not result.external_application_url
+    agent.extract.assert_not_awaited()
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_observed_employer_redirect_requires_indeed_source():
+    page = _page('https://openai.com/careers/role')
+    page.context._jobhunter_external_redirect = None
+    agent = _stagehand(page, [])
+    result = await IndeedApplier(page, 's1', stagehand=agent)._drive(
+        _job('https://example.com/job'), {}, '', '')
+    assert result.status == ApplicationStatus.FAILED
+    assert not result.external_application_url
+
+
+def _visible_frame(page, text, *, submitting=False, visible=True, parent=None):
+    frame = MagicMock()
+    frame.parent_frame = parent if parent is not None else page.main_frame
+    element = MagicMock(is_visible=AsyncMock(return_value=visible), dispose=AsyncMock())
+    frame.frame_element = AsyncMock(return_value=element)
+    frame.evaluate = AsyncMock(return_value={'text': text, 'submitting': submitting})
+    return frame
+
+
+# Preserve the implementation before the autouse fixture replaces this method.
+_check_answer_with_frames = IndeedApplier._check_answer
+
+
+@pytest.mark.asyncio
+async def test_visible_frames_are_included_in_final_answer_audit(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/review')
+    page.main_frame.parent_frame = None
+    page.evaluate = AsyncMock(return_value={'text': 'Review', 'submitting': False})
+    visible = _visible_frame(page, 'Work authorization: Yes')
+    hidden = _visible_frame(page, 'Hidden answer: No', visible=False)
+    hidden_child = _visible_frame(page, 'Nested hidden answer', parent=hidden)
+    page.frames = [page.main_frame, visible, hidden, hidden_child]
+    checker = AsyncMock()
+    monkeypatch.setattr('backend.browser.application_answers.check_application_answer', checker)
+    await _check_answer_with_frames(IndeedApplier(page, 's1'), 'Submit', '{}', review=True)
+    assert checker.await_args.kwargs['review_text'] == 'Review\nWork authorization: Yes'
+    hidden.evaluate.assert_not_awaited()
+    hidden_child.evaluate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_visible_frame_receipt_requires_no_submit_button_in_any_visible_frame():
+    page = _page('https://smartapply.indeed.com/form/review')
+    page.main_frame.parent_frame = None
+    page.evaluate = AsyncMock(return_value={'text': 'Application', 'submitting': False})
+    receipt = _visible_frame(page, 'Your application has been submitted')
+    button = _visible_frame(page, 'Submit application', submitting=True)
+    page.frames = [page.main_frame, receipt, button]
+    applier = IndeedApplier(page, 's1')
+    assert not await applier._receipt()
+    button.frame_element.return_value.is_visible.return_value = False
+    assert await applier._receipt()
+    receipt.frame_element.return_value.is_visible.return_value = False
+    assert not await applier._receipt()
+
+
+@pytest.mark.asyncio
+async def test_visible_frame_read_failure_blocks_final_audit(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/review')
+    page.main_frame.parent_frame = None
+    page.evaluate = AsyncMock(return_value={'text': 'Review', 'submitting': False})
+    frame = _visible_frame(page, '')
+    frame.evaluate.side_effect = RuntimeError('detached during inspection')
+    page.frames = [page.main_frame, frame]
+    checker = AsyncMock()
+    monkeypatch.setattr('backend.browser.application_answers.check_application_answer', checker)
+    with pytest.raises(RuntimeError, match='detached'):
+        await _check_answer_with_frames(IndeedApplier(page, 's1'), 'Submit', '{}', review=True)
+    checker.assert_not_awaited()
