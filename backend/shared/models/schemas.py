@@ -177,6 +177,7 @@ class ApplicationErrorCategory(str, Enum):
     FORM_FILL_ERROR = "form_fill_error"
     SUBMIT_FAILED = "submit_failed"
     NO_CONFIRMATION = "no_confirmation"
+    SUBMISSION_UNCERTAIN = "submission_uncertain"  # never automatically retry a possible submission
     CAPTCHA = "captcha"
     JOB_EXPIRED = "job_expired"
     TIMEOUT = "timeout"

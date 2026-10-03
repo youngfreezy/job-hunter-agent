@@ -34,6 +34,7 @@ neo4j>=5.28.6,<6.0.0
 patchright>=1.63.0
 playwright>=1.63.0
 browser-use==0.12.1
+stagehand==4.1.0
 
 
 # Auth + Security

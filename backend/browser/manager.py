@@ -109,6 +109,8 @@ class BrowserManager:
         self._mode: str = "patchright"  # "patchright", "cdp" or "browserbase"
         self._bb_session: Optional[browserbase_client.BrowserbaseSession] = None
         self._bb_config: Optional[browserbase_client.BrowserbaseConfig] = None
+        self.stagehand = None
+        self._stagehand_cleanup = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -195,6 +197,7 @@ class BrowserManager:
         persist: bool = True,
         proxies: Optional[bool] = None,
         config: Optional[browserbase_client.BrowserbaseConfig] = None,
+        use_stagehand: bool = False,
     ) -> None:
         """Create a Browserbase cloud session and connect Playwright to it over CDP.
 
@@ -210,9 +213,13 @@ class BrowserManager:
             return
 
         self._bb_config = config
-        bb_session = await browserbase_client.create_session(
-            context_id=context_id, persist=persist, proxies=proxies, config=config,
-        )
+        if use_stagehand:
+            from backend.browser.stagehand_session import launch_stagehand
+            self.stagehand, bb_session, self._stagehand_cleanup = await launch_stagehand(config, context_id)
+        else:
+            bb_session = await browserbase_client.create_session(
+                context_id=context_id, persist=persist, proxies=proxies, config=config,
+            )
         try:
             # Browserbase manages stealth and CAPTCHA solving. Patchright's
             # modified Runtime/Console protocol is only for local browsers.
@@ -221,6 +228,13 @@ class BrowserManager:
                 bb_session.connect_url, timeout=45_000,
             )
         except Exception:
+            if self._stagehand_cleanup:
+                try:
+                    await self._stagehand_cleanup.aclose()
+                except Exception as exc:
+                    logger.warning("Stagehand cleanup failed (%s)", type(exc).__name__)
+                self._stagehand_cleanup = None
+                self.stagehand = None
             await browserbase_client.release_session(bb_session.id, config=config)
             if self._playwright:
                 await self._playwright.stop()
@@ -267,7 +281,8 @@ class BrowserManager:
         if settings.BROWSER_MODE == "browserbase":
             config = browserbase_client.config_for_user(user_id)
             context_id = browserbase_client.context_id_for_board(board, config)
-            await self.start_browserbase(context_id=context_id, config=config)
+            use_stagehand = purpose == "apply" and str(getattr(board, "value", board)).lower() == "indeed"
+            await self.start_browserbase(context_id=context_id, config=config, use_stagehand=use_stagehand)
         elif settings.BROWSER_MODE == "cdp":
             await self.start_cdp(headless=resolved_headless)
         else:
@@ -293,6 +308,15 @@ class BrowserManager:
             return
 
         logger.info("Stopping BrowserManager -- closing %d contexts", len(self._contexts))
+
+        if self._stagehand_cleanup:
+            try:
+                await self._stagehand_cleanup.aclose()
+            except Exception as exc:
+                logger.warning("Stagehand cleanup failed (%s); continuing browser release", type(exc).__name__)
+            finally:
+                self._stagehand_cleanup = None
+                self.stagehand = None
 
         # Close all open contexts first
         for ctx_id in list(self._contexts):

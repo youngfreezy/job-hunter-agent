@@ -83,3 +83,24 @@ def test_route_after_qa_uses_submitted_target_not_attempted_count():
     }
 
     assert route_after_qa(state) == "backfill_prep"
+
+
+@pytest.mark.asyncio
+async def test_backfill_never_retries_uncertain_submission_or_older_failure(monkeypatch):
+    async def validate(jobs, session_id=''):
+        return jobs
+    monkeypatch.setattr('backend.orchestrator.pipeline.graph._validate_job_urls', validate)
+    state = {
+        'session_id': 's1', 'backfill_rounds': 1,
+        'session_config': {'max_jobs': 20, 'minimum_submitted_applications': 20},
+        'scored_jobs': [ScoredJob(job=_job('uncertain'), score=95)],
+        'applications_failed': [
+            ApplicationResult(job_id='uncertain', status=ApplicationStatus.FAILED,
+                              error_category=ApplicationErrorCategory.FORM_NAVIGATION),
+            ApplicationResult(job_id='uncertain', status=ApplicationStatus.FAILED,
+                              error_category=ApplicationErrorCategory.SUBMISSION_UNCERTAIN),
+        ],
+    }
+    result = await auto_approve_gate(state)
+    assert result['application_queue'] == []
+    assert result['active_retry_job_ids'] == []

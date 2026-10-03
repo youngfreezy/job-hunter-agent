@@ -111,7 +111,7 @@ async def test_manager_start_for_task_uses_browserbase_and_releases_on_stop(monk
          patch.object(bbc, "release_session", release), \
          patch("backend.browser.manager.cloud_async_playwright", return_value=fake_pw_cm):
         mgr = BrowserManager()
-        await mgr.start_for_task(board=JobBoard.INDEED, purpose="apply", user_id="owner")
+        await mgr.start_for_task(board=JobBoard.INDEED, purpose="discover", user_id="owner")
 
         assert mgr.mode == "browserbase"
         assert mgr.browserbase_session_id == "sess-9"
@@ -175,3 +175,23 @@ async def test_cloud_manager_uses_standard_playwright_without_local_driver(monke
     await manager.stop()
     driver.chromium.connect_over_cdp.assert_awaited_once_with('wss://cloud.test', timeout=45_000)
     driver.stop.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_stagehand_cleanup_error_still_releases_browser_and_playwright(monkeypatch):
+    mgr = BrowserManager()
+    mgr._running = True
+    mgr._stagehand_cleanup = MagicMock(aclose=AsyncMock(side_effect=RuntimeError('extension cleanup failed')))
+    mgr.stagehand = MagicMock()
+    browser = MagicMock(close=AsyncMock())
+    playwright = MagicMock(stop=AsyncMock())
+    mgr._browser = browser
+    mgr._playwright = playwright
+    mgr._bb_session = bbc.BrowserbaseSession(id='owned', connect_url='wss://test', context_id='ctx')
+    release = AsyncMock()
+    monkeypatch.setattr(bbc, 'release_session', release)
+    await mgr.stop()
+    browser.close.assert_awaited_once()
+    playwright.stop.assert_awaited_once()
+    release.assert_awaited_once()
+    assert mgr.stagehand is None
+    assert not mgr._running

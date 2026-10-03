@@ -43,3 +43,10 @@
 - No AI attribution in commit messages (project-memory.md).
 - Never write scraping selectors without verifying against the live DOM.
 - No silent mock fallback in production paths.
+
+## Interview demo: Stagehand integration (2026-10-03)
+- [x] Verify Stagehand v4 with real Browserbase and configured model credentials.
+- [ ] Replace Indeed wizard selectors with bounded natural-language actions.
+- [ ] Preserve per-user Context, canonical resume, Indeed-only navigation, and verified receipts.
+- [ ] Add temporary Browserbase + Stagehand explainer.
+- [ ] Test, review, push, deploy, and verify a live Indeed application through the UI.

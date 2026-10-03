@@ -95,99 +95,90 @@ def _page(url: str = "https://www.indeed.com/viewjob?jk=abc123"):
     return page
 
 
+def _stagehand(page, decisions):
+    from types import SimpleNamespace
+    agent = MagicMock()
+    stage_page = MagicMock()
+    stage_page.url = AsyncMock(side_effect=lambda: page.url)
+    agent.browser.context.active_page = AsyncMock(return_value=stage_page)
+    agent.extract = AsyncMock(side_effect=[SimpleNamespace(data=indeed_mod.NextStep(**d)) for d in decisions])
+    agent.act = AsyncMock(return_value=SimpleNamespace(data=SimpleNamespace(success=True)))
+    agent.metrics = AsyncMock()
+    page.context.pages = [page]
+    return agent
+
+
 @pytest.mark.asyncio
-async def test_apply_button_miss_fails_loudly_naming_unverified_selectors(monkeypatch):
-    monkeypatch.setattr(indeed_mod, "SELECTORS_VERIFIED", False)
-    applier = IndeedApplier(_page(), "s1")
-    monkeypatch.setattr(applier, "_random_delay", AsyncMock())
-
-    result = await applier.run(job=_job(), user_profile={}, resume_text="", cover_letter="")
-
+async def test_missing_stagehand_fails_without_selector_fallback():
+    applier = IndeedApplier(_page(), 's1')
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.FAILED
-    assert result.failure_step == "page_load"
-    assert result.error_category == ApplicationErrorCategory.FORM_NAVIGATION
-    assert result.ats_type == "indeed"
-    assert "apply_button" in result.error_message
-    assert "UNVERIFIED" in result.error_message
-    assert "#indeedApplyButton" in result.error_message
-    assert "TODO(unverified-selectors)" in result.error_message
+    assert 'Stagehand is unavailable' in result.error_message
 
 
 @pytest.mark.asyncio
-async def test_signed_out_context_fails_as_auth_required(monkeypatch):
-    applier = IndeedApplier(_page("https://secure.indeed.com/account/login?hl=en&continue=x"), "s1")
-
-    result = await applier.run(job=_job(), user_profile={}, resume_text="", cover_letter="")
-
-    assert result.status == ApplicationStatus.FAILED
-    assert result.error_category == ApplicationErrorCategory.AUTH_REQUIRED
-    assert "not logged in" in result.error_message
-
-
-@pytest.mark.asyncio
-async def test_wizard_continues_then_submits(monkeypatch):
-    applier = IndeedApplier(_page(), "s1")
-    clicks: list[str] = []
-    outcomes = {"apply_button": [True], "next_button": [True, True, False], "submit_button": [True]}
-
-    async def fake_click(hardcoded, step_type, timeout=5000):
-        clicks.append(step_type)
-        return outcomes[step_type].pop(0)
-
-    fill = AsyncMock(return_value={"filled": 3, "skipped": 0, "errors": []})
-    submitted = applier._make_result("indeed-1", ApplicationStatus.SUBMITTED)
-    monkeypatch.setattr(applier, "_click_selector", fake_click)
-    monkeypatch.setattr(applier, "_fill_current_form", fill)
-    monkeypatch.setattr(applier, "_random_delay", AsyncMock())
-    monkeypatch.setattr(applier, "_wait_for_navigation", AsyncMock())
-    monkeypatch.setattr(applier, "_capture_screenshot", AsyncMock())
-    monkeypatch.setattr(applier, "_post_submit_check", AsyncMock(return_value=submitted))
-
-    result = await applier.run(job=_job(), user_profile={"name": "Ada"}, resume_text="r", cover_letter="c")
-
-    assert result.status == ApplicationStatus.SUBMITTED
-    assert result.ats_type == "indeed"
-    assert clicks == ["apply_button", "next_button", "next_button", "next_button", "submit_button"]
-    assert fill.await_count == 3  # one form fill per wizard step
+async def test_auth_and_missing_answers_do_not_act():
+    for kind, status in [('auth', ApplicationStatus.FAILED), ('park', ApplicationStatus.SKIPPED)]:
+        page = _page()
+        agent = _stagehand(page, [dict(kind=kind, instruction='', reason='Work authorization?')])
+        result = await IndeedApplier(page, 's1', stagehand=agent).run(
+            job=_job(), user_profile={}, resume_text='', cover_letter='')
+        assert result.status == status
+        assert result.error_message == 'Work authorization?'
+        agent.act.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_missing_submit_control_fails_loudly(monkeypatch):
-    applier = IndeedApplier(_page(), "s1")
-
-    async def fake_click(hardcoded, step_type, timeout=5000):
-        return step_type == "apply_button"
-
-    monkeypatch.setattr(applier, "_click_selector", fake_click)
-    monkeypatch.setattr(applier, "_fill_current_form", AsyncMock(return_value={"filled": 0, "skipped": 0, "errors": []}))
-    monkeypatch.setattr(applier, "_random_delay", AsyncMock())
-    monkeypatch.setattr(applier, "_wait_for_navigation", AsyncMock())
-
-    result = await applier.run(job=_job(), user_profile={}, resume_text="", cover_letter="")
-
-    assert result.status == ApplicationStatus.FAILED
-    assert result.failure_step == "submit"
-    assert "Submit your application" in result.error_message
-    assert "UNVERIFIED" in result.error_message
-
-
-@pytest.mark.asyncio
-async def test_parked_by_owner_rules_escapes_to_skipped(monkeypatch):
-    from backend.shared.application_rules import ApplicationParked
-
-    applier = IndeedApplier(_page(), "s1", application_rules="Park on AI questions")
-    monkeypatch.setattr(applier, "_click_selector", AsyncMock(return_value=True))
-    monkeypatch.setattr(applier, "_random_delay", AsyncMock())
-    monkeypatch.setattr(applier, "_wait_for_navigation", AsyncMock())
-    monkeypatch.setattr(
-        applier, "_fill_current_form",
-        AsyncMock(side_effect=ApplicationParked("Are you using an AI agent to apply?")),
-    )
-
-    result = await applier.run(job=_job(), user_profile={}, resume_text="", cover_letter="")
-
+async def test_submit_requires_original_resume_upload():
+    page = _page()
+    agent = _stagehand(page, [dict(kind='submit', instruction='Submit application', reason='Ready')])
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
-    assert result.error_message == "Are you using an AI agent to apply?"
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('receipt', [True, False])
+async def test_natural_actions_upload_and_single_submit_need_receipt(monkeypatch, receipt):
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k,i in [
+        ('act', 'Fill the name with Ada'), ('upload', ''), ('submit', 'Submit this application')]])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    upload = AsyncMock()
+    monkeypatch.setattr(applier, '_upload_original', upload)
+    monkeypatch.setattr(applier, '_receipt', AsyncMock(return_value=receipt))
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={'name': 'Ada'}, resume_text='Facts', cover_letter='Cover')
+    assert result.status == (ApplicationStatus.SUBMITTED if receipt else ApplicationStatus.FAILED)
+    if not receipt:
+        assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
+    assert agent.act.await_count == 2
+    upload.assert_awaited_once()
+    assert 'Never guess required answers' in agent.extract.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_receipt_cannot_be_job_description_or_visible_submit():
+    page = _page()
+    page.evaluate = AsyncMock(return_value={'text': 'application submitted', 'submitting': False})
+    applier = IndeedApplier(page, 's1')
+    assert not await applier._receipt()
+    page.url = 'https://smartapply.indeed.com/form'
+    assert await applier._receipt()
+    page.evaluate.return_value['submitting'] = True
+    assert not await applier._receipt()
+
+
+@pytest.mark.asyncio
+async def test_upload_uses_saved_original_bytes(monkeypatch):
+    page = _page()
+    field = MagicMock(set_input_files=AsyncMock())
+    page.query_selector_all = AsyncMock(return_value=[field])
+    monkeypatch.setattr(indeed_mod, 'get_resume_bytes', lambda session: (b'canonical pdf', '.pdf'))
+    await IndeedApplier(page, 's1')._upload_original()
+    assert field.set_input_files.await_args.args[0]['buffer'] == b'canonical pdf'
 
 
 # ---------------------------------------------------------------------------
@@ -208,3 +199,15 @@ def test_board_login_available_requires_browserbase_mode_and_context(monkeypatch
     monkeypatch.setattr(settings, "BROWSER_MODE", "cdp")
     monkeypatch.setattr(bbc, "config_for_user", lambda uid: bbc.BrowserbaseConfig(context_ids={"indeed": "ctx-indeed"}))
     assert app_node._board_login_available(JobBoard.INDEED, "user-1") is False
+
+@pytest.mark.asyncio
+async def test_exception_during_submit_is_not_retryable(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
+                              dict(kind='submit', instruction='Submit application', reason='')])
+    agent.act.side_effect = TimeoutError('response lost after click')
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
+    agent.act.assert_awaited_once()

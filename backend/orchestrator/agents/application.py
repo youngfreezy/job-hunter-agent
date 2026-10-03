@@ -769,6 +769,7 @@ async def _apply_to_job(
     state: JobHunterState,
     session_id: str,
     context: Any = None,
+    stagehand: Any = None,
 ) -> ApplicationResult:
     """Apply to a single job using direct Playwright + LLM form analysis.
 
@@ -1239,6 +1240,7 @@ async def _apply_to_job(
                 session_id=session_id,
                 page=page,
                 application_rules=load_application_rules(user_id),
+                stagehand=stagehand,
             )
 
         finally:
@@ -1705,6 +1707,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     result = await _apply_to_job(
                         job_id=job_id, job=job, state=state,
                         session_id=session_id, context=context,
+                        stagehand=manager.stagehand,
                     )
                     if result.status == ApplicationStatus.SUBMITTED:
                         submitted.append(result)

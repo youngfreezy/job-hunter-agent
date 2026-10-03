@@ -44,6 +44,7 @@ async def apply_with_playwright(
     session_id: str,
     page: Any,
     application_rules: str = "",
+    stagehand: Any = None,
 ) -> ApplicationResult:
     """Apply to a job using Playwright browser automation + Claude Haiku.
 
@@ -64,7 +65,10 @@ async def apply_with_playwright(
         job.title, job.company, applier_cls.__name__, ats_type,
     )
 
-    applier = applier_cls(page, session_id, application_rules=application_rules)
+    if applier_cls is IndeedApplier:
+        applier = applier_cls(page, session_id, application_rules=application_rules, stagehand=stagehand)
+    else:
+        applier = applier_cls(page, session_id, application_rules=application_rules)
     return await applier.run(
         job=job,
         user_profile=user_profile,

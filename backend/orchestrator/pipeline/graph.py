@@ -330,6 +330,9 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
                     or retry_counts.get(job_id, 0) >= MAX_RETRY_PER_JOB
                 ):
                     continue
+                # Only the latest outcome is authoritative. An earlier navigation
+                # failure must not revive a later, possibly successful submission.
+                retried_this_round.add(job_id)
                 category = getattr(failure, "error_category", None)
                 category_value = category.value if hasattr(category, "value") else category
                 if category_value not in RETRYABLE_ERROR_CATEGORIES:
