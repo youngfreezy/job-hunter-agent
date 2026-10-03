@@ -102,6 +102,17 @@ async def _emit(session_id: str, event_type: str, data: dict) -> None:
         await queue.put(event)
 
 
+def _session_is_terminal(session_id: str) -> bool:
+    from backend.shared.session_store import get_session_by_id
+    durable = get_session_by_id(session_id)
+    return bool(durable and durable['status'] in ('completed', 'failed'))
+
+
+def _require_resumable_session(session_id: str) -> None:
+    if _session_is_terminal(session_id):
+        raise HTTPException(status_code=409, detail="Session is already stopped or complete. Start a new session to run again.")
+
+
 def _set_session_status(session_id: str, status: str) -> None:
     """Update session status in both in-memory registry and Postgres."""
     if session_id in session_registry:
@@ -416,6 +427,8 @@ async def _run_pipeline(
     immediately with the session_id. Handles interrupt detection for HITL
     gates (coach review, shortlist review).
     """
+    if _session_is_terminal(session_id):
+        return
     # Register the emit callback so agents can send SSE events directly
     register_emitter(session_id, _emit)
 
@@ -560,6 +573,8 @@ async def _resume_pipeline(
     If checkpoint_id is provided, resumes from that specific checkpoint
     instead of the latest one (used for rewind).
     """
+    if _session_is_terminal(session_id):
+        return
     # Ensure emitter is registered for this session
     register_emitter(session_id, _emit)
 
@@ -1771,6 +1786,7 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
     from backend.gateway.deps import get_current_user, verify_session_owner
     user = get_current_user(request)
     await verify_session_owner(session_id, user, request)
+    _require_resumable_session(session_id)
 
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
@@ -1783,6 +1799,7 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
         human_input["feedback"] = body.feedback
 
     graph_state = await graph.aget_state(config)
+    _require_resumable_session(session_id)
     values = graph_state.values if hasattr(graph_state, "values") else {}
     if values.get("pause_requested"):
         await graph.aupdate_state(
@@ -1792,6 +1809,7 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
                 "status": "paused",
             },
         )
+        _require_resumable_session(session_id)
         _set_session_status(session_id, "paused")
         await _emit(session_id, "status", {
             "status": "paused",
@@ -1818,12 +1836,15 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
     from backend.gateway.deps import get_current_user, verify_session_owner
     user = get_current_user(request)
     await verify_session_owner(session_id, user, request)
+    _require_resumable_session(session_id)
 
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
     graph_state = await graph.aget_state(config)
+    _require_resumable_session(session_id)
     values = graph_state.values if hasattr(graph_state, "values") else {}
     judge_result = await preview_steering_message(values, body.message)
+    _require_resumable_session(session_id)
 
     steering_mode = body.mode.value if body.mode else None
     directives = [d.model_dump() for d in judge_result.directives]
@@ -1879,6 +1900,7 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
         logger.exception("Failed to steer session %s", session_id)
         raise HTTPException(status_code=500, detail="Failed to process steering command")
 
+    _require_resumable_session(session_id)
     should_resume = any(
         directive.action == "resume_workflow"
         for directive in judge_result.directives
@@ -1894,6 +1916,7 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
     elif should_resume and "coach_review" in next_nodes and values.get("pending_coach_review_input"):
         await graph.aupdate_state(config, {"pending_coach_review_input": None})
         resumed_status = RESUME_STATUS_BY_NODE.get("discovery", "discovering")
+        _require_resumable_session(session_id)
         _set_session_status(session_id, resumed_status)
         await _emit(session_id, "status", {
             "status": resumed_status,
@@ -1909,6 +1932,7 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
     elif should_resume and "shortlist_review" in next_nodes and values.get("pending_shortlist_review_input"):
         await graph.aupdate_state(config, {"pending_shortlist_review_input": None})
         resumed_status = RESUME_STATUS_BY_NODE.get("application", "applying")
+        _require_resumable_session(session_id)
         _set_session_status(session_id, resumed_status)
         await _emit(session_id, "status", {
             "status": resumed_status,
@@ -1941,6 +1965,7 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
     from backend.gateway.deps import get_current_user, verify_session_owner
     user = get_current_user(request)
     await verify_session_owner(session_id, user, request)
+    _require_resumable_session(session_id)
 
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
@@ -1952,6 +1977,7 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
     }
 
     graph_state = await graph.aget_state(config)
+    _require_resumable_session(session_id)
     values = graph_state.values if hasattr(graph_state, "values") else {}
     if values.get("pause_requested"):
         await graph.aupdate_state(
@@ -1961,6 +1987,7 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
                 "status": "paused",
             },
         )
+        _require_resumable_session(session_id)
         _set_session_status(session_id, "paused")
         await _emit(session_id, "status", {
             "status": "paused",
@@ -2073,6 +2100,7 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
     from backend.gateway.deps import get_current_user, verify_session_owner
     user = get_current_user(request)
     await verify_session_owner(session_id, user, request)
+    _require_resumable_session(session_id)
 
     graph = request.app.state.graph
     config = {
@@ -2088,6 +2116,7 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
     except Exception as exc:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
+    _require_resumable_session(session_id)
     next_nodes = getattr(graph_state, "next", ()) or ()
     if not next_nodes:
         raise HTTPException(
@@ -2164,11 +2193,7 @@ async def resume_session(session_id: str, request: Request):
     from backend.gateway.deps import get_current_user, verify_session_owner
     user = get_current_user(request)
     await verify_session_owner(session_id, user, request)
-
-    from backend.shared.session_store import get_session_by_id
-    durable = get_session_by_id(session_id)
-    if durable and durable['status'] in ('completed', 'failed'):
-        raise HTTPException(status_code=409, detail="Session is already stopped or complete. Start a new session to run again.")
+    _require_resumable_session(session_id)
 
     graph = request.app.state.graph
     config = {"configurable": {"thread_id": session_id}}
@@ -2178,6 +2203,7 @@ async def resume_session(session_id: str, request: Request):
     except Exception as exc:
         raise HTTPException(status_code=404, detail="No checkpoint found for this session")
 
+    _require_resumable_session(session_id)
     next_nodes = getattr(graph_state, "next", ()) or ()
     if not next_nodes:
         raise HTTPException(
