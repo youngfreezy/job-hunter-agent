@@ -69,7 +69,7 @@ async def hydrate_indeed_urls(urls: list[str], *, user_id: str, session_id: str)
                     ats_type=ATSType.INDEED, description_snippet=data.description,
                     # Some listings reveal the application destination only
                     # after Apply is clicked. The navigation guard and applier
-                    # enforce Indeed-only at that point; uncertainty is not expiry.
+                    # queue employer destinations at that point; uncertainty is not expiry.
                     is_remote=data.is_remote, is_easy_apply=data.can_apply_on_indeed,
                     verified_open=data.can_apply_on_indeed,
                     verify_note="Read through authenticated Browserbase with Stagehand.",

@@ -88,3 +88,28 @@ async def test_navigation_guard_handles_new_windows_and_challenge_frames(monkeyp
     await handler(route)
     assert route.fallback.await_count == int(allowed)
     assert route.abort.await_count == int(not allowed)
+
+@pytest.mark.asyncio
+async def test_employer_route_allows_public_destination_and_captures_native_handoff(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+    from backend.browser.manager import BrowserManager
+    from backend.shared.config import settings
+    monkeypatch.setattr(settings, 'INDEED_ONLY', True)
+    monkeypatch.setattr('backend.browser.application_routing.resolves_publicly', AsyncMock(return_value=True))
+    for employer_mode in (False, True):
+        context=MagicMock(route=AsyncMock())
+        manager=BrowserManager()
+        manager._running=True
+        manager._mode='browserbase'
+        manager._allow_employer_applications=employer_mode
+        manager._browser=SimpleNamespace(contexts=[context])
+        await manager.new_context()
+        handler=context.route.await_args.args[1]
+        req=SimpleNamespace(url='https://jobs.lever.co/acme/one', is_navigation_request=lambda: True,
+                            frame=SimpleNamespace(parent_frame=None))
+        route=SimpleNamespace(request=req, fallback=AsyncMock(), abort=AsyncMock())
+        await handler(route)
+        assert route.fallback.await_count == int(employer_mode)
+        assert route.abort.await_count == int(not employer_mode)
+        assert context._jobhunter_external_redirect == (None if employer_mode else req.url)

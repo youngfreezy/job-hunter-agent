@@ -228,3 +228,62 @@ class TestFullLifecycle:
 
         # Should NOT block — failed allows retry
         assert check_already_applied(job_id, user_id=user_id) is None
+
+
+@pytest.mark.parametrize("lookup_by_url", [False, True])
+def test_uncertain_submission_blocks_new_session_until_reconciled(_db_identity, lookup_by_url):
+    session_id, user_id = _db_identity
+    job_id = _unique_id()
+    url = f"https://www.indeed.com/viewjob?jk={job_id}"
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id,
+                  job_url=url, status="failed", error_category="submission_uncertain",
+                  error_message="Submit clicked but receipt not verified")
+    prior = check_already_applied(_unique_id() if lookup_by_url else job_id,
+                                 user_id=user_id, job_url=url)
+    assert prior is not None
+    assert prior["error_category"] == "submission_uncertain"
+    assert prior["status"] == "failed"
+    assert check_already_applied(job_id, user_id=str(uuid.uuid4()), job_url=url) is None
+
+
+def test_submission_intent_survives_cleanup_and_retains_source_until_receipt(_db_identity):
+    from backend.shared.application_store import mark_submission_intent
+    session_id, user_id = _db_identity
+    job_id = _unique_id()
+    source_url = f"https://www.indeed.com/viewjob?jk={job_id}"
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id,
+                  job_url=source_url, status="pending")
+    mark_submission_intent(session_id, job_id)
+    clear_pending(session_id, job_id)  # Also models cleanup following interrupted submission.
+    prior = check_already_applied(job_id, user_id=user_id)
+    assert prior['error_category'] == 'submission_uncertain'
+    assert check_already_applied(_unique_id(), user_id=user_id, job_url=source_url)
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id,
+                  job_url=source_url, status="submitted")
+    prior = check_already_applied(job_id, user_id=user_id)
+    assert prior['status'] == 'submitted'
+    assert prior['error_category'] is None
+    with get_connection() as conn:
+        assert conn.execute("SELECT count(*) FROM application_results WHERE session_id=%s AND job_id=%s",
+                            (session_id, job_id)).fetchone()[0] == 1
+
+
+def test_submission_intent_requires_existing_attempt(_db_identity):
+    from backend.shared.application_store import mark_submission_intent
+    session_id, _ = _db_identity
+    with pytest.raises(RuntimeError, match='pending application'):
+        mark_submission_intent(session_id, _unique_id())
+
+
+def test_uncertain_final_result_atomically_replaces_intent(_db_identity):
+    from backend.shared.application_store import mark_submission_intent
+    session_id, user_id = _db_identity
+    job_id = _unique_id()
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id, status='pending')
+    mark_submission_intent(session_id, job_id)
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id,
+                  status='failed', error_category='submission_uncertain')
+    assert check_already_applied(job_id, user_id=user_id)['error_category'] == 'submission_uncertain'
+    with get_connection() as conn:
+        assert conn.execute("SELECT count(*) FROM application_results WHERE session_id=%s AND job_id=%s",
+                            (session_id, job_id)).fetchone()[0] == 1

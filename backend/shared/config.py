@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     BROWSER_HEADLESS: bool = False
     BROWSER_SLOW_MO: int = 0  # ms delay between Playwright actions (smoother in headed mode)
     BROWSER_MODE: str = "cdp"  # "cdp" (real Chrome), "patchright" (built-in Chromium) or "browserbase" (cloud)
-    INDEED_ONLY: bool = False  # enforce Indeed discovery and prevent external application redirects
+    INDEED_ONLY: bool = False  # Indeed discovery; employer redirects run through a separate application queue
 
     # --- Browserbase (cloud browsers; BROWSER_MODE=browserbase) ---
     BROWSERBASE_API_KEY: Optional[str] = None

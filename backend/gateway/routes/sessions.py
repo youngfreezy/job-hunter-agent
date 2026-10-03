@@ -33,6 +33,7 @@ from backend.orchestrator.agents.coach_chat import revise_coach_output
 from backend.orchestrator.agents.workflow_supervisor import preview_steering_message
 from backend.shared.config import MAX_APPLICATION_JOBS
 from backend.shared.event_bus import register_emitter, unregister_emitter
+from backend.shared.pipeline_guard import single_pipeline_run, is_pipeline_active, cancel_pipeline
 from backend.shared.session_store import (
     upsert_session,
     update_session_status,
@@ -402,6 +403,7 @@ async def _handle_shortlist_interrupt(session_id: str, graph: Any, config: dict)
         logger.debug("Failed to send approval notifications for %s", session_id, exc_info=True)
 
 
+@single_pipeline_run
 async def _run_pipeline(
     session_id: str,
     request_body: StartSessionRequest,
@@ -543,6 +545,7 @@ async def _run_pipeline(
         await _send_completion_notifications(session_id)
 
 
+@single_pipeline_run
 async def _resume_pipeline(
     session_id: str,
     graph: Any,
@@ -602,6 +605,7 @@ async def _resume_pipeline(
             unregister_emitter(session_id)
 
 
+@single_pipeline_run
 async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) -> None:
     """Resume a pipeline that was interrupted mid-run (not at a HITL gate).
 
@@ -1183,9 +1187,11 @@ async def kill_session(session_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Session not found")
     if str(session["user_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Not your session")
-    if session["status"] in ("completed", "failed"):
+    if session["status"] in ("completed", "failed") and not is_pipeline_active(session_id):
         return {"status": "already_done"}
 
+    await cancel_pipeline(session_id)
+    unregister_emitter(session_id)
     # Update DB
     update_session_status(session_id, "completed")
     # Release Redis concurrency slot

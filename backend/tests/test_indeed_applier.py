@@ -43,6 +43,8 @@ def _no_selector_db(monkeypatch):
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_success", lambda *a, **k: None)
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_failure", lambda *a, **k: None)
     monkeypatch.setattr("backend.browser.tools.appliers.base.emit_agent_event", AsyncMock())
+    monkeypatch.setattr(IndeedApplier, '_check_answer', AsyncMock())
+    monkeypatch.setattr(indeed_mod, "mark_submission_intent", MagicMock(), raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +91,7 @@ def _page(url: str = "https://www.indeed.com/viewjob?jk=abc123"):
     page = MagicMock()
     page.url = url
     page.query_selector = AsyncMock(return_value=None)
+    page.query_selector_all = AsyncMock(return_value=[])
     page.wait_for_selector = AsyncMock(side_effect=TimeoutError("no element"))
     page.evaluate = AsyncMock(return_value=[])
     page.wait_for_load_state = AsyncMock()
@@ -160,6 +163,74 @@ async def test_natural_actions_upload_and_single_submit_need_receipt(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_hidden_file_input_is_reported_to_stagehand(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/resume')
+    page.query_selector_all.return_value = [MagicMock()]
+    agent = _stagehand(page, [dict(kind='park', instruction='', reason='Required answer missing')])
+    await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert 'including hidden inputs): 1' in agent.extract.await_args.args[0]
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_saved_resume_cannot_continue_without_fresh_upload():
+    page = _page('https://smartapply.indeed.com/form/resume-selection-module/resume-selection')
+    agent = _stagehand(page, [dict(kind='act', instruction='Click Continue with the selected resume', reason='Same filename'),
+                              dict(kind='park', instruction='', reason='Missing field')])
+    await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert agent.act.await_count == 1
+    assert 'Resume options' in agent.act.await_args.args[0]
+    assert 'Continue' not in agent.act.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_unsupported_factual_answer_is_queued_before_browser_action(monkeypatch):
+    from backend.shared.application_rules import ApplicationParked
+    page = _page()
+    instruction = 'Select No for Is your current employer a customer of ServiceNow?'
+    agent = _stagehand(page, [dict(kind='act', instruction=instruction, reason='Not mentioned')])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_check_answer', AsyncMock(side_effect=ApplicationParked(
+        'Is your current employer a customer of ServiceNow?')), raising=False)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='V2 Software LLC', cover_letter='')
+    assert result.status == ApplicationStatus.SKIPPED
+    assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prefilled_unknown_answer_blocks_final_submit_even_after_upload(monkeypatch):
+    from backend.shared.application_rules import ApplicationParked
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason='Attach resume'),
+                              dict(kind='submit', instruction='Submit application', reason='Ready')])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    checker = AsyncMock(side_effect=ApplicationParked('Is your employer a ServiceNow customer?'))
+    monkeypatch.setattr(applier, '_check_answer', checker)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
+    assert checker.await_args.kwargs['review'] is True
+    agent.act.assert_not_awaited()
+    assert not applier._submission_attempted
+
+
+@pytest.mark.asyncio
+async def test_resume_step_uploads_hidden_input_before_model_can_continue(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/resume-selection-module/resume-selection')
+    page.query_selector_all.return_value = [MagicMock()]
+    agent = _stagehand(page, [dict(kind='park', instruction='', reason='Missing field')])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    upload = AsyncMock()
+    monkeypatch.setattr(applier, '_upload_original', upload)
+    await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    upload.assert_awaited_once()
+    assert 'uploaded in this application: True' in agent.extract.await_args.args[0]
+
+
+@pytest.mark.asyncio
 async def test_receipt_cannot_be_job_description_or_visible_submit():
     page = _page()
     page.evaluate = AsyncMock(return_value={'text': 'application submitted', 'submitting': False})
@@ -211,3 +282,70 @@ async def test_exception_during_submit_is_not_retryable(monkeypatch):
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
     agent.act.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_loading_page_waits_without_actions_or_premature_failure(monkeypatch):
+    page = _page()
+    agent = _stagehand(page, [dict(kind='wait', instruction='', reason='The form is loading')]*3 +
+                       [dict(kind='auth', instruction='', reason='Sign in required')])
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.AUTH_REQUIRED
+    assert agent.extract.await_count == 4
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_action_is_reobserved_with_history_and_bounded(monkeypatch):
+    from types import SimpleNamespace
+    page = _page()
+    agent = _stagehand(page, [dict(kind='act', instruction=f'Choose option {n}', reason='Required field')
+                              for n in range(3)])
+    agent.act.return_value = SimpleNamespace(data=SimpleNamespace(success=False, message='Option not found'))
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    capture = AsyncMock()
+    monkeypatch.setattr(applier, '_capture_screenshot', capture)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert agent.extract.await_count == 3
+    assert 'Option not found' in agent.extract.await_args.args[0]
+    assert 'Choose option 1' in agent.extract.await_args.args[0]
+    assert result.status == ApplicationStatus.FAILED
+    assert 'Choose option 2' in result.error_message
+    capture.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_submit_intent_is_durable_before_click_and_survives_cancellation(monkeypatch):
+    import asyncio
+    order = []
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
+                              dict(kind='submit', instruction='Submit application', reason='')])
+    async def cancel_after_click(*args, **kwargs):
+        order.append('click')
+        raise asyncio.CancelledError()
+    agent.act.side_effect = cancel_after_click
+    marker = MagicMock(side_effect=lambda *args: order.append('durable intent'))
+    monkeypatch.setattr(indeed_mod, 'mark_submission_intent', marker)
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    with pytest.raises(asyncio.CancelledError):
+        await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    marker.assert_called_once_with('s1', 'indeed-1')
+    assert order == ['durable intent', 'click']
+
+
+@pytest.mark.asyncio
+async def test_submit_never_clicks_when_durable_intent_cannot_be_written(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
+                              dict(kind='submit', instruction='Submit application', reason='')])
+    monkeypatch.setattr(indeed_mod, 'mark_submission_intent', MagicMock(side_effect=RuntimeError('database offline')))
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.FAILED
+    agent.act.assert_not_awaited()

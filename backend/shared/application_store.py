@@ -123,6 +123,15 @@ def record_result(
                  failure_step, cover_letter, tailored_resume_text, duration_seconds,
                  screenshot_path),
             )
+            # Replace intent in the same transaction as its blocking final result.
+            # A failed write leaves the intent intact and prevents an unsafe retry.
+            if status == "submitted" or error_category == "submission_uncertain":
+                conn.execute(
+                    """DELETE FROM application_results
+                       WHERE session_id = %s AND job_id = %s AND status = 'pending'
+                         AND error_category = 'submission_uncertain'""",
+                    (session_id, job_id),
+                )
             conn.commit()
     except Exception:
         logger.exception("Failed to record application result for %s", job_id)
@@ -131,11 +140,11 @@ def record_result(
 def check_already_applied(
     job_id: str, user_id: Optional[str] = None, job_url: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
-    """Check if this job was already successfully submitted by this user.
+    """Check for a submitted or uncertain submission by this user.
 
     Returns the prior application record if found, None otherwise.
-    Only matches ``submitted`` status — failed, skipped, and pending results
-    should not block re-attempts (pending is handled by clear_pending).
+    A possible submission remains on hold until its result is reconciled.
+    Ordinary failed, skipped, and pending results do not block re-attempts.
     Checks both by job_id and by job_url (for backward compat with old random IDs).
     """
     try:
@@ -144,9 +153,9 @@ def check_already_applied(
             if user_id:
                 cur = conn.execute(
                     """
-                    SELECT session_id, job_title, job_company, created_at
+                    SELECT session_id, job_title, job_company, created_at, status, error_category
                     FROM application_results
-                    WHERE job_id = %s AND user_id = %s AND status = 'submitted'
+                    WHERE job_id = %s AND user_id = %s AND (status = 'submitted' OR error_category = 'submission_uncertain')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -155,9 +164,9 @@ def check_already_applied(
             else:
                 cur = conn.execute(
                     """
-                    SELECT session_id, job_title, job_company, created_at
+                    SELECT session_id, job_title, job_company, created_at, status, error_category
                     FROM application_results
-                    WHERE job_id = %s AND status = 'submitted'
+                    WHERE job_id = %s AND (status = 'submitted' OR error_category = 'submission_uncertain')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -170,15 +179,17 @@ def check_already_applied(
                     "job_title": row[1],
                     "job_company": row[2],
                     "applied_at": row[3].isoformat() if row[3] else None,
+                    "status": row[4],
+                    "error_category": row[5],
                 }
 
             # Fallback: check by URL (handles old records with random UUIDs)
             if job_url and user_id:
                 cur = conn.execute(
                     """
-                    SELECT session_id, job_title, job_company, created_at
+                    SELECT session_id, job_title, job_company, created_at, status, error_category
                     FROM application_results
-                    WHERE job_url = %s AND user_id = %s AND status = 'submitted'
+                    WHERE job_url = %s AND user_id = %s AND (status = 'submitted' OR error_category = 'submission_uncertain')
                     ORDER BY created_at DESC
                     LIMIT 1
                     """,
@@ -191,6 +202,8 @@ def check_already_applied(
                         "job_title": row[1],
                         "job_company": row[2],
                         "applied_at": row[3].isoformat() if row[3] else None,
+                        "status": row[4],
+                        "error_category": row[5],
                     }
 
             return None
@@ -199,12 +212,32 @@ def check_already_applied(
         return None
 
 
+def mark_submission_intent(session_id: str, job_id: str) -> None:
+    """Durably mark the existing attempt immediately before its final submit.
+
+    Keep the attempt's owner and original source URL for cross-session dedup.
+    Unlike ordinary result logging, any persistence failure must stop the click.
+    """
+    with _connect() as conn:
+        updated = conn.execute(
+            """UPDATE application_results
+               SET error_category = 'submission_uncertain',
+                   error_message = 'Final submission started; receipt not yet verified.'
+               WHERE session_id = %s AND job_id = %s AND status = 'pending'""",
+            (session_id, job_id),
+        )
+        if updated.rowcount == 0:
+            raise RuntimeError("Cannot submit without a persisted pending application")
+        conn.commit()
+
+
 def clear_pending(session_id: str, job_id: str) -> None:
-    """Delete the pending record for a job so the final result can be inserted cleanly."""
+    """Clear preparation records while retaining any unresolved submission intent."""
     try:
         with _connect() as conn:
             conn.execute(
-                "DELETE FROM application_results WHERE session_id = %s AND job_id = %s AND status = 'pending'",
+                """DELETE FROM application_results WHERE session_id = %s AND job_id = %s
+                   AND status = 'pending' AND error_category IS DISTINCT FROM 'submission_uncertain'""",
                 (session_id, job_id),
             )
             conn.commit()

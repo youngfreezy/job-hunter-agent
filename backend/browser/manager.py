@@ -111,6 +111,7 @@ class BrowserManager:
         self._bb_config: Optional[browserbase_client.BrowserbaseConfig] = None
         self.stagehand = None
         self._stagehand_cleanup = None
+        self._allow_employer_applications = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -276,12 +277,13 @@ class BrowserManager:
         layered over the ``BROWSERBASE_*`` env settings.
         """
         resolved_headless = settings.BROWSER_HEADLESS if headless is None else headless
+        self._allow_employer_applications = purpose == "apply_external"
         if settings.INDEED_ONLY and settings.BROWSER_MODE != "browserbase":
             raise RuntimeError("Indeed-only mode requires BROWSER_MODE=browserbase")
         if settings.BROWSER_MODE == "browserbase":
             config = browserbase_client.config_for_user(user_id)
             context_id = browserbase_client.context_id_for_board(board, config)
-            use_stagehand = purpose in ("apply", "hydrate") and str(getattr(board, "value", board)).lower() == "indeed"
+            use_stagehand = purpose in ("apply", "apply_external", "hydrate") and str(getattr(board, "value", board)).lower() == "indeed"
             await self.start_browserbase(context_id=context_id, config=config, use_stagehand=use_stagehand)
         elif settings.BROWSER_MODE == "cdp":
             await self.start_cdp(headless=resolved_headless)
@@ -374,10 +376,13 @@ class BrowserManager:
             context = self._browser.contexts[0]
             if settings.INDEED_ONLY:
                 from backend.browser.indeed_policy import is_indeed_url
+                from backend.browser.application_routing import is_public_application_url, resolves_publicly
+                context._jobhunter_external_redirect = None
 
                 async def restrict_navigation(route):
                     request = route.request
-                    if not request.is_navigation_request() or is_indeed_url(request.url):
+                    if (not request.is_navigation_request() or is_indeed_url(request.url)
+                            or (self._allow_employer_applications and await resolves_publicly(request.url))):
                         await route.fallback()
                         return
                     try:
@@ -389,6 +394,8 @@ class BrowserManager:
                     if is_child_frame:
                         await route.fallback()  # Allow embedded CAPTCHA providers.
                     else:
+                        if is_public_application_url(request.url):
+                            context._jobhunter_external_redirect = request.url
                         await route.abort()
 
                 await context.route("**/*", restrict_navigation)
