@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.orchestrator.agents import application
+from backend.orchestrator.pipeline import graph
 from backend.shared.config import settings
 from backend.shared.models.schemas import ApplicationResult, ApplicationStatus, JobListing, JobBoard
 
@@ -11,6 +12,31 @@ from backend.shared.models.schemas import ApplicationResult, ApplicationStatus, 
 def listing(job_id):
     return JobListing(id=job_id, title='Engineer', company=job_id, location='Remote',
                       url=f'https://www.indeed.com/viewjob?jk={job_id}', board=JobBoard.INDEED)
+
+
+@pytest.mark.asyncio
+async def test_indeed_uses_canonical_profile_and_skips_unused_resume_rewrites(monkeypatch):
+    monkeypatch.setattr(settings, 'INDEED_ONLY', True)
+    tailor = AsyncMock()
+    monkeypatch.setattr(graph.resume_tailor, 'run', tailor)
+    monkeypatch.setattr(graph, 'emit_agent_event', AsyncMock())
+    state = {'session_id': 'session', 'resume_text': 'Actual Applicant\nactual@example.com',
+             'coached_resume': 'Rewritten Applicant\nrewritten@example.com'}
+    profile = await application._extract_user_profile(state)
+    assert profile['email'] == 'actual@example.com'
+    result = await graph.resume_tailor_node(state)
+    assert result['status'] == 'applying'
+    tailor.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_materials_only_still_creates_requested_resume_drafts(monkeypatch):
+    monkeypatch.setattr(settings, 'INDEED_ONLY', True)
+    tailor = AsyncMock(return_value={'tailored_resumes': {}})
+    monkeypatch.setattr(graph.resume_tailor, 'run', tailor)
+    state = {'session_config': {'application_mode': 'materials_only'}}
+    await graph.resume_tailor_node(state)
+    tailor.assert_awaited_once_with(state)
 
 
 @pytest.mark.asyncio

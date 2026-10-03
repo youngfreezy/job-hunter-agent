@@ -711,7 +711,8 @@ async def _extract_user_profile(state: JobHunterState) -> Dict[str, str]:
     """Extract user profile info (name, email, phone, location) from resume text."""
     import re as _re
 
-    resume_text = state.get("coached_resume") or state.get("resume_text", "")
+    resume_text = (state.get("resume_text", "") if settings.INDEED_ONLY
+                   else state.get("coached_resume") or state.get("resume_text", ""))
     profile: Dict[str, str] = {}
 
     # Extract email
@@ -929,7 +930,8 @@ async def _apply_to_job(
     try:
         from backend.browser.tools.cover_letter import generate_cover_letter
 
-        resume_text = state.get("coached_resume") or state.get("resume_text", "")
+        resume_text = (state.get("resume_text", "") if settings.INDEED_ONLY
+                       else state.get("coached_resume") or state.get("resume_text", ""))
         cover_letter_template = state.get("cover_letter_template", "")
 
         # Compute queue progress for frontend

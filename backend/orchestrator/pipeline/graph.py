@@ -266,6 +266,15 @@ def route_after_supervise_after_discovery(state: JobHunterState) -> str:
 
 async def resume_tailor_node(state: JobHunterState) -> dict:
     """Tailor the coached resume for each top-scored job."""
+    config = state.get("session_config") or {}
+    config = config if isinstance(config, dict) else config.model_dump()
+    if get_settings().INDEED_ONLY and config.get("application_mode") != "materials_only":
+        # Indeed uploads the original stored file. Rewriting one resume per job
+        # wastes time and tokens because those drafts are never uploaded.
+        await emit_agent_event(state.get("session_id", ""), "tailoring_progress", {
+            "step": "Using your uploaded resume for Indeed applications.", "progress": 100,
+        })
+        return {"status": "applying", "agent_statuses": {"resume_tailor": "done"}}
     return await resume_tailor.run(state)
 
 
