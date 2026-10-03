@@ -748,6 +748,15 @@ export async function updateMinimumSubmitted(value: number): Promise<{ minimum_s
   return res.json();
 }
 
+export async function getApplicationRules(): Promise<string> {
+  const auth = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/api/auth/me/application-rules`, { headers: auth });
+  if (!res.ok) throw new Error("Could not load your current rules. Your answer has not been saved.");
+  const data = await res.json();
+  if (typeof data.application_rules !== "string") throw new Error("Could not read your application rules. Your answer has not been saved.");
+  return data.application_rules;
+}
+
 export async function updateApplicationRules(rules: string): Promise<{ application_rules: string }> {
   const auth = await getAuthHeaders();
   const res = await apiFetch(`${API_BASE}/api/auth/me/application-rules`, {

@@ -21,6 +21,7 @@ import {
 import { CoachPanel } from "@/components/CoachPanel";
 import { LiveBrowserPanel } from "@/components/LiveBrowserPanel";
 import { ApplicationFollowups, type ApplicationQuestion, type EmployerApplication } from "@/components/ApplicationFollowups";
+import { addApplicationAnswer, type AnswerScope } from "@/lib/applicationAnswers";
 import { liveViewEnds, liveViewFromEvent, type LiveViewState } from "@/lib/liveView";
 import { PipelineLedger } from "@/components/run/PipelineLedger";
 import { AdjustDialog, type RunOverrides } from "@/components/run/AdjustDialog";
@@ -44,6 +45,8 @@ import {
 } from "@/lib/run";
 import {
   getSession,
+  getApplicationRules,
+  updateApplicationRules,
   connectSSE,
   sendSteer,
   sendCoachChat,
@@ -380,6 +383,24 @@ export default function SessionPage() {
   const sessionStorageKey = `jh_session_${sessionId}`;
 
   const [session, setSession] = useState<SessionData | null>(null);
+  const [savedAnswerRules, setSavedAnswerRules] = useState("");
+  const answerSaveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => {
+    let active = true;
+    getApplicationRules().then((rules) => { if (active) setSavedAnswerRules(rules); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+  async function saveAnswer(question: AnswerScope, answer: string) {
+    // Serialize cards' saves and reload current rules so separate answers never
+    // overwrite one another from a stale page snapshot.
+    const operation = answerSaveQueue.current.catch(() => {}).then(async () => {
+      const current = await getApplicationRules();
+      const result = await updateApplicationRules(addApplicationAnswer(current, question, answer));
+      setSavedAnswerRules(result.application_rules);
+    });
+    answerSaveQueue.current = operation;
+    await operation;
+  }
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [cacheLoaded, setCacheLoaded] = useState(false);
   useEffect(() => {
@@ -623,9 +644,9 @@ export default function SessionPage() {
             error_message: "",
           });
           updates.applications_skipped = skip;
-          if (evt.employer_application_queue) updates.employer_application_queue = evt.employer_application_queue;
-          if (evt.application_questions) updates.application_questions = evt.application_questions;
         }
+        if (evt.employer_application_queue) updates.employer_application_queue = evt.employer_application_queue;
+        if (evt.application_questions) updates.application_questions = evt.application_questions;
         return { ...prev, ...updates };
       });
 
@@ -1328,7 +1349,12 @@ export default function SessionPage() {
             <LiveBrowserPanel liveView={liveView} jobLabel={liveViewJobLabel} onHide={() => setLiveView(null)} />
           )}
 
-          <ApplicationFollowups questions={session.application_questions} employers={session.employer_application_queue} />
+          <ApplicationFollowups questions={session.application_questions} employers={session.employer_application_queue} savedRules={savedAnswerRules} onAnswer={async (jobId, answer) => {
+            const question = session.application_questions?.[jobId];
+            if (!question) throw new Error("This question is no longer available. Reload the run.");
+            await saveAnswer(question, answer);
+            return {};
+          }} />
 
           <section aria-labelledby="log-h" className="overflow-hidden rounded-xl border border-border bg-card">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">

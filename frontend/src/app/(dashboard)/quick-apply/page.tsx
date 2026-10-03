@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import { startSession } from "@/lib/api";
+import { quickApplyInitialUrls } from "@/lib/applicationAnswers";
 import { toast } from "sonner";
 
 const RESUME_TEXT_KEY = "jh_resume_text";
@@ -34,7 +35,7 @@ export default function QuickApplyPage() {
 
     // Restore saved URLs
     const savedUrls = localStorage.getItem(URLS_STORAGE_KEY) || "";
-    if (savedUrls) setUrls(savedUrls);
+    setUrls(quickApplyInitialUrls(window.location.search, savedUrls));
   }, []);
 
   // Persist URLs as user types
