@@ -1087,8 +1087,10 @@ async def _apply_to_job(
             )
 
         # --- Step 1: Open tab and navigate (before cover letter to save LLM calls) ---
-        page = await context.new_page()
-        await apply_stealth(page)
+        use_managed_page = settings.BROWSER_MODE == "browserbase" and settings.INDEED_ONLY
+        page = context.pages[0] if use_managed_page and context.pages else await context.new_page()
+        if settings.BROWSER_MODE != "browserbase":
+            await apply_stealth(page)
 
         try:
             # Strip tracking params from LinkedIn URLs (they can cause redirects)
@@ -1240,7 +1242,7 @@ async def _apply_to_job(
             )
 
         finally:
-            if page and not page.is_closed():
+            if page and not page.is_closed() and not use_managed_page:
                 await page.close()
 
         # --- Step 8: Record to Neo4j ---
@@ -1666,7 +1668,10 @@ async def run_application_agent(state: JobHunterState) -> dict:
         # Deduplicate: at most one job per company to avoid rate limit race
         seen_skyvern_companies: set[str] = set()
         deduped_skyvern: list[tuple] = []
-        for jid, j in skyvern_jobs[:settings.SKYVERN_CONCURRENCY]:
+        # Indeed uses Browserbase's managed default tab and shared login.
+        # Keep one active form so concurrent jobs cannot overwrite each other.
+        browser_batch_size = 1 if settings.INDEED_ONLY else settings.SKYVERN_CONCURRENCY
+        for jid, j in skyvern_jobs[:browser_batch_size]:
             company_key = j.company.lower().strip()
             if company_key not in seen_skyvern_companies:
                 seen_skyvern_companies.add(company_key)

@@ -15,6 +15,7 @@ from uuid import uuid4
 from urllib.parse import urlencode
 
 from backend.browser.anti_detect.stealth import apply_stealth
+from backend.shared.config import settings
 from backend.shared.models.schemas import ATSType, JobBoard, JobListing, SearchConfig
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,8 @@ async def scrape_indeed(
     # the embedded browser shows the actual discovery work.
     pages = context.pages
     page = pages[0] if pages else await context.new_page()
-    await apply_stealth(page)
+    if settings.BROWSER_MODE != "browserbase":
+        await apply_stealth(page)
     listings: List[JobListing] = []
     seen = set(excluded_urls or ())
     seen_job_keys = set(excluded_job_keys or ())
@@ -131,6 +133,7 @@ async def scrape_indeed(
 
                 url = search_url if page_num == 0 else f"{search_url}&start={page_num * 10}"
                 await page.goto(url, wait_until="domcontentloaded", timeout=90000)
+                logger.info("Indeed results page %d loaded (query: %s)", page_num + 1, query)
                 # Browserbase's managed solver runs in the cloud browser.
                 await page.wait_for_timeout(random.randint(3000, 6000))
 
@@ -162,6 +165,7 @@ async def scrape_indeed(
                 cards = await page.query_selector_all(
                     'div.job_seen_beacon, div[class*="cardOutline"], td.resultContent'
                 )
+                logger.info("Indeed reading %d cards on page %d", len(cards), page_num + 1)
 
                 for card in cards:
                     if len(listings) >= max_results:
@@ -180,6 +184,7 @@ async def scrape_indeed(
                             listings.append(listing)
                     except Exception:
                         logger.debug("Failed to parse an Indeed card", exc_info=True)
+                logger.info("Indeed has %d eligible listings after page %d", len(listings), page_num + 1)
 
                 if page_num < MAX_PAGES - 1:
                     await page.wait_for_timeout(random.randint(2000, 5000))

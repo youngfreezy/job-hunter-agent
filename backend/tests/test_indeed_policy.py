@@ -53,10 +53,13 @@ async def test_media_route_preserves_navigation_guard():
     ('https://external.test/apply', 'top', False),
     ('https://captcha.test/challenge', 'child', True),
 ])
-async def test_navigation_guard_handles_new_windows_and_challenge_frames(monkeypatch, url, frame_state, allowed):
+@pytest.mark.parametrize('driver', ['local', 'cloud'])
+async def test_navigation_guard_handles_new_windows_and_challenge_frames(monkeypatch, url, frame_state, allowed, driver):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock
-    from patchright.async_api import Error
+    from patchright.async_api import Error as LocalError
+    from playwright.async_api import Error as CloudError
+    Error = CloudError if driver == 'cloud' else LocalError
     from backend.browser.manager import BrowserManager
     from backend.shared.config import settings
 

@@ -25,6 +25,13 @@ from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from patchright.async_api import async_playwright, Browser, BrowserContext, Playwright, Error as PlaywrightError
+from playwright.async_api import (
+    async_playwright as cloud_async_playwright,
+    Browser as CloudBrowser,
+    BrowserContext as CloudBrowserContext,
+    Playwright as CloudPlaywright,
+    Error as CloudPlaywrightError,
+)
 
 from backend.browser.anti_detect.stealth import (
     apply_stealth,
@@ -93,9 +100,9 @@ class BrowserManager:
     """
 
     def __init__(self) -> None:
-        self._playwright: Optional[Playwright] = None
-        self._browser: Optional[Browser] = None
-        self._contexts: Dict[str, BrowserContext] = {}
+        self._playwright: Optional[Playwright | CloudPlaywright] = None
+        self._browser: Optional[Browser | CloudBrowser] = None
+        self._contexts: Dict[str, BrowserContext | CloudBrowserContext] = {}
         self._running: bool = False
         self._chrome_process: Optional[subprocess.Popen] = None
         self._launched_chrome: bool = False
@@ -206,22 +213,25 @@ class BrowserManager:
         bb_session = await browserbase_client.create_session(
             context_id=context_id, persist=persist, proxies=proxies, config=config,
         )
-        self._playwright = await async_playwright().start()
         try:
+            # Browserbase manages stealth and CAPTCHA solving. Patchright's
+            # modified Runtime/Console protocol is only for local browsers.
+            self._playwright = await cloud_async_playwright().start()
             self._browser = await self._playwright.chromium.connect_over_cdp(
                 bb_session.connect_url, timeout=45_000,
             )
         except Exception:
             await browserbase_client.release_session(bb_session.id, config=config)
-            await self._playwright.stop()
+            if self._playwright:
+                await self._playwright.stop()
             self._playwright = None
             raise
         self._bb_session = bb_session
         self._running = True
         self._mode = "browserbase"
         logger.info(
-            "Connected to Browserbase session %s (context=%s, live view=%s)",
-            bb_session.id, context_id or "none", bb_session.live_view_url,
+            "Connected to Browserbase session %s (context=%s)",
+            bb_session.id, context_id or "none",
         )
 
     @property
@@ -322,7 +332,7 @@ class BrowserManager:
     async def new_context(
         self,
         proxy: Optional[str] = None,
-    ) -> tuple[str, BrowserContext]:
+    ) -> tuple[str, BrowserContext | CloudBrowserContext]:
         """Create a new isolated BrowserContext with anti-detection settings.
 
         In CDP mode, if the browser already has a default context, reuse it
@@ -348,7 +358,7 @@ class BrowserManager:
                         return
                     try:
                         is_child_frame = request.frame.parent_frame is not None
-                    except PlaywrightError:
+                    except (PlaywrightError, CloudPlaywrightError):
                         # Initial popup navigation may precede frame creation.
                         # Unknown frames cannot authorize an external navigation.
                         is_child_frame = False

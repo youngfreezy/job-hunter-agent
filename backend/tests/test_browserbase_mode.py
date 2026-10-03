@@ -109,7 +109,7 @@ async def test_manager_start_for_task_uses_browserbase_and_releases_on_stop(monk
 
     with patch.object(bbc, "create_session", create), \
          patch.object(bbc, "release_session", release), \
-         patch("backend.browser.manager.async_playwright", return_value=fake_pw_cm):
+         patch("backend.browser.manager.cloud_async_playwright", return_value=fake_pw_cm):
         mgr = BrowserManager()
         await mgr.start_for_task(board=JobBoard.INDEED, purpose="apply", user_id="owner")
 
@@ -145,10 +145,33 @@ async def test_manager_releases_session_if_cdp_connect_fails():
 
     with patch.object(bbc, "create_session", AsyncMock(return_value=fake_session)), \
          patch.object(bbc, "release_session", release), \
-         patch("backend.browser.manager.async_playwright", return_value=fake_pw_cm):
+         patch("backend.browser.manager.cloud_async_playwright", return_value=fake_pw_cm):
         mgr = BrowserManager()
         with pytest.raises(RuntimeError):
             await mgr.start_browserbase()
         release.assert_awaited_once()
         assert release.await_args.args[0] == "sess-x"
         assert mgr.browserbase_session_id is None
+
+
+@pytest.mark.asyncio
+async def test_cloud_manager_uses_standard_playwright_without_local_driver(monkeypatch):
+    import backend.browser.manager as module
+    session = bbc.BrowserbaseSession(id='cloud', connect_url='wss://cloud.test', context_id=None)
+    browser = MagicMock()
+    browser.close = AsyncMock()
+    driver = MagicMock()
+    driver.chromium.connect_over_cdp = AsyncMock(return_value=browser)
+    driver.stop = AsyncMock()
+    factory = MagicMock()
+    factory.start = AsyncMock(return_value=driver)
+    monkeypatch.setattr(module, 'cloud_async_playwright', lambda: factory, raising=False)
+    monkeypatch.setattr(module, 'async_playwright', MagicMock(side_effect=AssertionError('Local driver used for Browserbase')))
+    monkeypatch.setattr(bbc, 'create_session', AsyncMock(return_value=session))
+    monkeypatch.setattr(bbc, 'release_session', AsyncMock())
+    manager = BrowserManager()
+    await manager.start_browserbase()
+    assert manager.mode == 'browserbase'
+    await manager.stop()
+    driver.chromium.connect_over_cdp.assert_awaited_once_with('wss://cloud.test', timeout=45_000)
+    driver.stop.assert_awaited_once()
