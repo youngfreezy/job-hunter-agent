@@ -15,6 +15,19 @@ def listing(job_id):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('body,expired', [
+    ('loading', False),
+    ('additional verification required. ray id: a4404ffeb', False),
+    ('senior engineer, job reference 404123. apply now', False),
+    ('this job has expired', True),
+])
+async def test_indeed_expiry_requires_an_explicit_listing_message(monkeypatch, body, expired):
+    monkeypatch.setattr(settings, 'INDEED_ONLY', True)
+    page = SimpleNamespace(url=listing('one').url, evaluate=AsyncMock(return_value=body))
+    assert await application._is_dead_page(page) is expired
+
+
+@pytest.mark.asyncio
 async def test_indeed_uses_canonical_profile_and_skips_unused_resume_rewrites(monkeypatch):
     monkeypatch.setattr(settings, 'INDEED_ONLY', True)
     tailor = AsyncMock()

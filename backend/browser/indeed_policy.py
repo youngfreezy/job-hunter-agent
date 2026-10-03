@@ -12,7 +12,8 @@ def is_indeed_url(url: str) -> bool:
 async def wait_for_indeed_page(page) -> None:
     """Let Browserbase clear a verification interstitial before reading the page."""
     await page.wait_for_function(
-        """() => document.body && !/additional verification required|verify you are human|checking your browser|performing security verification/i.test(document.body.innerText)""",
+        """() => document.body && document.body.innerText.trim().length > 100
+          && !/additional verification required|verify you are human|checking your browser|performing security verification/i.test(document.body.innerText)""",
         timeout=45000,
     )
 
