@@ -67,6 +67,7 @@ export function ReviewStep({ onEditStep }: ReviewStepProps) {
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
+            {values.discoveryPrompt && <p className="mb-3 text-sm whitespace-pre-wrap">{values.discoveryPrompt}</p>}
             <p className="text-sm font-medium text-zinc-500">Keywords</p>
             <div className="flex flex-wrap gap-2 mt-1">
               {keywords.map((k) => (

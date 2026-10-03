@@ -4,16 +4,11 @@ import * as Yup from "yup";
 
 // ---------- Step 1: Job Search ----------
 export const jobSearchSchema = Yup.object({
-  keywords: Yup.string()
-    .required("Enter at least one keyword.")
-    .test("has-keywords", "Enter at least one keyword.", (value) => {
-      if (!value) return false;
-      const parsed = value
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean);
-      return parsed.length > 0;
-    }),
+  discoveryPrompt: Yup.string().max(4000).default(""),
+  keywords: Yup.string().default("").test(
+    "has-search", "Describe your search or enter at least one keyword.",
+    function (value) { return !!value?.trim() || !!this.parent.discoveryPrompt?.trim(); }
+  ),
   locations: Yup.string().default(""),
   remoteOnly: Yup.boolean().default(false),
   searchRadius: Yup.number().oneOf([10, 25, 50, 100, 150, 200]).default(100),
@@ -61,7 +56,7 @@ export const resumeProfileSchema = Yup.object({
 
 // ---------- Step 3: Configuration ----------
 export const configSchema = Yup.object({
-  maxJobs: Yup.number().min(3).max(10).default(5),
+  maxJobs: Yup.number().min(3).max(20).default(5),
   minimumSubmittedApplications: Yup.number()
     .min(0)
     .max(10)
@@ -79,7 +74,7 @@ export const configSchema = Yup.object({
   generateCoverLetters: Yup.boolean().default(true),
   jobBoards: Yup.array()
     .of(Yup.string().required())
-    .default(["linkedin", "indeed", "glassdoor", "ziprecruiter"]),
+    .default(["indeed"]),
 });
 
 // ---------- Step 4: Review (no additional validation) ----------
@@ -93,6 +88,7 @@ export type SessionFormValues = Yup.InferType<typeof sessionFormSchema>;
 
 // ---------- Initial values ----------
 export const sessionInitialValues: SessionFormValues = {
+  discoveryPrompt: "",
   keywords: "",
   locations: "",
   remoteOnly: false,
@@ -108,7 +104,7 @@ export const sessionInitialValues: SessionFormValues = {
   tailoringQuality: "standard",
   applicationMode: "auto_apply",
   generateCoverLetters: true,
-  jobBoards: ["linkedin", "indeed", "glassdoor", "ziprecruiter"],
+  jobBoards: ["indeed"],
 };
 
 // ---------- Step schema map (indexed by step number) ----------

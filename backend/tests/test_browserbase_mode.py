@@ -14,6 +14,8 @@ from backend.shared.models.schemas import JobBoard
 
 @pytest.fixture(autouse=True)
 def _bb_settings(monkeypatch):
+    monkeypatch.setattr(settings, "BROWSERBASE_CONTEXT_USER_ID", "owner")
+    monkeypatch.setattr("backend.shared.browserbase_store.get_browserbase_settings", lambda uid: None)
     monkeypatch.setattr(settings, "BROWSERBASE_API_KEY", "bb_live_test")
     monkeypatch.setattr(settings, "BROWSERBASE_PROJECT_ID", "proj-123")
     monkeypatch.setattr(settings, "BROWSERBASE_PROXIES", False)
@@ -109,7 +111,7 @@ async def test_manager_start_for_task_uses_browserbase_and_releases_on_stop(monk
          patch.object(bbc, "release_session", release), \
          patch("backend.browser.manager.async_playwright", return_value=fake_pw_cm):
         mgr = BrowserManager()
-        await mgr.start_for_task(board=JobBoard.INDEED, purpose="apply")
+        await mgr.start_for_task(board=JobBoard.INDEED, purpose="apply", user_id="owner")
 
         assert mgr.mode == "browserbase"
         assert mgr.browserbase_session_id == "sess-9"

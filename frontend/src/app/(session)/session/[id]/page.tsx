@@ -417,24 +417,16 @@ export default function SessionPage() {
   const eventsStorageKey = `jh_sse_events_${sessionId}`;
   const sessionStorageKey = `jh_session_${sessionId}`;
 
-  const [session, setSession] = useState<SessionData | null>(() => {
-    if (typeof window === "undefined") return null;
+  const [session, setSession] = useState<SessionData | null>(null);
+  const [events, setEvents] = useState<SSEEvent[]>([]);
+  const [cacheLoaded, setCacheLoaded] = useState(false);
+  useEffect(() => {
     try {
-      const stored = sessionStorage.getItem(sessionStorageKey);
-      return stored ? (JSON.parse(stored) as SessionData) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [events, setEvents] = useState<SSEEvent[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const stored = sessionStorage.getItem(eventsStorageKey);
-      return stored ? (JSON.parse(stored) as SSEEvent[]) : [];
-    } catch {
-      return [];
-    }
-  });
+      const cachedEvents = sessionStorage.getItem(eventsStorageKey);
+      if (cachedEvents) setEvents(JSON.parse(cachedEvents) as SSEEvent[]);
+    } catch { /* stale cache is non-critical */ }
+    setCacheLoaded(true);
+  }, [eventsStorageKey]);
   const [coachReviewOpen, setCoachReviewOpen] = useState(false);
   const [coachReviewData, setCoachReviewData] = useState<CoachOutput | null>(null);
   const [coachReviewSubmitting, setCoachReviewSubmitting] = useState(false);
@@ -488,32 +480,18 @@ export default function SessionPage() {
     message: string;
   } | null>(null);
   const [loginConfirming, setLoginConfirming] = useState(false);
-  const latestStatusRef = useRef(
-    (() => {
-      if (typeof window === "undefined") return "intake";
-      try {
-        const stored = sessionStorage.getItem(sessionStorageKey);
-        if (stored) {
-          const s = JSON.parse(stored) as SessionData;
-          return s.status || "intake";
-        }
-      } catch {
-        /* ignore */
-      }
-      return "intake";
-    })()
-  );
+  const latestStatusRef = useRef("intake");
   const coachApprovedRef = useRef(false);
   const shortlistApprovedRef = useRef(false);
 
   // Persist events & session to sessionStorage so navigation doesn't lose progress
   useEffect(() => {
     try {
-      sessionStorage.setItem(eventsStorageKey, JSON.stringify(events));
+      if (cacheLoaded) sessionStorage.setItem(eventsStorageKey, JSON.stringify(events));
     } catch {
       /* quota exceeded – non-critical */
     }
-  }, [events, eventsStorageKey]);
+  }, [events, eventsStorageKey, cacheLoaded]);
 
   useEffect(() => {
     if (!session) return;
@@ -924,10 +902,10 @@ export default function SessionPage() {
     });
   };
 
-  const handleApproveCoachReview = async () => {
+  const handleApproveCoachReview = async (useOriginal = false) => {
     setCoachReviewSubmitting(true);
     try {
-      await submitCoachReview(sessionId, { approved: true });
+      await submitCoachReview(sessionId, { approved: true, use_original: useOriginal });
       coachApprovedRef.current = true;
       setCoachReviewOpen(false);
       setSession((prev) => (prev ? { ...prev, status: "discovering" } : prev));
@@ -2117,7 +2095,10 @@ export default function SessionPage() {
             >
               Review Later
             </Button>
-            <Button onClick={handleApproveCoachReview} loading={coachReviewSubmitting}>
+            <Button variant="outline" onClick={() => handleApproveCoachReview(true)} disabled={coachReviewSubmitting}>
+              Use Original & Discover Jobs
+            </Button>
+            <Button onClick={() => handleApproveCoachReview()} loading={coachReviewSubmitting}>
               Approve & Start Job Discovery
             </Button>
           </DialogFooter>

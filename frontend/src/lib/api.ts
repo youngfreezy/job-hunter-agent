@@ -474,7 +474,7 @@ export async function sendCoachChat(
 
 export async function submitCoachReview(
   sessionId: string,
-  data: { approved: boolean; edited_resume?: string; feedback?: string }
+  data: { approved: boolean; edited_resume?: string; use_original?: boolean; feedback?: string }
 ): Promise<void> {
   const auth = await getAuthHeaders();
   const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/coach-review`, {
@@ -769,6 +769,7 @@ export interface BrowserbaseSettings {
   login_capture_boards: string[];
   env_configured: boolean;
   effective_configured: boolean;
+  effective_context_ids?: Record<string, string>;
 }
 
 export interface BrowserbaseSettingsUpdate {

@@ -619,7 +619,7 @@ export default function SettingsPage() {
                       onChange={(e) =>
                         setBbContextIds((prev) => ({ ...prev, [board]: e.target.value }))
                       }
-                      placeholder="context id"
+                      placeholder={browserbase?.effective_context_ids?.[board] ? "Using saved server Context" : "context id"}
                       aria-label={`${BROWSERBASE_BOARD_LABELS[board] || board} context id`}
                       className="flex-1 rounded-md border px-3 py-2 text-sm bg-background font-mono"
                       disabled={savingBrowserbase}

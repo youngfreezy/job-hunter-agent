@@ -68,6 +68,9 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
         configured_boards = cfg.get("job_boards")
 
     boards = configured_boards or ["lever", "ashby", "greenhouse", "workday"]
+    from backend.shared.config import settings
+    if settings.INDEED_ONLY:
+        boards = ["indeed"]
 
     # Inject Moltbook strategy patches: reorder boards by community-informed priority
     try:
@@ -125,15 +128,27 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
     errors: List[str] = []
     try:
-        all_jobs = await discover_all_boards(
-            boards=boards,
-            search_config=search_config,
-            session_id=session_id,
-            max_per_board=max_per_board,
-            applied_companies=blocked_companies,
-            applied_urls=applied_urls,
-            round_number=round_number,
-        )
+        if boards == ["indeed"]:
+            from backend.browser.tools.indeed_discovery import discover_indeed
+            all_jobs = await discover_indeed(
+                search_config=search_config, session_id=session_id,
+                user_id=user_id, max_results=total_max,
+                excluded_urls=applied_urls,
+                excluded_companies=blocked_companies,
+                excluded_job_keys={
+                    _dedup_key(job) for job in (state.get("discovered_jobs") or [])
+                } if round_number > 0 else set(),
+            )
+        else:
+            all_jobs = await discover_all_boards(
+                boards=boards,
+                search_config=search_config,
+                session_id=session_id,
+                max_per_board=max_per_board,
+                applied_companies=blocked_companies,
+                applied_urls=applied_urls,
+                round_number=round_number,
+            )
     except Exception as exc:
         logger.exception("Discovery failed entirely: %s", exc)
         errors.append(f"Discovery failed: {exc}")
@@ -204,7 +219,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
     await emit_agent_event(session_id, "discovery_progress", {
         "board": "all",
-        "step": f"{len(deduped)} new jobs ready for scoring" if deduped else "No new jobs found — try different keywords or locations",
+        "step": errors[0] if errors else (f"{len(deduped)} new jobs ready for scoring" if deduped else "No new jobs found — try different keywords or locations"),
         "total": len(deduped),
         "error": not deduped,
     })

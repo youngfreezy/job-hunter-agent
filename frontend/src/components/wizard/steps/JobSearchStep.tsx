@@ -2,6 +2,7 @@
 
 "use client";
 
+import { DiscoveryPrompt } from "../DiscoveryPrompt";
 import { useFormikContext } from "formik";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormikKeywordInput } from "@/components/forms/FormikKeywordInput";
@@ -18,6 +19,7 @@ export function JobSearchStep() {
 
   return (
     <>
+      <DiscoveryPrompt />
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Search Keywords</CardTitle>

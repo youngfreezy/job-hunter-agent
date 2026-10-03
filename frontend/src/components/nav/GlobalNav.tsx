@@ -70,7 +70,7 @@ export function GlobalNav() {
         ]);
         if (walletRes.ok) {
           const data = await walletRes.json();
-          setCredits(data.balance);
+          setCredits(data.balance + (data.free_remaining ?? 0));
         }
         if (meRes.ok) {
           const data = await meRes.json();

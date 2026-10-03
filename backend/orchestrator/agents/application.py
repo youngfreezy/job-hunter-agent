@@ -785,6 +785,12 @@ async def _apply_to_job(
     detected_ats = "unknown"
     streamer: Any = None
 
+    if get_settings().INDEED_ONLY:
+        from backend.browser.indeed_policy import is_indeed_url
+        if not is_indeed_url(job.url):
+            return ApplicationResult(job_id=job_id, status=ApplicationStatus.SKIPPED,
+                                     error_message="Indeed-only mode does not apply on external sites.")
+
     # Pre-flight: check if user has sufficient credits
     user_id = state.get("user_id", "")
     if user_id and user_id != "unknown":
@@ -824,7 +830,7 @@ async def _apply_to_job(
         from urllib.parse import urlparse as _urlparse
         _host = _urlparse(job.url).hostname or ""
         if any(_host == d or _host.endswith(f".{d}") for d in _BOARD_GATED_DOMAINS):
-            if getattr(job, "external_apply_url", None):
+            if getattr(job, "external_apply_url", None) and not get_settings().INDEED_ONLY:
                 # Use the direct ATS URL instead of the board URL
                 logger.info(
                     "Using external ATS URL for %s: %s → %s",
@@ -963,7 +969,7 @@ async def _apply_to_job(
         # --- Fast path: direct API submission (only if handler registered) ---
         settings = get_settings()
         from backend.browser.tools.api_applier import _ATS_HANDLERS
-        if settings.API_APPLY_ENABLED and job.ats_type in _ATS_HANDLERS:
+        if settings.API_APPLY_ENABLED and not settings.INDEED_ONLY and job.ats_type in _ATS_HANDLERS:
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
 
@@ -1138,7 +1144,7 @@ async def _apply_to_job(
             # Skip if already on an ATS domain (avoid leaving a form page).
             current_lower = page.url.lower()
             already_on_ats = any(d in current_lower for d in _EXTERNAL_ATS_DOMAINS)
-            external_url = None if already_on_ats else await _find_external_apply_link(page)
+            external_url = None if already_on_ats or get_settings().INDEED_ONLY else await _find_external_apply_link(page)
             if external_url:
                 logger.info(
                     "Found external apply link: %s → %s",
@@ -1595,7 +1601,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
             if j is None:
                 continue
             if (
-                settings.API_APPLY_ENABLED
+                settings.API_APPLY_ENABLED and not settings.INDEED_ONLY
                 and j.ats_type in _ATS_HANDLERS
                 and jid not in api_failed_ids
             ):

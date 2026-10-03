@@ -90,7 +90,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
               <input
                 type="range"
                 min={3}
-                max={10}
+                max={20}
                 step={1}
                 value={values.maxJobs ?? 5}
                 onChange={(e) => {

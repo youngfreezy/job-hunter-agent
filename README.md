@@ -243,3 +243,77 @@ See [TECHNICAL_STRUGGLES.md](TECHNICAL_STRUGGLES.md) for a detailed breakdown of
 ## License
 
 Copyright (c) 2026 V2 Software LLC. All rights reserved.
+
+## Indeed + Browserbase interview demo
+
+Set these in the root `.env` (both services now read it):
+
+```dotenv
+BROWSER_MODE=browserbase
+INDEED_ONLY=true
+BROWSERBASE_API_KEY=<your key>
+BROWSERBASE_PROJECT_ID=<your project>
+BROWSERBASE_PROXIES=true
+NEXTAUTH_SECRET=<random secret>
+NEXTAUTH_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:8000
+# Choose the provider matching your API key:
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=<your key>
+```
+
+Use Google OAuth with `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, or enable
+password-protected local sign-in for `npm start`:
+
+```dotenv
+ENABLE_CREDENTIALS_AUTH=true
+LOCAL_DEMO_EMAIL=<local demo account email>
+LOCAL_DEMO_PASSWORD=<random password, at least 16 characters>
+```
+
+Google sign-in requests identity scopes by default. Gmail code reading is optional
+(`ENABLE_GMAIL_VERIFICATION=true`) and requires Google consent.
+
+Local sign-in is disabled in production. Application contact details come from
+your resume, not the demo account email. `npm start` starts Postgres and Redis,
+applies migrations, and starts both services. Backend reload is opt-in with
+`BACKEND_RELOAD=true`; leave it off for an uninterrupted demo. Optional Skyvern and analytics
+containers are not needed for this demo. Use a fresh local database for a fresh
+install; an older database initialized outside Alembic may need schema reconciliation.
+
+1. Open `http://localhost:3000/auth/login` and sign in.
+2. In **Settings → Browserbase**, save the API key and project ID if they are not
+   configured on the server. Click **Sign in to Indeed** and log in using the
+   live browser. Alternatively, configure an existing logged-in Context using
+   `BROWSERBASE_CONTEXT_IDS=indeed=<context-id>` together with
+   `BROWSERBASE_CONTEXT_USER_ID=<your account UUID>`. Prefer saving it in your
+   account Settings on production. This is a cloud browser login;
+   it does not automatically inherit cookies from your desktop Chrome.
+3. Open **New Session** and enter this in **Describe your job search**:
+
+   > Find applied AI and AI-native software engineering positions in San Francisco
+   > that are hybrid or remote. Exclude AI trainer, data annotation, and
+   > non-software engineering roles.
+
+4. Upload your real resume. Choose 5, 10, 15, or 20 applications, review the inferred keywords and launch. The prompt
+   takes priority over resume-derived search preferences. Do not select
+   **Remote only** if you also want hybrid roles.
+5. Choose **Use Original & Discover Jobs** to preserve your uploaded resume,
+   or approve the coached version. Review the shortlist, and approve only the jobs you want
+   submitted. Watch the Browserbase live view during discovery and applications.
+
+With `INDEED_ONLY=true`, the server forces Indeed discovery, reuses the same
+Indeed Context for applications, disables direct ATS API submission, and blocks
+navigation outside HTTPS Indeed domains. Jobs that require an employer's
+external application site cannot complete in this mode. An expired login,
+CAPTCHA, or unsupported form can still stop a run; a successful submission must
+have a confirmation page, not merely a click on Apply.
+
+No special prompt phrase is required to select Browserbase or preserve auth.
+Those are configuration and code constraints. The prompt controls what jobs to
+find and how to rank them. Inspect the shortlist because job-board metadata can
+be incomplete, especially work arrangement and location.
+
+For verification, run the backend suite against a dedicated test database, then
+run `npm test`, `npm run lint`, and `npm run build` from `frontend`. Development
+uses `.next-dev` so a production build cannot overwrite a running demo's assets.

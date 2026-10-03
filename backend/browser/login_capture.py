@@ -8,8 +8,7 @@ Flow (mirrors the owner's login-capture script):
 2. start a session with ``browserSettings.context = {id, persist: true}``
 3. hand the Live View URL to the user so they can sign in by hand
 4. poll the browser's cookies until the board's login cookie appears
-5. wait 4 seconds for the session to flush storage, then close the browser
-   so the Context persists with the logged-in state
+5. close and release the session, then wait for persisted storage to settle
 6. store the Context id for that board on the user's Browserbase settings
 
 Captures are tracked in-process; they are short-lived (bounded by the
@@ -41,7 +40,7 @@ BOARD_LOGIN: Dict[str, Tuple[str, str, str]] = {
 }
 
 COOKIE_POLL_SECONDS = 2.0
-SETTLE_SECONDS = 4.0  # let Browserbase flush cookies/storage before closing
+SETTLE_SECONDS = 4.0  # allow Browserbase to persist storage after release
 DEFAULT_TIMEOUT_SECONDS = 600
 
 StoreContextFn = Callable[[str, str, str], Any]
@@ -78,7 +77,7 @@ def _has_login_cookie(cookies: Any, name: str, domain_suffix: str) -> bool:
         if cookie.get("name") != name:
             continue
         domain = str(cookie.get("domain") or "").lstrip(".")
-        if domain.endswith(domain_suffix):
+        if domain == domain_suffix or domain.endswith(f".{domain_suffix}"):
             return True
     return False
 
@@ -174,6 +173,7 @@ class LoginCaptureRegistry:
         cookie_name, domain_suffix, login_url = BOARD_LOGIN[capture.board]
         playwright = None
         browser = None
+        released = False
         try:
             playwright = await async_playwright().start()
             browser = await playwright.chromium.connect_over_cdp(session.connect_url, timeout=45_000)
@@ -189,9 +189,11 @@ class LoginCaptureRegistry:
                 cookies = await context.cookies()
                 if _has_login_cookie(cookies, cookie_name, domain_suffix):
                     logger.info("Login capture %s: %s cookie present, settling", capture.id, cookie_name)
-                    await asyncio.sleep(SETTLE_SECONDS)
                     await browser.close()
                     browser = None
+                    await bbc.release_session(session.id, config=config)
+                    released = True
+                    await asyncio.sleep(SETTLE_SECONDS)
                     result = store_context(capture.user_id, capture.board, capture.context_id)
                     if asyncio.iscoroutine(result):
                         await result
@@ -220,7 +222,8 @@ class LoginCaptureRegistry:
                     await playwright.stop()
                 except Exception:
                     logger.debug("Login capture %s: playwright stop failed", capture.id, exc_info=True)
-            await bbc.release_session(session.id, config=config)
+            if not released:
+                await bbc.release_session(session.id, config=config)
             logger.info("Login capture %s finished: %s", capture.id, capture.status)
 
 

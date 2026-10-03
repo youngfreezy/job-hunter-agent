@@ -83,10 +83,12 @@ def config_for_user(user_id: Optional[str]) -> BrowserbaseConfig:
     """Env configuration with the user's saved Browserbase settings layered on.
 
     A user override replaces the env value only when it is set; per-board
-    Context ids merge, user entries winning.  Anonymous callers get the env
-    configuration unchanged.
+    Context ids merge only for the configured owner. Other accounts and anonymous
+    callers never inherit server login contexts.
     """
     base = config_from_settings()
+    if not user_id or user_id != settings.BROWSERBASE_CONTEXT_USER_ID:
+        base.context_ids = {}
     if not user_id or user_id == "unknown":
         return base
     from backend.shared.browserbase_store import get_browserbase_settings
@@ -165,7 +167,7 @@ async def create_session(
     if not cfg.project_id:
         raise BrowserbaseError("BROWSERBASE_PROJECT_ID is not set")
 
-    browser_settings: Dict[str, Any] = {}
+    browser_settings: Dict[str, Any] = {"solveCaptchas": True}
     if context_id:
         browser_settings["context"] = {"id": context_id, "persist": persist}
     if viewport:

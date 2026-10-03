@@ -334,6 +334,7 @@ function findNpmCommand() {
       "8000",
       "--timeout-graceful-shutdown",
       "5",
+      ...(process.env.BACKEND_RELOAD === "true" ? [
       "--reload",
       "--reload-dir",
       "backend/gateway",
@@ -347,6 +348,7 @@ function findNpmCommand() {
       "*.log",
       "--reload-exclude",
       "backend/venv/*",
+      ] : []),
     ],
     { cwd: ROOT, pidFile: BACKEND_PID_FILE }
   );

@@ -20,6 +20,7 @@ from backend.shared.config import settings
 def _env(monkeypatch):
     monkeypatch.setenv("NEXTAUTH_SECRET", "test-secret-for-browserbase")
     monkeypatch.setattr(settings, "NEXTAUTH_SECRET", "test-secret-for-browserbase")
+    monkeypatch.setattr(settings, "BROWSERBASE_CONTEXT_USER_ID", "user-1")
     monkeypatch.setattr(settings, "BROWSERBASE_API_KEY", "bb_env_key")
     monkeypatch.setattr(settings, "BROWSERBASE_PROJECT_ID", "proj-env")
     monkeypatch.setattr(settings, "BROWSERBASE_PROXIES", False)
@@ -227,6 +228,9 @@ async def test_login_capture_stores_context_when_login_cookie_appears(monkeypatc
 
     async def fake_sleep(seconds):
         sleeps.append(seconds)
+        if seconds == login_capture.SETTLE_SECONDS:
+            assert release.await_count == 1
+            assert browser.close.await_count == 1
 
     create_context = AsyncMock(return_value="ctx-new")
     create_session = AsyncMock(return_value=bbc.BrowserbaseSession(
@@ -256,7 +260,7 @@ async def test_login_capture_stores_context_when_login_cookie_appears(monkeypatc
     page.goto.assert_awaited_once()
     assert page.goto.await_args.args[0] == "https://secure.indeed.com/account/login"
     assert context.cookies.await_count == 3
-    assert login_capture.SETTLE_SECONDS in sleeps  # 4s settle before closing
+    assert login_capture.SETTLE_SECONDS in sleeps  # allow persisted storage to settle after release
     browser.close.assert_awaited_once()
     release.assert_awaited_once()
     assert release.await_args.args[0] == "sess-login"
@@ -400,3 +404,13 @@ async def test_start_and_poll_login_session(monkeypatch):
     assert polled["status"] == "waiting"
     missing = await routes.get_login_session(MagicMock(), "nope")
     assert missing.status_code == 404
+
+
+def test_login_cookie_rejects_lookalike_domain():
+    assert not login_capture._has_login_cookie([{'name': 'PPID', 'domain': 'evilindeed.com'}], 'PPID', 'indeed.com')
+
+
+def test_server_context_is_not_shared_with_other_accounts(monkeypatch):
+    monkeypatch.setattr(store, 'get_browserbase_settings', lambda uid: None)
+    assert bbc.config_for_user('another-user').context_ids == {}
+    assert bbc.config_for_user(None).context_ids == {}

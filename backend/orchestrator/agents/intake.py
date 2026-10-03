@@ -40,6 +40,15 @@ downstream agents will use to discover job listings.
    - Inferred job type if not specified (e.g. "full-time").
 3. Respect explicit user preferences -- they always take priority over
    inferences from the resume.
+4. The discovery_prompt is the user's primary search instruction. Extract
+   roles and locations from it. Never replace its roles with resume-derived
+   roles. For 'hybrid or remote', set work_arrangements to ['hybrid', 'remote']
+   and remote_only=false. Keep the specified city for hybrid work. For
+   remote-only requests set remote_only=true and work_arrangements=['remote'].
+5. For discovery_prompt searches, keywords must be complete job-title search
+   phrases (e.g. 'Applied AI Engineer', 'AI Software Engineer'), not isolated
+   skills like 'AI', 'LLM', or 'AI-Native'. Use at most three focused phrases.
+   Populate exclude_title_keywords and exclude_companies from explicit exclusions.
 """
 
 
@@ -132,6 +141,9 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
 
         return {
             "search_config": search_config,
+            "keywords": search_config.keywords,
+            "locations": search_config.locations,
+            "remote_only": search_config.remote_only,
             "status": "coaching",
             "agent_statuses": {"intake": "done"},
         }

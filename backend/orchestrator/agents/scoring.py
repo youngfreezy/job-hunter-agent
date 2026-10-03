@@ -391,6 +391,7 @@ async def run_scoring_agent(state: Dict[str, Any]) -> dict:
                 f"{experience_section}"
                 f"{blocklist_section}"
                 f"{rules_section}"
+                f"## User discovery prompt\n{(state.get('preferences') or {}).get('discovery_prompt', '')}\nRespect these explicit requirements and exclusions when ranking.\n\n"
                 f"## Job Listings (batch {batch_idx + 1}/{total_batches})\n\n{jobs_text}\n\n"
             )
             if _strategy_context:

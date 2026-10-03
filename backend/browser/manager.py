@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from patchright.async_api import async_playwright, Browser, BrowserContext, Playwright
+from patchright.async_api import async_playwright, Browser, BrowserContext, Playwright, Error as PlaywrightError
 
 from backend.browser.anti_detect.stealth import (
     apply_stealth,
@@ -252,6 +252,8 @@ class BrowserManager:
         layered over the ``BROWSERBASE_*`` env settings.
         """
         resolved_headless = settings.BROWSER_HEADLESS if headless is None else headless
+        if settings.INDEED_ONLY and settings.BROWSER_MODE != "browserbase":
+            raise RuntimeError("Indeed-only mode requires BROWSER_MODE=browserbase")
         if settings.BROWSER_MODE == "browserbase":
             config = browserbase_client.config_for_user(user_id)
             context_id = browserbase_client.context_id_for_board(board, config)
@@ -336,8 +338,28 @@ class BrowserManager:
         # existing contexts rather than creating new ones.
         if self._mode in ("cdp", "browserbase") and self._browser.contexts:
             context = self._browser.contexts[0]
+            if settings.INDEED_ONLY:
+                from backend.browser.indeed_policy import is_indeed_url
+
+                async def restrict_navigation(route):
+                    request = route.request
+                    if not request.is_navigation_request() or is_indeed_url(request.url):
+                        await route.fallback()
+                        return
+                    try:
+                        is_child_frame = request.frame.parent_frame is not None
+                    except PlaywrightError:
+                        # Initial popup navigation may precede frame creation.
+                        # Unknown frames cannot authorize an external navigation.
+                        is_child_frame = False
+                    if is_child_frame:
+                        await route.fallback()  # Allow embedded CAPTCHA providers.
+                    else:
+                        await route.abort()
+
+                await context.route("**/*", restrict_navigation)
             self._contexts[ctx_id] = context
-            if self._mode == "browserbase" and settings.BROWSERBASE_BLOCK_MEDIA:
+            if self._mode == "browserbase" and settings.BROWSERBASE_BLOCK_MEDIA and not settings.INDEED_ONLY:
                 await self._block_media(context)
             logger.info("Reusing %s default context as %s", self._mode, ctx_id)
             return ctx_id, context
@@ -417,7 +439,7 @@ class BrowserManager:
             if route.request.resource_type in ("image", "media", "font"):
                 await route.abort()
             else:
-                await route.continue_()
+                await route.fallback()
 
         try:
             await context.route("**/*", _route)

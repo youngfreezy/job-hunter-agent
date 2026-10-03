@@ -112,6 +112,8 @@ class SearchConfig(BaseModel):
     keywords: List[str]
     locations: List[str]
     remote_only: bool = False
+    work_arrangements: List[str] = Field(default_factory=list, description="Explicitly requested arrangements: remote, hybrid, onsite. Empty means any.")
+    exclude_title_keywords: List[str] = Field(default_factory=list, description="Job title phrases explicitly excluded by the user, such as AI Trainer or Data Annotation.")
     salary_min: Optional[int] = None
     experience_level: Optional[str] = None  # "entry", "mid", "senior", "executive"
     job_type: Optional[str] = None  # "full-time", "contract", "part-time"
@@ -248,7 +250,7 @@ class SSEEvent(BaseModel):
 
 class SessionConfig(BaseModel):
     """User-configurable session parameters controlling cost and behavior."""
-    max_jobs: int = Field(default=5, ge=1, le=10)
+    max_jobs: int = Field(default=5, ge=1, le=20)
     minimum_submitted_applications: int = Field(default=0, ge=0, le=10)
     tailoring_quality: TailoringQuality = TailoringQuality.STANDARD
     application_mode: ApplicationMode = ApplicationMode.AUTO_APPLY
@@ -319,6 +321,7 @@ class CoachReviewRequest(BaseModel):
     """User approval/edits after career coach review."""
     approved: bool = True
     edited_resume: Optional[str] = None
+    use_original: bool = False
     feedback: Optional[str] = None
 
 

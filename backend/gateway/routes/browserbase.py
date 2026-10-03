@@ -59,6 +59,7 @@ def _public_settings(user_id: str) -> Dict[str, object]:
         "login_capture_boards": sorted(login_capture.BOARD_LOGIN),
         "env_configured": env.configured,  # a server-wide key exists as a fallback
         "effective_configured": effective.configured,
+        "effective_context_ids": effective.context_ids,
     }
 
 

@@ -84,12 +84,14 @@ class Settings(BaseSettings):
     BROWSER_HEADLESS: bool = False
     BROWSER_SLOW_MO: int = 0  # ms delay between Playwright actions (smoother in headed mode)
     BROWSER_MODE: str = "cdp"  # "cdp" (real Chrome), "patchright" (built-in Chromium) or "browserbase" (cloud)
+    INDEED_ONLY: bool = False  # enforce Indeed discovery and prevent external application redirects
 
     # --- Browserbase (cloud browsers; BROWSER_MODE=browserbase) ---
     BROWSERBASE_API_KEY: Optional[str] = None
     BROWSERBASE_PROJECT_ID: Optional[str] = None
     BROWSERBASE_PROXIES: bool = False  # residential proxies (paid plans); needed for Indeed/LinkedIn at volume
     BROWSERBASE_SESSION_TIMEOUT: int = 900  # seconds, 60-900 on Free; longer on paid plans
+    BROWSERBASE_CONTEXT_USER_ID: str = ""  # only this account may inherit server login contexts
     BROWSERBASE_CONTEXT_IDS: str = ""  # "indeed=<ctx>,linkedin=<ctx>,default=<ctx>": persisted logins per board
     BROWSERBASE_BLOCK_MEDIA: bool = True  # abort image/font/media requests to cut proxy bandwidth
     BROWSERBASE_VERIFY_LISTINGS: bool = True  # verify shortlist candidates via the Fetch API (needs the API key)
@@ -140,7 +142,7 @@ class Settings(BaseSettings):
 # ---------------------------------------------------------------------------
 # Pipeline constants
 # ---------------------------------------------------------------------------
-MAX_APPLICATION_JOBS = 10  # Max jobs shown/approved/tailored per session
+MAX_APPLICATION_JOBS = 20  # Max jobs shown/approved/tailored per session
 
 # Singleton – import this everywhere instead of re-instantiating.
 settings = Settings()  # type: ignore[call-arg]

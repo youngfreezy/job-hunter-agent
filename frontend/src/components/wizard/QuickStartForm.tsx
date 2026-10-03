@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormikFileUpload } from "@/components/forms/FormikFileUpload";
+import { DiscoveryPrompt } from "./DiscoveryPrompt";
 import { analyzeResume, startSession } from "@/lib/api";
 import type { SessionFormValues } from "@/lib/schemas/session";
 import { sessionInitialValues } from "@/lib/schemas/session";
@@ -39,6 +40,7 @@ declare global {
 function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolean) => void }) {
   const router = useRouter();
   const { values, isSubmitting } = useFormikContext<SessionFormValues>();
+  const [maxJobs, setMaxJobs] = useState(10);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [remoteOnly, setRemoteOnly] = useState(false);
@@ -111,7 +113,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
 
   const handleLaunch = async () => {
     setSubmitError("");
-    if (keywords.length === 0) {
+    if (keywords.length === 0 && !values.discoveryPrompt?.trim()) {
       setSubmitError("Upload your resume first so we can extract search keywords.");
       return;
     }
@@ -132,13 +134,13 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
         resume_file_path: values.resumeFilePath || null,
         resume_uuid: values.resumeFileUuid || null,
         linkedin_url: null,
-        preferences: {},
+        preferences: { discovery_prompt: values.discoveryPrompt || "" },
         config: {
-          max_jobs: (savedSettings.max_jobs as number) ?? 5,
+          max_jobs: maxJobs,
           tailoring_quality: "standard",
           application_mode: (savedSettings.application_mode as string) ?? "auto_apply",
           generate_cover_letters: (savedSettings.generate_cover_letters as boolean) ?? true,
-          job_boards: (savedSettings.job_boards as string[]) ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"],
+          job_boards: (savedSettings.job_boards as string[]) ?? ["indeed"],
           ai_temperature: (savedSettings.ai_temperature as number) ?? 0.0,
           scoring_strictness: (savedSettings.scoring_strictness as number) ?? 0.5,
         },
@@ -160,6 +162,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
 
   return (
     <div className="space-y-6">
+      <DiscoveryPrompt />
       <Card>
         <CardContent className="p-6 space-y-4">
           <div>
@@ -266,7 +269,11 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
             </div>
 
             <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-500 dark:bg-zinc-900/60">
-              Defaults: 5 jobs, auto-apply, all job boards, standard tailoring.
+              <label htmlFor="application-count" className="block font-medium text-foreground">Applications to prepare</label>
+              <select id="application-count" value={maxJobs} onChange={(event) => setMaxJobs(Number(event.target.value))} className="mt-2 rounded-md border bg-background p-2 text-foreground">
+                {[5, 10, 15, 20].map((count) => <option key={count} value={count}>{count} applications</option>)}
+              </select>
+              <p className="mt-2">Indeed only. Review the shortlist before applying. Actual submissions depend on suitable jobs, available credits, and each application form.</p>
             </div>
           </CardContent>
         </Card>

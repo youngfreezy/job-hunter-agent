@@ -972,6 +972,20 @@ async def start_session(body: StartSessionRequest, request: Request):
     user = get_current_user(request)
     user_id = str(user["id"])  # Ensure string — users.id is UUID, sessions.user_id is TEXT
 
+    from backend.shared.config import settings
+    if settings.INDEED_ONLY:
+        from backend.browser.indeed_policy import enforce_indeed_config
+        from backend.browser.browserbase_client import config_for_user
+        try:
+            enforce_indeed_config(body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Indeed-only mode accepts only HTTPS Indeed job URLs.") from exc
+        bb_config = config_for_user(user_id)
+        if settings.BROWSER_MODE != "browserbase" or not bb_config.configured:
+            raise HTTPException(status_code=400, detail="Indeed-only mode requires Browserbase. Configure it in Settings.")
+        if not bb_config.context_ids.get("indeed"):
+            raise HTTPException(status_code=400, detail="Sign in to Indeed in Settings → Browserbase before launching.")
+
     min_submitted = getattr(body.config, "minimum_submitted_applications", 0) if body.config else 0
     if min_submitted > 0 and not user.get("is_premium", False):
         raise HTTPException(
@@ -1427,6 +1441,14 @@ async def get_session(session_id: str, request: Request):
             if registry_status:
                 result["status"] = registry_status
 
+        if isinstance(result, dict):
+            graph_state = await request.app.state.graph.aget_state(config)
+            next_nodes = getattr(graph_state, "next", ()) or ()
+            if "coach_review" in next_nodes:
+                result["status"] = "awaiting_coach_review"
+            elif "shortlist_review" in next_nodes:
+                result["status"] = "awaiting_review"
+
         # Overlay live application counts from the DB (checkpointer only
         # updates when the full application node completes, so mid-run the
         # counts would be stale/empty).
@@ -1729,7 +1751,7 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
     config = {"configurable": {"thread_id": session_id}}
 
     # Build the human input that coach_review_gate's interrupt() will receive
-    human_input: Dict[str, Any] = {"approved": body.approved}
+    human_input: Dict[str, Any] = {"approved": body.approved, "use_original": body.use_original}
     if body.edited_resume:
         human_input["edited_resume"] = body.edited_resume
     if body.feedback:
