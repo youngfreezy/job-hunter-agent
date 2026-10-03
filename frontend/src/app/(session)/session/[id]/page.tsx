@@ -38,6 +38,7 @@ import {
   isRunning,
   runOutcome,
   scoreThreshold,
+  shouldRefreshSession,
   type OutcomeTone,
   type PhaseKey,
 } from "@/lib/run";
@@ -628,15 +629,11 @@ export default function SessionPage() {
         return { ...prev, ...updates };
       });
 
-      // Re-fetch full session on status changes to sync sidebar
-      // Only refetch on terminal events or significant status changes — not
-      // during replay of historical events (which would flood the API and
-      // cause status oscillation between historical and current values).
+      // Sparse result events do not contain cumulative counts. Replace totals
+      // from durable state, so repeated/replayed events cannot double-count.
+      // Routine progress events already carry totals and need no extra request.
       if (
-        evt.event === "done" ||
-        (evt.status &&
-          evt.event === "status" &&
-          ["completed", "failed", "awaiting_review", "awaiting_coach_review"].includes(evt.status))
+        shouldRefreshSession(evt)
       ) {
         getSession(sessionId)
           .then((data) => {

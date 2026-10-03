@@ -245,3 +245,9 @@ export function scoreThreshold(config?: { scoring_strictness?: unknown; discover
   const s = typeof config.scoring_strictness === "number" ? config.scoring_strictness : 0.5;
   return Math.round(30 + s * 40);
 }
+
+/** Result events carry job details, not cumulative counts. Reload durable state. */
+export function shouldRefreshSession(event: { event: string; status?: string }) {
+  return ["done", "application_submitted", "application_failed", "shortlist_review"].includes(event.event)
+    || (event.event === "status" && ["completed", "failed", "awaiting_review", "awaiting_coach_review"].includes(event.status ?? ""));
+}

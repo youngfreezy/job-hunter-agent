@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLedger, formatElapsed, runName, runOutcome, scoreThreshold } from "./run";
+import { buildLedger, formatElapsed, runName, runOutcome, scoreThreshold, shouldRefreshSession } from "./run";
 
 describe("runName", () => {
   it("names a run by its first role, the count of others and the place", () => {
@@ -64,5 +64,21 @@ describe("scoreThreshold and formatElapsed", () => {
   it("formats time since start", () => {
     expect(formatElapsed(161)).toBe("+2:41");
     expect(formatElapsed(3725)).toBe("+1:02:05");
+  });
+});
+
+
+// Sparse outcome events must reload authoritative totals instead of incrementing
+// local counters; replaying them therefore cannot count an application twice.
+describe("durable application totals", () => {
+  it("refreshes sparse results and a circuit-breaker shortlist", () => {
+    for (const event of ["application_failed", "application_submitted", "shortlist_review"]) {
+      expect(shouldRefreshSession({ event })).toBe(true);
+    }
+  });
+  it("keeps routine progress local and refreshes terminal status", () => {
+    expect(shouldRefreshSession({ event: "application_progress" })).toBe(false);
+    expect(shouldRefreshSession({ event: "status", status: "failed" })).toBe(true);
+    expect(shouldRefreshSession({ event: "status", status: "applying" })).toBe(false);
   });
 });
