@@ -1469,7 +1469,11 @@ export default function SessionPage() {
                 </>
               )}
               <dt className="text-muted-foreground">Approval</dt>
-              <dd>You approve the shortlist before anything is sent</dd>
+              <dd>
+                {session.session_config?.discovery_mode === "manual_urls"
+                  ? "You approved these job links in Quick Apply"
+                  : "You approve the shortlist before anything is sent"}
+              </dd>
               <dt className="text-muted-foreground">Credit estimate</dt>
               <dd>
                 <span className="font-mono">{submittedCount + failedCount * 0.5}</span>
