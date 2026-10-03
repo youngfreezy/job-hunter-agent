@@ -197,3 +197,32 @@
     transform: scale(1);
   }
 }
+
+/* The current pipeline phase: a thin bar that moves inside its own segment. Nothing else loops. */
+.ledger-current {
+  position: relative;
+  overflow: hidden;
+}
+.ledger-current::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: hsl(var(--primary));
+  animation: ledger-indeterminate 1.6s cubic-bezier(0.2, 0, 0, 1) infinite;
+}
+@keyframes ledger-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ledger-current::after {
+    animation: none;
+    transform: none;
+  }
+}
