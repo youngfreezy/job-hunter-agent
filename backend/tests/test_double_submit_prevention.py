@@ -11,6 +11,8 @@ Verifies that:
 
 import asyncio
 import uuid
+from pathlib import Path
+
 import pytest
 from backend.shared.application_store import (
     check_already_applied,
@@ -26,20 +28,48 @@ pytestmark = pytest.mark.requires_postgres
 
 @pytest.fixture(autouse=True, scope="module")
 def _ensure_schema():
-    """Create application_results table in CI's fresh Postgres."""
+    """Bring CI's fresh Postgres to the real schema before the module runs.
+
+    The alembic chain creates users, sessions and application_results with
+    the foreign keys production has; ensure_table() then adds the columns
+    the store expects.  Both are idempotent.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    cfg = Config(str(backend_dir / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    command.upgrade(cfg, "head")
     asyncio.run(ensure_table())
 
 
 @pytest.fixture()
-def _clean_test_rows():
-    """Track job_ids created during the test and delete them after."""
-    created: list[str] = []
-    yield created
+def _db_identity():
+    """Create a real user and session row for the test, then delete them.
+
+    application_results.session_id references sessions(id) and sessions.user_id
+    references users(id) once the alembic chain has run, so the rows under
+    test must belong to a session that exists.  Deleting the user cascades
+    to the session and to every application_results row created here.
+    """
+    user_id = str(uuid.uuid4())
+    session_id = _unique_id()
     with get_connection() as conn:
-        for jid in created:
-            conn.execute(
-                "DELETE FROM application_results WHERE job_id = %s", (jid,)
-            )
+        conn.execute(
+            "INSERT INTO users (id, email) VALUES (%s, %s)",
+            (user_id, f"{session_id}@test.invalid"),
+        )
+        conn.execute(
+            "INSERT INTO sessions (id, user_id, status) VALUES (%s, %s, 'intake')",
+            (session_id, user_id),
+        )
+        conn.commit()
+    yield session_id, user_id
+    with get_connection() as conn:
+        conn.execute("DELETE FROM application_results WHERE session_id = %s", (session_id,))
+        conn.execute("DELETE FROM sessions WHERE id = %s", (session_id,))
+        conn.execute("DELETE FROM users WHERE id = %s", (user_id,))
         conn.commit()
 
 
@@ -50,12 +80,10 @@ def _unique_id() -> str:
 class TestPendingBlocksDoubleSubmit:
     """A 'pending' record should block check_already_applied."""
 
-    def test_pending_record_does_not_block_resubmit(self, _clean_test_rows):
+    def test_pending_record_does_not_block_resubmit(self, _db_identity):
         """Pending records should NOT block re-attempts — only submitted does."""
         job_id = _unique_id()
-        session_id = _unique_id()
-        user_id = str(uuid.uuid4())
-        _clean_test_rows.append(job_id)
+        session_id, user_id = _db_identity
 
         # No prior record → should return None
         assert check_already_applied(job_id, user_id=user_id) is None
@@ -74,13 +102,11 @@ class TestPendingBlocksDoubleSubmit:
         # Pending should NOT block — only submitted blocks
         assert check_already_applied(job_id, user_id=user_id) is None
 
-    def test_submitted_blocks_resubmit(self, _clean_test_rows):
+    def test_submitted_blocks_resubmit(self, _db_identity):
         """Only submitted status should block re-attempts."""
         job_id = _unique_id()
-        session_id = _unique_id()
-        user_id = str(uuid.uuid4())
+        session_id, user_id = _db_identity
         url = f"https://example.com/job/{uuid.uuid4().hex[:8]}"
-        _clean_test_rows.append(job_id)
 
         record_result(
             session_id=session_id,
@@ -105,11 +131,9 @@ class TestPendingBlocksDoubleSubmit:
 class TestClearPending:
     """clear_pending should remove only the pending record."""
 
-    def test_clear_removes_pending_only(self, _clean_test_rows):
+    def test_clear_removes_pending_only(self, _db_identity):
         job_id = _unique_id()
-        session_id = _unique_id()
-        user_id = str(uuid.uuid4())
-        _clean_test_rows.append(job_id)
+        session_id, user_id = _db_identity
 
         # Insert pending then submitted
         record_result(
@@ -123,11 +147,9 @@ class TestClearPending:
         # No submitted record exists, so should not block
         assert check_already_applied(job_id, user_id=user_id) is None
 
-    def test_clear_does_not_remove_submitted(self, _clean_test_rows):
+    def test_clear_does_not_remove_submitted(self, _db_identity):
         job_id = _unique_id()
-        session_id = _unique_id()
-        user_id = str(uuid.uuid4())
-        _clean_test_rows.append(job_id)
+        session_id, user_id = _db_identity
 
         # Insert submitted record
         record_result(
@@ -144,11 +166,9 @@ class TestFailedSkippedDontBlock:
     """Failed and skipped records should NOT block re-attempts."""
 
     @pytest.mark.parametrize("status", ["failed", "skipped"])
-    def test_non_blocking_statuses(self, _clean_test_rows, status):
+    def test_non_blocking_statuses(self, _db_identity, status):
         job_id = _unique_id()
-        session_id = _unique_id()
-        user_id = str(uuid.uuid4())
-        _clean_test_rows.append(job_id)
+        session_id, user_id = _db_identity
 
         record_result(
             session_id=session_id, job_id=job_id, status=status,
@@ -162,11 +182,9 @@ class TestFailedSkippedDontBlock:
 class TestFullLifecycle:
     """Simulate the full pending → clear → final result lifecycle."""
 
-    def test_pending_then_submitted(self, _clean_test_rows):
+    def test_pending_then_submitted(self, _db_identity):
         job_id = _unique_id()
-        session_id = _unique_id()
-        user_id = str(uuid.uuid4())
-        _clean_test_rows.append(job_id)
+        session_id, user_id = _db_identity
 
         # 1. Record pending (before Skyvern call)
         record_result(
@@ -190,11 +208,9 @@ class TestFullLifecycle:
         assert result is not None
         assert result["job_company"] == "BigCo"
 
-    def test_pending_then_failed(self, _clean_test_rows):
+    def test_pending_then_failed(self, _db_identity):
         job_id = _unique_id()
-        session_id = _unique_id()
-        user_id = str(uuid.uuid4())
-        _clean_test_rows.append(job_id)
+        session_id, user_id = _db_identity
 
         # 1. Record pending
         record_result(
