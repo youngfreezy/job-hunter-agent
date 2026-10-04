@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.gateway.deps import get_current_user
+from backend.gateway.deps import get_current_user, get_model_user, get_owned_registry_session
 from backend.shared.billing_store import debit_wallet, get_wallet
 from backend.shared.config import settings
 
@@ -63,46 +63,49 @@ def _emit_prep(session_id: str, event_type: str, data: Any):
 
 async def _run_prep_pipeline(session_id: str, graph, config, initial_state):
     """Run the interview prep graph in the background."""
-    try:
-        _emit_prep(session_id, "status", {"status": "researching", "message": "Researching company..."})
-        async for chunk in graph.astream(initial_state, config, stream_mode="values", version="v2"):
-            snapshot = chunk["data"]
-            status = snapshot.get("status", "")
-            if status:
-                messages = {
-                    "researching_company": "Researching company culture, news, and values...",
-                    "generating_questions": "Generating personalized interview questions...",
-                }
-                _emit_prep(session_id, "status", {"status": status, "message": messages.get(status, status)})
+    from backend.shared.model_access import model_user_scope, require_model_access
+    with model_user_scope(initial_state.get("user_id")):
+        try:
+            require_model_access(initial_state.get("user_id"))
+            _emit_prep(session_id, "status", {"status": "researching", "message": "Researching company..."})
+            async for chunk in graph.astream(initial_state, config, stream_mode="values", version="v2"):
+                snapshot = chunk["data"]
+                status = snapshot.get("status", "")
+                if status:
+                    messages = {
+                        "researching_company": "Researching company culture, news, and values...",
+                        "generating_questions": "Generating personalized interview questions...",
+                    }
+                    _emit_prep(session_id, "status", {"status": status, "message": messages.get(status, status)})
 
-            if snapshot.get("company_brief") and not _prep_registry[session_id].get("brief_emitted"):
-                _emit_prep(session_id, "company_brief", snapshot["company_brief"])
-                _prep_registry[session_id]["brief_emitted"] = True
+                if snapshot.get("company_brief") and not _prep_registry[session_id].get("brief_emitted"):
+                    _emit_prep(session_id, "company_brief", snapshot["company_brief"])
+                    _prep_registry[session_id]["brief_emitted"] = True
 
-            if snapshot.get("questions") and not _prep_registry[session_id].get("questions_emitted"):
-                all_questions = snapshot["questions"]
-                is_paid = _prep_registry[session_id].get("paid", False)
-                max_free = _prep_registry[session_id].get("max_free_questions", 2)
-                # Send all questions for paid/premium users; only free ones otherwise
-                _emit_prep(session_id, "questions_ready", {
-                    "questions": all_questions if is_paid else all_questions[:max_free],
-                    "total": len(all_questions),
-                })
-                _prep_registry[session_id]["questions_emitted"] = True
-                _prep_registry[session_id]["questions"] = all_questions
+                if snapshot.get("questions") and not _prep_registry[session_id].get("questions_emitted"):
+                    all_questions = snapshot["questions"]
+                    is_paid = _prep_registry[session_id].get("paid", False)
+                    max_free = _prep_registry[session_id].get("max_free_questions", 2)
+                    # Send all questions for paid/premium users; only free ones otherwise
+                    _emit_prep(session_id, "questions_ready", {
+                        "questions": all_questions if is_paid else all_questions[:max_free],
+                        "total": len(all_questions),
+                    })
+                    _prep_registry[session_id]["questions_emitted"] = True
+                    _prep_registry[session_id]["questions"] = all_questions
 
-        _emit_prep(session_id, "ready_for_practice", {"message": "Ready to start mock interview!"})
-        _prep_registry[session_id]["status"] = "ready"
-    except Exception as exc:
-        logger.exception("Interview prep pipeline failed for %s", session_id)
-        _emit_prep(session_id, "error", {"message": str(exc)})
-        _prep_registry[session_id]["status"] = "failed"
+            _emit_prep(session_id, "ready_for_practice", {"message": "Ready to start mock interview!"})
+            _prep_registry[session_id]["status"] = "ready"
+        except Exception as exc:
+            logger.exception("Interview prep pipeline failed for %s", session_id)
+            _emit_prep(session_id, "error", {"message": str(exc)})
+            _prep_registry[session_id]["status"] = "failed"
 
 
 @router.post("", response_model=PrepResponse)
 async def start_prep(request: Request, body: StartPrepRequest):
     """Start a new interview prep session."""
-    user = get_current_user(request)
+    user = get_model_user(request)
     session_id = str(uuid.uuid4())
 
     premium_emails = [e.strip().lower() for e in settings.PREMIUM_EMAILS.split(",") if e.strip()]
@@ -154,6 +157,7 @@ async def start_prep(request: Request, body: StartPrepRequest):
 @router.post("/{session_id}/answer")
 async def submit_answer(request: Request, session_id: str, body: SubmitAnswerRequest):
     """Submit an answer to a question and get grading."""
+    user = get_model_user(request)
     if session_id not in _prep_registry:
         raise HTTPException(404, "Prep session not found")
 
@@ -161,6 +165,8 @@ async def submit_answer(request: Request, session_id: str, body: SubmitAnswerReq
     from langchain_core.messages import HumanMessage, SystemMessage
 
     meta = _prep_registry[session_id]
+    if str(meta.get("user_id")) != str(user["id"]):
+        raise HTTPException(status_code=403, detail="Not your interview session")
     questions = meta.get("questions", [])
 
     # Find the question
@@ -234,10 +240,13 @@ Return as JSON:
 @router.post("/{session_id}/coach")
 async def get_coaching(request: Request, session_id: str, body: CoachRequest):
     """Get AI coaching hints for a question based on the user's resume."""
+    user = get_model_user(request)
     if session_id not in _prep_registry:
         raise HTTPException(404, "Prep session not found")
 
     meta = _prep_registry[session_id]
+    if str(meta.get("user_id")) != str(user["id"]):
+        raise HTTPException(status_code=403, detail="Not your interview session")
 
     # Enforce free question limit for coaching too
     max_free = meta.get("max_free_questions", 2)
@@ -370,8 +379,7 @@ async def unlock_prep(request: Request, session_id: str):
 @router.post("/{session_id}/end")
 async def end_prep(request: Request, session_id: str):
     """End the mock interview and generate readiness report."""
-    if session_id not in _prep_registry:
-        raise HTTPException(404, "Prep session not found")
+    get_owned_registry_session(request, _prep_registry, session_id)
 
     meta = _prep_registry[session_id]
     grades = meta.get("grades", [])
@@ -411,8 +419,7 @@ async def end_prep(request: Request, session_id: str):
 @router.get("/{session_id}/stream")
 async def stream_prep(request: Request, session_id: str):
     """SSE stream for an interview prep session."""
-    if session_id not in _prep_registry:
-        raise HTTPException(404, "Prep session not found")
+    get_owned_registry_session(request, _prep_registry, session_id)
 
     queue: asyncio.Queue = asyncio.Queue()
     _prep_subscribers.setdefault(session_id, []).append(queue)
@@ -443,8 +450,7 @@ async def stream_prep(request: Request, session_id: str):
 @router.get("/{session_id}")
 async def get_prep(request: Request, session_id: str):
     """Get current state of a prep session."""
-    if session_id not in _prep_registry:
-        raise HTTPException(404, "Prep session not found")
+    get_owned_registry_session(request, _prep_registry, session_id)
 
     meta = _prep_registry[session_id]
     max_free = meta.get("max_free_questions", 2)

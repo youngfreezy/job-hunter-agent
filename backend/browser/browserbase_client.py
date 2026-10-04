@@ -79,15 +79,25 @@ def config_from_settings() -> BrowserbaseConfig:
     )
 
 
-def config_for_user(user_id: Optional[str]) -> BrowserbaseConfig:
-    """Env configuration with the user's saved Browserbase settings layered on.
+def server_credentials_allowed(user_id: Optional[str]) -> bool:
+    """Only the explicitly configured owner can spend the server browser account."""
+    return bool(user_id and settings.BROWSERBASE_CONTEXT_USER_ID
+                and str(user_id) == str(settings.BROWSERBASE_CONTEXT_USER_ID))
 
-    A user override replaces the env value only when it is set; per-board
-    Context ids merge only for the configured owner. Other accounts and anonymous
-    callers never inherit server login contexts.
+
+def config_for_user(user_id: Optional[str]) -> BrowserbaseConfig:
+    """Resolve credentials without crossing account/project boundaries.
+
+    Public accounts need both their own key and project. Server credentials and
+    saved login contexts are available only to the configured account owner.
     """
     base = config_from_settings()
-    if not user_id or user_id != settings.BROWSERBASE_CONTEXT_USER_ID:
+    owner = server_credentials_allowed(user_id)
+    server_project, server_key = base.project_id, base.api_key
+    server_contexts = set(base.context_ids.values())
+    if not owner:
+        base.api_key = None
+        base.project_id = None
         base.context_ids = {}
     if not user_id or user_id == "unknown":
         return base
@@ -95,6 +105,13 @@ def config_for_user(user_id: Optional[str]) -> BrowserbaseConfig:
 
     saved = get_browserbase_settings(user_id)
     if not saved:
+        return base
+    if not owner and (
+        (server_project and saved.get("project_id") == server_project)
+        or (server_key and saved.get("api_key") == server_key)
+        or server_contexts.intersection((saved.get("context_ids") or {}).values())
+    ):
+        # A pasted context/project ID is not evidence of permission to use it.
         return base
     merged_contexts = dict(base.context_ids)
     merged_contexts.update({k.lower(): v for k, v in (saved.get("context_ids") or {}).items() if v})

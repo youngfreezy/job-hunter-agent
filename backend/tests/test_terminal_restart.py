@@ -11,6 +11,7 @@ from backend.shared import session_store
 @pytest.fixture
 def stopped_run(monkeypatch):
     row = {'status': 'completed'}
+    monkeypatch.setattr('backend.shared.model_access.require_model_access', MagicMock())
     monkeypatch.setattr(session_store, 'get_session_by_id', lambda _: row)
     monkeypatch.setattr('backend.gateway.deps.get_current_user', lambda _: {'id': 'owner'})
     monkeypatch.setattr('backend.gateway.deps.verify_session_owner', AsyncMock())

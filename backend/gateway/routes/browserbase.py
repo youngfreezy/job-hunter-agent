@@ -57,7 +57,7 @@ def _public_settings(user_id: str) -> Dict[str, object]:
         "context_ids": saved.get("context_ids") or {},
         "boards": list(browserbase_store.CONTEXT_BOARDS),
         "login_capture_boards": sorted(login_capture.BOARD_LOGIN),
-        "env_configured": env.configured,  # a server-wide key exists as a fallback
+        "env_configured": env.configured and bbc.server_credentials_allowed(user_id),
         "effective_configured": effective.configured,
         "effective_context_ids": effective.context_ids,
     }
@@ -72,6 +72,13 @@ async def get_settings_route(request: Request):
 @router.put("/settings")
 async def update_settings_route(request: Request, body: BrowserbaseSettingsUpdate):
     user = get_current_user(request)
+    env = bbc.config_from_settings()
+    if not bbc.server_credentials_allowed(user["id"]) and (
+        (env.project_id and body.project_id == env.project_id)
+        or (env.api_key and body.api_key == env.api_key)
+        or set(env.context_ids.values()).intersection(body.context_ids.values())
+    ):
+        return JSONResponse(status_code=403, content={"detail": "Use your own Browserbase project and login contexts."})
     unknown = sorted(k for k in body.context_ids if k.lower() not in browserbase_store.CONTEXT_BOARDS)
     if unknown:
         return JSONResponse(

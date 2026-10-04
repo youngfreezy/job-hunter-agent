@@ -414,3 +414,36 @@ def test_server_context_is_not_shared_with_other_accounts(monkeypatch):
     monkeypatch.setattr(store, 'get_browserbase_settings', lambda uid: None)
     assert bbc.config_for_user('another-user').context_ids == {}
     assert bbc.config_for_user(None).context_ids == {}
+
+
+@pytest.mark.parametrize('uid', [None, 'unknown', 'another-user'])
+def test_other_accounts_never_inherit_server_credentials(monkeypatch, uid):
+    monkeypatch.setattr(store, 'get_browserbase_settings', lambda _: None)
+    config = bbc.config_for_user(uid)
+    assert not config.configured
+    assert config.api_key is None and config.project_id is None
+    assert config.context_ids == {}
+
+
+@pytest.mark.parametrize('overrides', [
+    {'project_id': 'proj-env'},
+    {'api_key': 'bb_env_key'},
+    {'context_ids': {'indeed': 'ctx-env-indeed'}},
+])
+def test_public_account_cannot_claim_server_project_or_context(monkeypatch, overrides):
+    saved = {'api_key': 'own-key', 'project_id': 'own-project', 'context_ids': {'indeed': 'own-context'}}
+    saved.update(overrides)
+    monkeypatch.setattr(store, 'get_browserbase_settings', lambda _: saved)
+    config = bbc.config_for_user('another-user')
+    assert not config.configured
+    assert config.context_ids == {}
+
+
+def test_public_account_can_only_use_its_complete_own_configuration(monkeypatch):
+    monkeypatch.setattr(store, 'get_browserbase_settings', lambda _: {
+        'api_key': 'own-key', 'project_id': 'own-project', 'context_ids': {'indeed': 'own-context'},
+    })
+    config = bbc.config_for_user('another-user')
+    assert config.configured
+    assert config.api_key == 'own-key' and config.project_id == 'own-project'
+    assert config.context_ids == {'indeed': 'own-context'}

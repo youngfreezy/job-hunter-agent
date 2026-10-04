@@ -14,6 +14,7 @@ from backend.shared.anthropic_compat import CompatibleChatAnthropic, LATEST_MODE
 from langchain_openai import ChatOpenAI
 
 from backend.shared.config import get_settings
+from backend.shared.model_access import current_model_credentials, model_provider_for_context
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ MAX_BACKOFF = 60
 def get_llm_provider() -> str:
     """Return the configured LLM provider."""
     settings = get_settings()
-    provider = (settings.LLM_PROVIDER or "openai").strip().lower()
+    provider = model_provider_for_context()
     if provider not in {"openai", "anthropic"}:
         raise ValueError(f"Unsupported LLM_PROVIDER={settings.LLM_PROVIDER!r}")
     return provider
@@ -39,9 +40,9 @@ def anthropic_default_headers() -> dict[str, str]:
     An organization-scoped API key must name the workspace it bills to, or the
     API answers 400 asking for ``anthropic-workspace-id``.
     """
-    settings = get_settings()
-    if settings.ANTHROPIC_WORKSPACE_ID:
-        return {"anthropic-workspace-id": settings.ANTHROPIC_WORKSPACE_ID}
+    credentials = current_model_credentials()
+    if credentials.workspace_id:
+        return {"anthropic-workspace-id": credentials.workspace_id}
     return {}
 
 def default_model() -> str:
@@ -95,17 +96,20 @@ def build_llm(
 ) -> Any:
     """Build the configured chat model with shared retry settings."""
     settings = get_settings()
-    provider = get_llm_provider()
+    credentials = current_model_credentials()
+    provider = credentials.provider
     resolved_model = model or default_model()
+    if not credentials.server_funded and not resolved_model.startswith("claude-"):
+        resolved_model = default_model()
 
     from backend.shared.model_budget import configured_ledger, BudgetChatAnthropic, BudgetStopped, Ledger, MODEL
     budget_path = configured_ledger()
-    if budget_path:
-        if provider != 'anthropic' or not settings.ANTHROPIC_API_KEY:
+    if budget_path and credentials.server_funded:
+        if provider != 'anthropic' or not credentials.api_key:
             raise BudgetStopped('Budget mode requires the approved Anthropic provider.')
         Ledger(budget_path).snapshot()  # Missing/corrupt ledgers must never silently reset.
         return BudgetChatAnthropic(
-            model=MODEL, api_key=settings.ANTHROPIC_API_KEY,
+            model=MODEL, api_key=credentials.api_key,
             anthropic_api_url='https://api.anthropic.com',
             max_tokens=max_tokens, **model_options(MODEL, temperature), max_retries=0,
             disable_streaming=True, timeout=timeout or 90,
@@ -114,11 +118,11 @@ def build_llm(
         )
 
     if provider == "openai":
-        if not settings.OPENAI_API_KEY:
+        if not credentials.api_key:
             raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
         kwargs: dict[str, Any] = {
             "model": resolved_model,
-            "api_key": settings.OPENAI_API_KEY,
+            "api_key": credentials.api_key,
             "max_completion_tokens": max_tokens,
             "temperature": temperature,
             "max_retries": MAX_RETRIES,
@@ -131,11 +135,11 @@ def build_llm(
             kwargs["timeout"] = timeout
         return ChatOpenAI(**kwargs)
 
-    if not settings.ANTHROPIC_API_KEY:
+    if not credentials.api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
     kwargs = {
         "model": resolved_model,
-        "api_key": settings.ANTHROPIC_API_KEY,
+        "api_key": credentials.api_key,
         "max_tokens": max_tokens,
         **model_options(resolved_model, temperature),
         "max_retries": MAX_RETRIES,
@@ -157,14 +161,15 @@ def build_browser_use_llm(
 ) -> Any:
     """Build a browser-use-compatible LLM instance for the configured provider."""
     from backend.shared.model_budget import configured_ledger, BudgetStopped
-    if configured_ledger():
+    credentials = current_model_credentials()
+    if configured_ledger() and credentials.server_funded:
         raise BudgetStopped('Alternate browser-use provider is disabled in budget mode; use Stagehand.')
     settings = get_settings()
-    provider = get_llm_provider()
+    provider = credentials.provider
     resolved_model = model or browser_model()
 
     if provider == "openai":
-        if not settings.OPENAI_API_KEY:
+        if not credentials.api_key:
             raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
         from browser_use import ChatOpenAI as BrowserUseChatOpenAI
 
@@ -178,13 +183,13 @@ def build_browser_use_llm(
                                'reasoning_effort': 'none', 'reasoning_models': [resolved_model]}
         return BrowserUseChatOpenAI(
             model=resolved_model,
-            api_key=settings.OPENAI_API_KEY,
+            api_key=credentials.api_key,
             max_completion_tokens=max_tokens,
             max_retries=MAX_RETRIES,
             **browser_options,
         )
 
-    if not settings.ANTHROPIC_API_KEY:
+    if not credentials.api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
     if resolved_model in LATEST_MODELS:
         raise ValueError('Use Stagehand for Claude 5.5; this browser-use adapter forces tool calls.')
@@ -192,7 +197,7 @@ def build_browser_use_llm(
 
     bu_kwargs: dict[str, Any] = {
         "model": resolved_model,
-        "api_key": settings.ANTHROPIC_API_KEY,
+        "api_key": credentials.api_key,
         "max_tokens": max_tokens,
         "temperature": temperature,
     }

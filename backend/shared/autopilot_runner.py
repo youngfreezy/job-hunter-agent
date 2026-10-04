@@ -118,6 +118,9 @@ async def _run_schedule(
     """Spawn a session for a single autopilot schedule."""
     schedule_id = sched["id"]
     user_id = sched["user_id"]
+    from backend.shared.model_access import require_model_access
+    require_model_access(str(user_id))
+
 
     logger.info("Autopilot: running schedule %s for user %s", schedule_id, user_id)
 

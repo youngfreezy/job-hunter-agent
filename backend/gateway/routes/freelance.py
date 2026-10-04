@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.gateway.deps import get_current_user
+from backend.gateway.deps import get_current_user, get_model_user, get_owned_registry_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/freelance", tags=["freelance"])
@@ -53,49 +53,52 @@ def _emit_fl(session_id: str, event_type: str, data: Any):
 
 async def _run_freelance_pipeline(session_id: str, graph, config, initial_state):
     """Run the freelance matchmaker graph in the background."""
-    try:
-        _emit_fl(session_id, "status", {"status": "starting", "message": "Starting freelance gig search..."})
-        async for chunk in graph.astream(initial_state, config, stream_mode="values", version="v2"):
-            snapshot = chunk["data"]
-            status = snapshot.get("status", "")
-            if status:
-                messages = {
-                    "generating_profiles": "Generating your freelance profiles...",
-                    "discovering_gigs": "Searching for matching gigs across platforms...",
-                    "generating_proposals": "Writing personalized proposals...",
-                }
-                _emit_fl(session_id, "status", {"status": status, "message": messages.get(status, status)})
+    from backend.shared.model_access import model_user_scope, require_model_access
+    with model_user_scope(initial_state.get("user_id")):
+        try:
+            require_model_access(initial_state.get("user_id"))
+            _emit_fl(session_id, "status", {"status": "starting", "message": "Starting freelance gig search..."})
+            async for chunk in graph.astream(initial_state, config, stream_mode="values", version="v2"):
+                snapshot = chunk["data"]
+                status = snapshot.get("status", "")
+                if status:
+                    messages = {
+                        "generating_profiles": "Generating your freelance profiles...",
+                        "discovering_gigs": "Searching for matching gigs across platforms...",
+                        "generating_proposals": "Writing personalized proposals...",
+                    }
+                    _emit_fl(session_id, "status", {"status": status, "message": messages.get(status, status)})
 
-            if snapshot.get("profiles") and not _fl_registry[session_id].get("profiles_emitted"):
-                _emit_fl(session_id, "profiles_ready", {"profiles": snapshot["profiles"]})
-                _fl_registry[session_id]["profiles_emitted"] = True
+                if snapshot.get("profiles") and not _fl_registry[session_id].get("profiles_emitted"):
+                    _emit_fl(session_id, "profiles_ready", {"profiles": snapshot["profiles"]})
+                    _fl_registry[session_id]["profiles_emitted"] = True
 
-            if snapshot.get("scored_gigs") and not _fl_registry[session_id].get("gigs_emitted"):
-                _emit_fl(session_id, "gigs_found", {
-                    "gigs": snapshot["scored_gigs"],
-                    "total": len(snapshot["scored_gigs"]),
-                })
-                _fl_registry[session_id]["gigs_emitted"] = True
+                if snapshot.get("scored_gigs") and not _fl_registry[session_id].get("gigs_emitted"):
+                    _emit_fl(session_id, "gigs_found", {
+                        "gigs": snapshot["scored_gigs"],
+                        "total": len(snapshot["scored_gigs"]),
+                    })
+                    _fl_registry[session_id]["gigs_emitted"] = True
 
-            if snapshot.get("proposals") and not _fl_registry[session_id].get("proposals_emitted"):
-                _emit_fl(session_id, "proposals_ready", {
-                    "proposals": snapshot["proposals"],
-                    "total": len(snapshot["proposals"]),
-                })
-                _fl_registry[session_id]["proposals_emitted"] = True
+                if snapshot.get("proposals") and not _fl_registry[session_id].get("proposals_emitted"):
+                    _emit_fl(session_id, "proposals_ready", {
+                        "proposals": snapshot["proposals"],
+                        "total": len(snapshot["proposals"]),
+                    })
+                    _fl_registry[session_id]["proposals_emitted"] = True
 
-        _emit_fl(session_id, "done", {"message": "Freelance search complete! Review your proposals."})
-        _fl_registry[session_id]["status"] = "completed"
-    except Exception as exc:
-        logger.exception("Freelance pipeline failed for %s", session_id)
-        _emit_fl(session_id, "error", {"message": str(exc)})
-        _fl_registry[session_id]["status"] = "failed"
+            _emit_fl(session_id, "done", {"message": "Freelance search complete! Review your proposals."})
+            _fl_registry[session_id]["status"] = "completed"
+        except Exception as exc:
+            logger.exception("Freelance pipeline failed for %s", session_id)
+            _emit_fl(session_id, "error", {"message": str(exc)})
+            _fl_registry[session_id]["status"] = "failed"
 
 
 @router.post("", response_model=FreelanceResponse)
 async def start_freelance(request: Request, body: StartFreelanceRequest):
     """Start a new freelance gig search."""
-    user = get_current_user(request)
+    user = get_model_user(request)
     session_id = str(uuid.uuid4())
 
     _fl_registry[session_id] = {
@@ -137,8 +140,7 @@ async def start_freelance(request: Request, body: StartFreelanceRequest):
 @router.get("/{session_id}/stream")
 async def stream_freelance(request: Request, session_id: str):
     """SSE stream for a freelance session."""
-    if session_id not in _fl_registry:
-        raise HTTPException(404, "Freelance session not found")
+    get_owned_registry_session(request, _fl_registry, session_id)
 
     queue: asyncio.Queue = asyncio.Queue()
     _fl_subscribers.setdefault(session_id, []).append(queue)
@@ -169,8 +171,7 @@ async def stream_freelance(request: Request, session_id: str):
 @router.get("/{session_id}")
 async def get_freelance(request: Request, session_id: str):
     """Get current state of a freelance session."""
-    if session_id not in _fl_registry:
-        raise HTTPException(404, "Freelance session not found")
+    get_owned_registry_session(request, _fl_registry, session_id)
 
     meta = _fl_registry[session_id]
     result: Dict[str, Any] = {

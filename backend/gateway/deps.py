@@ -19,9 +19,31 @@ def get_current_user(request: Request) -> dict:
     email = getattr(request.state, "user_email", None)
 
     if email:
-        return get_or_create_user(email)
+        from backend.shared.model_access import bind_model_user
+        user = get_or_create_user(email)
+        bind_model_user(str(user["id"]))
+        return user
 
     raise HTTPException(status_code=401, detail="Authentication required")
+
+
+def get_model_user(request: Request) -> dict:
+    """Authenticate and reject unfunded model work before launching a task."""
+    from backend.shared.model_access import require_model_access
+    user = get_current_user(request)
+    require_model_access(str(user["id"]))
+    return user
+
+
+def get_owned_registry_session(request: Request, registry: dict, session_id: str) -> dict:
+    """Authorize auxiliary in-memory reports before reads, events, or mutation."""
+    user = get_current_user(request)
+    meta = registry.get(session_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if str(meta.get("user_id")) != str(user["id"]):
+        raise HTTPException(status_code=403, detail="Not your session")
+    return meta
 
 
 async def verify_session_owner(session_id: str, user: dict, request: Request) -> None:

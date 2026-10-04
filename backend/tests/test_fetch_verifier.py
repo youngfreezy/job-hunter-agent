@@ -16,10 +16,14 @@ from backend.shared.models.schemas import ATSType, JobBoard, JobListing, ScoredJ
 
 @pytest.fixture(autouse=True)
 def _bb_settings(monkeypatch):
+    monkeypatch.setattr(settings, "BROWSERBASE_CONTEXT_USER_ID", "verifier-test-owner")
+    monkeypatch.setattr("backend.shared.browserbase_store.get_browserbase_settings", lambda _: None)
     monkeypatch.setattr(settings, "BROWSERBASE_API_KEY", "bb_live_test")
     monkeypatch.setattr(settings, "BROWSERBASE_PROJECT_ID", "proj-123")
     monkeypatch.setattr(settings, "BROWSERBASE_PROXIES", False)
     monkeypatch.setattr(settings, "BROWSERBASE_VERIFY_LISTINGS", True)
+    monkeypatch.setattr("backend.shared.billing_store.get_blocked_companies", lambda _: set())
+    monkeypatch.setattr("backend.shared.application_rules.load_application_rules", lambda _: "")
 
 
 # A documented 200 response from POST /v1/fetch.
@@ -321,7 +325,7 @@ async def test_verify_shortlist_drops_closed_keeps_open_and_errored(monkeypatch)
         _scored("open", 90), _scored("closed", 85), _scored("errored", 80),
         _scored("noapply", 70), _scored("thin", 60), _scored("blocked", 50),
     ]
-    kept = await fv.verify_shortlist_candidates(jobs, session_id="s1")
+    kept = await fv.verify_shortlist_candidates(jobs, session_id="s1", user_id="verifier-test-owner")
 
     # Only positive findings (closed copy, a full page with no Apply control) drop a job;
     # errors, thin client-rendered shells and bot blocks keep it with the reason recorded.
@@ -353,7 +357,7 @@ async def test_verify_shortlist_respects_limit(monkeypatch):
     monkeypatch.setattr(fv, "emit_agent_event", AsyncMock())
 
     jobs = [_scored(str(i), 90 - i) for i in range(5)]
-    kept = await fv.verify_shortlist_candidates(jobs, session_id="s1", limit=3)
+    kept = await fv.verify_shortlist_candidates(jobs, session_id="s1", user_id="verifier-test-owner", limit=3)
 
     assert len(seen) == 3
     assert len(kept) == 5
@@ -368,7 +372,7 @@ async def test_verify_shortlist_skips_without_api_key(monkeypatch):
     monkeypatch.setattr(fv, "fetch_markdown", fetch)
 
     jobs = [_scored("a", 90)]
-    kept = await fv.verify_shortlist_candidates(jobs, session_id="s1")
+    kept = await fv.verify_shortlist_candidates(jobs, session_id="s1", user_id="verifier-test-owner")
 
     fetch.assert_not_awaited()
     assert kept == jobs
@@ -383,7 +387,7 @@ async def test_verify_shortlist_honours_disable_flag(monkeypatch):
     monkeypatch.setattr(fv, "fetch_markdown", fetch)
 
     jobs = [_scored("a", 90)]
-    await fv.verify_shortlist_candidates(jobs)
+    await fv.verify_shortlist_candidates(jobs, user_id="verifier-test-owner")
 
     fetch.assert_not_awaited()
     assert jobs[0].job.verify_note == "verifier disabled (BROWSERBASE_VERIFY_LISTINGS=false)"
@@ -439,6 +443,7 @@ async def test_scoring_runs_verifier_before_capping_shortlist(monkeypatch):
 
     result = await scoring.run_scoring_agent({
         "session_id": "verify-test",
+        "user_id": "verifier-test-owner",
         "resume_text": "Python engineer",
         "discovered_jobs": [_job("0"), _job("1"), _job("2")],
         "session_config": {"max_jobs": 2, "scoring_strictness": 0.0},

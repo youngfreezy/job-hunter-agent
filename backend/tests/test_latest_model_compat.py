@@ -100,3 +100,13 @@ def test_gpt5_override_preserves_legacy_options(settings):
     client = llm.build_llm(model='gpt-5-mini')
     assert client.use_responses_api is None
     assert client.temperature is None  # Existing LangChain GPT-5 normalization.
+
+
+@pytest.fixture(autouse=True)
+def _explicit_owner_model_scope(monkeypatch):
+    """These provider/ledger tests execute as the configured server owner."""
+    from backend.shared import model_access, llm
+    monkeypatch.setattr(model_access, 'get_settings', lambda: llm.get_settings())
+    monkeypatch.setattr(model_access, 'is_server_model_owner', lambda uid: uid == 'test-model-owner')
+    with model_access.model_user_scope('test-model-owner'):
+        yield

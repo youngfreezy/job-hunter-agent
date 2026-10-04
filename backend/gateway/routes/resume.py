@@ -14,7 +14,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from backend.gateway.deps import get_current_user
+from backend.gateway.deps import get_model_user
 from backend.shared.llm import build_llm, light_model, invoke_with_retry
 from backend.shared.models.schemas import SearchConfig
 
@@ -57,7 +57,7 @@ class ResumeAnalyzeResponse(BaseModel):
 @router.post("/analyze", response_model=ResumeAnalyzeResponse)
 async def analyze_resume(body: ResumeAnalyzeRequest, request: Request):
     """Extract job search preferences from resume text using a fast LLM."""
-    get_current_user(request)  # auth check
+    get_model_user(request)  # authenticate and check provider funding
 
     resume_text = body.resume_text.strip()
     if not resume_text:

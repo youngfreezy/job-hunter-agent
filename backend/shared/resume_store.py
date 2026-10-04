@@ -23,8 +23,10 @@ CREATE TABLE IF NOT EXISTS resume_files (
     session_id TEXT PRIMARY KEY,
     encrypted_data BYTEA NOT NULL,
     original_extension TEXT NOT NULL DEFAULT '.pdf',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    owner_user_id TEXT
 );
+ALTER TABLE resume_files ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
 """
 
 _ensured = False
@@ -41,20 +43,21 @@ def _ensure_table() -> None:
     _ensured = True
 
 
-def save_resume(session_id: str, encrypted_data: bytes, extension: str = ".pdf") -> None:
+def save_resume(session_id: str, encrypted_data: bytes, extension: str = ".pdf", *, owner_user_id: str | None = None) -> None:
     """Store encrypted resume bytes in Postgres."""
     _ensure_table()
     pool = get_pool()
     with pool.connection() as conn:
         conn.execute(
             """
-            INSERT INTO resume_files (session_id, encrypted_data, original_extension)
-            VALUES (%s, %s, %s)
+            INSERT INTO resume_files (session_id, encrypted_data, original_extension, owner_user_id)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT (session_id)
             DO UPDATE SET encrypted_data = EXCLUDED.encrypted_data,
-                          original_extension = EXCLUDED.original_extension
+                          original_extension = EXCLUDED.original_extension,
+                          owner_user_id = COALESCE(resume_files.owner_user_id, EXCLUDED.owner_user_id)
             """,
-            (session_id, encrypted_data, extension),
+            (session_id, encrypted_data, extension, owner_user_id),
         )
         conn.commit()
     logger.info("Resume saved to DB for session %s (%d bytes)", session_id, len(encrypted_data))
@@ -75,6 +78,23 @@ def get_resume(session_id: str) -> Optional[tuple[bytes, str]]:
     if row:
         return (bytes(row[0]), row[1])
     return None
+
+
+def get_resume_for_user(file_id: str, user_id: str) -> Optional[tuple[bytes, str]]:
+    """Authorize uploaded UUIDs; legacy files require an owned session link."""
+    _ensure_table()
+    with get_pool().connection() as conn:
+        row = conn.execute(
+            """SELECT rf.encrypted_data, rf.original_extension
+               FROM resume_files rf
+               WHERE rf.session_id = %s AND (
+                   rf.owner_user_id = %s OR
+                   (rf.owner_user_id IS NULL AND EXISTS (
+                       SELECT 1 FROM sessions s
+                       WHERE s.id::text = rf.session_id AND s.user_id = %s)))""",
+            (file_id, user_id, user_id),
+        ).fetchone()
+    return (bytes(row[0]), row[1]) if row else None
 
 
 def get_resume_bytes(session_id: str) -> Optional[tuple[bytes, str]]:

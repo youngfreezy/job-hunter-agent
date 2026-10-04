@@ -246,6 +246,24 @@ async def _stream_graph(
     config: dict,
     input_state: Any,
 ) -> str | None:
+    """Bind every start/resume/recovery to its persisted session owner."""
+    from backend.shared.model_execution import run_model_task
+    from backend.shared.session_store import get_session_by_id
+    owner = (session_registry.get(session_id) or {}).get("user_id")
+    if not owner:
+        owner = (get_session_by_id(session_id) or {}).get("user_id")
+    # Fresh starts also carry the server-authenticated owner in initial state.
+    if not owner and isinstance(input_state, dict):
+        owner = input_state.get("user_id")
+    return await run_model_task(owner, lambda: _stream_graph_bound(session_id, graph, config, input_state))
+
+
+async def _stream_graph_bound(
+    session_id: str,
+    graph: Any,
+    config: dict,
+    input_state: Any,
+) -> str | None:
     """Stream a graph run and emit SSE events for each state snapshot.
 
     Returns the interrupt stage name (e.g. "coach_review") if the graph
@@ -939,8 +957,11 @@ async def list_sessions(request: Request):
         if reg and db_s["status"] not in ("completed", "failed"):
             # Only overlay non-status fields (DB status is authoritative)
             for key in ("applications_submitted", "applications_failed"):
-                if reg.get(key, 0) > db_s.get(key, 0):
-                    db_s[key] = reg[key]
+                live_count = reg.get(key, 0)
+                if key == "applications_failed":
+                    live_count = max(0, live_count - db_s.get("applications_uncertain", 0))
+                if live_count > db_s.get(key, 0):
+                    db_s[key] = live_count
 
     sessions = sorted(
         db_sessions.values(),
@@ -994,14 +1015,36 @@ async def delete_session_endpoint(session_id: str, request: Request):
     return {"ok": True}
 
 
+def _load_owned_resume(body: StartSessionRequest, user_id: str):
+    """Resolve only an owned upload before allocating or launching a run."""
+    import os
+    file_uuid = body.resume_uuid
+    if not file_uuid and body.resume_file_path:
+        file_uuid = os.path.basename(body.resume_file_path).split(".")[0]
+    # Never pass a client-selected filesystem path into an application worker.
+    body.resume_file_path = None
+    if not file_uuid:
+        return None
+    from backend.shared.resume_store import get_resume_for_user
+    try:
+        row = get_resume_for_user(file_uuid, user_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Resume storage is temporarily unavailable")
+    if not row:
+        raise HTTPException(status_code=404, detail="Resume upload not found. Please upload your resume again.")
+    body.resume_uuid = file_uuid
+    return row
+
+
 @router.post("")
 async def start_session(body: StartSessionRequest, request: Request):
     """Create a new pipeline session and begin execution in the background."""
     session_id = str(uuid.uuid4())
     graph = request.app.state.graph
-    from backend.gateway.deps import get_current_user
-    user = get_current_user(request)
+    from backend.gateway.deps import get_model_user
+    user = get_model_user(request)
     user_id = str(user["id"])  # Ensure string — users.id is UUID, sessions.user_id is TEXT
+    owned_resume = _load_owned_resume(body, user_id)
 
     from backend.shared.config import settings
     if settings.INDEED_ONLY:
@@ -1062,30 +1105,22 @@ async def start_session(body: StartSessionRequest, request: Request):
     session_registry[session_id] = session_meta
     upsert_session(session_id, session_meta)
 
-    # Re-key the resume from the parse-time file UUID to this session_id.
-    # parse-resume saved to Postgres keyed by file UUID; we copy it under session_id.
-    file_uuid = body.resume_uuid  # Preferred: explicit UUID from parse-resume response
-    if not file_uuid:
-        logger.warning("No resume_uuid in start_session body for session %s (resume_file_path=%s)", session_id, body.resume_file_path)
-    if not file_uuid and body.resume_file_path:
-        # Legacy fallback: extract UUID from file path
+    if owned_resume:
+        from backend.shared.resume_store import save_resume
         import os
-        basename = os.path.basename(body.resume_file_path)
-        file_uuid = basename.split(".")[0]
-        logger.info("Using legacy resume_file_path to extract UUID: %s", file_uuid)
-
-    if file_uuid:
+        import tempfile
+        enc_data, ext = owned_resume
         try:
-            from backend.shared.resume_store import save_resume as _save_resume_db, get_resume as _get_resume_db
-            row = _get_resume_db(file_uuid)
-            if row:
-                enc_data, ext = row
-                _save_resume_db(session_id, enc_data, ext)
-                logger.info("Resume re-keyed from %s to session %s", file_uuid, session_id)
-            else:
-                logger.error("No resume in Postgres for file_uuid %s — parse-resume may not have saved it", file_uuid)
+            save_resume(session_id, enc_data, ext, owner_user_id=user_id)
+            resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
+            os.makedirs(resume_dir, exist_ok=True)
+            fd, path = tempfile.mkstemp(prefix=f"{session_id}-", suffix=f"{ext}.enc", dir=resume_dir)
+            with os.fdopen(fd, "wb") as output:
+                output.write(enc_data)
+            body.resume_file_path = path
         except Exception:
-            logger.warning("Failed to re-key resume in start_session", exc_info=True)
+            _set_session_status(session_id, "failed")
+            raise HTTPException(status_code=503, detail="Resume storage is temporarily unavailable")
 
     # Launch the pipeline as a background coroutine
     _spawn_background(_run_pipeline(session_id, body, graph, user_id=user_id))
@@ -1112,11 +1147,11 @@ class RerunRequest(_RerunBase):
 @router.post("/{session_id}/rerun")
 async def rerun_session(session_id: str, body: RerunRequest, request: Request):
     """Clone a completed/failed session with same params (or overrides) and launch."""
-    from backend.gateway.deps import get_current_user
+    from backend.gateway.deps import get_model_user
     from backend.shared.session_store import get_session_by_id
     from backend.shared.resume_store import get_resume as _get_resume_db, save_resume as _save_resume_db
 
-    user = get_current_user(request)
+    user = get_model_user(request)
     user_id = str(user["id"])
     graph = request.app.state.graph
 
@@ -1661,8 +1696,8 @@ async def stream_session(session_id: str, request: Request):
 @router.post("/{session_id}/coach-chat")
 async def coach_chat(session_id: str, body: CoachChatRequest, request: Request):
     """Revise coached artifacts interactively while awaiting coach review."""
-    from backend.gateway.deps import get_current_user, verify_session_owner
-    user = get_current_user(request)
+    from backend.gateway.deps import get_model_user, verify_session_owner
+    user = get_model_user(request)
     await verify_session_owner(session_id, user, request)
 
     graph = request.app.state.graph
@@ -1755,6 +1790,8 @@ async def submit_coach_review(session_id: str, body: CoachReviewRequest, request
 
     graph_state = await graph.aget_state(config)
     _require_resumable_session(session_id)
+    from backend.shared.model_access import require_model_access
+    require_model_access(str(user["id"]))
     values = graph_state.values if hasattr(graph_state, "values") else {}
     if values.get("pause_requested"):
         await graph.aupdate_state(
@@ -1797,6 +1834,8 @@ async def steer_session(session_id: str, body: SteerRequest, request: Request):
     config = {"configurable": {"thread_id": session_id}}
     graph_state = await graph.aget_state(config)
     _require_resumable_session(session_id)
+    from backend.shared.model_access import require_model_access
+    require_model_access(str(user["id"]))
     values = graph_state.values if hasattr(graph_state, "values") else {}
     judge_result = await preview_steering_message(values, body.message)
     _require_resumable_session(session_id)
@@ -1933,6 +1972,8 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
 
     graph_state = await graph.aget_state(config)
     _require_resumable_session(session_id)
+    from backend.shared.model_access import require_model_access
+    require_model_access(str(user["id"]))
     values = graph_state.values if hasattr(graph_state, "values") else {}
     if values.get("pause_requested"):
         await graph.aupdate_state(
@@ -1970,8 +2011,8 @@ async def review_shortlist(session_id: str, body: ReviewRequest, request: Reques
 @router.post("/{session_id}/login-complete")
 async def confirm_login(session_id: str, request: Request):
     """Signal the application agent that the user has logged in to a job board."""
-    from backend.gateway.deps import get_current_user, verify_session_owner
-    user = get_current_user(request)
+    from backend.gateway.deps import get_model_user, verify_session_owner
+    user = get_model_user(request)
     await verify_session_owner(session_id, user, request)
 
     from backend.orchestrator.agents._login_sync import signal_login_complete
@@ -1985,8 +2026,8 @@ async def confirm_login(session_id: str, request: Request):
 @router.post("/{session_id}/resume-intervention")
 async def resume_intervention(session_id: str, request: Request):
     """Signal the application agent to continue after user intervention."""
-    from backend.gateway.deps import get_current_user, verify_session_owner
-    user = get_current_user(request)
+    from backend.gateway.deps import get_model_user, verify_session_owner
+    user = get_model_user(request)
     await verify_session_owner(session_id, user, request)
     try:
         import redis.asyncio as aioredis
@@ -2014,8 +2055,8 @@ class SubmitDecisionRequest(_BaseModel):
 @router.post("/{session_id}/submit-decision")
 async def submit_decision(session_id: str, body: SubmitDecisionRequest, request: Request):
     """Approve or skip a pending application submission."""
-    from backend.gateway.deps import get_current_user, verify_session_owner
-    user = get_current_user(request)
+    from backend.gateway.deps import get_model_user, verify_session_owner
+    user = get_model_user(request)
     await verify_session_owner(session_id, user, request)
     if body.decision not in ("submit", "skip"):
         raise HTTPException(status_code=400, detail="decision must be 'submit' or 'skip'")
@@ -2072,6 +2113,8 @@ async def rewind_session(session_id: str, body: RewindRequest, request: Request)
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
     _require_resumable_session(session_id)
+    from backend.shared.model_access import require_model_access
+    require_model_access(str(user["id"]))
     next_nodes = getattr(graph_state, "next", ()) or ()
     if not next_nodes:
         raise HTTPException(
@@ -2159,6 +2202,8 @@ async def resume_session(session_id: str, request: Request):
         raise HTTPException(status_code=404, detail="No checkpoint found for this session")
 
     _require_resumable_session(session_id)
+    from backend.shared.model_access import require_model_access
+    require_model_access(str(user["id"]))
     next_nodes = getattr(graph_state, "next", ()) or ()
     if not next_nodes:
         raise HTTPException(
@@ -2229,7 +2274,7 @@ async def resume_session(session_id: str, request: Request):
 async def parse_resume(request: Request, file: UploadFile = File(...)):
     """Extract plain text from an uploaded resume file."""
     from backend.gateway.deps import get_current_user
-    get_current_user(request)  # 401 if not authenticated
+    user = get_current_user(request)  # 401 if not authenticated
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
@@ -2317,9 +2362,10 @@ async def parse_resume(request: Request, file: UploadFile = File(...)):
     try:
         from backend.shared.resume_store import save_resume as _save_resume_db
         with open(enc_path, "rb") as ef:
-            _save_resume_db(file_uuid, ef.read(), f".{suffix}")
+            _save_resume_db(file_uuid, ef.read(), f".{suffix}", owner_user_id=str(user["id"]))
     except Exception:
         logger.warning("Failed to persist resume to Postgres in parse-resume", exc_info=True)
+        raise HTTPException(status_code=503, detail="Resume storage is temporarily unavailable")
 
     return {"text": text, "filename": file.filename, "file_path": enc_path, "resume_uuid": file_uuid}
 
@@ -2340,8 +2386,8 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest, re
     The browser opens to LinkedIn login, waits for the user to log in
     and confirm, then applies updates one section at a time.
     """
-    from backend.gateway.deps import get_current_user, verify_session_owner
-    user = get_current_user(request)
+    from backend.gateway.deps import get_model_user, verify_session_owner
+    user = get_model_user(request)
     await verify_session_owner(session_id, user, request)
     if not body.updates:
         raise HTTPException(status_code=400, detail="No updates provided")
@@ -2371,7 +2417,8 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest, re
         finally:
             unregister_emitter(session_id)
 
-    _spawn_background(_run_linkedin_update())
+    from backend.shared.model_execution import run_model_task
+    _spawn_background(run_model_task(str(user["id"]), _run_linkedin_update))
 
     return {"status": "ok", "message": "LinkedIn update started — open the browser and log in"}
 

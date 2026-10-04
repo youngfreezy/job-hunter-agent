@@ -93,6 +93,18 @@ class Ledger:
         with self._transaction() as db:
             return self._snapshot(db)
 
+    def usage_summary(self):
+        """Read aggregate spend without exposing request data or changing holds."""
+        with self._transaction() as db:
+            state = self._snapshot(db)
+            settled, reserved = db.execute(
+                """SELECT COALESCE(SUM(charged), 0),
+                          COALESCE(SUM(CASE WHEN charged IS NULL THEN reserved ELSE 0 END), 0)
+                   FROM calls"""
+            ).fetchone()
+            return {**state, 'settled_microusd': settled, 'reserved_microusd': reserved,
+                    'remaining_microusd': state['limit_microusd'] - state['committed_microusd']}
+
     def reserve(self, amount):
         if type(amount) is not int or amount <= 0:
             raise BudgetStopped('Invalid model reservation.')

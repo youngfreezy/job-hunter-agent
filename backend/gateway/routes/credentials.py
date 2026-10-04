@@ -107,6 +107,11 @@ async def validate_board_credential(
     user=Depends(get_current_user),
 ) -> JSONResponse:
     """Validate saved credentials by attempting a Skyvern login-only task."""
+    from backend.shared.model_access import is_server_model_owner
+    if not is_server_model_owner(str(user["id"])):
+        return JSONResponse(status_code=403, content={
+            "detail": "Use your Browserbase login session in Settings to verify your job-board login."
+        })
     settings = get_settings()
 
     if not settings.SKYVERN_ENABLED:

@@ -321,3 +321,13 @@ async def test_actual_sdk_transport_serializes_ga_output_and_settles(model, monk
     finally:
         sync.close()
         await async_client.close()
+
+
+@pytest.fixture(autouse=True)
+def _explicit_owner_model_scope(monkeypatch):
+    """These provider/ledger tests execute as the configured server owner."""
+    from backend.shared import model_access, llm
+    monkeypatch.setattr(model_access, 'get_settings', lambda: llm.get_settings())
+    monkeypatch.setattr(model_access, 'is_server_model_owner', lambda uid: uid == 'test-model-owner')
+    with model_access.model_user_scope('test-model-owner'):
+        yield

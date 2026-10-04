@@ -9,7 +9,7 @@ token set by JWTAuthMiddleware, plus account management endpoints.
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -125,6 +125,12 @@ async def delete_user_data(request: Request):
     user = get_current_user(request)
     user_id = user["id"]
     user_email = user["email"]
+    # Remove the owner's model key before deleting the identity that scopes it.
+    from backend.shared.model_key_store import save_model_key
+    try:
+        save_model_key(str(user_id), "")
+    except Exception:
+        raise HTTPException(status_code=503, detail="Account data deletion is temporarily unavailable") from None
     logger.info("GDPR delete requested for user %s (%s)", user_id, user_email)
 
     # 1. Collect session IDs owned by this user

@@ -12,14 +12,15 @@ from stagehand import Stagehand, browserbase
 
 from backend.browser.browserbase_client import BrowserbaseConfig, BrowserbaseSession
 from backend.shared.config import get_settings
-from backend.shared.llm import get_llm_provider
+from backend.shared.model_access import current_model_credentials, current_model_user, model_user_scope
 from backend.browser.stagehand_model import generate
 
 
 async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
     settings = get_settings()
-    provider = get_llm_provider()
-    key = settings.ANTHROPIC_API_KEY if provider == "anthropic" else settings.OPENAI_API_KEY
+    credentials = current_model_credentials()
+    key = credentials.api_key
+    model_user_id = current_model_user()
     if not key or not config.api_key or not context_id:
         raise RuntimeError("Stagehand requires model credentials and your saved Indeed login.")
     cleanup = AsyncExitStack()
@@ -33,8 +34,14 @@ async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
             },
         )
         cleanup.push_async_callback(browser.close)
+        # The SDK may invoke callbacks from its own long-lived dispatch task.
+        # Bind the session's owner explicitly; never rely on that task's context.
+        async def owned_generate(params):
+            with model_user_scope(model_user_id):
+                return await generate(params)
+
         agent = await Stagehand.create(
-            browser=browser, model=generate,
+            browser=browser, model=owned_generate,
             logging={"level": "off"},  # Prompts contain applicant personal information.
             self_heal=True,
         )

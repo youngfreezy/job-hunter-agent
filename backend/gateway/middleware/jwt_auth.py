@@ -154,20 +154,23 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     """Validate NextAuth JWT and attach user email to request state."""
 
     async def dispatch(self, request: Request, call_next):
-        path = request.url.path
+        from backend.shared.model_access import model_user_scope
+        # Each request starts unbound, including public/exempt endpoints.
+        with model_user_scope(None):
+            path = request.url.path
 
-        # Skip exempt paths
-        if path in _EXEMPT_PATHS or path.startswith(_EXEMPT_PREFIXES):
-            request.state.user_email = None
+            # Skip exempt paths
+            if path in _EXEMPT_PATHS or path.startswith(_EXEMPT_PREFIXES):
+                request.state.user_email = None
+                response = await call_next(request)
+                return response
+
+            # Try JWT-based auth
+            email = _extract_email(request)
+            request.state.user_email = email  # None if JWT missing/invalid
+
             response = await call_next(request)
             return response
-
-        # Try JWT-based auth
-        email = _extract_email(request)
-        request.state.user_email = email  # None if JWT missing/invalid
-
-        response = await call_next(request)
-        return response
 
 
 def attach_jwt_auth(app: FastAPI) -> None:
