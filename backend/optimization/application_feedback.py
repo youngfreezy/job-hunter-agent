@@ -154,7 +154,13 @@ def analyze_ats_outcomes() -> Dict[str, Dict[str, Any]]:
 
 
 def _generate_strategy_with_llm(ats_type: str, stats: Dict[str, Any]) -> str:
-    """Use Haiku to synthesize outcome data into a strategy tip."""
+    """Synthesize a tip, using free rules while the application budget is active."""
+    from backend.shared.model_budget import configured_ledger
+
+    if configured_ledger():
+        # Background learning is optional: preserve the demo budget for actual
+        # applications while still refreshing outcome statistics and free tips.
+        return _generate_strategy_fallback(ats_type, stats)
     try:
         from backend.shared.llm import build_llm, light_model
         prompt = (

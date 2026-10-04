@@ -61,3 +61,20 @@ def test_initialization_repairs_legacy_schema_and_refresh_persists(isolated_stra
     assert row == ('fixture strategy', 0.2, 5, {'timeout': 4}, {'read': 4})
     assert feedback.refresh_all_strategies() == 1
     assert conn.execute('SELECT COUNT(*) FROM ats_strategies').fetchone()[0] == 1
+
+
+def test_budget_refresh_still_persists_statistics_without_model(isolated_strategy_table, monkeypatch, tmp_path):
+    from backend.shared import llm
+    from unittest.mock import Mock
+    conn = isolated_strategy_table
+    monkeypatch.setenv('JOBHUNTER_MODEL_BUDGET_LEDGER', str(tmp_path/'not-opened.sqlite'))
+    build = Mock(side_effect=AssertionError('No model call'))
+    monkeypatch.setattr(llm, 'build_llm', build)
+    stats = {'total': 5, 'submitted': 1, 'failed': 4, 'success_rate': 0.2,
+             'top_errors': {'timeout': 4}, 'top_failure_steps': {'read': 4}}
+    monkeypatch.setattr(feedback, 'analyze_ats_outcomes', lambda: {'indeed': stats})
+    assert feedback.refresh_all_strategies() == 1
+    row = conn.execute('SELECT success_rate, total_attempts, strategy_tip FROM ats_strategies').fetchone()
+    assert row[:2] == (0.2, 5)
+    assert '20%' in row[2] and 'slow-loading' in row[2]
+    build.assert_not_called()
