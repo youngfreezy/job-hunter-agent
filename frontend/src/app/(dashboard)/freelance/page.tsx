@@ -114,7 +114,7 @@ export default function FreelancePage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2">Platforms to Search</label>
+          <label className="block text-sm font-medium mb-2">Platform style</label>
           <div className="flex flex-wrap gap-2">
             {PLATFORMS.map((p) => (
               <button
