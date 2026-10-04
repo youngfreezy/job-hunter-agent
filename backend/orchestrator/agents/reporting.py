@@ -125,7 +125,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
 
         # --- Duration ---
         duration_minutes = _compute_duration_minutes(
-            state.get("session_start_time")
+            state.get("session_start_time") or state.get("created_at")
         )
 
         # --- AI-generated next steps ---
