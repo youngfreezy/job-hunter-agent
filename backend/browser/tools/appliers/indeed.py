@@ -73,7 +73,10 @@ Do not continue beyond the resume step until the supplied file is attached.
 Return submit ONLY after all required fields are complete, the supplied resume is attached,
 and the form displays the final application review for this job. Return done only for an actual receipt.
 If sign-in or a verification code is required return auth. For a CAPTCHA return captcha;
-Browserbase handles supported challenges. Never attempt to solve the challenge yourself.
+Browserbase handles supported challenges. CAPTCHA has priority over Continue or Submit:
+while any visible verification challenge remains unresolved, return captcha even if a
+submit button is available. A solver-finished event is not proof that the site accepted
+verification. Never attempt to solve the challenge yourself.
 Do not change account settings, passwords, notifications, profile visibility, or opt into marketing.
 """
 
@@ -99,6 +102,7 @@ class IndeedApplier(BaseApplier):
         self.stagehand = stagehand
         self._submission_attempted = False
         self.employer_site = employer_site
+        self._captcha_monitor = getattr(stagehand, '_jobhunter_captcha_monitor', None)
         if employer_site:
             self.PLATFORM = 'employer'
 
@@ -179,6 +183,22 @@ class IndeedApplier(BaseApplier):
                     raise
                 await asyncio.sleep(0.25)
 
+
+    async def _wait_for_receipt(self):
+        """Allow managed solving to settle after submit, without replaying submit."""
+        saw_solving = False
+        try:
+            async with asyncio.timeout(90):
+                for index in range(45):
+                    saw_solving |= bool(self._captcha_monitor and self._captcha_monitor.active)
+                    if index >= 5 and not saw_solving:
+                        break
+                    await asyncio.sleep(2)
+                    if await self._receipt():
+                        return True
+        except TimeoutError:
+            pass
+        return False
 
     async def _check_answer(self, instruction, applicant_facts, *, review=False):
         from backend.browser.application_answers import check_application_answer
@@ -372,6 +392,25 @@ class IndeedApplier(BaseApplier):
                 if not recovery.data.success:
                     raise ApplicationParked('The supplied resume has not been uploaded; the resume editor could not be opened.')
                 continue
+            captcha_generation = None
+            if step.kind == 'submit' and self._captcha_monitor:
+                generation_before_wait = self._captcha_monitor.generation
+                was_solving = self._captcha_monitor.active
+                if was_solving:
+                    await self._emit_step('Waiting for Browserbase verification before final review...')
+                try:
+                    await self._captcha_monitor.wait_until_idle(timeout=90)
+                except TimeoutError:
+                    return self._fail(str(job.id), 'Browserbase verification did not finish; application was not submitted.',
+                                      ApplicationErrorCategory.CAPTCHA)
+                if was_solving or self._captcha_monitor.generation != generation_before_wait:
+                    # Finished is a scheduling hint, not proof of accepted verification.
+                    # Discard the stale submit decision and let Stagehand read the page.
+                    previous = None
+                    repetitions = 0
+                    await self._emit_step('Browserbase finished verification; checking the current page...')
+                    continue
+                captcha_generation = self._captcha_monitor.generation
             try:
                 await self._check_answer(step.instruction, grounding_facts, review=(
                     step.kind == 'submit' or bool(re.search(r'\b(signature|sign|certify|attest)\b', step.instruction, re.I))))
@@ -379,6 +418,15 @@ class IndeedApplier(BaseApplier):
                 if await resolve_parked_answer(parked.question):
                     continue
                 raise
+            if (step.kind == 'submit' and self._captcha_monitor
+                    and (self._captcha_monitor.active
+                         or self._captcha_monitor.generation != captcha_generation)):
+                # Verification changed during the model audit. Read/audit afresh;
+                # do not mark an intent or operate the submit control yet.
+                previous = None
+                repetitions = 0
+                await self._emit_step('Verification changed during review; checking the form again...')
+                continue
             await self._emit_step('Stagehand: submitting the reviewed application...' if step.kind == 'submit'
                                   else f'Stagehand: {step.instruction[:240]}')
             if step.kind == 'submit':
@@ -397,11 +445,9 @@ class IndeedApplier(BaseApplier):
                 return routed
             if step.kind == 'submit':
                 # Never retry a submit, including on ambiguous action results.
-                for _ in range(5):
-                    await asyncio.sleep(2)
-                    if await self._receipt():
-                        await self._capture_screenshot(job)
-                        return self._make_result(str(job.id), ApplicationStatus.SUBMITTED, cover_letter_used=cover_letter)
+                if await self._wait_for_receipt():
+                    await self._capture_screenshot(job)
+                    return self._make_result(str(job.id), ApplicationStatus.SUBMITTED, cover_letter_used=cover_letter)
                 await self._capture_screenshot(job)
                 return self._fail(str(job.id), 'Submission was attempted but no Indeed receipt was verified. Check Indeed before retrying.')
             if not action.data.success:

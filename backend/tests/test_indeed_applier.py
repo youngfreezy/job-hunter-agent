@@ -102,6 +102,7 @@ def _page(url: str = "https://www.indeed.com/viewjob?jk=abc123"):
 def _stagehand(page, decisions):
     from types import SimpleNamespace
     agent = MagicMock()
+    agent._jobhunter_captcha_monitor = None
     stage_page = MagicMock()
     stage_page.url = AsyncMock(side_effect=lambda: page.url)
     stage_page.file_input = MagicMock(count=AsyncMock(return_value=0), set_input_files=AsyncMock())
@@ -796,5 +797,140 @@ async def test_real_but_irrelevant_resume_quote_cannot_override_certification_au
     assert result.error_message == question
     assert audit.await_count == 2
     resolver.assert_awaited_once()
+    agent.act.assert_not_awaited()
+    indeed_mod.mark_submission_intent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_active_captcha_finishes_then_requires_fresh_planner_and_final_audit(monkeypatch):
+    from backend.browser.captcha_monitor import CaptchaMonitor
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit application'), ('submit', 'Submit application')]])
+    monitor = CaptchaMonitor()
+    monitor.record('browserbase-solving-started')
+    async def finish(**kwargs):
+        indeed_mod.mark_submission_intent.assert_not_called()
+        monitor.record('browserbase-solving-finished')
+    monitor.wait_until_idle = AsyncMock(side_effect=finish)
+    agent._jobhunter_captcha_monitor = monitor
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    audit = AsyncMock()
+    monkeypatch.setattr(applier, '_check_answer', audit)
+    monkeypatch.setattr(applier, '_receipt', AsyncMock(return_value=True))
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.SUBMITTED
+    assert agent.extract.await_count == 3  # discarded stale submit, read page again
+    audit.assert_awaited_once()
+    agent.act.assert_awaited_once_with('Submit application', page=agent.browser.context.active_page.return_value, timeout=45000)
+    indeed_mod.mark_submission_intent.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_captcha_state_change_during_audit_prevents_intent_and_submit(monkeypatch):
+    from backend.browser.captcha_monitor import CaptchaMonitor
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit application'), ('auth', '')]])
+    monitor = CaptchaMonitor()
+    agent._jobhunter_captcha_monitor = monitor
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    async def changed(*args, **kwargs):
+        monitor.record('browserbase-solving-started')
+        monitor.record('browserbase-solving-finished')
+    monkeypatch.setattr(applier, '_check_answer', AsyncMock(side_effect=changed))
+    await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    indeed_mod.mark_submission_intent.assert_not_called()
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_captcha_timeout_before_submit_creates_no_submission_intent(monkeypatch):
+    from backend.browser.captcha_monitor import CaptchaMonitor
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit application')]])
+    monitor = CaptchaMonitor()
+    monitor.record('browserbase-solving-started')
+    monitor.wait_until_idle = AsyncMock(side_effect=TimeoutError())
+    agent._jobhunter_captcha_monitor = monitor
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.CAPTCHA
+    indeed_mod.mark_submission_intent.assert_not_called()
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_post_submit_captcha_extends_receipt_wait_without_second_submit(monkeypatch):
+    from backend.browser.captcha_monitor import CaptchaMonitor
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit application')]])
+    monitor = CaptchaMonitor()
+    agent._jobhunter_captcha_monitor = monitor
+    original_act = agent.act.return_value
+    async def submitted(*args, **kwargs):
+        monitor.record('browserbase-solving-started')
+        return original_act
+    agent.act.side_effect = submitted
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    receipt = AsyncMock(side_effect=[False] * 7 + [True])
+    monkeypatch.setattr(applier, '_receipt', receipt)
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.SUBMITTED
+    assert receipt.await_count == 8
+    agent.act.assert_awaited_once()
+    indeed_mod.mark_submission_intent.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_solver_finished_does_not_authorize_submit_when_page_still_shows_challenge(monkeypatch):
+    from backend.browser.captcha_monitor import CaptchaMonitor
+    page = _page('https://smartapply.indeed.com/form/review')
+    steps = [dict(kind='upload', instruction='', reason=''),
+             dict(kind='submit', instruction='Submit application', reason='')]
+    steps += [dict(kind='captcha', instruction='', reason='Visible challenge remains')] * 4
+    agent = _stagehand(page, steps)
+    monitor = CaptchaMonitor()
+    monitor.record('browserbase-solving-started')
+    async def finish(**kwargs):
+        monitor.record('browserbase-solving-finished')
+    monitor.wait_until_idle = AsyncMock(side_effect=finish)
+    agent._jobhunter_captcha_monitor = monitor
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.CAPTCHA
+    agent.act.assert_not_awaited()
+    indeed_mod.mark_submission_intent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_captcha_start_and_finish_during_idle_wait_discards_stale_submit(monkeypatch):
+    from backend.browser.captcha_monitor import CaptchaMonitor
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit application'), ('auth', '')]])
+    monitor = CaptchaMonitor()
+    async def changed_while_waiting(**kwargs):
+        monitor.record('browserbase-solving-started')
+        monitor.record('browserbase-solving-finished')
+    monitor.wait_until_idle = AsyncMock(side_effect=changed_while_waiting)
+    agent._jobhunter_captcha_monitor = monitor
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert agent.extract.await_count == 3
+    applier._check_answer.assert_not_awaited()
     agent.act.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()

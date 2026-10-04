@@ -241,6 +241,14 @@ class BrowserManager:
                 await self._playwright.stop()
             self._playwright = None
             raise
+        if self.stagehand:
+            from backend.browser.captcha_monitor import CaptchaMonitor
+            monitor = CaptchaMonitor()
+            # A context-level read-only event hook covers existing tabs AND popups.
+            # Install before application navigation so challenge starts are not lost.
+            for browser_context in self._browser.contexts:
+                browser_context.on("console", lambda message: monitor.record(message.text))
+            self.stagehand._jobhunter_captcha_monitor = monitor
         self._bb_session = bb_session
         self._running = True
         self._mode = "browserbase"
