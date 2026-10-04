@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ const WEBHOOK_EVENTS = [
 ];
 
 export default function DeveloperPage() {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("API Keys");
 
   // API Keys state
@@ -50,11 +53,11 @@ export default function DeveloperPage() {
   useEffect(() => {
     listApiKeys()
       .then(setApiKeys)
-      .catch(() => {})
+      .catch(() => setLoadError("Could not load developer settings. Please try again."))
       .finally(() => setLoadingKeys(false));
     listWebhooks()
       .then(setWebhooks)
-      .catch(() => {})
+      .catch(() => setLoadError("Could not load developer settings. Please try again."))
       .finally(() => setLoadingWebhooks(false));
   }, []);
 
@@ -126,6 +129,8 @@ export default function DeveloperPage() {
       prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event]
     );
   }
+
+  if (loadError) return <RecoveryNotice message={loadError} />;
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">

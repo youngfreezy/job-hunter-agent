@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+import { resultStreamError } from "@/lib/result-stream";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -43,6 +45,7 @@ export default function FreelanceResultPage() {
   const [proposals, setProposals] = useState<Record<string, string>>({});
   const [expandedGig, setExpandedGig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [streamAttempt, setStreamAttempt] = useState(0);
   const [hasCredits, setHasCredits] = useState<boolean | null>(null);
 
   // Fetch wallet to determine paywall status
@@ -91,19 +94,15 @@ export default function FreelanceResultPage() {
         es?.close();
       });
 
-      es.addEventListener("error", (e) => {
-        if (e instanceof MessageEvent) {
-          setError(JSON.parse(e.data).message);
-        }
+      es.addEventListener("error", (event) => {
+        setError(resultStreamError(event));
         es?.close();
       });
-
-      es.onerror = () => es?.close();
     }
 
     connect();
     return () => es?.close();
-  }, [id]);
+  }, [id, streamAttempt]);
 
   function matchColor(score: number) {
     if (score >= 85) return "text-green-500";
@@ -134,11 +133,7 @@ export default function FreelanceResultPage() {
         </div>
       )}
 
-      {error && (
-        <div className="bg-destructive/10 border border-destructive rounded-lg p-4">
-          <p className="text-destructive">{error}</p>
-        </div>
-      )}
+      {error && <RecoveryNotice message={error} retryLabel="Retry connection" onRetry={() => { setError(null); setStreamAttempt((value) => value + 1); }} />}
 
       {/* Profiles */}
       {profiles.length > 0 && (

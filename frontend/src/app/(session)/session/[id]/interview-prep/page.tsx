@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+import { resultStreamError } from "@/lib/result-stream";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ export default function InterviewPrepPage() {
   const [submitting, setSubmitting] = useState(false);
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [streamAttempt, setStreamAttempt] = useState(0);
   const [coaching, setCoaching] = useState<Record<string, CoachingHints>>({});
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -87,16 +90,15 @@ export default function InterviewPrepPage() {
       setStatus(data.status);
     });
     es.addEventListener("done", () => es?.close());
-    es.addEventListener("error", (e) => {
-      if (e instanceof MessageEvent) setError(JSON.parse(e.data).message);
-      es?.close();
-    });
-    es.onerror = () => es?.close();
+    es.addEventListener("error", (event) => {
+        setError(resultStreamError(event));
+        es?.close();
+      });
 
     return () => {
       es?.close();
     };
-  }, [prepId]);
+  }, [prepId, streamAttempt]);
 
   // Submit answer
   async function handleSubmitAnswer() {
@@ -611,11 +613,7 @@ export default function InterviewPrepPage() {
         </div>
       )}
 
-      {error && (
-        <div className="bg-destructive/10 border border-destructive rounded-lg p-4">
-          <p className="text-destructive">{error}</p>
-        </div>
-      )}
+      {error && <RecoveryNotice message={error} retryLabel={prepId ? "Retry connection" : "Back to form"} onRetry={() => { setError(null); setStarting(Boolean(prepId)); setStreamAttempt((value) => value + 1); }} />}
     </div>
   );
 }

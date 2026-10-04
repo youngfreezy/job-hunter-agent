@@ -20,7 +20,11 @@ test.describe('Mocked frontend recovery and resume identity', () => {
       if (path === '/api/auth/session') data = { user, expires: new Date(Date.now() + 3600000).toISOString() };
       else if (path === '/api/auth/token') data = { token: 'mock-token' };
       else if (path === '/api/auth/me') data = { user: { ...user, phone_verified: true, phone_number: '+15555550100', notification_channel: 'email', application_rules: '', wallet_balance: 3 } };
-      else if (path.endsWith('/parse-resume')) data = { text: 'Fixture Engineer. Experience building accessible software and reliable APIs.', filename: 'original.pdf', resume_uuid: 'restored-uuid', file_path: '/mock/original.pdf' };
+      else if (path.endsWith('/parse-resume')) {
+        const body=route.request().postData() || '';
+        const name=body.includes('replacement.txt')?'replacement.txt':body.includes('current.txt')?'current.txt':'original.pdf';
+        data={text:name==='current.txt'?'Current Fixture Engineer fixture@example.test. Experience in applied AI.':'Fixture Engineer fixture@example.test. Experience building accessible software.',filename:name,resume_uuid:name+'-uuid',file_path:'/mock/'+name};
+      }
       else if (path === '/api/freelance' || path === '/api/auth/me/notification-channel') { status = 503; data = { detail: 'Fixture service unavailable. Try again.' }; }
       else if (path === '/api/browserbase/settings') data = { api_key_set: false, project_id: '', proxies: false, context_ids: {}, effective_configured: false, boards: ['indeed'], login_capture_boards: ['indeed'] };
       else if (path === '/api/model/settings') data = { ready: false, provider: 'anthropic', funding: 'own_keys', budget: null, models: {} };
@@ -42,15 +46,18 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     await expect(page.getByText(/Couldn.t save the notification preference/)).toBeVisible();
   });
   for (const [route, id] of [['/quick-apply', 'resume-upload-standalone'], ['/session/new', 'resume-upload']] as const) {
-    test(`${route} TXT replacement invalidates the previous PDF attachment`, async ({ page }) => {
+    test(`${route} TXT replacement uploads its own attachment and invalidates the previous PDF`, async ({ page }) => {
       await page.goto(route);
       if (route === '/quick-apply') await page.getByRole('button', { name: 'Change resume' }).click();
       const input = page.locator('#' + id);
       await expect(input).toBeEnabled();
       await input.setInputFiles({ name: 'replacement.txt', mimeType: 'text/plain', buffer: Buffer.from('Replacement Engineer. Different applicant content, never use the old PDF.') });
       await expect(page.getByText(/^(Using )?replacement\.txt$/)).toBeVisible();
+      await expect.poll(() => page.evaluate(() => localStorage.getItem('jh_resume_uuid'))).toBe('replacement.txt-uuid');
       const attachment = await page.evaluate(() => ({ bytes: localStorage.getItem('jh_resume_bytes'), uuid: localStorage.getItem('jh_resume_uuid') }));
-      expect(attachment).toEqual({ bytes: null, uuid: null });
+      expect(attachment.uuid).toBe('replacement.txt-uuid');
+      expect(Buffer.from(attachment.bytes!, 'base64').toString()).toContain('Replacement Engineer');
+      expect(Buffer.from(attachment.bytes!, 'base64').toString()).not.toContain('original-pdf-bytes');
     });
   }
   for (const route of ['/apply', '/session/audit-run/manual-apply']) {
@@ -145,7 +152,7 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     await page.getByRole('button',{name:'Next',exact:true}).click();
     await page.getByRole('button',{name:'Start Job Hunt Session',exact:true}).click();
     await expect.poll(()=>payload).not.toBeNull();
-    expect(payload).toMatchObject({keywords:['AI Engineer'],locations:['San Francisco'],resume_uuid:null,resume_file_path:null,config:{max_jobs:1,job_boards:['indeed']}});
+    expect(payload).toMatchObject({keywords:['AI Engineer'],locations:['San Francisco'],resume_uuid:'current.txt-uuid',resume_file_path:'/mock/current.txt',config:{max_jobs:1,job_boards:['indeed']}});
     expect(String(payload!.resume_text)).toContain('Current Fixture Engineer');
   });
 

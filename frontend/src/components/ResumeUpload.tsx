@@ -92,6 +92,8 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const restoredRef = useRef(false);
+  const onResumeReadyRef = useRef(onResumeReady);
+  onResumeReadyRef.current = onResumeReady;
 
   useEffect(() => {
     if (restoredRef.current) return;
@@ -103,6 +105,7 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
     setFileName(savedName);
 
     // If we have cached file bytes, re-upload to get a fresh server path
+    try { localStorage.removeItem(RESUME_UUID_KEY); } catch {}
     const cached = getCachedResumeBytes();
     if (cached && saved) {
       const file = base64ToFile(cached.bytes, cached.fileName);
@@ -113,7 +116,11 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
             try { localStorage.setItem(RESUME_UUID_KEY, result.resume_uuid); } catch {}
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setError("Could not restore the saved resume file. Please upload it again.");
+          setResumeText("");
+          onResumeReadyRef.current?.("");
+        })
         .finally(() => setParsing(false));
     }
   }, []);
@@ -125,13 +132,6 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
     saveResumeToStorage("", file.name);
     onResumeReady?.("");
 
-    if (file.type === "text/plain" || file.name.endsWith(".txt")) {
-      const text = await file.text();
-      setResumeText(text);
-      saveResumeToStorage(text, file.name);
-      onResumeReady?.(text);
-      return;
-    }
 
     setParsing(true);
     try {

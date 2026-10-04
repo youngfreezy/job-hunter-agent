@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+
 import { applicationLogStatus, applicationLogLabel } from "@/lib/application-log";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -23,6 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ManualApplyPage() {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { id: sessionId } = useParams<{ id: string }>();
   const [entries, setEntries] = useState<ApplicationLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,8 +35,8 @@ export default function ManualApplyPage() {
 
   useEffect(() => {
     getApplicationLog(sessionId)
-      .then((data) => setEntries(data.entries))
-      .catch(() => setEntries([]))
+      .then((data) => { setEntries(data.entries); setLoadError(null); })
+      .catch(() => setLoadError("Could not load application history. Please try again."))
       .finally(() => setLoading(false));
   }, [sessionId]);
 
@@ -41,8 +44,8 @@ export default function ManualApplyPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       getApplicationLog(sessionId)
-        .then((data) => setEntries(data.entries))
-        .catch(() => {});
+        .then((data) => { setEntries(data.entries); setLoadError(null); })
+        .catch(() => setLoadError("Could not load application history. Please try again."));
     }, 10000);
     return () => clearInterval(interval);
   }, [sessionId]);
@@ -62,6 +65,8 @@ export default function ManualApplyPage() {
     setCopiedField(fieldId);
     setTimeout(() => setCopiedField(null), 2000);
   };
+
+  if (loadError) return <RecoveryNotice message={loadError} />;
 
   return (
     <div className="w-full">

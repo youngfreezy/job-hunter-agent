@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -38,6 +40,7 @@ interface Transaction {
 }
 
 export default function BillingPage() {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [packs, setPacks] = useState<Record<string, Pack>>({});
@@ -67,6 +70,7 @@ export default function BillingPage() {
           apiFetch(`${API_BASE}/api/billing/packs`),
           apiFetch(`${API_BASE}/api/billing/transactions`, { headers: auth }),
         ]);
+        if (!walletRes.ok || !packsRes.ok || !txnRes.ok) throw new Error("Billing data unavailable");
         if (walletRes.ok) {
           const walletData = await walletRes.json();
           setWallet(walletData);
@@ -83,7 +87,7 @@ export default function BillingPage() {
           setTransactions(data.transactions || []);
         }
       } catch {
-        console.error("Failed to load billing data");
+        setLoadError("Could not load billing data. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -146,6 +150,8 @@ export default function BillingPage() {
 
   const mainPacks = ["10", "50", "100"];
   const topUpPacks = ["top_up_5", "top_up_10", "top_up_25"];
+
+  if (loadError) return <RecoveryNotice message={loadError} />;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 space-y-8">

@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { listMarketplaceAgents, type MarketplaceAgent } from "@/lib/api";
@@ -50,6 +52,7 @@ function StarRating({ rating, count }: { rating: number; count: number }) {
 }
 
 export default function MarketplacePage() {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [agents, setAgents] = useState<MarketplaceAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("");
@@ -57,7 +60,7 @@ export default function MarketplacePage() {
   useEffect(() => {
     listMarketplaceAgents()
       .then(setAgents)
-      .catch(() => {})
+      .catch(() => setLoadError("Could not load the marketplace. Please try again."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -65,6 +68,8 @@ export default function MarketplacePage() {
     () => (category ? agents.filter((a) => a.category === category) : agents),
     [agents, category]
   );
+
+  if (loadError) return <RecoveryNotice message={loadError} />;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">

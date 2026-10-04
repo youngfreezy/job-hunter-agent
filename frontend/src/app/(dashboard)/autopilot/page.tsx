@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -101,6 +103,7 @@ function formatNextRun(iso: string | null): string {
 }
 
 export default function AutopilotPage() {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const router = useRouter();
   const [schedules, setSchedules] = useState<AutopilotSchedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,8 +183,9 @@ export default function AutopilotPage() {
       }
       const data = await listAutopilotSchedules();
       setSchedules(data);
+      setLoadError(null);
     } catch (err) {
-      console.error("Failed to load schedules", err);
+      setLoadError("Could not load schedules. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -265,6 +269,8 @@ export default function AutopilotPage() {
   }
 
   if (loading) return null;
+
+  if (loadError) return <RecoveryNotice message={loadError} />;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 space-y-8">
@@ -408,7 +414,7 @@ export default function AutopilotPage() {
                   </label>
                 </div>
               </CardContent>
-              <CardFooter className="gap-2">
+              <CardFooter className="flex-wrap gap-2">
                 <Button onClick={handleSaveEdit} disabled={saving || !editKeywords.trim()}>
                   {saving ? "Saving..." : "Save Changes"}
                 </Button>
@@ -467,7 +473,7 @@ export default function AutopilotPage() {
                   </div>
                 )}
               </CardContent>
-              <CardFooter className="gap-2">
+              <CardFooter className="flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => startEdit(sched)}>
                   Edit
                 </Button>
@@ -604,7 +610,7 @@ export default function AutopilotPage() {
               </label>
             </div>
           </CardContent>
-          <CardFooter className="gap-2">
+          <CardFooter className="flex-wrap gap-2">
             <Button onClick={handleCreate} disabled={creating || !keywords.trim()}>
               {creating ? "Creating..." : "Create Schedule"}
             </Button>

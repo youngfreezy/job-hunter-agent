@@ -125,6 +125,9 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
 
     // Always re-upload cached bytes to get a fresh UUID/path.
     // Formik persistence may restore a stale resumeFileUuid from a previous session.
+    setFieldValue("resumeFilePath", "");
+    setFieldValue("resumeFileUuid", "");
+    try { localStorage.removeItem("jh_resume_uuid"); } catch {}
     const cached = getCachedResumeBytes();
     if (cached) {
       const file = base64ToFile(cached.bytes, cached.fileName);
@@ -136,10 +139,12 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
           }
           if (result.resume_uuid) {
             setFieldValue("resumeFileUuid", result.resume_uuid);
+            try { localStorage.setItem("jh_resume_uuid", result.resume_uuid); } catch {}
           }
         })
         .catch(() => {
-          // Re-upload failed — text is still available, just no file for ATS upload
+          setError("Could not restore the saved resume file. Please upload it again.");
+          setFieldValue("resumeText", "");
         })
         .finally(() => setParsing(false));
     }
@@ -158,15 +163,8 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
     setFieldValue("resumeFileUuid", "");
     saveResumeToStorage("", file.name);
 
-    // Plain text files can be read directly
-    if (file.type === "text/plain" || file.name.endsWith(".txt")) {
-      const text = await file.text();
-      setFieldValue("resumeText", text);
-      saveResumeToStorage(text, file.name);
-      return;
-    }
 
-    // PDF and DOCX files: send to backend for parsing + cache bytes
+    // All advertised formats need server-owned bytes/UUID for browser upload.
     setParsing(true);
     try {
       const [result, base64] = await Promise.all([parse(file), fileToBase64(file)]);

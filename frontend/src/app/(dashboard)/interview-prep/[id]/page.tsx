@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+import { resultStreamError } from "@/lib/result-stream";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,7 @@ export default function InterviewPrepSessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [streamAttempt, setStreamAttempt] = useState(0);
   const [coaching, setCoaching] = useState<Record<string, CoachingHints>>({});
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -50,7 +53,7 @@ export default function InterviewPrepSessionPage() {
         }
       } catch {}
     })();
-  }, [prepId]);
+  }, [prepId, streamAttempt]);
 
   // SSE connection
   useEffect(() => {
@@ -74,16 +77,15 @@ export default function InterviewPrepSessionPage() {
       setStatus(data.status);
     });
     es.addEventListener("done", () => es?.close());
-    es.addEventListener("error", (e) => {
-      if (e instanceof MessageEvent) setError(JSON.parse(e.data).message);
-      es?.close();
-    });
-    es.onerror = () => es?.close();
+    es.addEventListener("error", (event) => {
+        setError(resultStreamError(event));
+        es?.close();
+      });
 
     return () => {
       es?.close();
     };
-  }, [prepId]);
+  }, [prepId, streamAttempt]);
 
   const q = questions[currentQ];
 
@@ -575,11 +577,7 @@ export default function InterviewPrepSessionPage() {
         </div>
       )}
 
-      {error && (
-        <div className="bg-destructive/10 border border-destructive rounded-lg p-4">
-          <p className="text-destructive">{error}</p>
-        </div>
-      )}
+      {error && <RecoveryNotice message={error} retryLabel="Retry connection" onRetry={() => { setError(null); setStreamAttempt((value) => value + 1); }} />}
     </div>
   );
 }

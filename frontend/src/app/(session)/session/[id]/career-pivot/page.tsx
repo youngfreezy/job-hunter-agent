@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+import { resultStreamError } from "@/lib/result-stream";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { API_BASE, getAuthHeaders, createAuthenticatedStream, type SSEConnection, getWallet, apiFetch } from "@/lib/api";
@@ -30,6 +32,7 @@ export default function SessionCareerPivotPage() {
   const [risk, setRisk] = useState<RiskAssessment | null>(null);
   const [pivots, setPivots] = useState<PivotRole[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [streamAttempt, setStreamAttempt] = useState(0);
   const [expandedRadar, setExpandedRadar] = useState<number | null>(null);
   const [skillBridges, setSkillBridges] = useState<SkillBridge[]>([]);
   const [paywall, setPaywall] = useState<{
@@ -113,19 +116,15 @@ export default function SessionCareerPivotPage() {
       es?.close();
     });
 
-    es.addEventListener("error", (e) => {
-      if (e instanceof MessageEvent) {
-        setError(JSON.parse(e.data).message);
-      }
-      es?.close();
-    });
-
-    es.onerror = () => es?.close();
+    es.addEventListener("error", (event) => {
+        setError(resultStreamError(event));
+        es?.close();
+      });
 
     return () => {
       es?.close();
     };
-  }, [pivotId]);
+  }, [pivotId, streamAttempt]);
 
   async function handleUnlock() {
     if (!pivotId) return;
@@ -393,11 +392,7 @@ export default function SessionCareerPivotPage() {
         </div>
       )}
 
-      {error && (
-        <div className="bg-destructive/10 border border-destructive rounded-lg p-4">
-          <p className="text-destructive">{error}</p>
-        </div>
-      )}
+      {error && <RecoveryNotice message={error} retryLabel={pivotId ? "Retry connection" : "Back to form"} onRetry={() => { setError(null); setStarting(Boolean(pivotId)); setStreamAttempt((value) => value + 1); }} />}
 
       {/* Risk Score */}
       {risk && (

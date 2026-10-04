@@ -2,6 +2,8 @@
 
 "use client";
 
+import { RecoveryNotice } from "@/components/RecoveryNotice";
+
 import Link from "next/link";
 import { runName } from "@/lib/run";
 import { applicationLogStatus, applicationLogLabel } from "@/lib/application-log";
@@ -35,6 +37,7 @@ type EnrichedEntry = ApplicationLogEntry & {
 };
 
 export default function ApplyPage() {
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [entries, setEntries] = useState<EnrichedEntry[]>([]);
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,15 +62,15 @@ export default function ApplyPage() {
               });
             }
           } catch {
-            // skip sessions with no log
+            throw new Error("Application log unavailable");
           }
         })
       );
 
       setEntries(allEntries);
+      setLoadError(null);
     } catch {
-      setEntries([]);
-      setSessions([]);
+      setLoadError("Could not load application history. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -101,6 +104,8 @@ export default function ApplyPage() {
     navigator.clipboard.writeText(text);
     toast.success("Copied to clipboard");
   };
+
+  if (loadError) return <RecoveryNotice message={loadError} />;
 
   return (
     <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 sm:px-6 sm:py-8">
