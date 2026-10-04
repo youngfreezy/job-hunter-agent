@@ -45,6 +45,8 @@ export interface JobListing {
 }
 
 export interface ScoredJob {
+  eligibility_status?: "met" | "not_met" | "unknown";
+  eligibility_reasons?: string[];
   job: JobListing;
   score: number;
   score_breakdown: Record<string, number>;

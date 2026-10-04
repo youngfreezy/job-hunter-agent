@@ -21,6 +21,6 @@ export function resolveRunStatus(current: string, incoming: string, source: "str
 }
 
 /** A delayed snapshot must never reselect jobs the user has unchecked. */
-export function restoreShortlistSelection(current: Set<string>, ids: string[], initialized: boolean): Set<string> {
-  return new Set(initialized ? ids.filter((id) => current.has(id)) : ids);
+export function restoreShortlistSelection(current: Set<string>, ids: string[], initialized: boolean, defaultIds: string[] = ids, manuallyReviewedIds: Set<string> = new Set()): Set<string> {
+  return new Set(initialized ? ids.filter((id) => current.has(id) && (defaultIds.includes(id) || manuallyReviewedIds.has(id))) : defaultIds.filter((id) => ids.includes(id)));
 }

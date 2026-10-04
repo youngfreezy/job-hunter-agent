@@ -134,6 +134,8 @@ type SessionSummaryData = {
 };
 
 type ScoredJobData = {
+  eligibility_status?: "met" | "not_met" | "unknown";
+  eligibility_reasons?: string[];
   job: {
     id: string;
     title: string;
@@ -458,11 +460,18 @@ export default function SessionPage() {
   const approvalVersionRef = useRef(0);
   const settlingReviewRef = useRef<string | null>(null);
   const shortlistSelectionInitializedRef = useRef(false);
+  const manuallyReviewedEligibilityRef = useRef<Set<string>>(new Set());
   function restoreShortlist(jobs: ScoredJobData[]) {
     setShortlistJobs(jobs);
     const initialized = shortlistSelectionInitializedRef.current;
     shortlistSelectionInitializedRef.current = true;
-    setSelectedJobIds((current) => restoreShortlistSelection(current, jobs.map((sj) => sj.job.id), initialized));
+    setSelectedJobIds((current) => restoreShortlistSelection(
+      current,
+      jobs.filter((sj) => sj.eligibility_status !== "not_met").map((sj) => sj.job.id),
+      initialized,
+      jobs.filter((sj) => sj.eligibility_status === "met").map((sj) => sj.job.id),
+      manuallyReviewedEligibilityRef.current
+    ));
   }
 
   // Persist events & session to sessionStorage so navigation doesn't lose progress
@@ -867,10 +876,12 @@ export default function SessionPage() {
   const handleApproveShortlist = async () => {
     setShortlistSubmitting(true);
     try {
-      const jobIds = Array.from(selectedJobIds);
+      const jobIds = shortlistJobs.filter((sj) => selectedJobIds.has(sj.job.id) && sj.eligibility_status !== "not_met").map((sj) => sj.job.id);
+      if (!jobIds.length) throw new Error("Select a matching job or review an unresolved job before approving.");
       await submitReview(sessionId, { approved_job_ids: jobIds, feedback: "" });
       shortlistApprovedRef.current = true;
       shortlistSelectionInitializedRef.current = false;
+      manuallyReviewedEligibilityRef.current.clear();
       settlingReviewRef.current = "awaiting_review";
       approvalVersionRef.current += 1;
       latestStatusRef.current = "applying";
@@ -884,12 +895,17 @@ export default function SessionPage() {
   };
 
   const toggleJobSelection = (jobId: string) => {
-    setSelectedJobIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(jobId)) next.delete(jobId);
-      else next.add(jobId);
-      return next;
-    });
+    const job = shortlistJobs.find((sj) => sj.job.id === jobId);
+    if (!job || job.eligibility_status === "not_met") return;
+    const next = new Set(selectedJobIds);
+    if (next.has(jobId)) {
+      next.delete(jobId);
+      manuallyReviewedEligibilityRef.current.delete(jobId);
+    } else {
+      next.add(jobId);
+      if (job.eligibility_status !== "met") manuallyReviewedEligibilityRef.current.add(jobId);
+    }
+    setSelectedJobIds(next);
   };
 
   const handleApproveCoachReview = async (useOriginal = false) => {
@@ -949,6 +965,7 @@ export default function SessionPage() {
       // Reset approval refs so HITL modals can appear again
       shortlistApprovedRef.current = false;
       shortlistSelectionInitializedRef.current = false;
+      manuallyReviewedEligibilityRef.current.clear();
       settlingReviewRef.current = null;
       approvalVersionRef.current += 1;
       latestStatusRef.current = "applying";
@@ -1236,7 +1253,7 @@ export default function SessionPage() {
         text: (
           <>
             <strong className="font-semibold">Shortlist waiting for you.</strong> {shortlistCount}{" "}
-            {shortlistCount === 1 ? "job" : "jobs"} passed your filters. Nothing is sent until you approve.
+            {shortlistCount === 1 ? "job" : "jobs"} ready for review. Check search criteria notes before approving.
           </>
         ),
         actions: (
@@ -1759,11 +1776,10 @@ export default function SessionPage() {
           <DialogHeader>
             <DialogTitle>Approve the shortlist</DialogTitle>
             <DialogDescription>
-              Untick any job you don&apos;t want. Only the jobs you approve are sent, at 1 credit each.
+              Only jobs that meet your search criteria are preselected. Review each unresolved job before selecting it; jobs that violate your search criteria cannot be selected. Only approved jobs are sent, at 1 credit each.
             </DialogDescription>
           </DialogHeader>
-          <fieldset className="-mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 py-1">
-            <legend className="sr-only">Jobs on the shortlist</legend>
+          <div role="group" aria-label="Jobs on the shortlist" className="-mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 py-1">
             {shortlistJobs.map((sj) => {
               const selected = selectedJobIds.has(sj.job.id);
               const companyKey = sj.job.company.toLowerCase().trim();
@@ -1779,6 +1795,7 @@ export default function SessionPage() {
                   <input
                     type="checkbox"
                     checked={selected}
+                    disabled={sj.eligibility_status === "not_met"}
                     onChange={() => toggleJobSelection(sj.job.id)}
                     className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(var(--primary))]"
                   />
@@ -1801,6 +1818,14 @@ export default function SessionPage() {
                         </Badge>
                       )}
                     </span>
+                    <span className="mt-2 block">
+                      <Badge variant={sj.eligibility_status === "met" ? "secondary" : "warning"}>
+                        {sj.eligibility_status === "met" ? "Search criteria met" : sj.eligibility_status === "not_met" ? "Search criteria not met" : "Search criteria need review"}
+                      </Badge>
+                      {(sj.eligibility_reasons?.length ? sj.eligibility_reasons : sj.eligibility_status !== "met" ? ["Your search criteria have not been fully assessed. Check the listing before selecting this job."] : []).map((reason, index) => (
+                        <span key={index} className="mt-1 block text-xs leading-relaxed text-muted-foreground">{reason}</span>
+                      ))}
+                    </span>
                     {sj.fit_summary && (
                       <span className="mt-2 block text-xs leading-relaxed text-muted-foreground">{sj.fit_summary}</span>
                     )}
@@ -1808,7 +1833,7 @@ export default function SessionPage() {
                 </label>
               );
             })}
-          </fieldset>
+          </div>
           <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="font-mono text-sm text-muted-foreground">
               {selectedJobIds.size} of {shortlistJobs.length} selected

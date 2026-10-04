@@ -168,4 +168,37 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     await page.screenshot({ path: testInfo.outputPath('custom-320.png'), fullPage: true });
   });
 
+  test('Shortlist requires individual review for unknown eligibility and blocks known failures', async ({ page, context }, testInfo) => {
+    const scored = [
+      { id: 'met', eligibility_status: 'met', eligibility_reasons: ['Required location and salary are supported.'] },
+      { id: 'unknown', eligibility_status: 'unknown', eligibility_reasons: ['Office attendance requirement is unclear.'] },
+      { id: 'blocked', eligibility_status: 'not_met', eligibility_reasons: ['Requires full-time office attendance.'] },
+      { id: 'legacy' },
+    ].map(({ id, ...eligibility }) => ({ job: { id, title: `${id} Engineer`, company: id, location: 'SF', board: 'indeed', url: 'https://www.indeed.com/viewjob?jk='+id }, score: 85, ...eligibility }));
+    let approval: { approved_job_ids: string[] } | null = null;
+    await context.route('**/api/sessions/eligibility-run**', async route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/review')) { approval = route.request().postDataJSON(); return route.fulfill({ json: {} }); }
+      if (path.endsWith('/stream')) return route.fulfill({ contentType: 'text/event-stream', body: ': connected\n\n' });
+      return route.fulfill({ json: { session_id: 'eligibility-run', status: 'awaiting_review', keywords: ['Engineer'], locations: ['SF'], scored_jobs: scored, applications_submitted: [], applications_failed: [], session_config: {} } });
+    });
+    await page.goto('/session/eligibility-run');
+    const dialog = page.getByRole('dialog', { name: 'Approve the shortlist' });
+    const boxes = dialog.getByRole('checkbox');
+    await expect(boxes).toHaveCount(4);
+    await expect(boxes.nth(0)).toBeChecked();
+    await expect(boxes.nth(1)).not.toBeChecked();
+    await expect(boxes.nth(2)).toBeDisabled();
+    await expect(boxes.nth(3)).not.toBeChecked();
+    await expect(dialog.getByText('Search criteria need review', { exact: true })).toHaveCount(2);
+    await expect(dialog.getByText('Office attendance requirement is unclear.')).toBeVisible();
+    const list = await dialog.getByRole('group', { name: 'Jobs on the shortlist' }).boundingBox();
+    const approve = await dialog.getByRole('button', { name: 'Approve 1 job', exact: true }).boundingBox();
+    expect(list!.y + list!.height).toBeLessThanOrEqual(approve!.y);
+    await page.screenshot({ path: testInfo.outputPath('eligibility-shortlist.png'), animations: 'disabled' });
+    await boxes.nth(1).check();
+    await dialog.getByRole('button', { name: 'Approve 2 jobs', exact: true }).click();
+    await expect.poll(() => approval).toEqual({ approved_job_ids: ['met', 'unknown'], feedback: '' });
+  });
+
 });

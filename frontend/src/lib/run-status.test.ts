@@ -24,6 +24,16 @@ describe("authoritative approval gates", () => {
     expect(Array.from(restoreShortlistSelection(initial, ["indeed", "employer"], true))).toEqual(["indeed"]);
     expect(Array.from(restoreShortlistSelection(new Set(), ["indeed"], true))).toEqual([]);
   });
+  it("only defaults to assessed eligible jobs, while retaining explicit review selections", () => {
+    expect([...restoreShortlistSelection(new Set(), ["met", "unknown", "legacy"], false, ["met"])]).toEqual(["met"]);
+    expect([...restoreShortlistSelection(new Set(["unknown", "blocked"]), ["met", "unknown", "legacy"], true, ["met"], new Set(["unknown"]))]).toEqual(["unknown"]);
+  });
+  it("clears automatic met selection when a refreshed assessment becomes unknown", () => {
+    const initial = restoreShortlistSelection(new Set(), ["job"], false, ["job"]);
+    expect([...initial]).toEqual(["job"]);
+    expect([...restoreShortlistSelection(initial, ["job"], true, [])]).toEqual([]);
+    expect([...restoreShortlistSelection(initial, ["job"], true, [], new Set(["job"]))]).toEqual(["job"]);
+  });
   it("allows progress after approval and ignores backwards routine replay", () => {
     expect(resolveRunStatus("awaiting_coach_review", "discovering", "stream", { coach: true })).toBe("discovering");
     expect(resolveRunStatus("awaiting_review", "applying", "stream", { shortlist: true })).toBe("applying");
