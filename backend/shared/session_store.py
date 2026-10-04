@@ -111,8 +111,16 @@ def get_sessions_for_user(user_id: str, include_archived: bool = False) -> List[
                 f"""SELECT id, user_id, status, keywords, locations, remote_only,
                           salary_min, resume_text_snippet, linkedin_url,
                           applications_submitted, applications_failed, created_at,
-                          archived_at, is_autopilot
+                          archived_at, is_autopilot,
+                          outcomes.uncertain, outcomes.failed, outcomes.total
                    FROM sessions
+                   LEFT JOIN LATERAL (
+                       SELECT COUNT(*) FILTER (WHERE error_category = 'submission_uncertain') AS uncertain,
+                              COUNT(*) FILTER (WHERE status = 'failed' AND error_category IS DISTINCT FROM 'submission_uncertain') AS failed,
+                              COUNT(*) AS total
+                       FROM application_results
+                       WHERE session_id = sessions.id::text
+                   ) outcomes ON TRUE
                    WHERE user_id::text = %s {archive_filter}
                    ORDER BY created_at DESC""",
                 (str(user_id),),
@@ -130,7 +138,8 @@ def get_sessions_for_user(user_id: str, include_archived: bool = False) -> List[
                     "resume_text_snippet": r[7] or "",
                     "linkedin_url": r[8],
                     "applications_submitted": r[9] or 0,
-                    "applications_failed": r[10] or 0,
+                    "applications_failed": r[15] if r[16] else (r[10] or 0),
+                    "applications_uncertain": r[14] or 0,
                     "created_at": r[11].isoformat() if r[11] else "",
                     "archived_at": r[12].isoformat() if r[12] else None,
                     "is_autopilot": r[13] if r[13] is not None else False,
