@@ -189,18 +189,27 @@ def get_or_create_user(email: str) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning("Failed to create Stripe customer for %s: %s", email, e)
 
-        conn.execute(
-            "INSERT INTO users (id, email, stripe_customer_id) VALUES (%s, %s, %s)",
+        inserted = conn.execute(
+            """INSERT INTO users (id, email, stripe_customer_id)
+               VALUES (%s, %s, %s)
+               ON CONFLICT (email) DO NOTHING
+               RETURNING id""",
             (user_id, email, stripe_customer_id),
-        )
+        ).fetchone()
         conn.commit()
-        return {
-            "id": user_id,
-            "email": email,
-            "wallet_balance": 0.00,
-            "free_applications_remaining": 3,
-            "is_premium": False,
-        }
+        if inserted:
+            return {
+                "id": user_id,
+                "email": email,
+                "wallet_balance": 0.00,
+                "free_applications_remaining": 3,
+                "is_premium": False,
+            }
+
+    # Another verified request created this same account after our SELECT.
+    # Read its existing balance/credits; never re-grant trial credits on conflict.
+    return get_or_create_user(email)
+
 
 
 def get_stripe_customer_id(user_id: str) -> Optional[str]:

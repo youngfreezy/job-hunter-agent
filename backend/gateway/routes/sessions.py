@@ -1246,53 +1246,8 @@ class TestApplyRequest(_BaseModel):
 
 @router.post("/test-apply")
 async def test_apply_endpoint(body: TestApplyRequest, request: Request):
-    """Run a single job application in isolation with screenshot streaming.
-
-    Returns a session_id. Open http://localhost:3000/session/{session_id}
-    and switch to the Screenshot Feed tab to watch live.
-    """
-    from backend.gateway.deps import get_current_user
-    get_current_user(request)  # 401 if no authenticated user
-
-    session_id = f"test-{uuid.uuid4().hex[:8]}"
-
-    event_logs[session_id] = []
-    sse_subscribers[session_id] = []
-    session_registry[session_id] = {
-        "session_id": session_id,
-        "status": "applying",
-        "keywords": [body.job_title],
-        "locations": [],
-        "remote_only": False,
-        "salary_min": None,
-        "resume_text_snippet": body.resume_text[:200],
-        "linkedin_url": None,
-        "applications_submitted": 0,
-        "applications_failed": 0,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-    register_emitter(session_id, _emit)
-
-    await _emit(session_id, "status", {
-        "status": "applying",
-        "message": f"Testing application to {body.job_url}",
-    })
-
-    _spawn_background(_test_apply_single(
-        session_id=session_id,
-        job_url=body.job_url,
-        job_title=body.job_title,
-        company=body.company,
-        resume_text=body.resume_text,
-    ))
-
-    return {
-        "session_id": session_id,
-        "message": f"Test apply started. Watch at /session/{session_id} (Screenshot Feed tab)",
-    }
-
-
+    """Retired debug route; all applications must use the owned Quick Apply flow."""
+    raise HTTPException(status_code=410, detail="Use Quick Apply in a signed-in session.")
 
 
 async def _test_apply_single(
@@ -2445,6 +2400,8 @@ async def serve_resume_file(session_id: str, request: Request, token: str = ""):
     from backend.shared.redis_client import redis_client
 
     secret = (get_settings().NEXTAUTH_SECRET or "").encode()
+    if not secret:
+        raise HTTPException(status_code=503, detail="Resume downloads are temporarily unavailable")
     if not token:
         raise HTTPException(status_code=401, detail="Missing token")
 
@@ -2453,8 +2410,11 @@ async def serve_resume_file(session_id: str, request: Request, token: str = ""):
         expected = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()[:32]
         if not hmac.compare_digest(sig, expected):
             raise HTTPException(status_code=403, detail="Invalid token")
-        _sid, ts_str = payload.rsplit(":", 1)
-        if time.time() - int(ts_str) > 3600:
+        token_session, ts_str = payload.rsplit(":", 1)
+        if token_session != session_id:
+            raise HTTPException(status_code=403, detail="Invalid token")
+        age = time.time() - int(ts_str)
+        if age < 0 or age > 3600:
             raise HTTPException(status_code=403, detail="Token expired")
     except (ValueError, IndexError):
         raise HTTPException(status_code=403, detail="Malformed token")
@@ -2528,8 +2488,12 @@ async def get_totp_code(session_id: str, request: Request):
 
     Skyvern calls this URL when it encounters a TOTP/2FA challenge.
     We poll Gmail for recent verification emails and return the code.
-    No auth required — Skyvern uses internal Railway network.
+    Requires the session owner; network location alone is not authentication.
     """
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    user = get_current_user(request)
+    await verify_session_owner(session_id, user, request)
+
     body = await request.json()
     task_id = body.get("task_id", "")
     logger.info("TOTP code request for session %s (task %s)", session_id, task_id)

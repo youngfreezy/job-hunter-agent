@@ -13,10 +13,9 @@ the JWE, and sets request.state.user_email for downstream route handlers.
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import json
 import logging
+import math
 import time
 from typing import Optional
 
@@ -89,38 +88,6 @@ def decrypt_nextauth_jwt(token: str, secret: str) -> dict:
     return json.loads(plaintext)
 
 
-_TRIAL_TOKEN_TTL = 24 * 60 * 60  # 24 hours
-
-
-def create_trial_token(user_id: str) -> str:
-    """Create an HMAC-signed trial token for anonymous free-trial users."""
-    secret = get_settings().NEXTAUTH_SECRET or ""
-    payload = json.dumps({"uid": user_id, "iat": int(time.time())})
-    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    encoded = base64.urlsafe_b64encode(payload.encode()).decode()
-    return f"trial_{encoded}.{sig}"
-
-
-def _verify_trial_token(token: str) -> Optional[str]:
-    """Verify a trial token and return user_id, or None if invalid/expired."""
-    if not token.startswith("trial_"):
-        return None
-    try:
-        body = token[6:]  # strip "trial_"
-        encoded, sig = body.rsplit(".", 1)
-        payload_bytes = base64.urlsafe_b64decode(encoded)
-        secret = get_settings().NEXTAUTH_SECRET or ""
-        expected_sig = hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected_sig):
-            return None
-        payload = json.loads(payload_bytes)
-        if time.time() - payload.get("iat", 0) > _TRIAL_TOKEN_TTL:
-            return None
-        return payload.get("uid")
-    except Exception:
-        return None
-
-
 def _extract_email(request: Request) -> Optional[str]:
     """Try to extract user email from JWT in Authorization header or query param.
 
@@ -163,6 +130,18 @@ def _extract_email(request: Request) -> Optional[str]:
         logger.debug("JWT decryption failed: %s", exc)
         return None
 
+    if not isinstance(payload, dict):
+        return None
+    expires = payload.get("exp")
+    if (isinstance(expires, bool) or not isinstance(expires, (int, float))
+            or not math.isfinite(expires) or expires <= time.time()):
+        return None
+    not_before = payload.get("nbf")
+    if not_before is not None and (isinstance(not_before, bool)
+            or not isinstance(not_before, (int, float))
+            or not math.isfinite(not_before) or not_before > time.time()):
+        return None
+
     email = payload.get("email")
     if not email or not isinstance(email, str):
         logger.debug("JWT payload missing email field: %s", list(payload.keys()))
@@ -186,17 +165,6 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # Try JWT-based auth
         email = _extract_email(request)
         request.state.user_email = email  # None if JWT missing/invalid
-
-        # Try trial token if no JWT email found
-        request.state.trial_user_id = None
-        if not email:
-            token = request.headers.get("authorization", "")[7:] if request.headers.get("authorization", "").startswith("Bearer ") else ""
-            if not token:
-                token = request.query_params.get("token", "")
-            if token and token.startswith("trial_"):
-                trial_uid = _verify_trial_token(token)
-                if trial_uid:
-                    request.state.trial_user_id = trial_uid
 
         response = await call_next(request)
         return response
