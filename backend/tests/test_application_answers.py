@@ -59,6 +59,56 @@ async def test_final_review_passes_prefilled_answers_to_grounding_check(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_option_answer_audit_receives_parent_question_and_parks_it(monkeypatch):
+    """Exercise the real applier/checker boundary with only the provider mocked."""
+    from types import SimpleNamespace
+    from backend.browser.tools.appliers.indeed import IndeedApplier
+
+    question = ('Were you previously employed at HubSpot Inc or any of its subsidiaries? '
+                'If Yes, please select which entity below.')
+    option = 'No - Never been employed by Hubspot or a subsidiary'
+    tree = f'[1-1] combobox: {question}\n  [1-2] option: {option}'
+    native_page = MagicMock()
+    native_page.snapshot = AsyncMock(return_value=SimpleNamespace(formatted_tree=tree))
+    native_page.url = AsyncMock(return_value='https://smartapply.indeed.com/form/questions')
+    agent = MagicMock()
+    agent.browser.context.active_page = AsyncMock(return_value=native_page)
+    invoke = checker(monkeypatch, None)
+
+    async def reject_unknown(messages):
+        payload = json.loads(messages[1].content)
+        # Without the native field context, the checker sees only the option.
+        visible_question = question if question in payload.get('page_text', '') else option
+        return answers.AnswerCheck(supported=False, question=visible_question,
+                                   reason='Prior employment is not established by the resume.')
+
+    invoke.side_effect = reject_unknown
+    applier = IndeedApplier(MagicMock(), 'fixture-session', stagehand=agent)
+    with pytest.raises(ApplicationParked) as stopped:
+        await applier._check_answer(f'Click {option}', '{"resume":"Software engineer"}')
+    assert stopped.value.question == question
+    payload = json.loads(invoke.await_args.args[0][1].content)
+    assert payload['mode'] == 'next_action'
+    assert payload['review_text'] == ''
+    assert payload['page_text'] == tree
+    assert 'Software engineer' in payload['applicant_facts']
+    native_page.snapshot.assert_awaited_once_with(include_iframes=True)
+    native_page.locator.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_missing_next_action_snapshot_fails_closed_before_model_or_action(monkeypatch):
+    from backend.browser.tools.appliers.indeed import IndeedApplier
+    invoke = checker(monkeypatch, answers.AnswerCheck(supported=True, question='', reason='Allowed'))
+    applier = IndeedApplier(MagicMock(), 'fixture-session', stagehand=MagicMock())
+    monkeypatch.setattr(applier, '_visible_application_snapshot',
+                        AsyncMock(side_effect=RuntimeError('Unreadable form')))
+    with pytest.raises(RuntimeError, match='Unreadable form'):
+        await applier._check_answer('Choose No', '{}')
+    invoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_checker_failure_never_allows_action(monkeypatch):
     invoke = checker(monkeypatch, None)
     invoke.side_effect = RuntimeError('provider unavailable')

@@ -58,6 +58,7 @@ Use only applicant facts supplied below. Never guess required answers, eligibili
 work authorization, sponsorship, years of experience, or protected demographic information.
 Do not infer that the applicant is unemployed because they are applying for jobs.
 If a required answer is missing or owner rules require a human answer, return park with its exact question.
+Copy the complete parent field/group question, never an answer option or selected value.
 Resolve your decision before returning its kind. Do not park when your conclusion is to proceed.
 A listed base salary range qualifies if its upper end meets the owner's minimum; a desired/target
 salary is not a hard minimum. Apply any explicit owner-authorized salary exception.
@@ -217,9 +218,13 @@ class IndeedApplier(BaseApplier):
 
     async def _check_answer(self, instruction, applicant_facts, *, review=False):
         from backend.browser.application_answers import check_application_answer
-        review_text = (await self._visible_application_snapshot())['text'] if review else ''
+        # An observed option label alone cannot identify what fact its answer asserts.
+        # Use the same native read as final review without turning each step into
+        # a full-form audit of unrelated, not-yet-answered questions.
+        page_text = (await self._visible_application_snapshot())['text']
         await check_application_answer(instruction, applicant_facts, self.application_rules,
-                                       review_text=review_text)
+                                       review_text=page_text if review else '',
+                                       page_text='' if review else page_text)
 
     async def _drive(self, job, user_profile, resume_text, cover_letter):
         if settings.INDEED_EASY_APPLY_ONLY and self.employer_site:

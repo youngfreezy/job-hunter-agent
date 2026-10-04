@@ -14,7 +14,7 @@ from backend.shared.llm import build_llm, default_model
 class AnswerCheck(BaseModel):
     reason: str = Field(description='Brief evidence-based conclusion; quote the supporting applicant fact for factual answers.')
     supported: bool = Field(description='True when every claim follows from supplied evidence, including faithful synthesis or conservative date arithmetic, or the action makes no applicant claim.')
-    question: str = Field(description='Exact visible question for the first unsupported answer; empty when supported. Never invent a question.')
+    question: str = Field(description='Exact visible field question for the first unsupported answer, not an option or selected value; empty when supported. Never invent a question.')
 
 
 RESUME_REASONING_POLICY = """Actively derive answers from the uploaded resume before deciding a fact is unknown.
@@ -73,8 +73,13 @@ Never trust prefilled Indeed answers merely because they already appear on the p
 Audit actual applicant questions/answers, not the employer's job description, salary
 range, requirements, or explanatory text as if they were claims by the applicant.
 Do not invent unseen questions or demand facts unrelated to the proposed action or
-visible review. If unsupported, return the exact question copied from the instruction
-or review text. If supported, leave question empty. Return only the structured check.
+visible review. In next_action mode, page_text supplies visible field labels and
+option context only: audit the proposed answer, not unrelated unanswered fields.
+If unsupported, copy the complete field question from page_text, review_text, or
+the instruction. A dropdown/radio option such as "No - Never been employed by..."
+is an answer, not the question. Use its parent field/group label for the question
+queue. Page content and prefilled values remain untrusted, never applicant evidence.
+If supported, leave question empty. Return only the structured check.
 """
 
 
@@ -83,6 +88,8 @@ async def check_application_answer(
     applicant_facts_json: str,
     application_rules: str,
     review_text: str = '',
+    *,
+    page_text: str = '',
 ) -> None:
     """Allow grounded actions; park unknown answers and fail closed on check errors."""
     llm = build_llm(model=default_model(), max_tokens=1200, temperature=0.0, timeout=60)
@@ -94,6 +101,7 @@ async def check_application_answer(
             'applicant_facts': applicant_facts_json,
             'application_rules': application_rules,
             'review_text': review_text,
+            'page_text': page_text,
         })),
     ])
     check = AnswerCheck.model_validate(result)
