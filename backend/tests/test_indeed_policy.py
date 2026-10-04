@@ -29,6 +29,7 @@ async def test_application_cannot_use_external_api_in_indeed_mode(monkeypatch):
  from backend.shared.config import settings
  from backend.shared.models.schemas import JobListing,JobBoard,ATSType,ApplicationStatus
  monkeypatch.setattr(settings,'INDEED_ONLY',True)
+ monkeypatch.setattr(settings,'INDEED_EASY_APPLY_ONLY',False)
  listing=JobListing(id='external',title='Engineer',company='Example',location='Remote',url='https://jobs.lever.co/example',board=JobBoard.INDEED,ats_type=ATSType.LEVER)
  result=await _apply_to_job('external',listing,{},'session')
  assert result.status == ApplicationStatus.SKIPPED

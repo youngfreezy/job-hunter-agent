@@ -69,7 +69,7 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
 
     boards = configured_boards or ["lever", "ashby", "greenhouse", "workday"]
     from backend.shared.config import settings
-    if settings.INDEED_ONLY:
+    if settings.INDEED_ONLY or settings.INDEED_EASY_APPLY_ONLY:
         boards = ["indeed"]
 
     # Inject Moltbook strategy patches: reorder boards by community-informed priority

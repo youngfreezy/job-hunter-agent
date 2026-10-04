@@ -32,6 +32,7 @@ async def test_employer_handoff_is_queued_then_executed_without_counting_as_subm
     from backend.shared.config import settings
     from backend.shared.models.schemas import ApplicationResult, ApplicationStatus, JobListing, JobBoard
     monkeypatch.setattr(settings, 'INDEED_ONLY', True)
+    monkeypatch.setattr(settings, 'INDEED_EASY_APPLY_ONLY', False)
     monkeypatch.setattr(application, 'emit_agent_event', AsyncMock())
     manager = MagicMock(stagehand=object(), live_view_url=None)
     manager.start_for_task = AsyncMock()
@@ -58,6 +59,8 @@ async def test_employer_handoff_is_queued_then_executed_without_counting_as_subm
 
 @pytest.mark.asyncio
 async def test_native_redirect_queues_before_any_applicant_action(monkeypatch):
+    from backend.shared.config import settings
+    monkeypatch.setattr(settings, 'INDEED_EASY_APPLY_ONLY', False)
     from unittest.mock import MagicMock
     from backend.browser.tools.appliers.indeed import IndeedApplier
     from backend.shared.models.schemas import JobListing, JobBoard, ApplicationStatus

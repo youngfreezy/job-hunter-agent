@@ -15,7 +15,8 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 from stagehand import FilePayload
 
-from backend.browser.indeed_policy import is_indeed_url
+from backend.browser.indeed_policy import is_indeed_url, EASY_APPLY_SKIP_REASON, EASY_APPLY_LOGIN_SKIP_REASON
+from backend.shared.config import settings
 from backend.browser.application_answers import RESUME_REASONING_POLICY, resolve_application_question
 from backend.browser.application_routing import is_public_application_url
 from backend.browser.tools.appliers.base import BaseApplier
@@ -109,9 +110,16 @@ class IndeedApplier(BaseApplier):
     def _allowed_url(self, url):
         return is_public_application_url(url) if self.employer_site else is_indeed_url(url)
 
+    def _easy_apply_skip(self, job_id, reason=EASY_APPLY_SKIP_REASON):
+        if self._submission_attempted:
+            return self._fail(job_id, reason)  # Keep the uncertain-submission hold.
+        return self._make_result(job_id, ApplicationStatus.SKIPPED, error_message=reason)
+
     def _external_route(self, job_id):
         url = getattr(self.page.context, '_jobhunter_external_redirect', None)
         if not self.employer_site and isinstance(url, str) and is_public_application_url(url):
+            if settings.INDEED_EASY_APPLY_ONLY:
+                return self._easy_apply_skip(job_id)
             result = self._make_result(job_id, ApplicationStatus.QUEUED)
             result.external_application_url = url
             return result
@@ -207,6 +215,8 @@ class IndeedApplier(BaseApplier):
                                        review_text=review_text)
 
     async def _drive(self, job, user_profile, resume_text, cover_letter):
+        if settings.INDEED_EASY_APPLY_ONLY and self.employer_site:
+            return self._easy_apply_skip(str(job.id))
         if self.stagehand is None:
             return self._fail(str(job.id), 'Stagehand is unavailable; start a Browserbase application session.')
         supplied = json.dumps({'job_title': job.title, 'company': job.company,
@@ -215,6 +225,11 @@ class IndeedApplier(BaseApplier):
         grounding_facts = json.dumps({'application_date': datetime.now(timezone.utc).date().isoformat(),
                                      'profile': user_profile, 'resume': resume_text})
         prompt = POLICY + '\n' + RESUME_REASONING_POLICY + '\n' + format_rules_block(self.application_rules, 'form')
+        if settings.INDEED_EASY_APPLY_ONLY:
+            prompt += ('\nIndeed Easy Apply only: never open an employer application website. '
+                       'Return external without acting if this job requires one; JobHunter will skip it. '
+                       'Use the existing Indeed login. Return auth for any additional sign-in; '
+                       'never start Google, email, employer, or other nested authentication.')
         if self.employer_site:
             prompt += ('\nThis is the employer-site path for an Indeed-discovered job. '
                        'Confirm that the page matches the authorized company and role before entering applicant data. '
@@ -263,6 +278,8 @@ class IndeedApplier(BaseApplier):
             if candidates:
                 self.page = candidates[-1]
             if not self._allowed_url(active_url):
+                if settings.INDEED_EASY_APPLY_ONLY:
+                    return self._easy_apply_skip(str(job.id))
                 # Redirect chains can bypass the route callback. Queue the observed
                 # employer destination, without entering applicant data in this phase.
                 if (not self.employer_site and is_indeed_url(job.url)
@@ -332,8 +349,12 @@ class IndeedApplier(BaseApplier):
                     continue
                 raise ApplicationParked(step.reason)
             if step.kind == 'auth':
+                if settings.INDEED_EASY_APPLY_ONLY:
+                    return self._easy_apply_skip(str(job.id), EASY_APPLY_LOGIN_SKIP_REASON)
                 return self._fail(str(job.id), step.reason, ApplicationErrorCategory.AUTH_REQUIRED)
             if step.kind == 'external':
+                if settings.INDEED_EASY_APPLY_ONLY:
+                    return self._easy_apply_skip(str(job.id))
                 if self.employer_site or not step.instruction.strip():
                     raise ApplicationParked('Could not identify this job’s employer application destination.')
                 # The navigation guard captures and blocks the new destination. No

@@ -93,6 +93,8 @@ def _search_query(query: str, search: SearchConfig, excluded_companies: Optional
 
 
 def matches_search(listing: JobListing, search: SearchConfig) -> bool:
+    if settings.INDEED_EASY_APPLY_ONLY and not listing.is_easy_apply:
+        return False
     if any(term.lower() in listing.title.lower() for term in search.exclude_title_keywords):
         return False
     if listing.company.lower() in {c.lower() for c in search.exclude_companies}:

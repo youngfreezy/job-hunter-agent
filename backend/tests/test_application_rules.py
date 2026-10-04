@@ -224,6 +224,8 @@ async def test_generic_applier_lets_parked_escape_its_catch_all(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_dispatcher_forwards_rules_to_applier(monkeypatch):
+    from backend.shared.config import settings
+    monkeypatch.setattr(settings, "INDEED_EASY_APPLY_ONLY", False)
     seen: dict = {}
 
     class _Spy(BaseApplier):

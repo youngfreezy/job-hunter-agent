@@ -24,3 +24,7 @@ def enforce_indeed_config(request) -> None:
     if any(not is_indeed_url(url) for url in request.config.job_urls):
         raise ValueError("Indeed-only mode accepts only https://indeed.com job URLs.")
     request.config.job_boards = ["indeed"]
+
+
+EASY_APPLY_SKIP_REASON = "Indeed Easy Apply only: skipped employer-site application."
+EASY_APPLY_LOGIN_SKIP_REASON = "Indeed Easy Apply only: skipped application requiring an additional sign-in."

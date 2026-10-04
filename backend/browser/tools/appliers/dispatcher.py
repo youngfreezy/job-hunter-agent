@@ -18,6 +18,8 @@ from backend.browser.tools.appliers.greenhouse import GreenhouseApplier
 from backend.browser.tools.appliers.indeed import IndeedApplier
 from backend.browser.tools.appliers.lever import LeverApplier
 from backend.browser.tools.ats_detector import detect_ats_from_url
+from backend.browser.indeed_policy import is_indeed_url, EASY_APPLY_SKIP_REASON
+from backend.shared.config import settings
 from backend.shared.models.schemas import (
     ApplicationResult,
     ApplicationStatus,
@@ -56,6 +58,10 @@ async def apply_with_playwright(
     """
     # Detect ATS from current page URL (may have redirected from original)
     url = page.url if hasattr(page, "url") else job.url
+    if settings.INDEED_EASY_APPLY_ONLY and (
+            employer_site or not is_indeed_url(job.url) or not is_indeed_url(url)):
+        return ApplicationResult(job_id=str(job.id), status=ApplicationStatus.SKIPPED,
+                                 error_message=EASY_APPLY_SKIP_REASON)
     ats_type = detect_ats_from_url(url)
     if ats_type == ATSType.UNKNOWN and job.ats_type:
         ats_type = job.ats_type if isinstance(job.ats_type, ATSType) else ATSType(job.ats_type)

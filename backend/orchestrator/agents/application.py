@@ -38,6 +38,7 @@ from backend.shared.models.schemas import (
     ApplicationStatus,
     ATSType,
     JobListing,
+    JobBoard,
 )
 
 # Credit costs per application outcome
@@ -796,6 +797,25 @@ async def _apply_to_job(
     detected_ats = "unknown"
     streamer: Any = None
 
+    async def skip_easy_apply(reason):
+        # Pre-navigation returns bypass the usual result writer; persist them here.
+        _db_record_result(
+            session_id=session_id, job_id=job_id, status="skipped",
+            job_title=job.title, job_company=job.company, job_url=job.url,
+            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+            job_location=job.location or "", error_message=reason,
+            user_id=state.get("user_id", ""),
+        )
+        await emit_agent_event(session_id, "application_progress", {
+            "job_id": job_id, "step": reason,
+        })
+        return ApplicationResult(job_id=job_id, status=ApplicationStatus.SKIPPED,
+                                 error_message=reason)
+
+    from backend.browser.indeed_policy import is_indeed_url, EASY_APPLY_SKIP_REASON
+    if get_settings().INDEED_EASY_APPLY_ONLY and (employer_url or not is_indeed_url(job.url)):
+        return await skip_easy_apply(EASY_APPLY_SKIP_REASON)
+
     if get_settings().INDEED_ONLY:
         from backend.browser.indeed_policy import is_indeed_url
         from backend.browser.application_routing import is_public_application_url
@@ -991,7 +1011,7 @@ async def _apply_to_job(
         # --- Fast path: direct API submission (only if handler registered) ---
         settings = get_settings()
         from backend.browser.tools.api_applier import _ATS_HANDLERS
-        if settings.API_APPLY_ENABLED and not settings.INDEED_ONLY and job.ats_type in _ATS_HANDLERS:
+        if settings.API_APPLY_ENABLED and not settings.INDEED_ONLY and not settings.INDEED_EASY_APPLY_ONLY and job.ats_type in _ATS_HANDLERS:
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
 
@@ -1124,6 +1144,11 @@ async def _apply_to_job(
                 logger.info("Cleaned LinkedIn URL: %s", nav_url)
             await page.goto(nav_url, wait_until="domcontentloaded", timeout=90000)
             await asyncio.sleep(2)  # settle
+            if settings.INDEED_EASY_APPLY_ONLY:
+                from backend.browser.indeed_policy import is_indeed_url, EASY_APPLY_SKIP_REASON
+                redirect = getattr(context, '_jobhunter_external_redirect', None)
+                if is_indeed_url(job.url) and (not is_indeed_url(page.url) or isinstance(redirect, str)):
+                    return await skip_easy_apply(EASY_APPLY_SKIP_REASON)
             if settings.INDEED_ONLY and not employer_url:
                 from backend.browser.indeed_policy import wait_for_indeed_page
                 await wait_for_indeed_page(page)
@@ -1151,6 +1176,9 @@ async def _apply_to_job(
             # --- Step 1c: Check if redirected to login page ---
             final_url = page.url
             if _is_login_page(final_url):
+                if settings.INDEED_EASY_APPLY_ONLY and job.board == JobBoard.INDEED:
+                    from backend.browser.indeed_policy import EASY_APPLY_LOGIN_SKIP_REASON
+                    return await skip_easy_apply(EASY_APPLY_LOGIN_SKIP_REASON)
                 logger.info("Login required (%s) for %s — skipping", final_url, job.title)
                 await emit_agent_event(session_id, "application_progress", {
                     "job_id": job_id,
@@ -1201,6 +1229,9 @@ async def _apply_to_job(
 
             # --- Step 1d: Check for in-page auth wall (signup gate) ---
             if await _has_auth_wall(page):
+                if settings.INDEED_EASY_APPLY_ONLY and job.board == JobBoard.INDEED:
+                    from backend.browser.indeed_policy import EASY_APPLY_LOGIN_SKIP_REASON
+                    return await skip_easy_apply(EASY_APPLY_LOGIN_SKIP_REASON)
                 logger.info("Auth wall detected on page — skipping %s", job.title)
                 await emit_agent_event(session_id, "application_progress", {
                     "job_id": job_id,
@@ -1272,6 +1303,13 @@ async def _apply_to_job(
             if page and not page.is_closed() and not use_managed_page:
                 await page.close()
 
+        if (get_settings().INDEED_EASY_APPLY_ONLY
+                and result.status == ApplicationStatus.QUEUED and result.external_application_url):
+            from backend.browser.indeed_policy import EASY_APPLY_SKIP_REASON
+            result.status = ApplicationStatus.SKIPPED
+            result.error_message = EASY_APPLY_SKIP_REASON
+            result.external_application_url = None
+
         if result.status == ApplicationStatus.QUEUED and result.external_application_url:
             clear_pending(session_id, job_id)
             await emit_agent_event(session_id, "application_progress", {
@@ -1292,6 +1330,10 @@ async def _apply_to_job(
                 "job_title": job.title,
                 "company": job.company,
                 "message": f"Applied to {_label}",
+            })
+        elif result.status == ApplicationStatus.SKIPPED:
+            await emit_agent_event(session_id, "application_progress", {
+                "job_id": job_id, "step": result.error_message or "Application skipped.",
             })
         else:
             _label = f"{job.title} at {job.company}" if job.company else job.title
@@ -1537,11 +1579,17 @@ async def run_application_agent(state: JobHunterState) -> dict:
         job_obj = _find_job_in_state(job_id, state)
         job_label = f"{job_obj.title} at {job_obj.company}" if job_obj else job_id[:8]
 
-        if state.get("skip_next_job_requested"):
+        from backend.browser.indeed_policy import EASY_APPLY_SKIP_REASON, is_indeed_url
+        skip_employer = get_settings().INDEED_EASY_APPLY_ONLY and (
+            job_id in employer_queue or (job_obj is not None and not is_indeed_url(job_obj.url)))
+        skip_reason = EASY_APPLY_SKIP_REASON if skip_employer else "skipped_by_workflow_supervisor"
+        if skip_employer and job_id in employer_queue:
+            employer_queue[job_id] = {**employer_queue[job_id], "status": "skipped", "reason": skip_reason}
+        if state.get("skip_next_job_requested") or skip_employer:
             skipped_result = ApplicationResult(
                 job_id=job_id,
                 status=ApplicationStatus.SKIPPED,
-                error_message="skipped_by_workflow_supervisor",
+                error_message=skip_reason,
                 duration_seconds=0,
             )
             skipped.append(skipped_result)
@@ -1555,11 +1603,11 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     job_url=job_obj.url,
                     job_board=job_obj.board.value if hasattr(job_obj.board, "value") else str(job_obj.board),
                     job_location=job_obj.location or "",
-                    error_message="skipped_by_workflow_supervisor",
+                    error_message=skip_reason,
                     user_id=user_id,
                 )
             await emit_agent_event(session_id, "application_progress", {
-                "step": f"Skipped {job_label} (workflow steering)",
+                "step": f"Skipped {job_label}: {skip_reason}",
                 "progress": pct,
                 "current": app_idx + 1,
                 "total": total_in_queue,
@@ -1568,6 +1616,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 "applications_submitted": [],
                 "applications_failed": [],
                 "applications_skipped": [job_id],
+                "employer_application_queue": employer_queue,
                 "consecutive_failures": 0,
                 "status": "applying",
                 "agent_statuses": {"application": f"skipped -- {job_label}"},
@@ -1641,7 +1690,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
             if j is None:
                 continue
             if (
-                settings.API_APPLY_ENABLED and not settings.INDEED_ONLY
+                settings.API_APPLY_ENABLED and not settings.INDEED_ONLY and not settings.INDEED_EASY_APPLY_ONLY
                 and j.ats_type in _ATS_HANDLERS
                 and jid not in api_failed_ids
             ):
@@ -1708,7 +1757,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
         deduped_skyvern: list[tuple] = []
         # Indeed uses Browserbase's managed default tab and shared login.
         # Keep one active form so concurrent jobs cannot overwrite each other.
-        browser_batch_size = 1 if settings.INDEED_ONLY else settings.SKYVERN_CONCURRENCY
+        browser_batch_size = 1 if (settings.INDEED_ONLY or settings.INDEED_EASY_APPLY_ONLY) else settings.SKYVERN_CONCURRENCY
         for jid, j in skyvern_jobs[:browser_batch_size]:
             company_key = j.company.lower().strip()
             if company_key not in seen_skyvern_companies:

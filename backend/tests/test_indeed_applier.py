@@ -38,7 +38,8 @@ def _job(url: str = "https://www.indeed.com/viewjob?jk=abc123") -> JobListing:
 
 @pytest.fixture(autouse=True)
 def _no_selector_db(monkeypatch):
-    """_click_selector consults the selector-ranking DB; keep tests in-process."""
+    """Keep legacy broad application coverage; demo restrictions have dedicated tests."""
+    monkeypatch.setattr(settings, "INDEED_EASY_APPLY_ONLY", False)
     monkeypatch.setattr("backend.browser.tools.appliers.base.get_top_selectors", lambda *a, **k: [])
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_success", lambda *a, **k: None)
     monkeypatch.setattr("backend.browser.tools.appliers.base.record_failure", lambda *a, **k: None)
@@ -153,6 +154,7 @@ async def test_submit_requires_original_resume_upload():
 @pytest.mark.asyncio
 @pytest.mark.parametrize('receipt', [True, False])
 async def test_natural_actions_upload_and_single_submit_need_receipt(monkeypatch, receipt):
+    monkeypatch.setattr(settings, "INDEED_EASY_APPLY_ONLY", True)
     page = _page('https://smartapply.indeed.com/form/review')
     agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k,i in [
         ('act', 'Fill the name with Ada'), ('upload', ''), ('submit', 'Submit this application')]])

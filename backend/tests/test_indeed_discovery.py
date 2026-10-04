@@ -25,6 +25,7 @@ def _listing() -> JobListing:
         location="Remote",
         url="https://www.indeed.com/viewjob?jk=example1",
         board=JobBoard.INDEED,
+        is_easy_apply=True,
     )
 
 
