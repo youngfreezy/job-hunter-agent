@@ -124,8 +124,13 @@ async def test_auxiliary_backgrounds_bind_user_and_report_missing_key(monkeypatc
     keys = []
     async def chunks(*args, **kwargs):
         keys.append(model_access.current_model_credentials().api_key)
-        if False:
-            yield None
+        if module == 'interview_prep':
+            yield {'data': {
+                'company_brief': {'mission': 'Fixture mission', 'culture': 'Unknown',
+                                  'things_to_mention': ['Relevant experience'], 'interview_tips': ['Be specific']},
+                'questions': [{'id': f'q{i}', 'category': 'technical', 'question': f'Practice question {i}',
+                               'source': 'ai_generated'} for i in range(15)],
+            }}
     graph = SimpleNamespace(astream=chunks)
     with model_access.model_user_scope('owner'):
         await getattr(route, runner)('good', graph, {}, {'user_id':'alice'})
