@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional
 from backend.browser.manager import BrowserManager, apply_stealth
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.application_store import (
+    DuplicateCheckUnavailable,
     check_already_applied,
     check_company_rate_limit,
     clear_pending,
@@ -313,6 +314,12 @@ async def _call_application_supervisor(
 
     Falls back to hardcoded logic if the LLM call fails.
     """
+    if result.failure_step == 'duplicate_check':
+        return ApplicationSupervisorResult(
+            decision=SupervisorDecision.PAUSE,
+            reasoning="Application history is unavailable. Restore storage before resuming; no submission was attempted.",
+            is_systemic=True,
+        )
     if result.failure_step == 'model_budget':
         from backend.browser.stagehand_budget import CEILING_STOP, BUDGET_STOP
         return ApplicationSupervisorResult(
@@ -906,7 +913,16 @@ async def _apply_to_job(
     _app_cfg = _app_cfg if isinstance(_app_cfg, dict) else (_app_cfg.model_dump() if hasattr(_app_cfg, "model_dump") else {})
     _is_quick_apply = _app_cfg.get("discovery_mode") == "manual_urls"
 
-    prior = check_already_applied(job_id, user_id=user_id, job_url=job.url)
+    try:
+        prior = check_already_applied(job_id, user_id=user_id, job_url=job.url)
+    except DuplicateCheckUnavailable as exc:
+        message = str(exc)
+        await emit_agent_event(session_id, "application_progress", {"job_id": job_id, "step": message})
+        return ApplicationResult(
+            job_id=job_id, status=ApplicationStatus.FAILED,
+            error_message=message, error_category=ApplicationErrorCategory.UNKNOWN,
+            failure_step="duplicate_check", duration_seconds=int(time.monotonic() - start_time),
+        )
     if prior:
         raw_at = prior.get("applied_at", "")
         try:
@@ -1849,7 +1865,7 @@ async def run_application_agent(state: JobHunterState) -> dict:
                                     "status_before_pause": "applying",
                                     "pause_resume_node": "application",
                                     "pending_supervisor_response": supervisor.reasoning,
-                                } if result.failure_step == 'model_budget' else {}),
+                                } if result.failure_step in ('model_budget', 'duplicate_check') else {}),
                             }
                         if result.error_message:
                             errors.append(f"Application failed for {job_id}: {result.error_message}")

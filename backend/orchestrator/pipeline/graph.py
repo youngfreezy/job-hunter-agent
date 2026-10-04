@@ -210,11 +210,11 @@ def make_workflow_supervisor_node(
 ) -> Callable[[JobHunterState], dict]:
     async def _node(state: JobHunterState) -> dict:
         if state.get('pause_requested') and any(
-            result.failure_step == 'model_budget'
+            result.failure_step in ('model_budget', 'duplicate_check')
             for result in (state.get('applications_failed') or [])
         ):
             # Go directly to the existing interrupt. Even steering adjudication
-            # would spend again after the budget has blocked this application.
+            # must not spend or override a budget or unavailable-history stop.
             return {}
         return await workflow_supervisor.run_workflow_supervisor(
             state,

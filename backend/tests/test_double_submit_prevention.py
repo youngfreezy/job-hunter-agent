@@ -3,7 +3,7 @@
 """Tests for double-submit prevention via pending records.
 
 Verifies that:
-1. A pending record blocks check_already_applied (prevents double-submit on resume)
+1. Only confirmed or uncertain delivery blocks another submission
 2. clear_pending removes only the pending record, not submitted ones
 3. Failed/skipped records do NOT block re-attempts
 4. The full lifecycle: pending → clear → final record works correctly
@@ -78,7 +78,7 @@ def _unique_id() -> str:
 
 
 class TestPendingBlocksDoubleSubmit:
-    """A 'pending' record should block check_already_applied."""
+    """Ordinary preparation permits retry; submitted delivery does not."""
 
     def test_pending_record_does_not_block_resubmit(self, _db_identity):
         """Pending records should NOT block re-attempts — only submitted does."""
@@ -287,3 +287,66 @@ def test_uncertain_final_result_atomically_replaces_intent(_db_identity):
     with get_connection() as conn:
         assert conn.execute("SELECT count(*) FROM application_results WHERE session_id=%s AND job_id=%s",
                             (session_id, job_id)).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize('different_job_id', [False, True])
+def test_concurrent_submission_claim_has_only_one_winner(_db_identity, different_job_id):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from backend.shared.application_store import mark_submission_intent
+
+    session_id, user_id = _db_identity
+    second_session = _unique_id()
+    jobs = [_unique_id(), _unique_id()]
+    if not different_job_id:
+        jobs[1] = jobs[0]
+    url = f'https://www.indeed.com/viewjob?jk={jobs[0]}'
+    with get_connection() as conn:
+        conn.execute("INSERT INTO sessions (id,user_id,status) VALUES (%s,%s,'applying')", (second_session, user_id))
+        conn.commit()
+    try:
+        for sid, jid in zip([session_id, second_session], jobs):
+            record_result(session_id=sid, user_id=user_id, job_id=jid, job_url=url, status='pending')
+        barrier = Barrier(2)
+        def claim(args):
+            barrier.wait(timeout=5)
+            try:
+                mark_submission_intent(*args)
+                return 'claimed'
+            except RuntimeError as exc:
+                assert 'previous submission' in str(exc).lower()
+                return 'blocked'
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(claim, zip([session_id, second_session], jobs)))
+        assert sorted(outcomes) == ['blocked', 'claimed']
+        with get_connection() as conn:
+            count = conn.execute("SELECT count(*) FROM application_results WHERE user_id=%s AND error_category='submission_uncertain'", (user_id,)).fetchone()[0]
+            assert count == 1
+    finally:
+        with get_connection() as conn:
+            conn.execute('DELETE FROM application_results WHERE session_id=%s', (second_session,))
+            conn.execute('DELETE FROM sessions WHERE id=%s', (second_session,))
+            conn.commit()
+
+
+def test_replaying_same_submission_intent_is_blocked(_db_identity):
+    from backend.shared.application_store import mark_submission_intent
+    session_id, user_id = _db_identity
+    job_id = _unique_id()
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id, status='pending')
+    mark_submission_intent(session_id, job_id)
+    with pytest.raises(RuntimeError, match='previous submission'):
+        mark_submission_intent(session_id, job_id)
+    assert check_already_applied(job_id, user_id=user_id)['error_category'] == 'submission_uncertain'
+
+
+def test_final_claim_rechecks_confirmed_delivery_after_preflight(_db_identity):
+    from backend.shared.application_store import mark_submission_intent
+    session_id, user_id = _db_identity
+    job_id = _unique_id()
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id, status='pending')
+    assert check_already_applied(job_id, user_id=user_id) is None
+    record_result(session_id=session_id, user_id=user_id, job_id=job_id, status='submitted')
+    with pytest.raises(RuntimeError, match='previous submission'):
+        mark_submission_intent(session_id, job_id)
+    assert check_already_applied(job_id, user_id=user_id)['status'] == 'submitted'

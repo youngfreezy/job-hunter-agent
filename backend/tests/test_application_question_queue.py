@@ -102,7 +102,8 @@ def test_stale_question_does_not_hide_real_result():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('remaining_jobs', [False, True])
-async def test_budget_stop_reaches_pause_gate_without_paid_followup(monkeypatch, remaining_jobs):
+@pytest.mark.parametrize('failure_step', ['model_budget', 'duplicate_check'])
+async def test_safety_stop_reaches_pause_gate_without_paid_followup(monkeypatch, remaining_jobs, failure_step):
     from backend.shared.config import settings
     from backend.browser.stagehand_budget import CEILING_STOP
     monkeypatch.setattr(settings, 'INDEED_ONLY', True)
@@ -117,7 +118,7 @@ async def test_budget_stop_reaches_pause_gate_without_paid_followup(monkeypatch,
             for key in (('blocked', 'next') if remaining_jobs else ('blocked',))]
     apply = AsyncMock(return_value=ApplicationResult(
         job_id='blocked', status=ApplicationStatus.FAILED,
-        error_message=CEILING_STOP, failure_step='model_budget'))
+        error_message=CEILING_STOP, failure_step=failure_step))
     monkeypatch.setattr(application, '_apply_to_job', apply)
     build = MagicMock(side_effect=AssertionError('Must not call a paid supervisor'))
     monkeypatch.setattr('backend.shared.llm.build_llm', build)
@@ -127,7 +128,10 @@ async def test_budget_stop_reaches_pause_gate_without_paid_followup(monkeypatch,
     updates = await application.run_application_agent(state)
     state.update(updates)
     assert state['pause_requested'] is True
-    assert state['pending_supervisor_response'] == CEILING_STOP
+    if failure_step == 'model_budget':
+        assert state['pending_supervisor_response'] == CEILING_STOP
+    else:
+        assert 'Restore storage' in state['pending_supervisor_response']
     assert state['pause_resume_node'] == 'application'
     steering = AsyncMock(side_effect=AssertionError('No paid steering adjudication'))
     monkeypatch.setattr(graph.workflow_supervisor, 'run_workflow_supervisor', steering)

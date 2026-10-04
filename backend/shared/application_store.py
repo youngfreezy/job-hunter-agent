@@ -18,6 +18,15 @@ from backend.shared.db import get_connection
 
 logger = logging.getLogger(__name__)
 
+
+class DuplicateCheckUnavailable(RuntimeError):
+    """Prior delivery could not be checked; no submission is permitted."""
+
+
+class SubmissionAlreadyClaimed(RuntimeError):
+    """A confirmed or uncertain application already owns this submission."""
+
+
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS application_results (
     id SERIAL PRIMARY KEY,
@@ -143,6 +152,7 @@ def check_already_applied(
     """Check for a submitted or uncertain submission by this user.
 
     Returns the prior application record if found, None otherwise.
+    Raises DuplicateCheckUnavailable if storage cannot establish that result.
     A possible submission remains on hold until its result is reconciled.
     Ordinary failed, skipped, and pending results do not block re-attempts.
     Checks both by job_id and by job_url (for backward compat with old random IDs).
@@ -207,9 +217,11 @@ def check_already_applied(
                     }
 
             return None
-    except Exception:
+    except Exception as exc:
         logger.warning("Failed to check duplicate for %s", job_id, exc_info=True)
-        return None
+        raise DuplicateCheckUnavailable(
+            "Could not verify prior applications. Application paused before submission; try again when storage is available."
+        ) from exc
 
 
 def mark_submission_intent(session_id: str, job_id: str) -> None:
@@ -219,12 +231,39 @@ def mark_submission_intent(session_id: str, job_id: str) -> None:
     Unlike ordinary result logging, any persistence failure must stop the click.
     """
     with _connect() as conn:
+        pending = conn.execute(
+            """SELECT user_id, job_url FROM application_results
+               WHERE session_id = %s AND job_id = %s AND status = 'pending'
+               ORDER BY id DESC LIMIT 1""",
+            (session_id, job_id),
+        ).fetchone()
+        if not pending:
+            raise RuntimeError("Cannot submit without a persisted pending application")
+        user_id, job_url = pending
+        if not user_id:
+            raise RuntimeError("Cannot submit without a persisted application owner")
+        # Serialize only the brief claim transaction for this owner. Locking by
+        # owner covers legacy job IDs that identify the same job through its URL.
+        # Provider/browser work runs only after this transaction commits.
+        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                     (f'application-submit:{user_id}',))
+        prior = conn.execute(
+            """SELECT 1 FROM application_results
+               WHERE user_id = %s AND (job_id = %s OR (job_url = %s AND job_url <> ''))
+                 AND (status = 'submitted' OR error_category = 'submission_uncertain')
+               LIMIT 1""",
+            (user_id, job_id, job_url),
+        ).fetchone()
+        if prior:
+            raise SubmissionAlreadyClaimed(
+                "A previous submission exists or remains unverified. Reconcile it before applying again."
+            )
         updated = conn.execute(
             """UPDATE application_results
                SET error_category = 'submission_uncertain',
                    error_message = 'Final submission started; receipt not yet verified.'
-               WHERE session_id = %s AND job_id = %s AND status = 'pending'""",
-            (session_id, job_id),
+               WHERE session_id = %s AND job_id = %s AND user_id = %s AND status = 'pending'""",
+            (session_id, job_id, user_id),
         )
         if updated.rowcount == 0:
             raise RuntimeError("Cannot submit without a persisted pending application")
