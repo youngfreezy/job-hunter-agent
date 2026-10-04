@@ -32,6 +32,10 @@ def public_settings(user_id: str):
     else:
         models = {'default': settings.OPENAI_DEFAULT_MODEL, 'premium': settings.OPENAI_PREMIUM_MODEL,
                   'light': settings.OPENAI_DEFAULT_MODEL, 'browser': settings.OPENAI_BROWSER_MODEL}
+    if settings.BROWSER_MODE == "browserbase":
+        # Stagehand calls the shared default-model callback; the browser-specific
+        # setting belongs to the alternate browser-use adapter.
+        models["browser"] = models["default"]
     budget = None
     if owner:
         from backend.shared.model_budget import configured_ledger, Ledger, MODEL

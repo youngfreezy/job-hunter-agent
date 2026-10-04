@@ -170,3 +170,12 @@ def test_owner_settings_exposes_only_aggregate_budget(monkeypatch, tmp_path):
     assert 'private' not in str(response) and 'do-not-expose' not in str(response)
     assert str(path) not in str(response)
     assert ledger.snapshot() == before
+
+
+def test_public_browser_readout_matches_stagehand_callback_model(monkeypatch):
+    from backend.gateway.routes import model_settings
+    monkeypatch.setattr(model_settings, 'get_model_key', lambda _: 'alice-key')
+    monkeypatch.setattr(settings, 'BROWSER_MODE', 'browserbase')
+    monkeypatch.setattr(settings, 'ANTHROPIC_BROWSER_MODEL', 'claude-haiku-4-5-20251001')
+    response = model_settings.public_settings('alice')
+    assert response['models']['browser'] == settings.ANTHROPIC_DEFAULT_MODEL
