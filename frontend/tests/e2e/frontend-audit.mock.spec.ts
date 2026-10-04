@@ -34,7 +34,7 @@ test.describe('Mocked frontend recovery and resume identity', () => {
   });
   test('Freelance start failure leaves a usable retry and backend explanation', async ({ page }) => {
     await page.goto('/freelance');
-    const button = page.getByRole('button', { name: 'Start Searching', exact: true });
+    const button = page.getByRole('button', { name: 'Generate sample briefs', exact: true });
     await button.click();
     await expect(button).toBeEnabled({ timeout: 4000 });
     await expect(page.getByText('Fixture service unavailable. Try again.', { exact: true })).toBeVisible();
@@ -216,6 +216,41 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     await expect(page.getByLabel('Shortlist approval: approved', { exact: true })).toBeVisible();
     await expect(page.getByText('No jobs were approved', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Stopped · no submission confirmed', { exact: true })).toBeVisible();
+  });
+
+  test('Freelance examples disclose their source and never link to generated postings', async ({ page, context }) => {
+    await page.goto('/freelance');
+    await expect(page.getByText('AI-generated sample briefs for proposal practice. These are not live job listings; no marketplaces are searched.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Generate sample briefs', exact: true })).toBeVisible();
+    const gigs = [{ id: 'sample', title: 'Sample dashboard project', platform: 'upwork', url: 'https://unverified.example/fake-job', client_name: 'Fabricated Client', posted_date: '1 minute ago', proposals_count: 17, match_score: 91, budget_type: 'fixed', budget_min: 1000, budget_max: 2000, duration: '2 weeks', description_snippet: 'Practice building a dashboard.' }];
+    await context.route('**/api/freelance/sample/stream', route => route.fulfill({ contentType: 'text/event-stream', body: `event: gigs_found\ndata: ${JSON.stringify({ gigs })}\n\nevent: proposals_ready\ndata: ${JSON.stringify({ proposals: { sample: 'Practice proposal text.' } })}\n\nevent: done\ndata: {}\n\n` }));
+    await page.goto('/freelance/sample');
+    await expect(page.getByText('AI-generated sample briefs for proposal practice. These are not live job listings; no marketplaces are searched.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '1 Sample Brief' })).toBeVisible();
+    await expect(page.locator('a[href="https://unverified.example/fake-job"]')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'View Posting' })).toHaveCount(0);
+    await expect(page.getByText(/Fabricated Client|1 minute ago|17 proposals/)).toHaveCount(0);
+    await page.getByRole('button', { name: 'View Proposal' }).click();
+    await expect(page.getByText('Practice proposal text.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Download practice proposal' })).toBeVisible();
+  });
+
+  test('Interview briefing is labeled AI-generated rather than live research', async ({ page, context }) => {
+    await page.goto('/interview-prep');
+    await expect(page.getByText(/AI-generated company briefing; verify current facts/)).toBeVisible();
+    const brief = { mission: 'Fixture mission', culture: 'Fixture culture', recent_news: 'Unverified generated context', things_to_mention: [], interview_tips: [] };
+    await context.route('**/api/interview-prep/sample/stream', route => route.fulfill({ contentType: 'text/event-stream', body: `event: company_brief\ndata: ${JSON.stringify(brief)}\n\nevent: ready_for_practice\ndata: {}\n\n` }));
+    await page.goto('/interview-prep/sample');
+    await expect(page.getByText(/AI-generated company briefing; verify current facts/)).toBeVisible();
+    await expect(page.getByText('Researching company culture & values...')).toHaveCount(0);
+  });
+
+  test('Interview pipeline error shows recovery instead of an endless spinner', async ({ page, context }) => {
+    await context.route('**/api/interview-prep/failed/stream', route => route.fulfill({ contentType: 'text/event-stream', body: 'event: status\ndata: {"status":"researching_company"}\n\nevent: error\ndata: {"message":"Company briefing could not be generated. Try again later."}\n\n' }));
+    await page.goto('/interview-prep/failed');
+    await expect(page.getByRole('alert').filter({ hasText: 'Company briefing could not be generated.' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry connection', exact: true })).toBeVisible();
+    await expect(page.getByText('Generating an AI company briefing...', { exact: true })).toHaveCount(0);
   });
 
 });

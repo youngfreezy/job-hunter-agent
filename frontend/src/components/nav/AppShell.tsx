@@ -51,7 +51,7 @@ const PRIMARY: NavItem[] = [
 const TOOLS = [
   { href: "/interview-prep", label: "Interview practice" },
   { href: "/career-pivot", label: "Career change" },
-  { href: "/freelance", label: "Freelance gigs" },
+  { href: "/freelance", label: "Freelance practice" },
 ];
 
 function matches(pathname: string, prefixes: string[]) {

@@ -75,15 +75,14 @@ export default function FreelancePage() {
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6">
-      <h1 className="text-3xl font-bold mb-2">Freelance Gig Finder</h1>
+      <h1 className="text-3xl font-bold mb-2">Freelance Proposal Practice</h1>
       <p className="text-muted-foreground mb-8">
-        Discover gigs and draft proposals using your configured model provider.
+        Explore project ideas and practice proposals using your configured model provider.
       </p>
 
       <div className="bg-card border rounded-lg p-6 space-y-6">
         <p className="text-muted-foreground text-sm">
-          Upload your resume and we&apos;ll scan top freelance platforms for gigs matching your skills,
-          generate tailored proposals, and help you apply — all in one session.
+          AI-generated sample briefs for proposal practice. These are not live job listings; no marketplaces are searched.
         </p>
 
         <ResumeUpload onResumeReady={(text) => setHasResume(Boolean(text.trim()))} />
@@ -164,7 +163,7 @@ export default function FreelancePage() {
           disabled={!hasResume}
           loading={loading}
         >
-          Start Searching
+          Generate sample briefs
         </Button>
       </div>
     </div>

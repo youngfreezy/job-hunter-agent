@@ -202,7 +202,7 @@ export default function InterviewPrepSessionPage() {
               <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
               <p className="text-sm text-muted-foreground">
                 {status === "researching" || status === "researching_company"
-                  ? "Researching company culture & values..."
+                  ? "Generating an AI company briefing..."
                   : status === "generating_questions"
                   ? "Generating personalized interview questions..."
                   : "Setting up your mock interview..."}
@@ -257,6 +257,7 @@ export default function InterviewPrepSessionPage() {
                 <strong>Mission:</strong> {brief.mission}
               </p>
             )}
+            <p className="text-xs text-muted-foreground">AI-generated company briefing; verify current facts. No live company research is performed.</p>
             {brief.culture && (
               <p>
                 <strong>Culture:</strong> {brief.culture}
@@ -266,7 +267,7 @@ export default function InterviewPrepSessionPage() {
               <>
                 {brief.recent_news && (
                   <p>
-                    <strong>Recent:</strong> {brief.recent_news}
+                    <strong>AI-generated context (verify current facts):</strong> {brief.recent_news}
                   </p>
                 )}
                 {brief.things_to_mention.length > 0 && (
@@ -284,7 +285,7 @@ export default function InterviewPrepSessionPage() {
               <div className="mt-2 relative">
                 <div className="blur-sm select-none pointer-events-none text-muted-foreground">
                   <p>
-                    <strong>Recent:</strong> Company news and developments...
+                    <strong>AI-generated context (verify current facts):</strong> Company background suggestions...
                   </p>
                   <p className="mt-1">
                     <strong>Things to mention:</strong>

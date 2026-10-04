@@ -69,7 +69,7 @@ export default function InterviewPrepLandingPage() {
           <div className="text-6xl">🎯</div>
           <h2 className="text-xl font-semibold">Mock interview with AI coaching</h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            We&apos;ll research the company, generate personalized interview questions, and coach
+            We&apos;ll generate an AI company briefing, personalized interview questions, and coach
             you through answers using your resume. Get real-time grading on every response.
           </p>
         </div>
@@ -105,7 +105,7 @@ export default function InterviewPrepLandingPage() {
         </div>
 
         <p className="text-xs text-muted-foreground text-center">
-          Includes company research, structured answer coaching, and answer grading. Your model provider bills API usage separately.
+          AI-generated company briefing; verify current facts. No live company research is performed. Includes answer coaching and grading; your model provider bills API usage separately.
         </p>
       </div>
     </div>

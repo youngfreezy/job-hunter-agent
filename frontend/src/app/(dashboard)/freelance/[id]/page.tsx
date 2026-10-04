@@ -7,10 +7,16 @@ import { resultStreamError } from "@/lib/result-stream";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ExternalLink, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE, createAuthenticatedStream, type SSEConnection, getAuthHeaders, apiFetch } from "@/lib/api";
-import GigScatterChart from "@/components/charts/GigScatterChart";
+
+const PRACTICE_STATUS_MESSAGES: Record<string, string> = {
+  starting: "Preparing proposal practice...",
+  generating_profiles: "Drafting profile ideas...",
+  discovering_gigs: "Generating sample briefs...",
+  generating_proposals: "Drafting practice proposals...",
+};
 
 interface Gig {
   id: string;
@@ -72,7 +78,7 @@ export default function FreelanceResultPage() {
       es.addEventListener("status", (e) => {
         const data = JSON.parse(e.data);
         setStatus(data.status);
-        setStatusMessage(data.message);
+        setStatusMessage(PRACTICE_STATUS_MESSAGES[data.status] || "Preparing practice materials...");
       });
 
       es.addEventListener("profiles_ready", (e) => {
@@ -90,7 +96,7 @@ export default function FreelanceResultPage() {
 
       es.addEventListener("done", () => {
         setStatus("completed");
-        setStatusMessage("Search complete!");
+        setStatusMessage("Practice materials ready");
         es?.close();
       });
 
@@ -111,19 +117,20 @@ export default function FreelanceResultPage() {
   }
 
   function downloadCoverLetter(gig: Gig, proposalText: string) {
-    const content = `Cover Letter\n\nRe: ${gig.title}\nPlatform: ${gig.platform}\nClient: ${gig.client_name}\n\n---\n\n${proposalText}\n`;
+    const content = `Practice Proposal — AI-generated sample brief, not a live listing\n\nRe: ${gig.title}\nPlatform style: ${gig.platform}\n\n---\n\n${proposalText}\n`;
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `cover-letter-${gig.title.toLowerCase().replace(/\s+/g, "-")}.txt`;
+    a.download = `practice-proposal-${gig.title.toLowerCase().replace(/\s+/g, "-")}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6 space-y-8">
-      <h1 className="text-2xl font-bold">Freelance Gigs</h1>
+      <h1 className="text-2xl font-bold">Freelance Proposal Practice</h1>
+      <p className="text-sm text-muted-foreground">AI-generated sample briefs for proposal practice. These are not live job listings; no marketplaces are searched.</p>
 
       {/* Status */}
       {status !== "completed" && !error && (
@@ -139,7 +146,7 @@ export default function FreelanceResultPage() {
       {profiles.length > 0 && (
         <details className="bg-card border rounded-lg p-4">
           <summary className="cursor-pointer font-medium">
-            Your Freelance Profiles ({profiles.length} platforms)
+            Draft Freelance Profiles ({profiles.length} platforms)
           </summary>
           <div className="mt-4 space-y-4">
             {profiles.map((p, i) => (
@@ -160,35 +167,31 @@ export default function FreelanceResultPage() {
         </details>
       )}
 
-      {/* Gig Scatter Chart */}
-      <GigScatterChart gigs={gigs} />
-
       {/* Gigs */}
       {gigs.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold">{gigs.length} Matching Gigs Found</h2>
+          <h2 className="text-xl font-semibold">{gigs.length} Sample {gigs.length === 1 ? "Brief" : "Briefs"}</h2>
           {gigs.map((gig) => (
             <div key={gig.id} className="bg-card border rounded-lg p-5 space-y-3">
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="font-semibold">{gig.title}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {gig.platform} · {gig.client_name} · {gig.posted_date}
+                    Platform style: {gig.platform}
                   </p>
                 </div>
                 <span className={`text-sm font-bold ${matchColor(gig.match_score)}`}>
-                  {Math.round(gig.match_score)}% match
+                  {Math.round(gig.match_score)}% AI fit estimate
                 </span>
               </div>
 
               <div className="flex gap-4 text-sm">
                 <span>
-                  {gig.budget_type === "fixed" ? "Fixed" : "Hourly"}: $
+                  Illustrative {gig.budget_type === "fixed" ? "fixed budget" : "hourly rate"}: $
                   {gig.budget_min?.toLocaleString()}
                   {gig.budget_max ? ` - $${gig.budget_max.toLocaleString()}` : ""}
                 </span>
                 {gig.duration && <span>· {gig.duration}</span>}
-                {gig.proposals_count != null && <span>· {gig.proposals_count} proposals</span>}
               </div>
 
               {gig.description_snippet && (
@@ -197,17 +200,6 @@ export default function FreelanceResultPage() {
 
               {/* Action buttons */}
               <div className="flex items-center gap-2 pt-1">
-                {gig.url && (
-                  <a
-                    href={gig.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-                  >
-                    View Posting <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                )}
-
                 {proposals[gig.id] && (
                   <Button
                     variant="outline"
@@ -225,13 +217,13 @@ export default function FreelanceResultPage() {
                       size="sm"
                       onClick={() => downloadCoverLetter(gig, proposals[gig.id])}
                     >
-                      Download Cover Letter
+                      Download practice proposal
                     </Button>
                   ) : (
                     <Link href="/billing">
                       <Button variant="outline" size="sm" className="text-muted-foreground">
                         <Lock className="h-3.5 w-3.5 mr-1.5" />
-                        Cover Letter
+                        Practice proposal
                       </Button>
                     </Link>
                   ))}
