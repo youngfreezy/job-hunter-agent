@@ -39,6 +39,12 @@ NEXT_STEPS_SYSTEM = """\
 You are a career strategy assistant. Given a summary of a job-hunting session,
 generate a list of 3-5 actionable next steps the candidate should take before
 their next session.
+Treat the supplied pipeline status and counts as facts. Never describe completed
+scoring as pending or recommend running it again within this completed session.
+If applications attempted is zero, do not recommend checking application receipts
+or following up on applications. Only recommend receipt reconciliation when
+unverified submissions is positive. Do not invent rejection reasons or suggest
+changing the user’s requirements or job-board scope without their choice.
 """
 
 
@@ -60,6 +66,32 @@ def _compute_duration_minutes(session_start_time: str | None) -> int:
         return max(0, int(delta.total_seconds() / 60))
     except (ValueError, TypeError):
         return 0
+
+
+def _empty_shortlist_next_steps(state: JobHunterState, discovered: int) -> List[str]:
+    """Describe known filtering outcomes without guessing why each job failed."""
+    config = state.get("search_config") or {}
+    config = config.model_dump() if hasattr(config, "model_dump") else config
+    criteria = []
+    for key, label in (("keywords", "roles"), ("locations", "locations"),
+                       ("work_arrangements", "arrangements")):
+        if config.get(key):
+            criteria.append(f"{label}: {', '.join(config[key])}")
+    if config.get("remote_only"):
+        criteria.append("remote only")
+    if config.get("salary_min") is not None:
+        criteria.append(f"published-pay minimum: ${config['salary_min']:,}")
+    if config.get("allow_unpublished_salary"):
+        criteria.append("unpublished salary allowed")
+    from backend.shared.config import get_settings
+    settings = get_settings()
+    if settings.INDEED_ONLY or settings.INDEED_EASY_APPLY_ONLY:
+        criteria.append("Indeed Easy Apply only" if settings.INDEED_EASY_APPLY_ONLY else "Indeed only")
+    return [
+        f"Scoring is complete: {discovered} discovered listings, no eligible jobs retained after scoring and filters. No applications were attempted.",
+        "Review your active search criteria: " + ("; ".join(criteria) or "your saved search settings") + ". These settings are not individual rejection reasons.",
+        "Keep your requirements and search again when new listings are available, or explicitly edit your criteria before a new search.",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -138,40 +170,45 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
             "progress": 50,
         })
 
-        next_steps: List[str] = []
-        try:
-            llm = _build_llm()
+        scoring_status = str((state.get("agent_statuses") or {}).get("scoring", ""))
+        if (scoring_status.startswith("done") and not scored_jobs
+                and not submitted and not failed and not skipped):
+            next_steps = _empty_shortlist_next_steps(state, total_discovered)
+        else:
+            try:
+                llm = _build_llm()
 
-            session_context = (
-                f"Session summary:\n"
-                f"- Jobs discovered: {total_discovered}\n"
-                f"- Jobs scored: {total_scored}\n"
-                f"- Applications submitted: {total_applied}\n"
-                f"- Applications failed: {total_failed}\n"
-                f"- Submissions unverified: {total_uncertain}; reconcile Indeed receipts before retrying these jobs.\n"
-                f"- Applications skipped: {total_skipped}\n"
-                f"- Top companies: {', '.join(top_companies) or 'None'}\n"
-                f"- Average fit score: {avg_fit_score}\n"
-                f"- Session duration: {duration_minutes} minutes\n"
-            )
+                session_context = (
+                    f"Session summary:\n"
+                    f"- Jobs discovered: {total_discovered}\n"
+                    f"- Jobs retained after scoring and filters: {total_scored}\n"
+                    f"- Scoring status: {scoring_status or 'unknown'}\n"
+                    f"- Applications attempted: {total_applied + len(failed)}\n"
+                    f"- Applications submitted: {total_applied}\n"
+                    f"- Applications failed: {total_failed}\n"
+                    f"- Submissions unverified: {total_uncertain}\n"
+                    f"- Applications skipped: {total_skipped}\n"
+                    f"- Top companies: {', '.join(top_companies) or 'None'}\n"
+                    f"- Average fit score: {avg_fit_score}\n"
+                    f"- Session duration: {duration_minutes} minutes\n"
+                )
 
-            structured_llm = llm.with_structured_output(NextStepsResult)
-            messages = [
-                SystemMessage(content=NEXT_STEPS_SYSTEM),
-                HumanMessage(content=session_context),
-            ]
-            result: NextStepsResult = await invoke_with_retry(structured_llm, messages)
-            next_steps = result.next_steps
+                structured_llm = llm.with_structured_output(NextStepsResult)
+                messages = [
+                    SystemMessage(content=NEXT_STEPS_SYSTEM),
+                    HumanMessage(content=session_context),
+                ]
+                result: NextStepsResult = await invoke_with_retry(structured_llm, messages)
+                next_steps = result.next_steps
 
-        except Exception as exc:
-            logger.warning("Failed to generate AI next steps: %s", exc)
-            errors.append(f"Next-steps generation warning: {exc}")
-            next_steps = [
-                "Review submitted applications and follow up after 1 week.",
-                "Refine resume keywords based on fit-score feedback.",
-                "Expand search to additional job boards or locations.",
-            ]
-
+            except Exception as exc:
+                logger.warning("Failed to generate AI next steps: %s", exc)
+                errors.append(f"Next-steps generation warning: {exc}")
+                next_steps = ["Review this session’s results and your saved search criteria before a new run."]
+                if total_applied:
+                    next_steps.append("Review submitted applications and follow up after 1 week.")
+                if total_failed:
+                    next_steps.append("Review application errors before deciding whether to retry.")
         if total_uncertain:
             next_steps.insert(0, "Check Indeed for the unverified submission receipt before retrying; the duplicate hold remains in place.")
 
