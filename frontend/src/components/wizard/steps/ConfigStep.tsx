@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useFormikContext } from "formik";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getWallet, API_BASE, getAuthHeaders, apiFetch } from "@/lib/api";
+import { indeedEasyApplyOnly } from "@/lib/indeed-policy";
 import type { SessionFormValues } from "@/lib/schemas/session";
 
 const BOARDS = [
@@ -16,29 +17,19 @@ const BOARDS = [
   { id: "ziprecruiter", label: "ZipRecruiter" },
 ];
 
-const COST_ESTIMATES: Record<string, number> = {
-  "auto_apply+standard": 20,
-  "auto_apply+premium": 25,
-  "materials_only+standard": 13,
-  "materials_only+premium": 15,
-};
-
-function estimateCredits(values: SessionFormValues): number {
-  const key = `${values.applicationMode}+${values.tailoringQuality}`;
-  const base = COST_ESTIMATES[key] ?? 20;
-  const jobRatio = (values.maxJobs ?? 5) / 5;
-  return Math.round(base * jobRatio);
-}
-
 export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: (v: boolean) => void }) {
   const { values, setFieldValue } = useFormikContext<SessionFormValues>();
   const [balance, setBalance] = useState<number | null>(null);
   const [isPremium, setIsPremium] = useState(false);
+  const [submittedCost, setSubmittedCost] = useState(1);
+  const [partialCost, setPartialCost] = useState(0.5);
 
   useEffect(() => {
     getWallet()
       .then((w) => {
-        setBalance(w.balance + (w.free_remaining ?? 0));
+        setSubmittedCost(w.credit_cost_submitted ?? 1);
+        setPartialCost(w.credit_cost_partial ?? 0.5);
+        setBalance(w.balance + (w.free_remaining ?? 0) * (w.credit_cost_submitted ?? 1));
         setIsPremium(w.is_premium ?? false);
       })
       .catch(() => setBalance(null));
@@ -57,8 +48,15 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
       .catch(() => {});
   }, []);
 
-  const boards = values.jobBoards ?? ["linkedin", "indeed", "glassdoor", "ziprecruiter"];
-  const credits = estimateCredits(values);
+  const boards = indeedEasyApplyOnly ? ["indeed"] : values.jobBoards ?? ["indeed"];
+  const availableBoards = indeedEasyApplyOnly ? BOARDS.filter((board) => board.id === "indeed") : BOARDS;
+  const credits = (values.maxJobs ?? 5) * (values.applicationMode === "materials_only" ? partialCost : submittedCost);
+
+  useEffect(() => {
+    if (indeedEasyApplyOnly && (values.jobBoards?.length !== 1 || values.jobBoards[0] !== "indeed")) {
+      setFieldValue("jobBoards", ["indeed"]);
+    }
+  }, [setFieldValue, values.jobBoards]);
   const insufficientCredits = !isPremium && balance !== null && credits > balance;
 
   useEffect(() => {
@@ -96,10 +94,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
                 onChange={(e) => {
                   const v = parseInt(e.target.value);
                   if (!isPremium) {
-                    const costForV = Math.round(
-                      (COST_ESTIMATES[`${values.applicationMode}+${values.tailoringQuality}`] ?? 20) *
-                        (v / 5)
-                    );
+                    const costForV = v * (values.applicationMode === "materials_only" ? partialCost : submittedCost);
                     if (balance !== null && costForV > balance) return;
                   }
                   setFieldValue("maxJobs", v);
@@ -232,12 +227,13 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
           <div>
             <label className="text-sm font-medium mb-2 block">Job boards to search</label>
             <div className="flex flex-wrap gap-2">
-              {BOARDS.map((board) => {
+              {availableBoards.map((board) => {
                 const active = boards.includes(board.id);
                 return (
                   <button
                     key={board.id}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => {
                       const next = active
                         ? boards.filter((b: string) => b !== board.id)

@@ -3,6 +3,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { responseError } from "@/lib/api-error";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ResumeUpload } from "@/components/ResumeUpload";
@@ -62,11 +64,12 @@ export default function FreelancePage() {
         }),
       });
 
-      if (!res.ok) throw new Error(`Failed to start: ${res.statusText}`);
+      if (!res.ok) throw new Error(await responseError(res, "Could not start this session."));
       const { session_id } = await res.json();
       router.push(`/freelance/${session_id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An unknown error occurred");
+      setLoading(false);
     }
   }
 
@@ -74,7 +77,7 @@ export default function FreelancePage() {
     <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6">
       <h1 className="text-3xl font-bold mb-2">Freelance Gig Finder</h1>
       <p className="text-muted-foreground mb-8">
-        Find gigs free. Submit unlimited proposals for one flat price.
+        Discover gigs and draft proposals using your configured model provider.
       </p>
 
       <div className="bg-card border rounded-lg p-6 space-y-6">
@@ -83,7 +86,7 @@ export default function FreelancePage() {
           generate tailored proposals, and help you apply — all in one session.
         </p>
 
-        <ResumeUpload onResumeReady={() => setHasResume(true)} />
+        <ResumeUpload onResumeReady={(text) => setHasResume(Boolean(text.trim()))} />
 
         <div>
           <label className="block text-sm font-medium mb-2">Hourly Rate Range</label>
@@ -152,7 +155,7 @@ export default function FreelancePage() {
           </div>
         </div>
 
-        {error && <p className="text-destructive text-sm">{error}</p>}
+        {error && <div role="alert" className="text-destructive text-sm"><p>{error}</p><Link href="/settings" className="underline">Check API keys in Settings</Link></div>}
 
         <Button
           size="lg"

@@ -878,7 +878,7 @@ export default function SessionPage() {
       setShortlistSubmitting(false);
       setSession((prev) => (prev ? { ...prev, status: "applying" } : prev));
     } catch (e) {
-      console.error("Failed to submit review:", e);
+      toast.error(e instanceof Error ? e.message : "Could not approve the shortlist. Try again.");
       setShortlistSubmitting(false);
     }
   };
@@ -903,7 +903,7 @@ export default function SessionPage() {
       setCoachReviewOpen(false);
       setSession((prev) => (prev ? { ...prev, status: "discovering" } : prev));
     } catch (e) {
-      console.error("Failed to submit coach review:", e);
+      toast.error(e instanceof Error ? e.message : "Could not approve the resume. Try again.");
     } finally {
       setCoachReviewSubmitting(false);
     }

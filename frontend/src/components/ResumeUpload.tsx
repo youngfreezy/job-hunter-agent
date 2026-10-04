@@ -28,6 +28,9 @@ function fileToBase64(file: File): Promise<string> {
 
 function saveResumeToStorage(text: string, fileName: string, fileBytes?: string) {
   try {
+    localStorage.removeItem("jh_resume_uuid");
+    localStorage.removeItem(FILE_BYTES_KEY);
+    localStorage.removeItem(FILE_SAVED_AT_KEY);
     localStorage.setItem(STORAGE_KEY, text);
     localStorage.setItem(FILENAME_KEY, fileName);
     if (fileBytes) {
@@ -118,6 +121,9 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
   async function handleFile(file: File) {
     setError(null);
     setFileName(file.name);
+    setResumeText("");
+    saveResumeToStorage("", file.name);
+    onResumeReady?.("");
 
     if (file.type === "text/plain" || file.name.endsWith(".txt")) {
       const text = await file.text();

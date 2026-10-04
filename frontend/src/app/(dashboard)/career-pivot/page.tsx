@@ -3,6 +3,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { responseError } from "@/lib/api-error";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ResumeUpload } from "@/components/ResumeUpload";
@@ -39,7 +41,7 @@ export default function CareerPivotPage() {
         }),
       });
 
-      if (!res.ok) throw new Error(`Failed to start: ${res.statusText}`);
+      if (!res.ok) throw new Error(await responseError(res, "Could not start this session."));
       const { session_id } = await res.json();
       router.push(`/career-pivot/${session_id}`);
     } catch (err: unknown) {
@@ -52,7 +54,7 @@ export default function CareerPivotPage() {
     <div className="container mx-auto max-w-4xl px-4 py-6 sm:p-6">
       <h1 className="text-3xl font-bold mb-2">Career Pivot Advisor</h1>
       <p className="text-muted-foreground mb-8">
-        Is your job safe from AI? Find out in 60 seconds — free.
+        Explore how AI may change your role and which skills to build next.
       </p>
 
       <div className="bg-card border rounded-lg p-8 space-y-6">
@@ -67,19 +69,19 @@ export default function CareerPivotPage() {
         </div>
 
         <div className="max-w-lg mx-auto">
-          <ResumeUpload onResumeReady={() => setHasResume(true)} />
+          <ResumeUpload onResumeReady={(text) => setHasResume(Boolean(text.trim()))} />
         </div>
 
-        {error && <p className="text-destructive text-sm text-center">{error}</p>}
+        {error && <div role="alert" className="text-destructive text-sm text-center"><p>{error}</p><Link href="/settings" className="underline">Check API keys in Settings</Link></div>}
 
         <div className="text-center">
           <Button size="lg" onClick={handleStart} disabled={!hasResume} loading={loading}>
-            Start Free Assessment
+            Start Assessment
           </Button>
         </div>
 
         <p className="text-xs text-muted-foreground text-center">
-          Powered by U.S. Department of Labor data. No credit card required.
+          Uses U.S. Department of Labor data. Your model provider bills API usage separately.
         </p>
       </div>
     </div>

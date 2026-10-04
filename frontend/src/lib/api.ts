@@ -850,6 +850,8 @@ export async function getWallet(): Promise<{
   balance: number;
   free_remaining: number;
   application_cost: number;
+  credit_cost_submitted?: number;
+  credit_cost_partial?: number;
   is_premium?: boolean;
 }> {
   const auth = await getAuthHeaders();

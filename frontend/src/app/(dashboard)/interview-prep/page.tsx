@@ -3,6 +3,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { responseError } from "@/lib/api-error";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ResumeUpload } from "@/components/ResumeUpload";
@@ -46,7 +48,7 @@ export default function InterviewPrepLandingPage() {
         }),
       });
 
-      if (!res.ok) throw new Error(`Failed to start: ${res.statusText}`);
+      if (!res.ok) throw new Error(await responseError(res, "Could not start this session."));
       const { session_id } = await res.json();
       router.push(`/interview-prep/${session_id}`);
     } catch (err: unknown) {
@@ -73,7 +75,7 @@ export default function InterviewPrepLandingPage() {
         </div>
 
         <div className="max-w-lg mx-auto space-y-4">
-          <ResumeUpload onResumeReady={() => setHasResume(true)} />
+          <ResumeUpload onResumeReady={(text) => setHasResume(Boolean(text.trim()))} />
 
           <input
             placeholder="Company name (e.g. Google)"
@@ -89,7 +91,7 @@ export default function InterviewPrepLandingPage() {
           />
         </div>
 
-        {error && <p className="text-destructive text-sm text-center">{error}</p>}
+        {error && <div role="alert" className="text-destructive text-sm text-center"><p>{error}</p><Link href="/settings" className="underline">Check API keys in Settings</Link></div>}
 
         <div className="text-center">
           <Button
@@ -103,7 +105,7 @@ export default function InterviewPrepLandingPage() {
         </div>
 
         <p className="text-xs text-muted-foreground text-center">
-          Includes company research, structured answer coaching, and answer grading.
+          Includes company research, structured answer coaching, and answer grading. Your model provider bills API usage separately.
         </p>
       </div>
     </div>

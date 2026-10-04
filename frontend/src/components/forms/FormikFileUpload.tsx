@@ -18,6 +18,9 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function saveResumeToStorage(text: string, fileName: string, fileBytes?: string) {
   try {
+    localStorage.removeItem("jh_resume_uuid");
+    localStorage.removeItem(FILE_BYTES_KEY);
+    localStorage.removeItem(FILE_SAVED_AT_KEY);
     localStorage.setItem(STORAGE_KEY, text);
     localStorage.setItem(FILENAME_KEY, fileName);
     if (fileBytes) {
@@ -95,7 +98,7 @@ const SECTION_PATTERNS = [
 
 export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
   const parse = parseFn || parseResume;
-  const { values, setFieldValue } = useFormikContext<SessionFormValues>();
+  const { values, errors, setFieldValue } = useFormikContext<SessionFormValues>();
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const restoredRef = useRef(false);
@@ -150,6 +153,10 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
   const handleFileUpload = async (file: File) => {
     setError(null);
     setFieldValue("resumeFileName", file.name);
+    setFieldValue("resumeText", "");
+    setFieldValue("resumeFilePath", "");
+    setFieldValue("resumeFileUuid", "");
+    saveResumeToStorage("", file.name);
 
     // Plain text files can be read directly
     if (file.type === "text/plain" || file.name.endsWith(".txt")) {
@@ -164,13 +171,12 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
     try {
       const [result, base64] = await Promise.all([parse(file), fileToBase64(file)]);
       setFieldValue("resumeText", result.text);
-      if (result.file_path) {
-        setFieldValue("resumeFilePath", result.file_path);
-      }
-      if (result.resume_uuid) {
-        setFieldValue("resumeFileUuid", result.resume_uuid);
-      }
       saveResumeToStorage(result.text, file.name, base64);
+      setFieldValue("resumeFilePath", result.file_path || "");
+      setFieldValue("resumeFileUuid", result.resume_uuid || "");
+      if (result.resume_uuid) {
+        try { localStorage.setItem("jh_resume_uuid", result.resume_uuid); } catch {}
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to parse file";
       setError(msg);
@@ -197,6 +203,9 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
           <span>PDF, DOCX or TXT</span>
         )}
       </FilePicker>
+      {values.resumeFileName && !parsing && typeof errors.resumeText === "string" && (
+        <p role="alert" className="mt-2 text-sm text-destructive">{errors.resumeText}</p>
+      )}
       {values.resumeFileName && !parsing && (
         <div className="mt-3 space-y-3">
           <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">

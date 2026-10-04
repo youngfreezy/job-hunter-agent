@@ -183,14 +183,15 @@ export default function SettingsPage() {
     setSavingChannel(true);
     try {
       const auth = await getAuthHeaders();
-      await apiFetch(`${API_BASE}/api/auth/me/notification-channel`, {
+      const res = await apiFetch(`${API_BASE}/api/auth/me/notification-channel`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify({ notification_channel: channel }),
       });
+      if (!res.ok) throw new Error("Notification preference save failed");
       setNotificationChannel(channel);
     } catch {
-      console.error("Failed to save notification preference");
+      toast.error("Couldn’t save the notification preference. Nothing was changed. Try again.");
     } finally {
       setSavingChannel(false);
     }

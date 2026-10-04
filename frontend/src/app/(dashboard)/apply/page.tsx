@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { runName } from "@/lib/run";
+import { applicationLogStatus, applicationLogLabel } from "@/lib/application-log";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,9 +20,10 @@ import { downloadResumePdf, downloadCoverLetterPdf } from "@/lib/pdf";
 import { toast } from "sonner";
 import { MetricStrip } from "@/components/ui/metric-strip";
 
-type Tab = "all" | "submitted" | "failed" | "skipped";
+type Tab = "all" | "submitted" | "failed" | "skipped" | "uncertain";
 
 const STATUS_COLORS: Record<string, string> = {
+  uncertain: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   submitted: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
   failed: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   skipped: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
@@ -83,12 +85,13 @@ export default function ApplyPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const filtered = tab === "all" ? entries : entries.filter((e) => e.status === tab);
+  const filtered = tab === "all" ? entries : entries.filter((e) => applicationLogStatus(e) === tab);
 
   const counts = {
     all: entries.length,
     submitted: entries.filter((e) => e.status === "submitted").length,
-    failed: entries.filter((e) => e.status === "failed").length,
+    failed: entries.filter((e) => applicationLogStatus(e) === "failed").length,
+    uncertain: entries.filter((e) => applicationLogStatus(e) === "uncertain").length,
     skipped: entries.filter((e) => e.status === "skipped").length,
   };
 
@@ -124,7 +127,7 @@ export default function ApplyPage() {
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {(["all", "submitted", "failed", "skipped"] as Tab[]).map((t) => (
+        {(["all", "submitted", "failed", "uncertain", "skipped"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -134,7 +137,7 @@ export default function ApplyPage() {
                 : "bg-muted/50 text-muted-foreground hover:bg-muted"
             }`}
           >
-            {t.charAt(0).toUpperCase() + t.slice(1)} ({counts[t]})
+            {t === "uncertain" ? "Confirmation pending" : t.charAt(0).toUpperCase() + t.slice(1)} ({counts[t]})
           </button>
         ))}
       </div>
@@ -182,8 +185,8 @@ export default function ApplyPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge className={`text-xs ${STATUS_COLORS[entry.status]}`}>
-                          {entry.status}
+                        <Badge className={`text-xs ${STATUS_COLORS[applicationLogStatus(entry)]}`}>
+                          {applicationLogLabel(entry)}
                         </Badge>
                         {entry.error?.startsWith("duplicate:") && (
                           <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
@@ -232,7 +235,7 @@ export default function ApplyPage() {
                                 d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
                               />
                             </svg>
-                            Apply
+                            {applicationLogStatus(entry) === "uncertain" ? "Check application" : "Apply"}
                           </Button>
                         </a>
                       )}
