@@ -41,8 +41,10 @@ def test_initialization_repairs_legacy_schema_and_refresh_persists(isolated_stra
     conn = isolated_strategy_table
     if legacy:
         conn.execute('''CREATE TABLE ats_strategies (
-            ats_type TEXT PRIMARY KEY, strategy_tip TEXT NOT NULL,
-            updated_at TIMESTAMPTZ DEFAULT NOW())''')
+            id SERIAL PRIMARY KEY, ats_type TEXT NOT NULL, strategy_tip TEXT,
+            strategy_name TEXT, strategy_config JSONB DEFAULT '{}'::jsonb,
+            success_count INT DEFAULT 0, fail_count INT DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT NOW())''')
         conn.execute("INSERT INTO ats_strategies (ats_type, strategy_tip) VALUES ('indeed', 'preserve original tip')")
         conn.commit()
     feedback._ensure_table()
@@ -78,3 +80,15 @@ def test_budget_refresh_still_persists_statistics_without_model(isolated_strateg
     assert row[:2] == (0.2, 5)
     assert '20%' in row[2] and 'slow-loading' in row[2]
     build.assert_not_called()
+
+
+def test_legacy_duplicate_ats_types_fail_clearly_without_rewriting_rows(isolated_strategy_table):
+    conn = isolated_strategy_table
+    conn.execute('CREATE TABLE ats_strategies (id SERIAL PRIMARY KEY, ats_type TEXT NOT NULL, strategy_tip TEXT)')
+    conn.execute("INSERT INTO ats_strategies (ats_type, strategy_tip) VALUES ('indeed', 'first'), ('indeed', 'second')")
+    conn.commit()
+    with pytest.raises(RuntimeError, match='duplicate ATS types'):
+        feedback._ensure_table()
+    conn.rollback()
+    assert conn.execute('SELECT strategy_tip FROM ats_strategies ORDER BY id').fetchall() == [('first',), ('second',)]
+    assert feedback._TABLE_ENSURED is False

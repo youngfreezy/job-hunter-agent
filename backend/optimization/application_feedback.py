@@ -65,7 +65,18 @@ def _ensure_table() -> None:
                 ADD COLUMN IF NOT EXISTS success_rate FLOAT DEFAULT 0.0,
                 ADD COLUMN IF NOT EXISTS total_attempts INT DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS top_errors JSONB,
-                ADD COLUMN IF NOT EXISTS top_failure_steps JSONB
+                ADD COLUMN IF NOT EXISTS top_failure_steps JSONB,
+                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
+        """)
+        if conn.execute("""
+            SELECT 1 FROM ats_strategies GROUP BY ats_type HAVING COUNT(*) > 1 LIMIT 1
+        """).fetchone():
+            raise RuntimeError('Cannot initialize strategy feedback: duplicate ATS types require explicit reconciliation.')
+        # Legacy deployments used an id primary key. Upsert needs its own
+        # unique ATS key; preserve the old id and every existing strategy row.
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ats_strategies_feedback_ats_type_key
+            ON ats_strategies (ats_type)
         """)
         conn.commit()
     _TABLE_ENSURED = True
