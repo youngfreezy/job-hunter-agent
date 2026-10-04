@@ -495,6 +495,13 @@ class IndeedApplier(BaseApplier):
         except TimeoutError:
             return self._fail(str(job.id), 'Application time limit reached; check Indeed before retrying.')
         except Exception as exc:
+            from backend.browser.stagehand_budget import budget_stop_message
+            budget_message = budget_stop_message(exc)
+            if budget_message:
+                result = self._fail(str(job.id), budget_message)
+                result.failure_step = 'model_budget'
+                await self._emit_step(budget_message)
+                return result
             # SDK exception strings may include applicant prompts or credentials.
             frames = traceback.extract_tb(exc.__traceback__)
             logger.error('Stagehand application failed (%s) at %s', type(exc).__name__,

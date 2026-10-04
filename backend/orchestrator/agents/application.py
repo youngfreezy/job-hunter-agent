@@ -313,6 +313,14 @@ async def _call_application_supervisor(
 
     Falls back to hardcoded logic if the LLM call fails.
     """
+    if result.failure_step == 'model_budget':
+        from backend.browser.stagehand_budget import CEILING_STOP, BUDGET_STOP
+        return ApplicationSupervisorResult(
+            decision=SupervisorDecision.PAUSE,
+            reasoning=(result.error_message if result.error_message in (CEILING_STOP, BUDGET_STOP)
+                       else BUDGET_STOP),
+            is_systemic=True,
+        )
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
         from backend.shared.llm import build_llm, invoke_with_retry, HAIKU_MODEL
@@ -1836,6 +1844,12 @@ async def run_application_agent(state: JobHunterState) -> dict:
                                 "errors": errors,
                                 "skip_next_job_requested": False,
                                 "active_retry_job_ids": [],
+                                **({
+                                    "pause_requested": True,
+                                    "status_before_pause": "applying",
+                                    "pause_resume_node": "application",
+                                    "pending_supervisor_response": supervisor.reasoning,
+                                } if result.failure_step == 'model_budget' else {}),
                             }
                         if result.error_message:
                             errors.append(f"Application failed for {job_id}: {result.error_message}")

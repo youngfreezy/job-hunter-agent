@@ -11,9 +11,20 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from stagehand import LLMStructuredGenerateParams, LLMStructuredGenerateResult
 
 from backend.shared.llm import build_llm, default_model
+from backend.shared.model_budget import BudgetStopped
+from backend.browser.stagehand_budget import budget_stop_message
 
 
 async def generate(params: LLMStructuredGenerateParams) -> LLMStructuredGenerateResult:
+    try:
+        return await _generate(params)
+    except BudgetStopped as exc:
+        # Stagehand serializes callback exceptions as RPCError(-32603). Preserve
+        # a stable, sanitized reason that the application can recognize exactly.
+        raise BudgetStopped(budget_stop_message(exc)) from None
+
+
+async def _generate(params: LLMStructuredGenerateParams) -> LLMStructuredGenerateResult:
     if not isinstance(params, LLMStructuredGenerateParams):
         raise ValueError("Only structured Stagehand act/extract/observe requests are supported.")
     messages = [SystemMessage(content=params.system_prompt)] if params.system_prompt else []

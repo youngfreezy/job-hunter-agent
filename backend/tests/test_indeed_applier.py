@@ -936,3 +936,32 @@ async def test_captcha_start_and_finish_during_idle_wait_discards_stale_submit(m
     applier._check_answer.assert_not_awaited()
     agent.act.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('after_submit', [False, True])
+async def test_rpc_budget_stop_is_truthful_and_never_retried(monkeypatch, after_submit):
+    from types import SimpleNamespace
+    from stagehand.rpc_client import RPCError
+    page = _page()
+    agent = _stagehand(page, [])
+    agent.extract.side_effect = RPCError(SimpleNamespace(
+        code=-32603, data=None, message='Model spend ceiling reached; paid request blocked.'))
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    applier._submission_attempted = after_submit
+    applier._capture_screenshot = AsyncMock()
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.FAILED
+    assert result.error_message == 'Model spend ceiling reached; paid request blocked.'
+    assert result.failure_step == 'model_budget'
+    if after_submit:
+        assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
+    agent.extract.assert_awaited_once()
+    agent.act.assert_not_awaited()
+    indeed_mod.mark_submission_intent.assert_not_called()
+    applier._capture_screenshot.assert_not_awaited()
+    build = MagicMock(side_effect=AssertionError('Supervisor must not spend after a budget stop'))
+    monkeypatch.setattr('backend.shared.llm.build_llm', build)
+    decision = await app_node._call_application_supervisor(result, [result], 2, True, 's1')
+    assert decision.decision == app_node.SupervisorDecision.PAUSE
+    assert decision.reasoning == result.error_message
+    build.assert_not_called()

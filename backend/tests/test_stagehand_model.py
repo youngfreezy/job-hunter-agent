@@ -47,3 +47,44 @@ async def test_model_callback_does_not_invent_output_on_parse_failure(monkeypatc
     monkeypatch.setattr(stagehand_model, "build_llm", lambda **_: llm)
     with pytest.raises(ValueError, match="valid structured"):
         await stagehand_model.generate(params)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('during_invoke', [False, True])
+async def test_budget_callback_emits_only_stable_safe_rpc_message(monkeypatch, during_invoke):
+    from backend.shared.model_budget import BudgetStopped
+    from backend.browser.stagehand_budget import BUDGET_STOP, budget_stop_message
+    from stagehand.rpc_client import RPCError
+    from types import SimpleNamespace
+    params = LLMStructuredGenerateParams.model_validate({
+        'messages': [], 'response_format': {'type': 'json_schema', 'name': 'Decision', 'schema': {'type': 'object'}},
+    })
+    private_error = BudgetStopped('Sensitive provider/debug detail must not escape')
+    llm = MagicMock()
+    invoke = AsyncMock(side_effect=private_error)
+    llm.with_structured_output.return_value.ainvoke = invoke
+    build = MagicMock(return_value=llm, side_effect=None if during_invoke else private_error)
+    monkeypatch.setattr(stagehand_model, 'build_llm', build)
+    with pytest.raises(BudgetStopped) as caught:
+        await stagehand_model.generate(params)
+    assert str(caught.value) == BUDGET_STOP
+    # The installed SDK serializes callback exceptions into this RPC error shape.
+    rpc_error = RPCError(SimpleNamespace(code=-32603, data=None, message=str(caught.value)))
+    assert budget_stop_message(rpc_error) == BUDGET_STOP
+    assert build.call_count == 1
+    assert invoke.await_count == int(during_invoke)
+
+
+def test_only_exact_trusted_budget_rpc_messages_are_classified():
+    from backend.browser.stagehand_budget import CEILING_STOP, budget_stop_message
+    from backend.shared.model_budget import BudgetStopped
+    from stagehand.rpc_client import RPCError
+    from types import SimpleNamespace
+    assert budget_stop_message(BudgetStopped(CEILING_STOP)) == CEILING_STOP
+    assert budget_stop_message(RPCError(SimpleNamespace(code=-32603, data=None, message=CEILING_STOP))) == CEILING_STOP
+    for error in [
+        ValueError(CEILING_STOP),
+        RPCError(SimpleNamespace(code=-1, data=None, message=CEILING_STOP)),
+        RPCError(SimpleNamespace(code=-32603, data=None, message=CEILING_STOP + ' private text')),
+        RPCError(SimpleNamespace(code=-32603, data=None, message='Element not found')),
+    ]:
+        assert budget_stop_message(error) is None

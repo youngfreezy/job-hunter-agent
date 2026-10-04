@@ -99,3 +99,42 @@ def test_stale_question_does_not_hide_real_result():
     summary = qa._summarise_results(state)
     assert summary['pending_answers'] == 0
     assert summary['failed'] == 1
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('remaining_jobs', [False, True])
+async def test_budget_stop_reaches_pause_gate_without_paid_followup(monkeypatch, remaining_jobs):
+    from backend.shared.config import settings
+    from backend.browser.stagehand_budget import CEILING_STOP
+    monkeypatch.setattr(settings, 'INDEED_ONLY', True)
+    monkeypatch.setattr(application, 'emit_agent_event', AsyncMock())
+    manager = MagicMock(stagehand=object(), live_view_url=None, browserbase_session_id=None)
+    manager.start_for_task = AsyncMock()
+    manager.new_context = AsyncMock(return_value=('ctx', object()))
+    manager.stop = AsyncMock()
+    monkeypatch.setattr(application, 'BrowserManager', lambda: manager)
+    jobs = [JobListing(id=key, title='Engineer', company=key, location='Remote',
+                       url=f'https://www.indeed.com/viewjob?jk={key}', board=JobBoard.INDEED)
+            for key in (('blocked', 'next') if remaining_jobs else ('blocked',))]
+    apply = AsyncMock(return_value=ApplicationResult(
+        job_id='blocked', status=ApplicationStatus.FAILED,
+        error_message=CEILING_STOP, failure_step='model_budget'))
+    monkeypatch.setattr(application, '_apply_to_job', apply)
+    build = MagicMock(side_effect=AssertionError('Must not call a paid supervisor'))
+    monkeypatch.setattr('backend.shared.llm.build_llm', build)
+    state = {'session_id': 'session', 'application_queue': [job.id for job in jobs],
+             'discovered_jobs': jobs, 'preferences': {'_skip_coach_review': True},
+             'human_messages': ['What happened?'], 'steering_messages_processed': 0}
+    updates = await application.run_application_agent(state)
+    state.update(updates)
+    assert state['pause_requested'] is True
+    assert state['pending_supervisor_response'] == CEILING_STOP
+    assert state['pause_resume_node'] == 'application'
+    steering = AsyncMock(side_effect=AssertionError('No paid steering adjudication'))
+    monkeypatch.setattr(graph.workflow_supervisor, 'run_workflow_supervisor', steering)
+    node = graph.make_workflow_supervisor_node(graph._continue_after_application)
+    assert await node(state) == {}
+    assert graph.route_after_supervise_after_application(state) == 'pause_gate'
+    apply.assert_awaited_once()
+    build.assert_not_called()
+    steering.assert_not_awaited()
+    manager.stop.assert_awaited_once()
