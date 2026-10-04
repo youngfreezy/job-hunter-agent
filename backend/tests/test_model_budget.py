@@ -137,7 +137,7 @@ async def test_real_structured_output_chain_cannot_bypass_guard(model, monkeypat
         assert request['max_tokens'] == 8192
         assert 'tool_choice' not in request and 'tools' not in request
         assert request['output_config']['format']['type'] == 'json_schema'
-        assert 'output_format' not in request and 'betas' not in request
+        assert 'output_format' not in request and request['betas'] == []
         assert 'temperature' not in request
         assert request['thinking'] == {'type': 'between_tools'}
         return Message(id='fixture', model='claude-sonnet-5-5', role='assistant', type='message',
@@ -158,7 +158,7 @@ def test_real_sync_structured_invoke_is_charged(model, monkeypatch):
         assert request['max_tokens'] == 8192
         assert 'tool_choice' not in request and 'tools' not in request
         assert request['output_config']['format']['type'] == 'json_schema'
-        assert 'output_format' not in request and 'betas' not in request
+        assert 'output_format' not in request and request['betas'] == []
         assert 'temperature' not in request
         assert request['thinking'] == {'type': 'between_tools'}
         return Message(id='fixture', model='claude-sonnet-5-5', role='assistant', type='message',
@@ -240,7 +240,7 @@ async def test_stagehand_sdk_callback_uses_actual_latest_budget_model(model, mon
         assert Ledger(model.budget_ledger_path).snapshot()['committed_microusd'] == 2_081_920
         assert 'tool_choice' not in request and 'tools' not in request
         assert request['output_config']['format']['type'] == 'json_schema'
-        assert 'output_format' not in request and 'betas' not in request
+        assert 'output_format' not in request and request['betas'] == []
         assert 'temperature' not in request
         assert request['thinking'] == {'type': 'between_tools'}
         return Message(id='fixture', model=request['model'], role='assistant', type='message',
@@ -256,3 +256,68 @@ async def test_stagehand_sdk_callback_uses_actual_latest_budget_model(model, mon
     assert result.model_dump()['structured_content'] == {'kind': 'park'}
     assert result.usage.total_tokens == 2100
     assert Ledger(model.budget_ledger_path).snapshot()['committed_microusd'] == 5000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('path', ['sync', 'async', 'stagehand'])
+async def test_actual_sdk_transport_serializes_ga_output_and_settles(model, monkeypatch, path):
+    """Exercise LangChain and the installed SDK, mocking only HTTP transport."""
+    import json
+    import httpx
+    from anthropic import Anthropic, AsyncAnthropic
+    from stagehand import LLMStructuredGenerateParams
+    from backend.browser.stagehand_model import generate
+
+    requests = []
+    def respond(request):
+        requests.append(request)
+        body = json.loads(request.content)
+        assert body['model'] == 'claude-sonnet-5-5'
+        assert body['max_tokens'] == 8192
+        assert body['output_config']['format']['type'] == 'json_schema'
+        wire_schema = body['output_config']['format']['schema']
+        assert wire_schema['properties']['kind']['type'] == 'string'
+        assert wire_schema['required'] == ['kind']
+        assert wire_schema['additionalProperties'] is False
+        assert body['output_config']['effort'] == 'medium'
+        assert body['thinking'] == {'type': 'between_tools'}
+        assert body['service_tier'] == 'standard_only'
+        assert not {'output_format', 'temperature', 'tools', 'tool_choice', 'betas'} & body.keys()
+        # The installed SDK's beta writer supports the GA output_config shape;
+        # no feature beta is enabled by selecting that writer.
+        assert request.headers.get('anthropic-beta', '') == ''
+        assert Ledger(model.budget_ledger_path).snapshot()['committed_microusd'] == 2_081_920
+        return httpx.Response(200, json={
+            'id': 'transport_fixture', 'type': 'message', 'role': 'assistant',
+            'model': body['model'], 'stop_reason': 'end_turn', 'stop_sequence': None,
+            'content': [{'type': 'thinking', 'thinking': 'fixture', 'signature': 'fixture'},
+                        {'type': 'text', 'text': '{"kind":"park"}'}],
+            'usage': {'input_tokens': 2000, 'output_tokens': 100},
+        })
+
+    sync = Anthropic(api_key='offline', max_retries=0,
+                     http_client=httpx.Client(transport=httpx.MockTransport(respond)))
+    async_client = AsyncAnthropic(api_key='offline', max_retries=0,
+                     http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)))
+    monkeypatch.setattr(BudgetChatAnthropic, '_client', property(lambda self: sync))
+    monkeypatch.setattr(BudgetChatAnthropic, '_async_client', property(lambda self: async_client))
+    schema = {'title': 'Decision', 'type': 'object',
+              'properties': {'kind': {'type': 'string'}}, 'required': ['kind']}
+    try:
+        if path == 'stagehand':
+            result = await generate(LLMStructuredGenerateParams.model_validate({
+                'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'Read form'}]}],
+                'response_format': {'type': 'json_schema', 'name': 'Decision', 'schema': schema},
+            }))
+            assert result.model_dump()['structured_content'] == {'kind': 'park'}
+            assert result.usage.total_tokens == 2100
+        else:
+            chain = model.with_structured_output(schema, include_raw=True)
+            result = chain.invoke('Read form') if path == 'sync' else await chain.ainvoke('Read form')
+            assert result['parsed'] == {'kind': 'park'}
+            assert result['raw'].usage_metadata['total_tokens'] == 2100
+        assert len(requests) == 1
+        assert Ledger(model.budget_ledger_path).snapshot()['committed_microusd'] == 5000
+    finally:
+        sync.close()
+        await async_client.close()

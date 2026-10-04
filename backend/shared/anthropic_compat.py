@@ -44,10 +44,10 @@ class CompatibleChatAnthropic(ChatAnthropic):
         betas = [beta for beta in payload.get('betas', []) if beta not in {
             'structured-outputs-2025-11-13', 'effort-2025-11-24',
         }]
-        if betas:
-            payload['betas'] = betas
-        else:
-            payload.pop('betas', None)
+        # This installed SDK only accepts output_config on its beta writer.
+        # Keep an empty list so LangChain selects that writer without enabling
+        # a feature beta; removing the key routes to an incompatible signature.
+        payload['betas'] = betas
         if (payload.get('tool_choice') or {}).get('type') in {'any', 'tool'}:
             raise ValueError('Claude 5.5 does not support forced tool use.')
         return payload

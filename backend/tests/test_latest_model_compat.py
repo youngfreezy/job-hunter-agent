@@ -28,7 +28,8 @@ def test_latest_claude_factory_native_json_wire_format(settings, monkeypatch, mo
     from anthropic.types import Message, TextBlock, Usage
     def dispatch(self, request):
         assert request['model'] == model
-        assert not {'temperature', 'top_p', 'top_k', 'tools', 'tool_choice', 'output_format', 'betas'} & request.keys()
+        assert not {'temperature', 'top_p', 'top_k', 'tools', 'tool_choice', 'output_format'} & request.keys()
+        assert request['betas'] == []
         assert request['output_config']['format']['type'] == 'json_schema'
         if model == 'claude-sonnet-5-5':
             assert request['thinking'] == {'type': 'between_tools'}
