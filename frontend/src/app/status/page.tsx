@@ -27,7 +27,9 @@ export default function StatusPage() {
     async function check() {
       try {
         const res = await apiFetch(`${API_BASE}/api/health/ready`, { cache: "no-store" });
+        if (!res.ok) throw new Error("Health check failed");
         const data = await res.json();
+        if (!["ok", "degraded", "error"].includes(data.status)) throw new Error("Invalid health response");
         setHealth(data);
         setError(false);
       } catch {
@@ -41,15 +43,15 @@ export default function StatusPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const overall = error ? "outage" : health?.status === "ok" ? "operational" : "degraded";
+  const overall = error ? "outage" : !health ? "checking" : health.status === "ok" ? "operational" : "degraded";
 
   const services = [
-    { name: "API Gateway", status: error ? "unavailable" : "operational" },
+    { name: "API Gateway", status: error ? "unavailable" : !health ? "checking" : "operational" },
     {
       name: "PostgreSQL Database",
       status: error
         ? "unavailable"
-        : health?.checks?.postgres === "ok"
+        : !health ? "checking" : health.checks?.postgres === "ok"
         ? "operational"
         : "unavailable",
     },
@@ -57,7 +59,7 @@ export default function StatusPage() {
       name: "Redis Cache",
       status: error
         ? "unavailable"
-        : health?.checks?.redis === "ok"
+        : !health ? "checking" : health.checks?.redis === "ok"
         ? "operational"
         : "unavailable",
     },
@@ -89,7 +91,9 @@ export default function StatusPage() {
           <CardContent className="flex items-center gap-4 py-6">
             <div
               className={`h-4 w-4 rounded-full ${
-                overall === "operational"
+                overall === "checking"
+                  ? "bg-zinc-400 animate-pulse"
+                  : overall === "operational"
                   ? "bg-emerald-500"
                   : overall === "degraded"
                   ? "bg-yellow-500"
@@ -98,6 +102,7 @@ export default function StatusPage() {
             />
             <div>
               <p className="font-semibold text-lg">
+                {overall === "checking" && "Checking services…"}
                 {overall === "operational" && "All Systems Operational"}
                 {overall === "degraded" && "Partial Service Degradation"}
                 {overall === "outage" && "Service Disruption Detected"}
@@ -125,14 +130,14 @@ export default function StatusPage() {
             >
               <span className="font-medium">{svc.name}</span>
               <Badge
-                variant={svc.status === "operational" ? "secondary" : "destructive"}
+                variant={svc.status === "unavailable" ? "destructive" : "secondary"}
                 className={
                   svc.status === "operational"
                     ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                     : ""
                 }
               >
-                {svc.status === "operational" ? "Operational" : "Unavailable"}
+                {svc.status === "checking" ? "Checking…" : svc.status === "operational" ? "Operational" : "Unavailable"}
               </Badge>
             </div>
           ))}
@@ -141,11 +146,10 @@ export default function StatusPage() {
         {/* Uptime commitment */}
         <Card className="rounded-2xl border-blue-200/60 bg-blue-50/50 dark:border-blue-900/40 dark:bg-blue-950/20">
           <CardContent className="py-6 text-center">
-            <p className="font-semibold text-zinc-900 dark:text-white">99.9% Uptime SLA</p>
+            <p className="font-semibold text-zinc-900 dark:text-white">About these checks</p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              We monitor all services 24/7 with Sentry error tracking, structured logging, and
-              automated health checks. Infrastructure runs on containerized Docker services with
-              PostgreSQL and Redis, designed for automatic failover and horizontal scaling.
+              This page checks the API, PostgreSQL, and Redis. Browserbase and model-provider
+              availability are not tested here; individual runs report their own progress and errors.
             </p>
           </CardContent>
         </Card>

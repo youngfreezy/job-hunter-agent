@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
+import { indeedEasyApplyOnly } from "@/lib/indeed-policy";
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -27,7 +28,7 @@ const steps = [
   {
     num: "3",
     title: "Discover & Score",
-    desc: "Agents scan Indeed, LinkedIn, Glassdoor, ZipRecruiter, and Google Jobs simultaneously. You choose which roles get your application.",
+    desc: indeedEasyApplyOnly ? "Discover Indeed Easy Apply roles, review matches, and approve your shortlist. Employer redirects and extra sign-ins are skipped." : "Agents scan Indeed, LinkedIn, Glassdoor, ZipRecruiter, and Google Jobs simultaneously. You choose which roles get your application.",
   },
   {
     num: "4",
@@ -65,7 +66,7 @@ const pricingPacks = [
     features: [
       "3 free application credits",
       "AI resume optimization",
-      "Job matching across 5 boards",
+      indeedEasyApplyOnly ? "Indeed Easy Apply job matching" : "Job matching across 5 boards",
       "Shortlist approval before submission",
       "Download all tailored materials",
     ],
@@ -170,7 +171,7 @@ const faqs = [
   },
   {
     q: "What job boards are supported?",
-    a: "We currently support LinkedIn, Indeed, Glassdoor, ZipRecruiter, and direct company career pages using Greenhouse, Lever, Workday, Ashby, and iCIMS applicant tracking systems.",
+    a: indeedEasyApplyOnly ? "This deployment searches Indeed and applies through Indeed Easy Apply. Employer redirects and additional account sign-ins are skipped. Some Indeed forms still have multiple steps or required questions." : "We currently support LinkedIn, Indeed, Glassdoor, ZipRecruiter, and direct company career pages using Greenhouse, Lever, Workday, Ashby, and iCIMS applicant tracking systems.",
   },
   {
     q: "What if an application fails?",
@@ -189,7 +190,7 @@ const jsonLd = {
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   description:
-    "AI-powered job application automation. Searches 5 job boards, tailors resumes per role, and submits applications automatically with human approval checkpoints.",
+    indeedEasyApplyOnly ? "AI-powered Indeed Easy Apply workflow with resume coaching, shortlist approval, browser visibility, and application status tracking." : "AI-powered job application automation. Searches 5 job boards, tailors resumes per role, and submits applications automatically with human approval checkpoints.",
   offers: [
     {
       "@type": "Offer",
@@ -215,12 +216,12 @@ const jsonLd = {
   },
   featureList: [
     "AI resume optimization",
-    "Automated job board search across LinkedIn, Indeed, Glassdoor, ZipRecruiter",
+    indeedEasyApplyOnly ? "Indeed Easy Apply discovery" : "Automated job board search across LinkedIn, Indeed, Glassdoor, ZipRecruiter",
     "Per-role resume tailoring",
     "Cover letter generation",
     "Two human approval checkpoints",
     "Real-time application tracking",
-    "Support for Greenhouse, Lever, Workday, Ashby ATS platforms",
+    indeedEasyApplyOnly ? "Indeed-hosted applications" : "Support for Greenhouse, Lever, Workday, Ashby ATS platforms",
   ],
 };
 
@@ -449,7 +450,7 @@ export default function Home() {
                 while saving 15+ hours a week.
               </h1>
               <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-                Your AI assistant finds the best roles across 5 job boards, tailors your resume for
+                Your AI assistant finds roles {indeedEasyApplyOnly ? "on Indeed" : "across 5 job boards"}, tailors your resume for
                 each one, and submits applications automatically. You stay in complete control with
                 two approval checkpoints.
               </p>
@@ -460,7 +461,7 @@ export default function Home() {
                     data-umami-event="cta-try-free"
                     data-umami-event-location="hero"
                   >
-                    Try Free — No Sign Up
+                    Try Free with Google
                   </Button>
                 </Link>
                 <Link href="/session/new">
@@ -481,7 +482,7 @@ export default function Home() {
                 Watch the product demo →
               </Link>
               <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-                No account or credit card required. Upload your resume and go.
+                Sign in with Google and connect your Anthropic and Browserbase API keys. Provider usage is billed separately.
               </p>
               <p className="mt-1 text-sm text-zinc-400 dark:text-zinc-500">
                 Already have jobs in mind?{" "}
@@ -507,7 +508,7 @@ export default function Home() {
               {/* Stats bar */}
               <div className="mt-10 grid gap-6 sm:grid-cols-3">
                 {[
-                  { value: "5 job boards", label: "Searched simultaneously" },
+                  { value: indeedEasyApplyOnly ? "Indeed Easy Apply" : "5 job boards", label: indeedEasyApplyOnly ? "Focused job discovery" : "Searched simultaneously" },
                   { value: "3 free credits", label: "Then from $2.00/app" },
                   { value: "2 approval steps", label: "You control everything" },
                 ].map((s) => (
@@ -981,10 +982,10 @@ export default function Home() {
           <Card className="rounded-[28px] border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
             <CardContent className="py-8">
               <h3 className="mb-6 text-center text-lg font-semibold">
-                Works with all major job boards and ATS platforms
+                {indeedEasyApplyOnly ? "Indeed Easy Apply, powered by a real browser" : "Works with all major job boards and ATS platforms"}
               </h3>
               <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                {[
+                {(indeedEasyApplyOnly ? ["Indeed Easy Apply", "Browserbase", "Stagehand"] : [
                   "LinkedIn",
                   "Indeed",
                   "Glassdoor",
@@ -994,7 +995,7 @@ export default function Home() {
                   "Workday",
                   "Ashby",
                   "iCIMS",
-                ].map((platform) => (
+                ]).map((platform) => (
                   <span
                     key={platform}
                     className="rounded-lg border border-zinc-200 px-3 py-1.5 dark:border-zinc-700"
@@ -1707,8 +1708,8 @@ export default function Home() {
             <CardContent className="py-10 text-center">
               <h3 className="text-2xl font-bold">Ready to automate your job search?</h3>
               <p className="mx-auto mt-3 max-w-xl text-sm text-zinc-600 dark:text-zinc-400">
-                Try it right now — no account required. Upload your resume and watch the
-                AI apply to jobs in under 5 minutes.
+                Sign in with Google, upload your resume, and review your search before
+                the agent starts applying.
               </p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                 <Link href="/try">
@@ -1717,7 +1718,7 @@ export default function Home() {
                     data-umami-event="cta-try-free"
                     data-umami-event-location="bottom"
                   >
-                    Try Free — No Sign Up
+                    Try Free with Google
                   </Button>
                 </Link>
               </div>

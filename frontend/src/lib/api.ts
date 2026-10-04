@@ -85,6 +85,7 @@ export interface SessionSummary {
   total_scored: number;
   total_applied: number;
   total_failed: number;
+  total_uncertain?: number;
   total_skipped: number;
   top_companies: string[];
   avg_fit_score: number;
@@ -275,6 +276,7 @@ export interface SessionListItem {
   linkedin_url: string | null;
   applications_submitted: number;
   applications_failed: number;
+  applications_uncertain?: number;
   created_at: string;
   archived_at: string | null;
   is_autopilot?: boolean;
@@ -303,6 +305,7 @@ export interface LifetimeStats {
   total_sessions: number;
   total_submitted: number;
   total_failed: number;
+  total_uncertain?: number;
   total_applications: number;
   manual_estimate_minutes: number;
   automation_minutes: number;
@@ -553,6 +556,7 @@ export interface Checkpoint {
   status: string;
   applications_submitted: number;
   applications_failed: number;
+  applications_uncertain?: number;
   application_queue: number;
 }
 

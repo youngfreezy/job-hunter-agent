@@ -5,6 +5,7 @@
 import { useCallback, useState } from "react";
 import { SessionWizard } from "@/components/wizard/SessionWizard";
 import { QuickStartForm } from "@/components/wizard/QuickStartForm";
+import { SetupNotice } from "@/components/SetupNotice";
 import { BrowserbaseExplainer } from "@/components/BrowserbaseExplainer";
 
 export default function NewSession() {
@@ -31,7 +32,7 @@ export default function NewSession() {
           <h1 className="text-3xl font-bold mb-2">New Session</h1>
           <p className="text-zinc-600 dark:text-zinc-400">
             {mode === "quick"
-              ? "Upload your resume and we\u2019ll handle the rest. One click to launch."
+              ? "Describe your search and upload your resume. AI suggestions are optional."
               : "Choose your own keywords, locations, and settings. Full control over every detail."}
           </p>
         </div>
@@ -39,21 +40,22 @@ export default function NewSession() {
           <div className="rounded-2xl bg-white p-4 dark:bg-zinc-950/70">
             <p className="font-medium">What to expect</p>
             <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-              First we improve your resume, then we find and rank jobs, and finally we apply — with
-              your approval at every step.
+              Review the coached resume and job shortlist, then watch the agent apply.
+              Required questions appear in the app when your input is needed.
             </p>
           </div>
           <div className="rounded-2xl bg-white p-4 dark:bg-zinc-950/70">
             <p className="font-medium">What to have ready</p>
             <p className="mt-1 text-zinc-600 dark:text-zinc-400">
               {mode === "quick"
-                ? "Just your latest resume. We\u2019ll extract everything else."
+                ? "Your resume, API keys in Settings, and saved Indeed login."
                 : "Your resume, target job titles, and any preferences for boards or tailoring quality."}
             </p>
           </div>
         </div>
       </div>
 
+      <SetupNotice />
       <BrowserbaseExplainer />
       {/* Mode toggle */}
       <div className="mb-6 flex items-center gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-900">

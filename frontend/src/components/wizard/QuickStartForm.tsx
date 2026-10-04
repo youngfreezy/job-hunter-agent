@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Formik, Form, useFormikContext } from "formik";
 import * as Yup from "yup";
@@ -10,6 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormikFileUpload } from "@/components/forms/FormikFileUpload";
+import { readResumeAnalysis, saveResumeAnalysis } from "@/lib/resume-analysis-cache";
+import Link from "next/link";
 import { DiscoveryPrompt } from "./DiscoveryPrompt";
 import { analyzeResume, getWallet, startSession } from "@/lib/api";
 import { buildQuickStartConfig } from "@/lib/quick-start-config";
@@ -53,36 +55,51 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
   const [isNavigating, setIsNavigating] = useState(false);
   const [newKeyword, setNewKeyword] = useState("");
   const [newLocation, setNewLocation] = useState("");
-  const analyzedTextRef = useRef("");
   const launchRef = useRef<HTMLButtonElement>(null);
+  const currentResumeText = useRef(values.resumeText);
+  currentResumeText.current = values.resumeText;
 
-  // Auto-analyze when resume text appears
+  // Restoring a saved resume must not trigger a paid model request.
   useEffect(() => {
-    const text = values.resumeText;
-    if (text && text.length >= 50 && text !== analyzedTextRef.current && !analyzing) {
-      analyzedTextRef.current = text;
-      setAnalyzing(true);
-      onAnalyzingChange?.(true);
-      setAnalyzeError("");
-      analyzeResume(text)
-        .then((result) => {
-          setKeywords(result.keywords);
-          setLocations(result.locations);
-          setAnalyzed(true);
-          window.umami?.track("quickstart-analyzed");
-          // Auto-scroll to the Launch button after a short delay for render
-          setTimeout(() => launchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
-        })
-        .catch((err) => {
-          const msg = err instanceof Error ? err.message : "Analysis failed";
-          setAnalyzeError(msg);
-        })
-        .finally(() => {
-          setAnalyzing(false);
-          onAnalyzingChange?.(false);
-        });
+    let cancelled = false;
+    setAnalyzed(false);
+    setAnalyzeError("");
+    setKeywords([]);
+    setLocations([]);
+    if (values.resumeText) readResumeAnalysis(values.resumeText).then((result) => {
+      if (!cancelled && result) {
+        setKeywords(result.keywords);
+        setLocations(result.locations);
+        setAnalyzed(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [values.resumeText]);
+
+  const handleRetryAnalysis = async () => {
+    if (!values.resumeText || analyzing) return;
+    const resumeText = values.resumeText;
+    setAnalyzing(true);
+    onAnalyzingChange?.(true);
+    setAnalyzeError("");
+    try {
+      const result = await analyzeResume(resumeText);
+      await saveResumeAnalysis(resumeText, result);
+      // A newer upload must never inherit this request’s inferred search terms.
+      if (currentResumeText.current !== resumeText) return;
+      setKeywords(result.keywords);
+      setLocations(result.locations);
+      setAnalyzed(true);
+      window.umami?.track("quickstart-analyzed");
+    } catch (err) {
+      if (currentResumeText.current === resumeText) {
+        setAnalyzeError(err instanceof Error ? err.message : "Analysis failed");
+      }
+    } finally {
+      setAnalyzing(false);
+      onAnalyzingChange?.(false);
     }
-  }, [values.resumeText, analyzing, onAnalyzingChange]);
+  };
 
   const removeKeyword = (index: number) => {
     setKeywords((prev) => prev.filter((_, i) => i !== index));
@@ -107,11 +124,6 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
       setNewLocation("");
     }
   };
-
-  const handleRetryAnalysis = useCallback(() => {
-    analyzedTextRef.current = "";
-    setAnalyzed(false);
-  }, []);
 
   const handleLaunch = async () => {
     setSubmitError("");
@@ -163,23 +175,24 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
           <div>
             <h2 className="text-lg font-semibold">Upload Your Resume</h2>
             <p className="text-sm text-zinc-500 mt-1">
-              We&apos;ll extract your target roles and locations automatically.
+              Use your prompt directly, or request AI suggestions from your resume.
             </p>
           </div>
           <FormikFileUpload />
+          {values.resumeText && !analyzed && <Button type="button" variant="outline" disabled={analyzing} onClick={handleRetryAnalysis}>{analyzing ? "Analyzing…" : "Suggest roles from resume (uses AI)"}</Button>}
         </CardContent>
       </Card>
 
       {analyzeError && (
         <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
-          {analyzeError}
+          {analyzeError} <Link href="/settings" className="underline">Check API keys in Settings</Link>
           <button type="button" onClick={handleRetryAnalysis} className="ml-2 underline">
             Retry
           </button>
         </div>
       )}
 
-      {analyzed && keywords.length > 0 && (
+      {(analyzed || values.discoveryPrompt?.trim()) && (
         <Card>
           <CardContent className="p-6 space-y-4">
             <div>
@@ -276,17 +289,17 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
 
       {submitError && (
         <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
-          {submitError}
+          {submitError} <Link href="/settings" className="underline">Check setup in Settings</Link>
         </div>
       )}
 
-      {analyzed && keywords.length > 0 && (
+      {(analyzed || values.discoveryPrompt?.trim()) && (
         <Button
           ref={launchRef}
           type="button"
           size="lg"
           className="w-full"
-          disabled={isSubmitting || isNavigating || keywords.length === 0}
+          disabled={isSubmitting || isNavigating || analyzing || !values.resumeText || (keywords.length === 0 && !values.discoveryPrompt?.trim())}
           onClick={handleLaunch}
         >
           {isNavigating ? (

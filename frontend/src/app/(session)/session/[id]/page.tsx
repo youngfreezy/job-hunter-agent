@@ -2,6 +2,7 @@
 
 "use client";
 
+import { applicationOutcomeCounts } from "@/lib/application-outcomes";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -98,6 +99,7 @@ type SessionData = {
   applications_failed: Array<{
     job_id?: string;
     job?: { id: string; title: string; company: string; url: string; board: string };
+    error_category?: string;
     error_message?: string;
     error?: string;
   }>;
@@ -121,6 +123,7 @@ type SessionSummaryData = {
   total_scored: number;
   total_applied: number;
   total_failed: number;
+  total_uncertain?: number;
   total_skipped: number;
   top_companies: string[];
   avg_fit_score: number;
@@ -1091,7 +1094,7 @@ export default function SessionPage() {
   const finished = TERMINAL.has(status);
   const running = isRunning(status);
   const submittedCount = sessionSummary?.total_applied ?? session.applications_submitted?.length ?? 0;
-  const failedCount = sessionSummary?.total_failed ?? session.applications_failed?.length ?? 0;
+  const { failed: failedCount, uncertain: uncertainCount } = applicationOutcomeCounts(session.applications_failed, sessionSummary);
   const skippedCount = sessionSummary?.total_skipped ?? (Array.isArray(session.applications_skipped) ? session.applications_skipped.length : session.applications_skipped ?? 0);
   const questionCount = Object.keys(session.application_questions ?? {}).length;
   const queuedEmployerCount = Object.values(session.employer_application_queue ?? {}).filter((job) => job.status === "queued").length;
@@ -1107,7 +1110,7 @@ export default function SessionPage() {
     : pastShortlist
     ? session.scored_jobs?.length ?? shortlistJobs.length
     : null;
-  const attempted = finished ? submittedCount + failedCount + skippedCount : session.applications_used || null;
+  const attempted = finished ? submittedCount + failedCount + uncertainCount + skippedCount : session.applications_used || null;
   const threshold = scoreThreshold(session.session_config as { scoring_strictness?: unknown; discovery_mode?: unknown });
   const ledger = buildLedger({
     status,
@@ -1122,6 +1125,7 @@ export default function SessionPage() {
     attempted,
     submitted: finished || phaseKey === "apply" || phaseKey === "report" ? submittedCount : null,
     failed: failedCount,
+    uncertain: uncertainCount,
     threshold,
   });
   const shortlisted = ledger.phases.find((phase) => phase.key === "shortlist")?.count ?? null;
@@ -1135,6 +1139,7 @@ export default function SessionPage() {
     })();
 
   const finishedReason = (() => {
+    if (uncertainCount > 0) return "Confirmation pending—check before retrying";
     if (submittedCount > 0)
       return failedCount > 0 ? `${submittedCount} sent, ${failedCount} failed` : `${submittedCount} sent`;
     if (found === 0) return "no postings matched your roles and location";
@@ -1151,7 +1156,7 @@ export default function SessionPage() {
     status === "completed"
       ? `Finished${durationMin != null ? ` in ${formatDuration(durationMin)}` : ""} · ${finishedReason}`
       : status === "failed"
-      ? `Stopped${submittedCount > 0 ? ` · ${submittedCount} sent before it stopped` : " · nothing was sent"}`
+      ? uncertainCount > 0 ? "Stopped · Confirmation pending—check before retrying" : `Stopped${submittedCount > 0 ? ` · ${submittedCount} sent before it stopped` : " · nothing was sent"}`
       : status === "awaiting_coach_review"
       ? "Waiting for you to approve your resume"
       : status === "awaiting_review"
@@ -1161,7 +1166,7 @@ export default function SessionPage() {
       : `${STATUS_LABELS[status] ?? "Running"} · running ${elapsedLabel}`;
 
   const stateTone: OutcomeTone = finished
-    ? runOutcome({ status, submitted: submittedCount, failed: failedCount }).tone
+    ? runOutcome({ status, submitted: submittedCount, failed: failedCount, uncertain: uncertainCount }).tone
     : NEEDS_YOU.has(status) || interventionData || submitConfirmData || loginPrompt
     ? "needs"
     : "running";
@@ -1177,6 +1182,8 @@ export default function SessionPage() {
       ? { label: "Resume agent", onClick: () => void handleResumeIntervention() }
       : status === "paused"
       ? { label: "Resume run", onClick: () => void handleResumeRun() }
+      : finished && uncertainCount > 0
+      ? null
       : finished && submittedCount === 0
       ? { label: "Adjust search", onClick: () => setAdjustOpen(true) }
       : finished
@@ -1528,7 +1535,7 @@ export default function SessionPage() {
               </dd>
               <dt className="text-muted-foreground">Credit estimate</dt>
               <dd>
-                <span className="font-mono">{submittedCount + failedCount * 0.5}</span>
+                <span className="font-mono">{uncertainCount > 0 ? "Pending confirmation" : submittedCount + failedCount * 0.5}</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
                   Before free applications or plan coverage. <Link href="/billing" className="underline">View actual charges</Link>.
                 </span>
@@ -1564,7 +1571,7 @@ export default function SessionPage() {
                 <QuickApplyUrls
                   urls={session.session_config?.job_urls || session.job_urls || []}
                   submitted={submittedCount}
-                  failed={failedCount}
+                  failed={failedCount + uncertainCount}
                 />
               )}
           </section>

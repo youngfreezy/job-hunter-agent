@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { ModelSettingsCard } from "@/components/ModelSettingsCard";
 import { LiveBrowserPanel } from "@/components/LiveBrowserPanel";
 
 import {
@@ -341,6 +342,8 @@ export default function SettingsPage() {
     <main className="mx-auto max-w-3xl px-4 py-10 space-y-8">
       <h1 className="text-2xl font-bold">Settings</h1>
 
+      <ModelSettingsCard />
+
       {/* Phone verification */}
       <Card>
         <CardHeader>
@@ -555,11 +558,11 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Browserbase</CardTitle>
           <CardDescription>
-            Cloud browsers for applying (BROWSER_MODE=browserbase). Your key is stored encrypted and
+            Cloud browsers for applying. Your key is stored encrypted and
             never shown again. Sign in to a job board once; the login is kept in a persisted Context
             that every later session reuses.
             {browserbase?.env_configured && !browserbase?.api_key_set && (
-              <> A server-wide key is configured and will be used until you save your own.</>
+              <> Your account is authorized to use the demo Browserbase credentials until you save your own.</>
             )}
           </CardDescription>
         </CardHeader>

@@ -93,7 +93,8 @@ function ledgerFor(s: SessionListItem) {
     status: s.status,
     submitted: s.applications_submitted,
     failed: s.applications_failed,
-    attempted: TERMINAL.has(s.status) ? s.applications_submitted + s.applications_failed : null,
+    uncertain: s.applications_uncertain,
+    attempted: TERMINAL.has(s.status) ? s.applications_submitted + s.applications_failed + (s.applications_uncertain ?? 0) : null,
   });
 }
 
@@ -398,6 +399,7 @@ export default function Home() {
                       status: s.status,
                       submitted: s.applications_submitted,
                       failed: s.applications_failed,
+    uncertain: s.applications_uncertain,
                     });
                     const { phases, gates } = ledgerFor(s);
                     return (
@@ -437,6 +439,7 @@ export default function Home() {
                   status: s.status,
                   submitted: s.applications_submitted,
                   failed: s.applications_failed,
+    uncertain: s.applications_uncertain,
                 });
                 const { phases, gates } = ledgerFor(s);
                 return (

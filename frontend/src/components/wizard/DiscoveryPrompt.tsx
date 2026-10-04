@@ -3,7 +3,7 @@
 import { useField } from "formik";
 import { indeedEasyApplyOnly } from "@/lib/indeed-policy";
 
-const demoTargetSalary = Number(process.env.NEXT_PUBLIC_DEMO_TARGET_BASE_SALARY || 0);
+const demoTargetSalary = Number(process.env.NEXT_PUBLIC_DEMO_TARGET_BASE_SALARY || (process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true" ? 300000 : 0));
 const DEFAULT_DISCOVERY_PROMPT = "Find applied AI and AI-native software engineering positions in San Francisco that are hybrid or remote."
   + (indeedEasyApplyOnly ? " Use Indeed Easy Apply only. Skip employer websites and additional sign-in flows. Prefer short applications." : "")
   + (demoTargetSalary > 0 ? ` Target base salary: $${demoTargetSalary.toLocaleString("en-US")}. Use my saved application rules for eligibility.` : "");

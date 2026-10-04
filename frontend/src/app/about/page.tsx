@@ -108,7 +108,7 @@ export default function AboutPage() {
             Ready to try it?
           </h2>
           <p className="mt-2 text-sm text-zinc-500">
-            Start with 3 free applications. No credit card required.
+            Start with 3 free application credits. Bring your Anthropic and Browserbase API keys; provider usage is billed separately.
           </p>
           <div className="mt-6 flex justify-center gap-4">
             <Link

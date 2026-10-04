@@ -106,6 +106,7 @@ export interface LedgerInput {
   attempted?: number | null;
   submitted?: number | null;
   failed?: number | null;
+  uncertain?: number | null;
   threshold?: number | null;
 }
 
@@ -175,6 +176,10 @@ export function buildLedger(input: LedgerInput): {
       p.reason = `${input.failed} ${input.failed === 1 ? "application" : "applications"} failed`;
   }
 
+  if ((input.uncertain ?? 0) > 0) {
+    phases.find((phase) => phase.key === "report")!.reason = "Confirmation pending—check before retrying";
+  }
+
   const coach: GateState =
     status === "awaiting_coach_review" ? "open" : idx > 0 ? "passed" : "todo";
   const shortlist: GateState =
@@ -193,10 +198,11 @@ export function buildLedger(input: LedgerInput): {
 export type OutcomeTone = "running" | "needs" | "sent" | "neutral" | "failed";
 
 /** One honest line per run. A run that sent nothing never reads as success. */
-export function runOutcome(run: { status: string; submitted?: number; failed?: number }): {
+export function runOutcome(run: { status: string; submitted?: number; failed?: number; uncertain?: number }): {
   tone: OutcomeTone;
   label: string;
 } {
+  if (TERMINAL.has(run.status) && (run.uncertain ?? 0) > 0) return { tone: "needs", label: "Confirmation pending—check before retrying" };
   const sent = run.submitted ?? 0;
   const failed = run.failed ?? 0;
   if (NEEDS_YOU.has(run.status)) return { tone: "needs", label: STATUS_LABELS[run.status] };

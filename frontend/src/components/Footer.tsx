@@ -23,7 +23,7 @@ export function Footer() {
               JobHunter Agent
             </p>
             <p className="text-xs text-zinc-500">
-              &copy; {new Date().getFullYear()} V2 Software LLC. All rights
+              &copy; {new Date().getFullYear()} <a href="https://v2software.ai/" className="rounded underline underline-offset-4 hover:text-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 dark:hover:text-white">V2 Software LLC</a>. All rights
               reserved.
             </p>
           </div>

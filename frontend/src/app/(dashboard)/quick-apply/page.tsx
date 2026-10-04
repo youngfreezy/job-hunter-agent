@@ -6,22 +6,27 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import Link from "next/link";
+import { SetupNotice } from "@/components/SetupNotice";
 import { ResumeUpload } from "@/components/ResumeUpload";
 import { startSession } from "@/lib/api";
 import { quickApplyInitialUrls } from "@/lib/applicationAnswers";
+import { indeedEasyApplyOnly } from "@/lib/indeed-policy";
+import { validateJobUrls } from "@/lib/quick-apply-urls";
 import { toast } from "sonner";
 
 const RESUME_TEXT_KEY = "jh_resume_text";
 const RESUME_FILENAME_KEY = "jh_resume_filename";
 const RESUME_UUID_KEY = "jh_resume_uuid";
 const URLS_STORAGE_KEY = "jh_quick_apply_urls";
-const INDEED_DEMO = process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true";
+const INDEED_DEMO = indeedEasyApplyOnly || process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true";
 
 export default function QuickApplyPage() {
   const router = useRouter();
   const [urls, setUrls] = useState("");
   const [resumeText, setResumeText] = useState("");
   const [resumeFileName, setResumeFileName] = useState("");
+  const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showResumeUpload, setShowResumeUpload] = useState(false);
 
@@ -52,10 +57,7 @@ export default function QuickApplyPage() {
     setResumeFileName(name);
   }, []);
 
-  const parsedUrls = urls
-    .split("\n")
-    .map((u) => u.trim())
-    .filter((u) => u.startsWith("http"));
+  const { urls: parsedUrls, errors: urlErrors } = validateJobUrls(urls, INDEED_DEMO);
 
   // Domains that almost always require account creation (Workday, Taleo, etc.)
   const AUTH_DOMAINS = [
@@ -70,6 +72,10 @@ export default function QuickApplyPage() {
   );
 
   const handleSubmit = async () => {
+    if (urlErrors.length) {
+      toast.error(urlErrors[0]);
+      return;
+    }
     if (parsedUrls.length === 0) {
       toast.error("Paste at least one job URL.");
       return;
@@ -80,6 +86,7 @@ export default function QuickApplyPage() {
       return;
     }
 
+    setSubmitError("");
     setSubmitting(true);
     try {
       const session = await startSession({
@@ -108,6 +115,7 @@ export default function QuickApplyPage() {
       router.push(`/session/${session.session_id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      setSubmitError(msg || "Failed to start session");
       toast.error(msg || "Failed to start session");
       setSubmitting(false);
     }
@@ -118,11 +126,12 @@ export default function QuickApplyPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Quick Apply</h1>
         <p className="text-zinc-600 dark:text-zinc-400 mt-2">
-          Paste job listing URLs and we&apos;ll apply to all of them using your
-          resume. No search needed — go straight to applications.
+          Paste job listing URLs to start applications using your resume.
+          Review each result in session activity; some jobs may need your input.
         </p>
       </div>
 
+      <SetupNotice />
       {/* Resume status */}
       <Card className="mb-6">
         <CardContent className="p-6">
@@ -165,16 +174,20 @@ export default function QuickApplyPage() {
             <h2 className="text-lg font-semibold">Job URLs</h2>
             <p className="text-sm text-zinc-500 mt-1">
               {INDEED_DEMO
-                ? "Paste one Indeed job URL per line. Applications use Browserbase and your saved Indeed login."
+                ? "Paste one Indeed Easy Apply listing per line. Browserbase uses your saved Indeed login; employer redirects and nested sign-ins are skipped."
                 : "Paste one URL per line. Supports Greenhouse, Lever, Ashby, Workday, LinkedIn, and any direct job posting."}
             </p>
           </div>
           <textarea
+            aria-label="Job URLs, one per line"
+            aria-invalid={urlErrors.length > 0}
+            aria-describedby="job-url-errors"
             className="w-full min-h-[180px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 text-sm font-mono placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-ring resize-y"
             placeholder={INDEED_DEMO ? "https://www.indeed.com/viewjob?jk=job-id" : `https://jobs.ashbyhq.com/company/job-id\nhttps://boards.greenhouse.io/company/jobs/12345\nhttps://jobs.lever.co/company/job-id`}
             value={urls}
             onChange={(e) => handleUrlChange(e.target.value)}
           />
+          <div id="job-url-errors" role="alert" className="text-sm text-destructive">{urlErrors.map((error) => <p key={error}>{error}</p>)}</div>
           {parsedUrls.length > 0 && (
             <p className="text-xs text-zinc-500">
               {parsedUrls.length} valid URL{parsedUrls.length !== 1 ? "s" : ""}{" "}
@@ -197,10 +210,11 @@ export default function QuickApplyPage() {
         </CardContent>
       </Card>
 
+      {submitError && <p role="alert" className="mb-4 text-sm text-destructive">{submitError} <Link href="/settings" className="underline">Check setup in Settings</Link></p>}
       {/* Submit */}
       <Button
         onClick={handleSubmit}
-        disabled={submitting || parsedUrls.length === 0}
+        disabled={submitting || parsedUrls.length === 0 || urlErrors.length > 0}
         className="w-full h-12 text-base font-semibold"
         size="lg"
       >

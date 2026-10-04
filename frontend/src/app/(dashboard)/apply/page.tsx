@@ -13,8 +13,8 @@ import {
   getApplicationLog,
   type SessionListItem,
   type ApplicationLogEntry,
-  API_BASE,
 } from "@/lib/api";
+import { SessionScreenshot } from "@/components/SessionScreenshot";
 import { downloadResumePdf, downloadCoverLetterPdf } from "@/lib/pdf";
 import { toast } from "sonner";
 import { MetricStrip } from "@/components/ui/metric-strip";
@@ -354,19 +354,12 @@ export default function ApplyPage() {
                           />
                         </svg>
                         {expandedScreenshot === key
-                          ? "Hide confirmation screenshot"
-                          : "View confirmation screenshot"}
+                          ? "Hide application screenshot"
+                          : "View application screenshot"}
                       </button>
                       {expandedScreenshot === key && (
                         <div className="mt-2 rounded-lg border border-border overflow-hidden">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`${API_BASE}/api/sessions/${
-                              entry.sessionId
-                            }/screenshot?path=${encodeURIComponent(entry.screenshot_path)}`}
-                            alt="Confirmation screenshot"
-                            className="w-full"
-                          />
+                          <SessionScreenshot sessionId={entry.sessionId} path={entry.screenshot_path} alt="Application screenshot" />
                         </div>
                       )}
                     </div>

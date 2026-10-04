@@ -320,6 +320,7 @@ export default function HistoryPage() {
                                   status: session.status,
                                   submitted: session.applications_submitted,
                                   failed: session.applications_failed,
+                                  uncertain: session.applications_uncertain,
                                 });
                                 return <StatusDot tone={o.tone}>{o.label}</StatusDot>;
                               })()}

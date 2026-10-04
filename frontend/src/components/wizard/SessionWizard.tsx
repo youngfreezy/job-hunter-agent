@@ -2,6 +2,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormikProvider } from "formik";
@@ -179,7 +180,7 @@ export function SessionWizard() {
 
         {submitError && (
           <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
-            {submitError}
+            {submitError} <Link href="/settings" className="underline">Check setup in Settings</Link>
           </div>
         )}
 

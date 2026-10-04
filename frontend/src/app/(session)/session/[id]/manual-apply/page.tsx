@@ -8,7 +8,8 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getApplicationLog, type ApplicationLogEntry, API_BASE } from "@/lib/api";
+import { getApplicationLog, type ApplicationLogEntry } from "@/lib/api";
+import { SessionScreenshot } from "@/components/SessionScreenshot";
 import { downloadResumePdf, downloadCoverLetterPdf } from "@/lib/pdf";
 
 type Tab = "all" | "failed" | "skipped" | "submitted";
@@ -290,19 +291,12 @@ export default function ManualApplyPage() {
                           />
                         </svg>
                         {expandedScreenshot === key
-                          ? "Hide confirmation screenshot"
-                          : "View confirmation screenshot"}
+                          ? "Hide application screenshot"
+                          : "View application screenshot"}
                       </button>
                       {expandedScreenshot === key && (
                         <div className="mt-2 rounded-lg border border-border overflow-hidden">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`${API_BASE}/api/sessions/${sessionId}/screenshot?path=${encodeURIComponent(
-                              entry.screenshot_path
-                            )}`}
-                            alt="Confirmation screenshot"
-                            className="w-full"
-                          />
+                          <SessionScreenshot sessionId={sessionId} path={entry.screenshot_path} alt="Application screenshot" />
                         </div>
                       )}
                     </div>
