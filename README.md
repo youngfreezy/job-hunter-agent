@@ -2,13 +2,51 @@
 
 An open-source AI agent that discovers jobs, scores them against your resume, tailors applications, and submits them autonomously — with a live browser feed so you can watch and intervene in real time.
 
-**Built with:** FastAPI + LangGraph (Python) | Next.js 14 | Skyvern (AI form filler) | Bright Data MCP (job discovery) | EvoAgentX (self-improving prompts)
+**Built with:** FastAPI + LangGraph (Python) | Next.js 14 | Browserbase + Stagehand (Indeed demo) | Skyvern + Bright Data MCP (alternative paths) | EvoAgentX (prompt optimization)
 
 **Live at:** [jobhunteragent.com](https://jobhunteragent.com)
 
 ---
 
+## Indeed demo: Browserbase + Stagehand
+
+This path discovers jobs on Indeed and uses [Stagehand](https://docs.stagehand.dev/v4) to operate a real [Browserbase](https://www.browserbase.com/) browser. JobHunter owns the workflow, applicant facts, limits, and submission checks. Stagehand handles page interpretation and browser controls; it needs the instructions and application logic in this repository.
+
+After the [Quick Start](#quick-start), configure the backend for the demo:
+
+```bash
+INDEED_ONLY=true
+BROWSER_MODE=browserbase
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=...
+BROWSERBASE_API_KEY=...
+BROWSERBASE_PROJECT_ID=...
+BROWSERBASE_PROXIES=true
+```
+
+Browserbase credentials and proxy preferences can also be saved per user in **Settings**. Complete the Indeed login capture there before applying. Application sessions reuse that user's persisted Browserbase Context; server-provided context IDs are restricted to `BROWSERBASE_CONTEXT_USER_ID`. Browserbase login and the app's Google login are separate.
+
+Upload the original resume and save application rules, then describe the roles, location, work arrangement, and salary preferences in the UI. For the initial end-to-end check, use **Quick Apply with one Indeed URL** and aim for **one verified submission**. Quick Apply processes its supplied URLs; discovery sessions can backfill eligible jobs toward a configured submission target.
+
+The application flow is:
+
+1. **Discover and queue.** Search Indeed, score eligible jobs, and process native applications. Employer-site redirects enter a separate application queue.
+2. **Operate the browser.** Stagehand uses `extract` / `observe` / `act`, native locators, original-file upload, and iframe-aware snapshots. Browserbase reuses authentication and manages supported CAPTCHAs. The app waits on solving events and rechecks the page; a finished event alone does not prove readiness.
+3. **Ground answers.** An independent LLM judge uses the uploaded resume, profile, and explicit owner rules. It can synthesize supported experience and dates, with one bounded correction opportunity and source quotations. It must not invent credentials or personal facts.
+4. **Queue unknowns in the app.** **Needs your answer** displays the exact unresolved question while other eligible jobs continue. Saving an answer does not restart the run; the UI offers an explicit retry. API/SSE consumers receive the same question state.
+5. **Verify submission.** Final review is audited before a durable submission intent is recorded. Only a current confirmation with no remaining submit button counts as submitted. An uncertain outcome remains held for reconciliation instead of being automatically submitted again.
+
+### Local demo spending guard
+
+`JOBHUNTER_MODEL_BUDGET_LEDGER` is an opt-in **backend process environment variable** pointing to an absolute, initialized SQLite ledger. Initialize it once with `Ledger.create(path, limit_usd=...)` from `backend.shared.model_budget`, then export the path before starting the backend. Merely adding it to the Settings model or assuming the local value exists on Railway does not enable it. Existing ledgers must not be replaced to reset spend; missing or corrupt configured ledgers block paid model calls.
+
+This guard supports the approved Anthropic model path and requires persistent storage across restarts. It does **not** cap Browserbase browser time/proxy traffic or requests made by other processes. Without the variable, this local model-spend ceiling is not active.
+
+---
+
 ## How It Works
+
+The alternative multi-board workflow remains available; the Indeed demo above uses its dedicated Browserbase/Stagehand path.
 
 ```
 You provide: keywords, resume, preferences
@@ -151,8 +189,8 @@ Cost: ~$0.50-1.00 per optimization run (Haiku for execution, Sonnet for optimiza
 |-----------|-----------|
 | Backend | FastAPI + LangGraph (Python 3.11) |
 | Frontend | Next.js 14 + Tailwind + shadcn/ui |
-| Form Filling | Skyvern (self-hosted, Claude vision) |
-| Job Discovery | Bright Data MCP + Greenhouse API |
+| Form Filling | Stagehand on Browserbase for the Indeed demo; Skyvern for alternative paths |
+| Job Discovery | Indeed browser discovery; Bright Data MCP + Greenhouse API for alternative paths |
 | Prompt Optimization | EvoAgentX (TextGrad) |
 | Database | PostgreSQL |
 | Cache/Queue | Redis |
