@@ -10,6 +10,7 @@ import random
 from typing import Any, Optional
 
 from langchain_anthropic import ChatAnthropic
+from backend.shared.anthropic_compat import CompatibleChatAnthropic, LATEST_MODELS, model_options
 from langchain_openai import ChatOpenAI
 
 from backend.shared.config import get_settings
@@ -106,7 +107,7 @@ def build_llm(
         return BudgetChatAnthropic(
             model=MODEL, api_key=settings.ANTHROPIC_API_KEY,
             anthropic_api_url='https://api.anthropic.com',
-            max_tokens=max_tokens, temperature=temperature, max_retries=0,
+            max_tokens=max_tokens, **model_options(MODEL, temperature), max_retries=0,
             disable_streaming=True, timeout=timeout or 90,
             default_headers=anthropic_default_headers() or None,
             budget_ledger_path=budget_path,
@@ -122,6 +123,10 @@ def build_llm(
             "temperature": temperature,
             "max_retries": MAX_RETRIES,
         }
+        if resolved_model.startswith(('gpt-6-', 'gpt-6.')):
+            # GPT-6 tool workflows use Responses; Astra/Sol reject effort none.
+            kwargs.pop('temperature', None)
+            kwargs.update(use_responses_api=True, reasoning_effort='low')
         if timeout:
             kwargs["timeout"] = timeout
         return ChatOpenAI(**kwargs)
@@ -132,7 +137,7 @@ def build_llm(
         "model": resolved_model,
         "api_key": settings.ANTHROPIC_API_KEY,
         "max_tokens": max_tokens,
-        "temperature": temperature,
+        **model_options(resolved_model, temperature),
         "max_retries": MAX_RETRIES,
     }
     if timeout:
@@ -140,7 +145,8 @@ def build_llm(
     headers = anthropic_default_headers()
     if headers:
         kwargs["default_headers"] = headers
-    return ChatAnthropic(**kwargs)
+    client_class = CompatibleChatAnthropic if resolved_model in LATEST_MODELS else ChatAnthropic
+    return client_class(**kwargs)
 
 
 def build_browser_use_llm(
@@ -162,16 +168,26 @@ def build_browser_use_llm(
             raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
         from browser_use import ChatOpenAI as BrowserUseChatOpenAI
 
+        browser_options = {'temperature': temperature}
+        if resolved_model.startswith(('gpt-6-', 'gpt-6.')):
+            if resolved_model != 'gpt-6-luna':
+                raise ValueError('Use Stagehand for GPT-6 models requiring the Responses API.')
+            # This browser-use version supports Chat Completions only. Luna
+            # supports tools there with effort none; register its new model ID.
+            browser_options = {'temperature': None, 'frequency_penalty': None,
+                               'reasoning_effort': 'none', 'reasoning_models': [resolved_model]}
         return BrowserUseChatOpenAI(
             model=resolved_model,
             api_key=settings.OPENAI_API_KEY,
             max_completion_tokens=max_tokens,
-            temperature=temperature,
             max_retries=MAX_RETRIES,
+            **browser_options,
         )
 
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
+    if resolved_model in LATEST_MODELS:
+        raise ValueError('Use Stagehand for Claude 5.5; this browser-use adapter forces tool calls.')
     from browser_use import ChatAnthropic as BrowserUseChatAnthropic
 
     bu_kwargs: dict[str, Any] = {

@@ -1,12 +1,12 @@
 """Local, persistent ceiling for the explicitly budgeted Sonnet demo.
 
-Only standard Sonnet 4.6 inference is supported. Reserve its entire 1M input
+Only standard Sonnet 5.5 inference is supported. Reserve its entire 1M input
 context plus maximum output before dispatch, then settle provider-reported usage.
 No prompt/token estimate is trusted as a ceiling. Unknown outcomes retain their
 reservation. Browserbase and API consumers outside this process are NOT covered.
 
 Pricing: https://platform.claude.com/docs/en/about-claude/pricing
-Context: https://platform.claude.com/docs/en/models/sonnet-4-6/overview
+Context: https://platform.claude.com/docs/en/models/sonnet-5-5/overview
 """
 from __future__ import annotations
 
@@ -18,14 +18,15 @@ from pathlib import Path
 import sqlite3
 import uuid
 
-from langchain_anthropic import ChatAnthropic
+from backend.shared.anthropic_compat import CompatibleChatAnthropic
 
-MODEL = 'claude-sonnet-4-6'
+# Fixed reviewed model ID and standard rates; no automatic model fallback.
+MODEL = 'claude-sonnet-5-5'
 INPUT_LIMIT = 1_000_000
 OUTPUT_LIMIT = 128_000
 # Integer millionths of a dollar per token; no floating point accounting.
-INPUT_RATE = 3
-OUTPUT_RATE = 15
+INPUT_RATE = 2
+OUTPUT_RATE = 10
 
 
 class BudgetStopped(RuntimeError):
@@ -120,7 +121,7 @@ def _has_cache_control(value):
     return False
 
 
-class BudgetChatAnthropic(ChatAnthropic):
+class BudgetChatAnthropic(CompatibleChatAnthropic):
     budget_ledger_path: str
 
     def _reserve(self, payload):
