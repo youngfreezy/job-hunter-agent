@@ -2,7 +2,6 @@
 
 import { type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { cookies } from "next/headers";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -22,8 +21,9 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { session_id } = await req.json();
-  if (!session_id) {
+  const body = await req.json().catch(() => null);
+  const session_id = body?.session_id;
+  if (typeof session_id !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(session_id)) {
     return Response.json({ error: "session_id required" }, { status: 400 });
   }
 
@@ -32,11 +32,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "No Google access token in session" }, { status: 400 });
   }
 
-  // Read the raw session cookie to forward as Authorization to the backend
-  const cookieStore = await cookies();
-  const sessionToken =
-    cookieStore.get("next-auth.session-token")?.value ||
-    cookieStore.get("__Secure-next-auth.session-token")?.value;
+  // Reassemble chunked OAuth cookies just as NextAuth does.
+  const sessionToken = await getToken({ req, secret: process.env.NEXTAUTH_SECRET, raw: true });
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

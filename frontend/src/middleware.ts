@@ -10,5 +10,10 @@ export default withAuth({
 
 // Protect dashboard and session routes — landing page and auth are public
 export const config = {
-  matcher: ["/dashboard/:path*", "/session/:path*"],
+  matcher: [
+    "/dashboard/:path*", "/session/:path*", "/account/:path*", "/settings/:path*",
+    "/billing/:path*", "/developer/:path*", "/apply/:path*", "/quick-apply/:path*",
+    "/history/:path*", "/autopilot/:path*", "/interview-prep/:path*",
+    "/career-pivot/:path*", "/freelance/:path*", "/marketplace/:path*",
+  ],
 };
