@@ -28,6 +28,8 @@ from backend.shared.application_store import mark_submission_intent
 logger = logging.getLogger(__name__)
 MAX_ACTIONS = 40
 MAX_SECONDS = 600
+# act includes model inference; 45s expired during a grounded review click.
+NON_SUBMIT_ACTION_TIMEOUT_MS = 90000
 
 
 class NextStep(BaseModel):
@@ -266,6 +268,7 @@ class IndeedApplier(BaseApplier):
         previous = None
         repetitions = 0
         action_failures = 0
+        action_timeout_recoveries = 0
         history = []
         for index in range(MAX_ACTIONS):
             routed = self._external_route(str(job.id))
@@ -455,7 +458,30 @@ class IndeedApplier(BaseApplier):
                 mark_submission_intent(self.session_id, str(job.id))
                 self._submission_attempted = True
             try:
-                action = await self.stagehand.act(step.instruction, page=stage_page, timeout=45000)
+                action = await self.stagehand.act(
+                    step.instruction, page=stage_page,
+                    timeout=45000 if step.kind == 'submit' else NON_SUBMIT_ACTION_TIMEOUT_MS,
+                )
+            except TimeoutError:
+                if self._submission_attempted:
+                    raise  # Submission may have happened; never replan or replay it.
+                routed = self._external_route(str(job.id))
+                if routed:
+                    return routed
+                if action_timeout_recoveries >= 1:
+                    return self._fail(str(job.id), 'Stagehand action timed out again after a fresh page check.',
+                                      ApplicationErrorCategory.TIMEOUT)
+                action_timeout_recoveries += 1
+                # A timeout is an unknown action outcome. Read first and let the
+                # planner choose from current state instead of replaying a click.
+                await self._visible_application_snapshot()
+                history.append({'instruction': step.instruction, 'success': False,
+                                'message': 'Action timed out; outcome unknown. Inspect the fresh page. '
+                                'Do not repeat a completed action or infer it failed.'})
+                previous = None
+                repetitions = 0
+                await self._emit_step('The action timed out; checking the current page before continuing...')
+                continue
             except Exception:
                 routed = self._external_route(str(job.id))
                 if routed and not self._submission_attempted:
@@ -485,15 +511,18 @@ class IndeedApplier(BaseApplier):
         return self._fail(str(job.id), f'Stagehand reached its {MAX_ACTIONS}-action limit.')
 
     async def apply(self, job, user_profile, resume_text, cover_letter, resume_file_path=None):
+        deadline = asyncio.timeout(MAX_SECONDS)
         try:
-            async with asyncio.timeout(MAX_SECONDS):
+            async with deadline:
                 result = await self._drive(job, user_profile, resume_text, cover_letter)
                 result.ats_type = self.PLATFORM
                 return result
         except ApplicationParked:
             raise
         except TimeoutError:
-            return self._fail(str(job.id), 'Application time limit reached; check Indeed before retrying.')
+            message = ('Application time limit reached; check Indeed before retrying.' if deadline.expired()
+                       else 'Application operation timed out; check Indeed before retrying.')
+            return self._fail(str(job.id), message, ApplicationErrorCategory.TIMEOUT)
         except Exception as exc:
             from backend.browser.stagehand_budget import budget_stop_message
             budget_message = budget_stop_message(exc)

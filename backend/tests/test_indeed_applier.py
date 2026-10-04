@@ -965,3 +965,66 @@ async def test_rpc_budget_stop_is_truthful_and_never_retried(monkeypatch, after_
     assert decision.decision == app_node.SupervisorDecision.PAUSE
     assert decision.reasoning == result.error_message
     build.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_non_submit_action_timeout_replans_before_different_action(monkeypatch):
+    from types import SimpleNamespace
+    page = _page('https://smartapply.indeed.com/form/questions')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('act', 'Click Review your application'),
+        ('act', 'Open a required question'),
+        ('park', 'Required answer missing')]])
+    agent.act.side_effect = [TimeoutError('act() timed out after 45000ms'),
+                            SimpleNamespace(data=SimpleNamespace(success=True))]
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.SKIPPED
+    assert agent.extract.await_count == 3
+    assert all(c.kwargs['timeout'] == 90000 for c in agent.act.await_args_list)
+    assert [c.args[0] for c in agent.act.await_args_list] == [
+        'Click Review your application', 'Open a required question']
+    assert 'timed out' in agent.extract.await_args_list[1].args[0]
+    assert agent.browser.context.active_page.return_value.snapshot.await_count >= 3
+
+
+@pytest.mark.asyncio
+async def test_second_non_submit_action_timeout_stops_bounded_recovery():
+    page = _page('https://smartapply.indeed.com/form/questions')
+    agent = _stagehand(page, [dict(kind='act', instruction=i, reason='') for i in [
+        'Click Review your application', 'Open a required question']])
+    agent.act.side_effect = TimeoutError('act() timed out after 45000ms')
+    result = await IndeedApplier(page, 's1', stagehand=agent).run(
+        job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.FAILED
+    assert result.error_category == ApplicationErrorCategory.TIMEOUT
+    assert 'action timed out' in result.error_message
+    assert 'Application time limit reached' not in result.error_message
+    assert agent.act.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_submit_action_timeout_never_replans_or_repeats(monkeypatch):
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
+        ('upload', ''), ('submit', 'Submit application')]])
+    agent.act.side_effect = TimeoutError('act() timed out after 45000ms')
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
+    assert 'operation timed out' in result.error_message
+    agent.act.assert_awaited_once()
+    assert agent.extract.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_overall_deadline_still_stops_and_reports_total_limit(monkeypatch):
+    import asyncio
+    applier = IndeedApplier(_page(), 's1')
+    async def slow_drive(*_args):
+        await asyncio.sleep(1)
+    monkeypatch.setattr(applier, '_drive', slow_drive)
+    monkeypatch.setattr(indeed_mod, 'MAX_SECONDS', 0)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.TIMEOUT
+    assert 'Application time limit reached' in result.error_message
