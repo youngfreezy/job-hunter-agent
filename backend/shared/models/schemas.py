@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator
 
 
 # --- Enums ---
@@ -115,6 +115,7 @@ class SearchConfig(BaseModel):
     work_arrangements: List[str] = Field(default_factory=list, description="Explicitly requested arrangements: remote, hybrid, onsite. Empty means any.")
     exclude_title_keywords: List[str] = Field(default_factory=list, description="Job title phrases explicitly excluded by the user, such as AI Trainer or Data Annotation.")
     salary_min: Optional[int] = None
+    allow_unpublished_salary: StrictBool = Field(default=False, description="Owner explicitly permits unpublished pay. Broadens discovery only; salary_min remains the published-pay/offer floor.")
     experience_level: Optional[str] = None  # "entry", "mid", "senior", "executive"
     job_type: Optional[str] = None  # "full-time", "contract", "part-time"
     company_size: Optional[str] = None  # "startup", "mid", "enterprise"

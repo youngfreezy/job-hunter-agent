@@ -12,6 +12,7 @@ so the model can tell the owner's instructions apart from page content.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Literal
 
 logger = logging.getLogger(__name__)
@@ -103,3 +104,26 @@ def load_application_rules(user_id: str | None) -> str:
     from backend.shared.billing_store import get_application_rules
 
     return get_application_rules(user_id)
+
+
+def allows_unpublished_salary(rules: str | None) -> bool:
+    """Read an explicit owner permission without guessing from model output.
+
+    Accept the saved authorization sentence or a standalone boolean directive.
+    Unknown wording preserves the default salary filter; explicit denials win.
+    This only controls discovery, never the owner's published-pay/offer floor.
+    """
+    text = rules or ""
+    directives = re.findall(
+        r"^\s*allow_unpublished_salary\s*=\s*(true|false)\s*$", text, re.I | re.M)
+    if 'false' in [value.lower() for value in directives]:
+        return False
+    sentences = {re.sub(r"\s+", " ", sentence).strip().lower()
+                 for sentence in re.split(r"[.!?\n]", text)}
+    if any(re.fullmatch(
+        r"(?:do not|don't|never) apply (?:to |for )?(?:otherwise-matching )?(?:roles|jobs) with unpublished (?:compensation|salary|pay)",
+        sentence) for sentence in sentences):
+        return False
+    return bool(directives) or (
+        'i explicitly authorize applying to otherwise-matching roles with unpublished compensation'
+        in sentences)

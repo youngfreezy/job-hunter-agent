@@ -122,7 +122,7 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
         preferences = state.get("preferences", {})
         if preferences:
             parts.append(f"Additional preferences: {json.dumps(preferences)}")
-        from backend.shared.application_rules import load_application_rules
+        from backend.shared.application_rules import load_application_rules, allows_unpublished_salary
         owner_rules = load_application_rules(state.get("user_id"))
         if owner_rules:
             parts.append(f"Owner's saved application rules:\n{owner_rules}")
@@ -142,6 +142,10 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
         ]
 
         search_config: SearchConfig = await invoke_with_retry(structured_llm, messages)
+
+        # Only saved owner permission may widen salary discovery. Keep the
+        # minimum intact for published-pay/offer screening downstream.
+        search_config.allow_unpublished_salary = allows_unpublished_salary(owner_rules)
 
         # Override search_radius with user's explicit preference (LLM doesn't decide this)
         user_radius = state.get("search_radius", 100)

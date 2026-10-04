@@ -159,7 +159,7 @@ async def scrape_indeed(
         elif location and location.lower() != "remote":
             base_params["l"] = location
             base_params["radius"] = str(search_config.search_radius)
-        if search_config.salary_min:
+        if search_config.salary_min and not search_config.allow_unpublished_salary:
             base_params["salary"] = str(search_config.salary_min)
 
         for query in queries:
