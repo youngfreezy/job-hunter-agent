@@ -21,6 +21,7 @@ from backend.shared.config import settings
 from backend.shared.model_budget import BudgetStopped
 from backend.orchestrator.interview_prep.contracts import (
     CompanyBrief, QuestionSet, Grade, Coaching, InvalidPrepOutput, generate_validated,
+    MAX_RESUME_CHARACTERS, complete_resume_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class StartPrepRequest(BaseModel):
     company: str
     role: str
     job_description: Optional[str] = None
-    resume_text: str
+    resume_text: str = Field(max_length=MAX_RESUME_CHARACTERS)
     application_id: Optional[str] = None
 
 
@@ -292,7 +293,7 @@ async def get_coaching(request: Request, session_id: str, body: CoachRequest):
     if not question:
         raise HTTPException(404, "Question not found")
 
-    resume_text = meta.get("resume_text", "")
+    resume_text = complete_resume_context(meta.get("resume_text", ""))
     company = meta.get("company", "")
     role = meta.get("role", "")
 
@@ -329,7 +330,7 @@ Return ONLY valid JSON, no markdown fences:
   "key_points": ["Shows leadership under ambiguity", "Demonstrates technical depth"],
   "pitfalls": ["Don't be too vague — use specific numbers", "Avoid saying 'we' without clarifying your role"]
 }}"""),
-        HumanMessage(content=f"Interview question ({question['category']}): {question['question']}\n\nCandidate's resume:\n{resume_text[:3000]}"),
+        HumanMessage(content=f"Interview question ({question['category']}): {question['question']}\n\nCandidate's resume:\n{resume_text}"),
     ]
 
     try:

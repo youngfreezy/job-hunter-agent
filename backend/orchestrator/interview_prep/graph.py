@@ -10,7 +10,7 @@ from typing import Any, Dict
 from langgraph.graph import END, START, StateGraph
 
 from backend.orchestrator.interview_prep.state import InterviewPrepState
-from backend.orchestrator.interview_prep.contracts import CompanyBrief, QuestionSet, generate_validated
+from backend.orchestrator.interview_prep.contracts import CompanyBrief, QuestionSet, generate_validated, complete_resume_context
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ async def question_generator_node(state: InterviewPrepState) -> Dict[str, Any]:
     company = state.get("company", "")
     role = state.get("role", "")
     job_desc = state.get("job_description", "")
-    resume = state.get("resume_text", "")
+    resume = complete_resume_context(state.get("resume_text", ""))
 
     llm = build_llm(model=default_model(), max_tokens=4096, temperature=0.3)
 
@@ -71,7 +71,7 @@ Return as JSON:
     ...
   ]
 }"""),
-        HumanMessage(content=f"Company: {company}\nRole: {role}\nJob Description: {job_desc}\nCandidate Resume: {resume[:1000]}"),
+        HumanMessage(content=f"Company: {company}\nRole: {role}\nJob Description: {job_desc}\nCandidate Resume: {resume}"),
     ]
 
     result = await generate_validated(llm, QuestionSet, messages)

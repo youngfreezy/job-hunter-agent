@@ -177,3 +177,25 @@ async def test_replayed_error_ends_stream_and_releases_subscriber(monkeypatch, p
     with pytest.raises(StopAsyncIteration):
         await anext(stream)
     assert routes._prep_subscribers['fixture'] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('operation', ['questions', 'coach'])
+async def test_uploaded_resume_tail_is_preserved_in_both_interview_prompts(provider, prep, operation):
+    resume = 'Canonical uploaded facts\n' + 'Earlier context. ' * 650 + '\nSignet: Led an enterprise platform migration.'
+    if operation == 'questions':
+        provider[1].return_value = questions()
+        await graph.question_generator_node({'resume_text': resume})
+    else:
+        prep['resume_text'] = resume
+        provider[1].return_value = {'resume_highlights': ['Signet: Led an enterprise platform migration.'],
+            'star_scaffold': dict.fromkeys(['situation','task','action','result'], 'Use your Signet example.'),
+            'key_points': ['Explain the migration.'], 'pitfalls': ['Avoid vague claims.']}
+        await routes.get_coaching(None, 'fixture', routes.CoachRequest(question_id='q1'))
+    assert resume in provider[1].await_args.args[1][-1].content
+
+
+def test_interview_request_rejects_oversized_resume_instead_of_silently_truncating():
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        routes.StartPrepRequest(company='Fixture', role='Engineer', resume_text='x' * 50_001)
