@@ -66,20 +66,19 @@ def test_gpt6_actual_structured_payload_uses_responses(settings, model):
     assert 'temperature' not in request
 
 
-@pytest.mark.asyncio
-async def test_browser_use_luna_actual_chat_payload(settings, monkeypatch):
-    from browser_use.llm.messages import UserMessage
+def test_optional_browser_use_luna_adapter_configuration(settings, monkeypatch):
+    from unittest.mock import MagicMock
+    from backend.shared import optional_browser
     settings.LLM_PROVIDER = 'openai'
-    client = llm.build_browser_use_llm()
-    create = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(
-        message=SimpleNamespace(content='ready'), finish_reason='stop')], usage=None))
-    monkeypatch.setattr(type(client), 'get_client', lambda self: SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
-    await client.ainvoke([UserMessage(content='Inspect')])
-    request = create.await_args.kwargs
-    assert request['model'] == 'gpt-6-luna'
-    assert request['reasoning_effort'] == 'none'
-    assert not {'temperature', 'frequency_penalty', 'top_p'} & request.keys()
+    constructor = MagicMock()
+    monkeypatch.setattr(optional_browser, 'require_browser_use', lambda: SimpleNamespace(ChatOpenAI=constructor))
+    assert llm.build_browser_use_llm() is constructor.return_value
+    options = constructor.call_args.kwargs
+    assert options['model'] == 'gpt-6-luna'
+    assert options['reasoning_effort'] == 'none'
+    assert options['reasoning_models'] == ['gpt-6-luna']
+    assert options['temperature'] is None and options['frequency_penalty'] is None
+    assert options['max_completion_tokens'] == 8192
 
 
 @pytest.mark.parametrize('model', ['gpt-6-astra', 'gpt-6.1-sol'])

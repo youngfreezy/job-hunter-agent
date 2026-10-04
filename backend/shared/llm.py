@@ -171,7 +171,6 @@ def build_browser_use_llm(
     if provider == "openai":
         if not credentials.api_key:
             raise RuntimeError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
-        from browser_use import ChatOpenAI as BrowserUseChatOpenAI
 
         browser_options = {'temperature': temperature}
         if resolved_model.startswith(('gpt-6-', 'gpt-6.')):
@@ -181,6 +180,8 @@ def build_browser_use_llm(
             # supports tools there with effort none; register its new model ID.
             browser_options = {'temperature': None, 'frequency_penalty': None,
                                'reasoning_effort': 'none', 'reasoning_models': [resolved_model]}
+        from backend.shared.optional_browser import require_browser_use
+        BrowserUseChatOpenAI = require_browser_use().ChatOpenAI
         return BrowserUseChatOpenAI(
             model=resolved_model,
             api_key=credentials.api_key,
@@ -193,7 +194,8 @@ def build_browser_use_llm(
         raise RuntimeError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
     if resolved_model in LATEST_MODELS:
         raise ValueError('Use Stagehand for Claude 5.5; this browser-use adapter forces tool calls.')
-    from browser_use import ChatAnthropic as BrowserUseChatAnthropic
+    from backend.shared.optional_browser import require_browser_use
+    BrowserUseChatAnthropic = require_browser_use().ChatAnthropic
 
     bu_kwargs: dict[str, Any] = {
         "model": resolved_model,

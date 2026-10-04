@@ -245,7 +245,9 @@ async def update_linkedin_profile(
     -------
     Dict with results per section.
     """
-    from browser_use import Agent, Browser
+    from backend.shared.optional_browser import require_browser_use
+    engine = require_browser_use()
+    Agent, Browser = engine.Agent, engine.Browser
     start_time = time.monotonic()
     results: List[Dict[str, Any]] = []
 

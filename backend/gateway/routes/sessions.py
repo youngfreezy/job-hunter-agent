@@ -2353,6 +2353,12 @@ async def start_linkedin_update(session_id: str, body: LinkedInUpdateRequest, re
     if not body.updates:
         raise HTTPException(status_code=400, detail="No updates provided")
 
+    from backend.shared.optional_browser import OptionalBrowserUnavailable, require_browser_use
+    try:
+        require_browser_use()
+    except OptionalBrowserUnavailable:
+        raise HTTPException(status_code=503, detail="LinkedIn profile updating is unavailable on this deployment. Copy the suggested text to LinkedIn instead.") from None
+
     # Ensure SSE infrastructure exists for this session
     sse_subscribers.setdefault(session_id, [])
     event_logs.setdefault(session_id, [])

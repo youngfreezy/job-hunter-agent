@@ -77,7 +77,9 @@ async def apply_with_browser_use(
     2-5 s cold-start per call).  If *None*, a fresh instance is created and
     cleaned up after use.
     """
-    from browser_use import Agent, Browser, ActionResult, Tools
+    from backend.shared.optional_browser import require_browser_use
+    engine = require_browser_use()
+    Agent, Browser, ActionResult, Tools = engine.Agent, engine.Browser, engine.ActionResult, engine.Tools
 
     start_time = time.monotonic()
 

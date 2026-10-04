@@ -306,7 +306,9 @@ async def discover_all_boards(
     max_per_board: int = 20,
 ) -> List[JobListing]:
     """Run one browser-use agent that searches all boards sequentially."""
-    from browser_use import Agent, Browser
+    from backend.shared.optional_browser import require_browser_use
+    engine = require_browser_use()
+    Agent, Browser = engine.Agent, engine.Browser
 
     # Reorder boards: reliable first, glassdoor last (heavy CDP timeouts)
     priority = ["linkedin", "ziprecruiter", "indeed", "glassdoor"]
