@@ -326,11 +326,6 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
 
     if is_autopilot or is_free_trial or is_backfill or is_quick_apply:
         all_scored = state.get("scored_jobs") or []
-        # Missing legacy verdicts are unknown. Only explicit per-job review may
-        # authorize these; never let a weighted fit score approve them silently.
-        if not is_quick_apply and any(sj.eligibility_status == "unknown" for sj in all_scored):
-            return {"application_queue": [], "active_retry_job_ids": [],
-                    "application_retry_counts": dict(state.get("application_retry_counts") or {})}
         eligible_ids = {str(sj.job.id) for sj in all_scored
                         if is_quick_apply or sj.eligibility_status == "met"}
         submitted_count = len(state.get("applications_submitted") or [])
@@ -339,14 +334,16 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
         if is_backfill and minimum_submitted_target > 0:
             desired_queue_size = max(1, min(MAX_APPLICATION_JOBS, minimum_submitted_target - submitted_count))
 
-        # On backfill, prefer jobs we have not already attempted.
-        done_ids: set[str] = set()
-        if is_backfill:
-            done_ids = (
-                {r.job_id for r in (state.get("applications_submitted") or [])}
-                | {r.job_id for r in (state.get("applications_failed") or [])}
-                | set(state.get("applications_skipped") or [])
-            )
+        # Continue assessed jobs first; keep unresolved, unattempted candidates
+        # for individual review after this queue drains. Never requeue a receipt.
+        done_ids = (
+            {r.job_id for r in (state.get("applications_submitted") or [])}
+            | {r.job_id for r in (state.get("applications_failed") or [])}
+            | set(state.get("applications_skipped") or [])
+        )
+        pending_review = [str(sj.job.id) for sj in all_scored
+                          if not is_quick_apply and sj.eligibility_status == "unknown"
+                          and str(sj.job.id) not in done_ids]
         top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)
         candidates = [sj for sj in top_scored if str(sj.job.id) not in done_ids
                       and str(sj.job.id) in eligible_ids]
@@ -394,6 +391,7 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
         )
         return {
             "application_queue": approved_ids,
+            "pending_eligibility_review_ids": pending_review,
             "consecutive_failures": 0,
             "active_retry_job_ids": retry_job_ids,
             "application_retry_counts": retry_counts,
@@ -410,7 +408,7 @@ def _route_after_auto_approve_gate(state: JobHunterState) -> str:
     _cfg = state.get("session_config") or {}
     _cfg = _cfg if isinstance(_cfg, dict) else (_cfg.model_dump() if hasattr(_cfg, "model_dump") else {})
     is_quick_apply = _cfg.get("discovery_mode") == "manual_urls"
-    if not is_quick_apply and any(sj.eligibility_status == "unknown" for sj in (state.get("scored_jobs") or [])):
+    if not state.get("application_queue") and state.get("pending_eligibility_review_ids"):
         return "shortlist_review"
     if is_autopilot or is_free_trial or is_backfill or is_quick_apply:
         return "supervise_after_shortlist"
@@ -543,6 +541,18 @@ async def _validate_job_urls(scored_jobs: list, session_id: str = "") -> list:
     return valid
 
 
+def shortlist_candidates(state: dict) -> list:
+    """One review projection for the graph interrupt and its API/SSE views."""
+    def value(job, key, default=None):
+        return job.get(key, default) if isinstance(job, dict) else getattr(job, key, default)
+
+    pending = set(state.get("pending_eligibility_review_ids") or [])
+    candidates = [sj for sj in (state.get("scored_jobs") or [])
+                  if value(sj, "eligibility_status", "unknown") != "not_met"
+                  and (not pending or str(value(value(sj, "job"), "id")) in pending)]
+    return sorted(candidates, key=lambda sj: value(sj, "score", 0), reverse=True)[:MAX_APPLICATION_JOBS]
+
+
 async def shortlist_review_gate(state: JobHunterState) -> dict:
     """Suspend execution so the user can review the shortlist.
 
@@ -550,9 +560,7 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     to actually apply to.
     """
     # Only show the top scored jobs (sorted by score desc) to the user.
-    all_scored = state.get("scored_jobs") or []
-    top_scored = sorted((sj for sj in all_scored if sj.eligibility_status != "not_met"),
-                        key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
+    top_scored = shortlist_candidates(state)
 
     # Validate URLs — remove dead/expired links before showing to user
     session_id = state.get("session_id", "")
@@ -575,7 +583,7 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
 
     # human_input expected shape:
     # {"approved_job_ids": [...], "feedback": "..."}
-    updates: dict = {"consecutive_failures": 0}  # Reset circuit breaker on retry
+    updates: dict = {"consecutive_failures": 0, "pending_eligibility_review_ids": []}
     reviewable_ids = {str(sj.job.id) for sj in top_scored}
     requested = human_input.get("approved_job_ids", [])
     # Legacy/email bulk approval cannot implicitly approve unresolved criteria.
@@ -589,6 +597,10 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
             )
             approved = approved[:MAX_APPLICATION_JOBS]
     updates["application_queue"] = approved
+    deferred = state.get("pending_eligibility_review_ids") or []
+    if deferred:
+        # Explicitly declined candidates must not reappear on a backfill round.
+        updates["applications_skipped"] = [jid for jid in deferred if jid not in approved]
     if human_input.get("feedback"):
         updates["human_messages"] = [human_input["feedback"]]
     return updates
@@ -622,8 +634,11 @@ def route_after_application(
 
     remaining = [jid for jid in queue if jid not in done]
 
-    # All jobs processed — always proceed to verification/summary
+    # Review deferred unknown criteria once assessed jobs have been processed.
+    # The review gate clears this marker even when the user selects no jobs.
     if not remaining:
+        if state.get("pending_eligibility_review_ids"):
+            return "shortlist_review"
         return "verification"
 
     consecutive = state.get("consecutive_failures", 0)

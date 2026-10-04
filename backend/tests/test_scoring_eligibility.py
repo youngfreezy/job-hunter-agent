@@ -157,3 +157,57 @@ def test_remote_only_explicit_in_person_contradiction_is_not_met():
         {'remote_only':True},'met',[])
     assert verdict == 'not_met'
     assert 'remote-only' in reasons[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('approve_unknown', [False, True])
+async def test_mixed_criteria_runs_met_first_then_reviews_unknown_once(monkeypatch, offline, approve_unknown):
+    """Real checkpoint/interrupt routing with only application effects faked."""
+    from langgraph.graph import StateGraph, START, END
+    from langgraph.checkpoint.memory import MemorySaver
+    from langgraph.types import Command
+    from backend.orchestrator.pipeline.state import JobHunterState
+    from backend.shared.models.schemas import ApplicationResult, ApplicationStatus
+    applied = []
+    async def apply(state):
+        done = {r.job_id for r in state.get('applications_submitted', [])}
+        pending = [jid for jid in state['application_queue'] if jid not in done]
+        applied.extend(pending)
+        return {'applications_submitted':[ApplicationResult(job_id=jid,status=ApplicationStatus.SUBMITTED) for jid in pending]}
+    workflow = StateGraph(JobHunterState)
+    workflow.add_node('auto', graph.auto_approve_gate)
+    workflow.add_node('apply', apply)
+    workflow.add_node('review', graph.shortlist_review_gate)
+    workflow.add_edge(START, 'auto')
+    workflow.add_conditional_edges('auto', graph._route_after_auto_approve_gate,
+                                  {'supervise_after_shortlist':'apply','shortlist_review':'review'})
+    workflow.add_conditional_edges('apply', graph.route_after_application,
+                                  {'verification':END,'shortlist_review':'review','application':'apply','auto_approve_gate':'auto'})
+    workflow.add_edge('review','apply')
+    runner = workflow.compile(checkpointer=MemorySaver())
+    config = {'configurable':{'thread_id':f'mixed-{approve_unknown}'}}
+    await runner.ainvoke({'session_id':'offline','preferences':{'_autopilot_auto_approve':True},
+                        'scored_jobs':[ScoredJob(job=listing(id='met'),score=90,eligibility_status='met'),
+                                       ScoredJob(job=listing(id='unknown'),score=99)]},config)
+    assert applied == ['met']
+    snapshot = await runner.aget_state(config)
+    assert snapshot.values['pending_eligibility_review_ids'] == ['unknown']
+    assert snapshot.next == ('review',)
+    assert [job['job']['id'] for job in snapshot.tasks[0].interrupts[0].value['scored_jobs']] == ['unknown']
+    await runner.ainvoke(Command(resume={'approved_job_ids':['unknown'] if approve_unknown else []}),config)
+    snapshot = await runner.aget_state(config)
+    assert snapshot.next == ()
+    assert snapshot.values['pending_eligibility_review_ids'] == []
+    assert applied == (['met','unknown'] if approve_unknown else ['met'])
+    assert snapshot.values.get('applications_skipped', []) == ([] if approve_unknown else ['unknown'])
+    # A later backfill/circuit-breaker revisit cannot requeue either outcome.
+    revisit = await graph.auto_approve_gate({**snapshot.values, 'backfill_rounds':1})
+    assert revisit['pending_eligibility_review_ids'] == []
+    assert revisit['application_queue'] == []
+
+
+def test_review_projection_matches_serialized_checkpoint_subset():
+    state = {'pending_eligibility_review_ids':['unknown'], 'scored_jobs':[
+        ScoredJob(job=listing(id='met'),score=99,eligibility_status='met').model_dump(),
+        ScoredJob(job=listing(id='unknown'),score=50).model_dump()]}
+    assert [sj['job']['id'] for sj in graph.shortlist_candidates(state)] == ['unknown']

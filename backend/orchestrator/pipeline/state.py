@@ -82,6 +82,7 @@ class JobHunterState(TypedDict):
 
     # --- Application progress ---
     application_queue: List[str]  # job_ids approved for application
+    pending_eligibility_review_ids: List[str]  # unresolved user criteria; never auto-approved
     current_application: Optional[str]
     applications_submitted: Annotated[List[ApplicationResult], operator.add]
     applications_failed: Annotated[List[ApplicationResult], operator.add]
