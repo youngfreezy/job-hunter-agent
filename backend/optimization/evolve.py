@@ -81,12 +81,31 @@ def _get_api_key() -> str:
     return key
 
 
+def _model_configs(config_class, api_key: str):
+    """Use centrally configured Anthropic tiers and provider-default sampling."""
+    from backend.shared.config import get_settings
+
+    settings = get_settings()
+    common = dict(anthropic_key=api_key, temperature=None, top_p=None, tool_choice=None)
+    return (
+        config_class(model=f"anthropic/{settings.ANTHROPIC_LIGHT_MODEL}", **common),
+        config_class(model=f"anthropic/{settings.ANTHROPIC_DEFAULT_MODEL}", **common),
+    )
+
+
 def run_optimization(prompt_key: str = PROMPT_KEY_DISCOVERY) -> Dict[str, Any]:
     """Run TextGrad optimization on a specific prompt.
 
     Returns dict with optimization results including the best prompt
     and its evaluation score.
     """
+    # EvoAgentX dispatches directly through LiteLLM, outside our spend ledger.
+    # Disable both automatic and manual optimization while that guard is active.
+    from backend.shared.model_budget import configured_ledger
+
+    if configured_ledger():
+        return {"error": "budget_mode", "message": "Prompt optimization is disabled while the model spend ledger is active"}
+
     try:
         from evoagentx.models import LiteLLMConfig, LiteLLM
         from evoagentx.optimizers import TextGradOptimizer
@@ -114,16 +133,8 @@ def run_optimization(prompt_key: str = PROMPT_KEY_DISCOVERY) -> Dict[str, Any]:
     api_key = _get_api_key()
 
     # Configure LLMs -- Haiku for execution, Sonnet for optimization
-    executor_config = LiteLLMConfig(
-        model="anthropic/claude-haiku-4-5-20251001",
-        api_key=api_key,
-    )
+    executor_config, optimizer_config = _model_configs(LiteLLMConfig, api_key)
     executor_llm = LiteLLM(config=executor_config)
-
-    optimizer_config = LiteLLMConfig(
-        model="anthropic/claude-sonnet-4-20250514",
-        api_key=api_key,
-    )
     optimizer_llm = LiteLLM(config=optimizer_config)
 
     # Load current prompt (from registry or default)

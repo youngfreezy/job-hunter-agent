@@ -8,7 +8,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "generate-copy": "tsx src/cli.ts generate",
-    "review-copy": "tsx src/cli.ts review"
+    "review-copy": "tsx src/cli.ts review",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "ai": "^4.0.0",

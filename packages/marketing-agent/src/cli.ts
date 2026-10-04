@@ -1,6 +1,6 @@
-// Copyright (c) 2026 V2 Software LLC. All rights reserved.
-
 #!/usr/bin/env node
+
+// Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
 /**
  * Simple CLI for testing the marketing agent.
@@ -11,7 +11,7 @@
  *   echo "some copy" | npx tsx src/cli.ts review --product "..." --audience "..."
  */
 
-import { MarketingAgent } from './agent';
+import { DEFAULT_MODEL, MarketingAgent } from './agent';
 import type { CopyContext } from './agent';
 import * as fs from 'node:fs';
 
@@ -60,7 +60,7 @@ async function generate(): Promise<void> {
     pageType: getArg('pageType', 'landing') as CopyContext['pageType'],
   };
 
-  const model = getArg('model', 'claude-sonnet-4-20250514');
+  const model = getArg('model', DEFAULT_MODEL);
   const agent = new MarketingAgent({ model });
 
   console.log('Generating copy...\n');
@@ -102,7 +102,7 @@ async function review(): Promise<void> {
     pageType: getArg('pageType', 'landing') as CopyContext['pageType'],
   };
 
-  const model = getArg('model', 'claude-sonnet-4-20250514');
+  const model = getArg('model', DEFAULT_MODEL);
   const agent = new MarketingAgent({ model });
 
   console.log('Reviewing copy...\n');
@@ -171,7 +171,7 @@ Options:
   --audience   Target audience (required)
   --pageType   landing | pricing | feature | email (default: landing)
   --tone       Tone of voice (default: professional)
-  --model      Anthropic model ID (default: claude-sonnet-4-20250514)
+  --model      Anthropic model ID (default: claude-sonnet-5-5)
   --file       Path to file containing copy to review (review command)
 `);
     process.exit(command ? 1 : 0);

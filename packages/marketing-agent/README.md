@@ -102,9 +102,11 @@ echo "Buy now! Best tool ever!" | npx tsx src/cli.ts review \
 
 The core agent class.
 
+The default is Claude Sonnet 5.5. These plain-text calls use default sampling (temperature 1) because AI SDK 4 otherwise sends temperature 0, which Sonnet 5.5 rejects. They do not force tool selection. The standalone marketing package is separate from the application pipeline and its model spend ledger.
+
 ```typescript
 const agent = new MarketingAgent({
-  model: 'claude-sonnet-4-20250514',  // optional, defaults to claude-sonnet-4-20250514
+  model: 'claude-sonnet-5-5',  // optional, defaults to claude-sonnet-5-5
   maxTokens: 2048,                    // optional, defaults to 2048
 });
 ```
@@ -165,7 +167,8 @@ import { generateText } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 
 const result = await generateText({
-  model: anthropic('claude-sonnet-4-20250514'),
+  model: anthropic('claude-sonnet-5-5'),
+  temperature: 1, // Sonnet 5.5 requires default sampling.
   tools: { generateCopy: copyGeneratorTool, reviewCopy: copyReviewerTool },
   prompt: 'Generate a landing page for our new analytics product...',
 });

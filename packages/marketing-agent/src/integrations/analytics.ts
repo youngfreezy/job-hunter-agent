@@ -176,7 +176,7 @@ export class AnalyticsIntegration {
       value,
     };
 
-    return this.sendEvent(payload);
+    return this.sendEvent({ ...payload });
   }
 
   // -----------------------------------------------------------------------

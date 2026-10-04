@@ -60,8 +60,10 @@ export interface CopyReview {
 // Agent Options
 // ---------------------------------------------------------------------------
 
+export const DEFAULT_MODEL = 'claude-sonnet-5-5';
+
 export interface MarketingAgentOptions {
-  /** Anthropic model to use. Defaults to "claude-sonnet-4-20250514". */
+  /** Anthropic model to use. Defaults to "claude-sonnet-5-5". */
   model?: string;
   /** Maximum tokens for generation. Defaults to 4096. */
   maxTokens?: number;
@@ -76,7 +78,7 @@ export class MarketingAgent {
   private maxTokens: number;
 
   constructor(options: MarketingAgentOptions = {}) {
-    this.model = options.model ?? 'claude-sonnet-4-20250514';
+    this.model = options.model ?? DEFAULT_MODEL;
     this.maxTokens = options.maxTokens ?? 4096;
   }
 
@@ -128,6 +130,8 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences):
 
     const { text } = await generateText({
       model: anthropic(this.model),
+      // AI SDK 4 otherwise injects 0; Claude 5.5 needs default sampling.
+      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? 1 : 0,
       system: MARKETING_SYSTEM_PROMPT,
       prompt,
       maxTokens: this.maxTokens,
@@ -176,10 +180,11 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences):
 
     const { text } = await generateText({
       model: anthropic(this.model),
+      // AI SDK 4 otherwise injects 0; Claude 5.5 needs default sampling.
+      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? 1 : 0,
       system: COPY_REVIEW_PROMPT,
       prompt,
       maxTokens: this.maxTokens,
-      temperature: 0,
     });
 
     return this.parseJSON<CopyReview>(text, 'reviewCopy');
@@ -214,6 +219,8 @@ Respond with ONLY a valid JSON array of strings (no markdown fences):
 
     const { text } = await generateText({
       model: anthropic(this.model),
+      // AI SDK 4 otherwise injects 0; Claude 5.5 needs default sampling.
+      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? 1 : 0,
       system: MARKETING_SYSTEM_PROMPT,
       prompt,
       maxTokens: this.maxTokens * count,
