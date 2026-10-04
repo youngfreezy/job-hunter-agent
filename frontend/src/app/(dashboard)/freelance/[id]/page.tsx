@@ -7,7 +7,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ExternalLink, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { API_BASE, getSSEToken, getAuthHeaders, apiFetch } from "@/lib/api";
+import { API_BASE, createAuthenticatedStream, type SSEConnection, getAuthHeaders, apiFetch } from "@/lib/api";
 import GigScatterChart from "@/components/charts/GigScatterChart";
 
 interface Gig {
@@ -61,12 +61,10 @@ export default function FreelanceResultPage() {
   }, []);
 
   useEffect(() => {
-    let es: EventSource | null = null;
+    let es: SSEConnection | null = null;
 
     async function connect() {
-      const token = await getSSEToken();
-      const sep = token ? `?token=${encodeURIComponent(token)}` : "";
-      es = new EventSource(`${API_BASE}/api/freelance/${id}/stream${sep}`);
+      es = createAuthenticatedStream(`${API_BASE}/api/freelance/${id}/stream`);
 
       es.addEventListener("status", (e) => {
         const data = JSON.parse(e.data);

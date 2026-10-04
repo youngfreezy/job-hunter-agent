@@ -147,6 +147,13 @@ function csrfHeaders(): Record<string, string> {
 
 // ---------- Auth helpers ----------
 
+import { AuthenticatedEventSource } from "./event-stream";
+export type SSEConnection = AuthenticatedEventSource;
+
+export function createAuthenticatedStream(url: string): SSEConnection {
+  return new AuthenticatedEventSource(url, getAuthHeaders);
+}
+
 let _cachedToken: string | null = null;
 let _tokenFetchedAt = 0;
 const _TOKEN_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -168,28 +175,6 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
     }
   } catch {}
   return csrfHeaders();
-}
-
-/**
- * Get a raw JWT token string for use in SSE query params.
- * EventSource cannot send headers, so we pass ?token=<jwt>.
- */
-export async function getSSEToken(): Promise<string> {
-  if (_cachedToken && Date.now() - _tokenFetchedAt < _TOKEN_TTL_MS) {
-    return _cachedToken;
-  }
-  try {
-    const res = await fetch("/api/auth/token");
-    if (res.ok) {
-      const { token } = await res.json();
-      if (token) {
-        _cachedToken = token;
-        _tokenFetchedAt = Date.now();
-        return token;
-      }
-    }
-  } catch {}
-  return "";
 }
 
 // ---------- Fetch wrapper (surfaces 429 to user) ----------
@@ -419,6 +404,7 @@ export type ApplicationLogEntry = {
     board?: string;
   };
   error: string | null;
+  error_category?: string | null;
   cover_letter: string;
   tailored_resume: {
     tailored_text: string;
@@ -587,10 +573,8 @@ export async function rewindSession(
 
 // ---------- SSE ----------
 
-export async function createSSEConnection(sessionId: string): Promise<EventSource> {
-  const token = await getSSEToken();
-  const sep = token ? `?token=${encodeURIComponent(token)}` : "";
-  return new EventSource(`${API_BASE}/api/sessions/${sessionId}/stream${sep}`);
+export async function createSSEConnection(sessionId: string): Promise<SSEConnection> {
+  return createAuthenticatedStream(`${API_BASE}/api/sessions/${sessionId}/stream`);
 }
 
 /**
@@ -602,7 +586,7 @@ export function connectSSE(
   onEvent: (event: Record<string, unknown>) => void,
   onConnectionChange?: (connected: boolean) => void
 ): () => void {
-  let es: EventSource | null = null;
+  let es: SSEConnection | null = null;
   let cancelled = false;
 
   const EVENT_TYPES: SSEEventType[] = [
@@ -650,10 +634,10 @@ export function connectSSE(
     };
 
     es.onerror = () => {
-      // EventSource auto-reconnects; signal disconnected state
-      if (es?.readyState === EventSource.CLOSED) {
+      // The authenticated stream reconnects; signal disconnected state
+      if (es?.readyState === AuthenticatedEventSource.CLOSED) {
         onConnectionChange?.(false);
-      } else if (es?.readyState === EventSource.CONNECTING) {
+      } else if (es?.readyState === AuthenticatedEventSource.CONNECTING) {
         onConnectionChange?.(false);
       }
     };
@@ -1083,10 +1067,11 @@ export async function startFreeTrialSession(params: {
   return data;
 }
 
-export function createTrialSSEConnection(sessionId: string): EventSource {
-  const token = getTrialToken();
-  const sep = token ? `?token=${encodeURIComponent(token)}` : "";
-  return new EventSource(`${API_BASE}/api/sessions/${sessionId}/stream${sep}`);
+export function createTrialSSEConnection(sessionId: string): SSEConnection {
+  return new AuthenticatedEventSource(`${API_BASE}/api/sessions/${sessionId}/stream`, async (): Promise<Record<string, string>> => {
+    const token = getTrialToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  });
 }
 
 export function connectTrialSSE(
@@ -1094,7 +1079,7 @@ export function connectTrialSSE(
   onEvent: (event: Record<string, unknown>) => void,
   onConnectionChange?: (connected: boolean) => void
 ): () => void {
-  let es: EventSource | null = null;
+  let es: SSEConnection | null = null;
   let cancelled = false;
 
   const EVENT_TYPES: SSEEventType[] = [
@@ -1113,8 +1098,8 @@ export function connectTrialSSE(
 
   es.onopen = () => onConnectionChange?.(true);
   es.onerror = () => {
-    if (es?.readyState === EventSource.CLOSED) onConnectionChange?.(false);
-    else if (es?.readyState === EventSource.CONNECTING) onConnectionChange?.(false);
+    if (es?.readyState === AuthenticatedEventSource.CLOSED) onConnectionChange?.(false);
+    else if (es?.readyState === AuthenticatedEventSource.CONNECTING) onConnectionChange?.(false);
   };
 
   for (const eventType of EVENT_TYPES) {

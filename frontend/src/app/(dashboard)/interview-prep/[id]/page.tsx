@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { API_BASE, getAuthHeaders, getSSEToken, getWallet, apiFetch } from "@/lib/api";
+import { API_BASE, getAuthHeaders, createAuthenticatedStream, type SSEConnection, getWallet, apiFetch } from "@/lib/api";
 import AnswerGradeRadar from "@/components/charts/AnswerGradeRadar";
 import ReadinessScoreBars from "@/components/charts/ReadinessScoreBars";
 import type {
@@ -55,39 +55,32 @@ export default function InterviewPrepSessionPage() {
   // SSE connection
   useEffect(() => {
     if (!prepId) return;
-    let es: EventSource | null = null;
-    let cancelled = false;
+    let es: SSEConnection | null = null;
+    es = createAuthenticatedStream(`${API_BASE}/api/interview-prep/${prepId}/stream`);
 
-    getSSEToken().then((token) => {
-      if (cancelled) return;
-      const sep = token ? `?token=${encodeURIComponent(token)}` : "";
-      es = new EventSource(`${API_BASE}/api/interview-prep/${prepId}/stream${sep}`);
-
-      es.addEventListener("company_brief", (e) => setBrief(JSON.parse(e.data)));
-      es.addEventListener("questions_ready", (e) => {
-        const data = JSON.parse(e.data);
-        setQuestions(data.questions || []);
-        setStatus("ready");
-      });
-      es.addEventListener("questions_unlocked", (e) => {
-        const data = JSON.parse(e.data);
-        setQuestions((prev) => [...prev, ...(data.questions || [])]);
-      });
-      es.addEventListener("ready_for_practice", () => setStatus("practicing"));
-      es.addEventListener("status", (e) => {
-        const data = JSON.parse(e.data);
-        setStatus(data.status);
-      });
-      es.addEventListener("done", () => es?.close());
-      es.addEventListener("error", (e) => {
-        if (e instanceof MessageEvent) setError(JSON.parse(e.data).message);
-        es?.close();
-      });
-      es.onerror = () => es?.close();
+    es.addEventListener("company_brief", (e) => setBrief(JSON.parse(e.data)));
+    es.addEventListener("questions_ready", (e) => {
+      const data = JSON.parse(e.data);
+      setQuestions(data.questions || []);
+      setStatus("ready");
     });
+    es.addEventListener("questions_unlocked", (e) => {
+      const data = JSON.parse(e.data);
+      setQuestions((prev) => [...prev, ...(data.questions || [])]);
+    });
+    es.addEventListener("ready_for_practice", () => setStatus("practicing"));
+    es.addEventListener("status", (e) => {
+      const data = JSON.parse(e.data);
+      setStatus(data.status);
+    });
+    es.addEventListener("done", () => es?.close());
+    es.addEventListener("error", (e) => {
+      if (e instanceof MessageEvent) setError(JSON.parse(e.data).message);
+      es?.close();
+    });
+    es.onerror = () => es?.close();
 
     return () => {
-      cancelled = true;
       es?.close();
     };
   }, [prepId]);
