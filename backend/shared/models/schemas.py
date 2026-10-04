@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, StrictBool, field_validator
 
@@ -149,6 +149,8 @@ class ScoredJob(BaseModel):
     """A job with a fit score."""
     job: JobListing
     score: int = Field(ge=0, le=100)
+    eligibility_status: Literal["met", "not_met", "unknown"] = "unknown"
+    eligibility_reasons: List[str] = Field(default_factory=list)
     score_breakdown: Dict[str, int] = Field(default_factory=dict)
     # e.g. {"keyword_match": 85, "location_match": 100, "salary_match": 70}
     reasons: List[str] = Field(default_factory=list)

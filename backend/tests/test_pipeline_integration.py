@@ -68,7 +68,7 @@ class ProviderModel:
                            resume_score=ResumeScore(overall=80,keyword_density=80,impact_metrics=80,ats_compatibility=80,readability=80,formatting=80))
         elif name == 'ScoringBatchResult':
             ids = [line.removeprefix('- ID: ').strip() for line in messages[-1].content.splitlines() if line.startswith('- ID: ')]
-            payload = {'scores':[dict(job_id=jid, score=90, score_breakdown=dict(keyword_match=90,experience_match=90,location_match=90,salary_match=90),reasons=['Relevant Python role']) for jid in ids]}
+            payload = {'scores':[dict(job_id=jid, score=90, eligibility_status='met', eligibility_reasons=['Fixture requirements match original resume.'], score_breakdown=dict(keyword_match=90,experience_match=90,location_match=90,salary_match=90),reasons=['Relevant Python role']) for jid in ids]}
         elif name == 'AnswerCheck':
             payload = dict(supported=True, reason='Resume demonstrates Python experience.', question='')
         elif name == 'VerificationResult':

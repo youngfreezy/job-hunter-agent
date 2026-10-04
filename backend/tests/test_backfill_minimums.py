@@ -42,8 +42,8 @@ async def test_backfill_auto_approve_retries_retryable_failures(monkeypatch):
         "backfill_rounds": 1,
         "session_config": {"max_jobs": 10, "minimum_submitted_applications": 10},
         "scored_jobs": [
-            ScoredJob(job=_job("new-job", company="FreshCo"), score=95),
-            ScoredJob(job=_job("retry-job", company="RetryCo"), score=90),
+            ScoredJob(job=_job("new-job", company="FreshCo"), score=95, eligibility_status="met"),
+            ScoredJob(job=_job("retry-job", company="RetryCo"), score=90, eligibility_status="met"),
         ],
         "applications_submitted": [
             ApplicationResult(job_id="done-1", status=ApplicationStatus.SUBMITTED),
@@ -93,7 +93,7 @@ async def test_backfill_never_retries_uncertain_submission_or_older_failure(monk
     state = {
         'session_id': 's1', 'backfill_rounds': 1,
         'session_config': {'max_jobs': 20, 'minimum_submitted_applications': 20},
-        'scored_jobs': [ScoredJob(job=_job('uncertain'), score=95)],
+        'scored_jobs': [ScoredJob(job=_job('uncertain'), score=95, eligibility_status="met")],
         'applications_failed': [
             ApplicationResult(job_id='uncertain', status=ApplicationStatus.FAILED,
                               error_category=ApplicationErrorCategory.FORM_NAVIGATION),

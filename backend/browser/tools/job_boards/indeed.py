@@ -100,13 +100,14 @@ def matches_search(listing: JobListing, search: SearchConfig) -> bool:
     if listing.company.lower() in {c.lower() for c in search.exclude_companies}:
         return False
     text = f"{listing.location} {listing.description_snippet or ''}".lower()
-    if search.work_arrangements and not any(a in text for a in search.work_arrangements):
+    arrangements = ["remote"] if search.remote_only else search.work_arrangements
+    if arrangements and not any(a in text for a in arrangements):
         return False
     # A wide search radius must not turn a requested city into the entire region.
     # Remote listings can serve the requested location without a local office.
     cities = [location.split(',')[0].strip().lower() for location in search.locations
               if location.strip().lower() != 'remote']
-    if search.work_arrangements and cities and 'remote' not in listing.location.lower():
+    if arrangements and not search.remote_only and cities and 'remote' not in listing.location.lower():
         return any(city in listing.location.lower() for city in cities)
     return True
 

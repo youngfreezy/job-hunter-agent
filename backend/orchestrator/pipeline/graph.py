@@ -326,6 +326,13 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
 
     if is_autopilot or is_free_trial or is_backfill or is_quick_apply:
         all_scored = state.get("scored_jobs") or []
+        # Missing legacy verdicts are unknown. Only explicit per-job review may
+        # authorize these; never let a weighted fit score approve them silently.
+        if not is_quick_apply and any(sj.eligibility_status == "unknown" for sj in all_scored):
+            return {"application_queue": [], "active_retry_job_ids": [],
+                    "application_retry_counts": dict(state.get("application_retry_counts") or {})}
+        eligible_ids = {str(sj.job.id) for sj in all_scored
+                        if is_quick_apply or sj.eligibility_status == "met"}
         submitted_count = len(state.get("applications_submitted") or [])
         minimum_submitted_target = _get_minimum_submitted_target(state)
         desired_queue_size = MAX_APPLICATION_JOBS
@@ -341,7 +348,8 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
                 | set(state.get("applications_skipped") or [])
             )
         top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)
-        candidates = [sj for sj in top_scored if str(sj.job.id) not in done_ids]
+        candidates = [sj for sj in top_scored if str(sj.job.id) not in done_ids
+                      and str(sj.job.id) in eligible_ids]
 
         # Validate URLs for auto-approved jobs (shortlist_review is skipped,
         # so we must catch expired/dead links here instead)
@@ -357,7 +365,8 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
             for failure in reversed(state.get("applications_failed") or []):
                 job_id = str(failure.job_id)
                 if (
-                    job_id in approved_ids
+                    job_id not in eligible_ids
+                    or job_id in approved_ids
                     or job_id in retried_this_round
                     or retry_counts.get(job_id, 0) >= MAX_RETRY_PER_JOB
                 ):
@@ -401,6 +410,8 @@ def _route_after_auto_approve_gate(state: JobHunterState) -> str:
     _cfg = state.get("session_config") or {}
     _cfg = _cfg if isinstance(_cfg, dict) else (_cfg.model_dump() if hasattr(_cfg, "model_dump") else {})
     is_quick_apply = _cfg.get("discovery_mode") == "manual_urls"
+    if not is_quick_apply and any(sj.eligibility_status == "unknown" for sj in (state.get("scored_jobs") or [])):
+        return "shortlist_review"
     if is_autopilot or is_free_trial or is_backfill or is_quick_apply:
         return "supervise_after_shortlist"
     return "shortlist_review"
@@ -540,7 +551,8 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     """
     # Only show the top scored jobs (sorted by score desc) to the user.
     all_scored = state.get("scored_jobs") or []
-    top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
+    top_scored = sorted((sj for sj in all_scored if sj.eligibility_status != "not_met"),
+                        key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
 
     # Validate URLs — remove dead/expired links before showing to user
     session_id = state.get("session_id", "")
@@ -564,14 +576,19 @@ async def shortlist_review_gate(state: JobHunterState) -> dict:
     # human_input expected shape:
     # {"approved_job_ids": [...], "feedback": "..."}
     updates: dict = {"consecutive_failures": 0}  # Reset circuit breaker on retry
-    approved = human_input.get("approved_job_ids", [])
+    reviewable_ids = {str(sj.job.id) for sj in top_scored}
+    requested = human_input.get("approved_job_ids", [])
+    # Legacy/email bulk approval cannot implicitly approve unresolved criteria.
+    if requested == "all":
+        requested = [str(sj.job.id) for sj in top_scored if sj.eligibility_status == "met"]
+    approved = [job_id for job_id in requested if job_id in reviewable_ids]
     if approved:
         if len(approved) > MAX_APPLICATION_JOBS:
             logger.info(
                 "Capping approved jobs from %d to %d", len(approved), MAX_APPLICATION_JOBS
             )
             approved = approved[:MAX_APPLICATION_JOBS]
-        updates["application_queue"] = approved
+    updates["application_queue"] = approved
     if human_input.get("feedback"):
         updates["human_messages"] = [human_input["feedback"]]
     return updates
