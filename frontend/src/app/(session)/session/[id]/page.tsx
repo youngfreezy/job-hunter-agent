@@ -42,6 +42,7 @@ import {
   runOutcome,
   scoreThreshold,
   shouldRefreshSession,
+  pipelineEventText,
   type OutcomeTone,
   type PhaseKey,
 } from "@/lib/run";
@@ -1269,12 +1270,7 @@ export default function SessionPage() {
     let group: PhaseKey = "resume";
     for (const evt of surfacedEvents) {
       const agent = (evt.event?.endsWith("_progress") ? evt.event.replace("_progress", "") : evt.agent || evt.event || "system") as string;
-      const text = String(
-        (evt.event?.endsWith("_progress") ? evt.step : evt.message) ||
-          (evt.event === "discovery" ? `Found ${evt.jobs_found ?? 0} postings` : "") ||
-          (evt.event === "scoring" ? `Ranked ${evt.scored_count ?? 0} jobs` : "") ||
-          ""
-      ).trim();
+      const text = pipelineEventText(evt);
       if (!text) continue;
       const key = `${agent}|${text}|${evt.timestamp ?? ""}`;
       if (seen.has(key)) continue;

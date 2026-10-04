@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLedger, formatElapsed, runName, runOutcome, scoreThreshold, shouldRefreshSession } from "./run";
+import { buildLedger, pipelineEventText, formatElapsed, runName, runOutcome, scoreThreshold, shouldRefreshSession } from "./run";
 
 describe("runName", () => {
   it("names a run by its first role, the count of others and the place", () => {
@@ -90,5 +90,27 @@ describe("durable application totals", () => {
     expect(shouldRefreshSession({ event: "application_progress" })).toBe(false);
     expect(shouldRefreshSession({ event: "status", status: "failed" })).toBe(true);
     expect(shouldRefreshSession({ event: "status", status: "applying" })).toBe(false);
+  });
+});
+
+describe("pending discovery is not an empty search", () => {
+  it.each(["intake", "coaching", "awaiting_coach_review", "discovering"])("keeps zero search results unknown during %s", (status) => {
+    const { phases } = buildLedger({ status, found: 0, shortlisted: 0, attempted: 0, submitted: 0 });
+    expect(phases[1].count).toBeNull();
+    expect(phases.every((phase) => phase.reason === undefined)).toBe(true);
+  });
+  it("shows a verified empty search once scoring starts", () => {
+    const { phases } = buildLedger({ status: "scoring", found: 0, shortlisted: 0 });
+    expect(phases[1]).toMatchObject({ count: 0, state: "empty", reason: "No postings matched your roles and location" });
+    expect(phases[2].reason).toBeUndefined();
+  });
+  it("keeps positive in-progress counts and explicit zero progress messages", () => {
+    expect(buildLedger({ status: "discovering", found: 3 }).phases[1].count).toBe(3);
+    expect(pipelineEventText({ event: "discovery_progress", step: "No new jobs found" })).toBe("No new jobs found");
+  });
+  it("never invents zero results from a transition or missing count", () => {
+    expect(pipelineEventText({ event: "discovery", status: "discovering", jobs_found: 0 })).toBe("");
+    expect(pipelineEventText({ event: "discovery" })).toBe("");
+    expect(pipelineEventText({ event: "discovery", jobs_found: 8 })).toBe("Found 8 postings");
   });
 });

@@ -124,7 +124,7 @@ export function buildLedger(input: LedgerInput): {
 
   const counts: Record<PhaseKey, { count: number | null; unit: string }> = {
     resume: { count: input.coachScore ?? null, unit: input.coachScore != null ? "of 100" : "" },
-    search: { count: input.found ?? null, unit: "postings" },
+    search: { count: input.found === 0 && !finished && idx <= 1 ? null : input.found ?? null, unit: "postings" },
     shortlist: { count: shortlisted ?? null, unit: shortlisted === 1 ? "job" : "jobs" },
     apply: { count: input.attempted ?? null, unit: "attempted" },
     report: { count: input.submitted ?? null, unit: "submitted" },
@@ -157,8 +157,8 @@ export function buildLedger(input: LedgerInput): {
     return { ...p, label: p.key === "shortlist" && input.selectedJobUrls ? "Selected jobs" : p.label, count: c.count, unit: c.unit, state };
   });
 
-  // The reason line goes under the first phase whose count drops to zero.
-  const firstZero = phases.findIndex((p) => p.key !== "resume" && p.count === 0);
+  // Zero becomes an outcome only after that phase has finished.
+  const firstZero = phases.findIndex((p) => p.key !== "resume" && p.count === 0 && p.state === "empty");
   if (firstZero >= 0) {
     const p = phases[firstZero];
     const before = firstZero > 0 ? phases[firstZero - 1].count : null;
@@ -259,4 +259,18 @@ export function scoreThreshold(config?: { scoring_strictness?: unknown; discover
 export function shouldRefreshSession(event: { event: string; status?: string }) {
   return ["done", "application_start", "application_submitted", "application_failed", "coach_review", "shortlist_review"].includes(event.event)
     || (event.event === "status" && ["completed", "failed", "awaiting_review", "awaiting_coach_review"].includes(event.status ?? ""));
+}
+
+/** A discovering transition is not a completed search or an empty-result proof. */
+export function pipelineEventText(event: {
+  event: string; status?: string; step?: unknown; message?: unknown;
+  jobs_found?: number; scored_count?: number;
+}): string {
+  const explicit = event.event.endsWith("_progress") ? event.step : event.message;
+  if (explicit) return String(explicit).trim();
+  if (event.event === "discovery" && typeof event.jobs_found === "number" && event.jobs_found > 0)
+    return `Found ${event.jobs_found} postings`;
+  if (event.event === "scoring" && typeof event.scored_count === "number")
+    return `Ranked ${event.scored_count} jobs`;
+  return "";
 }
