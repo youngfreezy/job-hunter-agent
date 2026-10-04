@@ -113,9 +113,35 @@ def _stagehand(page, decisions):
         formatted_tree='[1-1] button: Edit resume',
         xpath_map={'1-1': 'observed-resume-control'}))
     agent.browser.context.active_page = AsyncMock(return_value=stage_page)
-    agent.extract = AsyncMock(side_effect=[SimpleNamespace(data=indeed_mod.NextStep(**d)) for d in decisions])
-    agent.act = AsyncMock(return_value=SimpleNamespace(data=SimpleNamespace(success=True)))
-    agent.observe = AsyncMock(return_value=SimpleNamespace(data=[]))
+    pending_decisions = iter(decisions)
+    agent.last_instruction = ''
+    async def extract(*args, **kwargs):
+        decision = next(pending_decisions)
+        agent.last_instruction = decision['instruction']
+        return SimpleNamespace(data=indeed_mod.NextStep(**decision))
+    agent.extract = AsyncMock(side_effect=extract)
+    agent.act = AsyncMock(side_effect=AssertionError('Ungrounded/self-healing act must not run'))
+    agent.native_action = AsyncMock(return_value=None)
+    async def execute_native(*args, **kwargs):
+        return await agent.native_action(agent.resolved_instruction)
+    stage_page.control.click = AsyncMock(side_effect=execute_native)
+    stage_page.control.fill = AsyncMock(side_effect=execute_native)
+    stage_page.control.select_option = AsyncMock(side_effect=execute_native)
+    stage_page.snapshot.return_value = None
+    async def snapshot(**kwargs):
+        return stage_page.snapshot.return_value or SimpleNamespace(
+            formatted_tree='[1-1] button: ' + (agent.resolved_instruction or 'Edit resume'),
+            xpath_map={'1-1':'observed-resume-control'})
+    stage_page.snapshot.side_effect = snapshot
+    agent.resolved_instruction = ''
+    async def observe(instruction, **kwargs):
+        agent.resolved_instruction = instruction.split('\nReturn exactly one atomic action')[0]
+        if instruction.startswith('Find the visible Edit resume'):
+            agent.resolved_instruction = 'Edit resume'
+            return agent.observe.return_value
+        return SimpleNamespace(data=[SimpleNamespace(selector='observed-resume-control',
+                                  method='click', arguments=[])])
+    agent.observe = AsyncMock(side_effect=observe, return_value=SimpleNamespace(data=[]))
     agent.metrics = AsyncMock()
     page.context.pages = [page]
     return agent
@@ -138,7 +164,7 @@ async def test_auth_and_missing_answers_do_not_act():
             job=_job(), user_profile={}, resume_text='', cover_letter='')
         assert result.status == status
         assert result.error_message == 'Work authorization?'
-        agent.act.assert_not_awaited()
+        agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -148,7 +174,7 @@ async def test_submit_requires_original_resume_upload():
     result = await IndeedApplier(page, 's1', stagehand=agent).run(
         job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -168,7 +194,7 @@ async def test_natural_actions_upload_and_single_submit_need_receipt(monkeypatch
     assert result.status == (ApplicationStatus.SUBMITTED if receipt else ApplicationStatus.FAILED)
     if not receipt:
         assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
-    assert agent.act.await_count == 2
+    assert agent.native_action.await_count == 2
     upload.assert_awaited_once()
     assert 'Never guess required answers' in agent.extract.await_args.args[0]
 
@@ -181,7 +207,7 @@ async def test_hidden_file_input_is_reported_to_stagehand(monkeypatch):
     await IndeedApplier(page, 's1', stagehand=agent).run(
         job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert 'including hidden inputs): 1' in agent.extract.await_args.args[0]
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -190,7 +216,9 @@ async def test_empty_native_receipt_after_submit_preserves_uncertainty(monkeypat
     page = _page('https://smartapply.indeed.com/form/review')
     agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
         ('upload', ''), ('submit', 'Submit this application')]])
-    agent.browser.context.active_page.return_value.snapshot.return_value = SimpleNamespace(formatted_tree='')
+    async def clear_snapshot(*args, **kwargs):
+        agent.browser.context.active_page.return_value.snapshot.return_value = SimpleNamespace(formatted_tree='', xpath_map={})
+    agent.native_action.side_effect = clear_snapshot
     applier = IndeedApplier(page, 's1', stagehand=agent)
     monkeypatch.setattr(applier, '_upload_original', AsyncMock())
     monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
@@ -198,7 +226,7 @@ async def test_empty_native_receipt_after_submit_preserves_uncertainty(monkeypat
     result = await applier.run(job=_job(), user_profile={}, resume_text='Facts', cover_letter='')
     assert result.status == ApplicationStatus.FAILED
     assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
-    agent.act.assert_awaited_once()
+    agent.native_action.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -208,9 +236,9 @@ async def test_saved_resume_cannot_continue_without_fresh_upload():
                               dict(kind='park', instruction='', reason='Missing field')])
     await IndeedApplier(page, 's1', stagehand=agent).run(
         job=_job(), user_profile={}, resume_text='', cover_letter='')
-    assert agent.act.await_count == 1
-    assert 'Resume options' in agent.act.await_args.args[0]
-    assert 'Continue' not in agent.act.await_args.args[0]
+    assert agent.native_action.await_count == 1
+    assert 'Resume options' in agent.native_action.await_args.args[0]
+    assert 'Continue' not in agent.native_action.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -225,7 +253,7 @@ async def test_unsupported_factual_answer_is_queued_before_browser_action(monkey
     result = await applier.run(job=_job(), user_profile={}, resume_text='V2 Software LLC', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
     assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -241,7 +269,7 @@ async def test_prefilled_unknown_answer_blocks_final_submit_even_after_upload(mo
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
     assert checker.await_args.kwargs['review'] is True
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
     assert not applier._submission_attempted
 
 
@@ -315,12 +343,12 @@ async def test_exception_during_submit_is_not_retryable(monkeypatch):
     page = _page('https://smartapply.indeed.com/form/review')
     agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
                               dict(kind='submit', instruction='Submit application', reason='')])
-    agent.act.side_effect = TimeoutError('response lost after click')
+    agent.native_action.side_effect = TimeoutError('response lost after click')
     applier = IndeedApplier(page, 's1', stagehand=agent)
     monkeypatch.setattr(applier, '_upload_original', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
-    agent.act.assert_awaited_once()
+    agent.native_action.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -333,26 +361,21 @@ async def test_loading_page_waits_without_actions_or_premature_failure(monkeypat
         job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.AUTH_REQUIRED
     assert agent.extract.await_count == 4
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_failed_action_is_reobserved_with_history_and_bounded(monkeypatch):
-    from types import SimpleNamespace
+async def test_native_action_failure_stops_without_unconstrained_self_healing(monkeypatch):
     page = _page()
-    agent = _stagehand(page, [dict(kind='act', instruction=f'Choose option {n}', reason='Required field')
-                              for n in range(3)])
-    agent.act.return_value = SimpleNamespace(data=SimpleNamespace(success=False, message='Option not found'))
+    agent = _stagehand(page, [dict(kind='act', instruction='Choose a visible option', reason='Required field')])
+    agent.native_action.side_effect = RuntimeError('Native control disappeared')
     applier = IndeedApplier(page, 's1', stagehand=agent)
-    capture = AsyncMock()
-    monkeypatch.setattr(applier, '_capture_screenshot', capture)
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
-    assert agent.extract.await_count == 3
-    assert 'Option not found' in agent.extract.await_args.args[0]
-    assert 'Choose option 1' in agent.extract.await_args.args[0]
+    agent.native_action.assert_awaited_once()
+    agent.act.assert_not_awaited()
     assert result.status == ApplicationStatus.FAILED
-    assert 'Choose option 2' in result.error_message
-    capture.assert_awaited_once()
+    assert agent.extract.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -365,7 +388,7 @@ async def test_submit_intent_is_durable_before_click_and_survives_cancellation(m
     async def cancel_after_click(*args, **kwargs):
         order.append('click')
         raise asyncio.CancelledError()
-    agent.act.side_effect = cancel_after_click
+    agent.native_action.side_effect = cancel_after_click
     marker = MagicMock(side_effect=lambda *args: order.append('durable intent'))
     monkeypatch.setattr(indeed_mod, 'mark_submission_intent', marker)
     applier = IndeedApplier(page, 's1', stagehand=agent)
@@ -387,7 +410,7 @@ async def test_submit_never_clicks_when_durable_intent_cannot_be_written(monkeyp
     monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.FAILED
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -400,7 +423,7 @@ async def test_repeated_ineffective_selection_reobserves_before_atomic_dropdown_
     ]] + [dict(kind='auth', instruction='', reason='Sign in required')])
     result = await IndeedApplier(page, 's1', stagehand=agent).run(
         job=_job(), user_profile={}, resume_text='', cover_letter='')
-    assert [call.args[0] for call in agent.act.await_args_list] == [
+    assert [call.args[0] for call in agent.native_action.await_args_list] == [
         select, 'Click the Race/Ethnicity dropdown to open it only',
         'Click the visible Decline To Self Identify option',
     ]
@@ -417,7 +440,7 @@ async def test_repeated_ineffective_action_still_has_bounded_stop(monkeypatch):
     applier = IndeedApplier(page, 's1', stagehand=agent)
     monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
-    agent.act.assert_awaited_once()
+    agent.native_action.assert_awaited_once()
     assert result.status == ApplicationStatus.FAILED
     assert 'not progressing' in result.error_message
 
@@ -443,10 +466,10 @@ async def test_direct_review_opens_visible_resume_edit_then_requires_fresh_uploa
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SUBMITTED
     upload.assert_awaited_once()
-    agent.observe.assert_awaited_once()
-    assert agent.act.await_args_list[0].args[0] is observed
-    assert agent.act.await_args_list[1].args[0] == 'Submit application'
-    control.is_visible.assert_awaited_once()
+    assert agent.observe.await_count == 2
+    assert agent.native_action.await_args_list[0].args[0] == 'Edit resume'
+    assert agent.native_action.await_args_list[1].args[0] == 'Submit application'
+    assert control.is_visible.await_count >= 1
     assert 'resume-edit' in check_answer.await_args_list[0].args[0]
 
 
@@ -459,7 +482,7 @@ async def test_direct_review_resume_recovery_is_one_attempt_only(monkeypatch):
     agent.observe.return_value.data = [observed]
     result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
-    agent.act.assert_awaited_once_with(observed, page=agent.browser.context.active_page.return_value, timeout=90000)
+    agent.native_action.assert_awaited_once_with('Edit resume')
     agent.observe.assert_awaited_once()
     indeed_mod.mark_submission_intent.assert_not_called()
 
@@ -473,7 +496,7 @@ async def test_direct_review_cannot_click_hidden_resume_edit(monkeypatch):
     agent.browser.context.active_page.return_value.control.is_visible.return_value = False
     result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -487,7 +510,7 @@ async def test_resume_recovery_rejects_submit_other_fields_and_non_clicks(monkey
         formatted_tree=f'[1-1] button: {label}', xpath_map={'1-1': 'observed-control'})
     result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
 
 
@@ -506,8 +529,8 @@ async def test_observed_iframe_selector_is_delegated_unchanged_to_native_stageha
     result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED  # fresh upload still required
     native_page.locator.assert_any_call(selector)
-    agent.act.assert_awaited_once_with(observed, page=native_page, timeout=90000)
-    native_page.snapshot.assert_awaited_once_with(include_iframes=True)
+    agent.native_action.assert_awaited_once_with('Edit resume')
+    assert native_page.snapshot.await_count == 2
     page.locator.assert_not_called()
     page.frame_locator.assert_not_called()
 
@@ -535,7 +558,7 @@ async def test_observed_employer_redirect_queues_without_filling():
     assert result.status == ApplicationStatus.QUEUED
     assert result.external_application_url == url
     agent.extract.assert_not_awaited()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
     page.query_selector_all.assert_not_awaited()
     page.evaluate.assert_not_awaited()
 
@@ -553,7 +576,7 @@ async def test_observed_employer_redirect_rejects_unsafe_destinations(url):
     assert result.status == ApplicationStatus.FAILED
     assert not result.external_application_url
     agent.extract.assert_not_awaited()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -616,7 +639,7 @@ async def test_native_snapshot_read_retries_detached_frame_without_browser_actio
     result = await IndeedApplier(page, 's1', stagehand=agent)._visible_application_snapshot()
     assert result['text'] == '[1-1] heading: Review'
     assert native_page.snapshot.await_count == 2
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -635,7 +658,7 @@ async def test_native_snapshot_read_failure_or_empty_content_blocks_final_audit(
         await _check_answer_with_frames(IndeedApplier(page, 's1', stagehand=agent), 'Submit', '{}', review=True)
     assert native_page.snapshot.await_count == 3
     checker.assert_not_awaited()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -676,15 +699,15 @@ async def test_same_continue_instruction_progresses_across_wizard_steps_at_same_
     agent = _stagehand(page, [dict(kind='act', instruction=instruction, reason='Next step')] * 3 +
                        [dict(kind='auth', instruction='', reason='Sign in required')])
     native_page = agent.browser.context.active_page.return_value
-    native_page.snapshot.side_effect = [SimpleNamespace(formatted_tree=tree) for tree in [
-        '[1-1] heading: Contact information\n[1-2] button: Continue',
-        '[2-1] heading: Experience\n[2-2] button: Continue',
-        '[3-1] heading: Voluntary demographics\n[3-2] button: Continue',
-    ]]
+    async def snapshot(**kwargs):
+        heading = ['Contact information', 'Experience', 'Voluntary demographics'][min(agent.native_action.await_count, 2)]
+        return SimpleNamespace(formatted_tree=f'[1-1] heading: {heading}\n[1-2] button: Continue',
+                               xpath_map={'1-2':'observed-resume-control'})
+    native_page.snapshot.side_effect = snapshot
     result = await IndeedApplier(page, 's1', stagehand=agent).run(
         job=_job(), user_profile={}, resume_text='', cover_letter='')
-    assert agent.act.await_count == 3
-    assert all(call.args[0] == instruction for call in agent.act.await_args_list)
+    assert agent.native_action.await_count == 3
+    assert all(call.args[0] == instruction for call in agent.native_action.await_args_list)
     assert result.error_category == ApplicationErrorCategory.AUTH_REQUIRED
 
 
@@ -694,13 +717,16 @@ async def test_snapshot_node_id_changes_do_not_bypass_unchanged_form_stop(monkey
     page = _page('https://smartapply.indeed.com/form')
     agent = _stagehand(page, [dict(kind='act', instruction='Click Continue', reason='Next')] * 3)
     native_page = agent.browser.context.active_page.return_value
-    native_page.snapshot.side_effect = [SimpleNamespace(formatted_tree=(
-        f'[{n}-1] heading: Experience\n  [{n}-2] textbox: Required answer\n'
-        f'[{n}-3] button: Continue')) for n in range(1, 4)]
+    async def snapshot(**kwargs):
+        n = native_page.snapshot.await_count
+        return SimpleNamespace(formatted_tree=(f'[{n}-1] heading: Experience\n'
+                f'[{n}-2] textbox: Required answer\n[{n}-3] button: Continue'),
+                xpath_map={f'{n}-3':'observed-resume-control'})
+    native_page.snapshot.side_effect = snapshot
     applier = IndeedApplier(page, 's1', stagehand=agent)
     monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
-    agent.act.assert_awaited_once()
+    agent.native_action.assert_awaited_once()
     assert result.status == ApplicationStatus.FAILED
     assert 'not progressing' in result.error_message
 
@@ -728,7 +754,7 @@ async def test_parked_resume_fact_gets_one_judge_suggestion_then_normal_action_a
     assert 'Resume-grounded answer suggestion' in agent.extract.await_args_list[1].args[0]
     assert '"answer": "Yes"' in agent.extract.await_args_list[1].args[0]
     check.assert_awaited_once()
-    agent.act.assert_awaited_once()
+    agent.native_action.assert_awaited_once()
     indeed_mod.mark_submission_intent.assert_not_called()
 
 
@@ -745,7 +771,7 @@ async def test_park_adjudication_cannot_repeat_or_force_an_answer(monkeypatch):
     assert result.error_category == ApplicationErrorCategory.NEEDS_INPUT
     assert result.error_message == 'Exact required question?'
     resolver.assert_awaited_once()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -770,7 +796,7 @@ async def test_rejected_prefilled_answer_is_corrected_before_any_submit(monkeypa
     monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='Anthropic APIs', cover_letter='')
     assert result.status == ApplicationStatus.SUBMITTED
-    assert [c.args[0] for c in agent.act.await_args_list] == [
+    assert [c.args[0] for c in agent.native_action.await_args_list] == [
         'Change combined Anthropic experience and certification answer to No', 'Submit application']
     assert check.await_count == 3
     indeed_mod.mark_submission_intent.assert_called_once()
@@ -799,7 +825,7 @@ async def test_real_but_irrelevant_resume_quote_cannot_override_certification_au
     assert result.error_message == question
     assert audit.await_count == 2
     resolver.assert_awaited_once()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
 
 
@@ -827,7 +853,7 @@ async def test_active_captcha_finishes_then_requires_fresh_planner_and_final_aud
     assert result.status == ApplicationStatus.SUBMITTED
     assert agent.extract.await_count == 3  # discarded stale submit, read page again
     audit.assert_awaited_once()
-    agent.act.assert_awaited_once_with('Submit application', page=agent.browser.context.active_page.return_value, timeout=90000)
+    agent.native_action.assert_awaited_once_with('Submit application')
     indeed_mod.mark_submission_intent.assert_called_once()
 
 
@@ -847,7 +873,7 @@ async def test_captcha_state_change_during_audit_prevents_intent_and_submit(monk
     monkeypatch.setattr(applier, '_check_answer', AsyncMock(side_effect=changed))
     await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     indeed_mod.mark_submission_intent.assert_not_called()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -865,7 +891,7 @@ async def test_captcha_timeout_before_submit_creates_no_submission_intent(monkey
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.CAPTCHA
     indeed_mod.mark_submission_intent.assert_not_called()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -876,11 +902,11 @@ async def test_post_submit_captcha_extends_receipt_wait_without_second_submit(mo
         ('upload', ''), ('submit', 'Submit application')]])
     monitor = CaptchaMonitor()
     agent._jobhunter_captcha_monitor = monitor
-    original_act = agent.act.return_value
+    original_act = agent.native_action.return_value
     async def submitted(*args, **kwargs):
         monitor.record('browserbase-solving-started')
         return original_act
-    agent.act.side_effect = submitted
+    agent.native_action.side_effect = submitted
     applier = IndeedApplier(page, 's1', stagehand=agent)
     monkeypatch.setattr(applier, '_upload_original', AsyncMock())
     receipt = AsyncMock(side_effect=[False] * 7 + [True])
@@ -890,7 +916,7 @@ async def test_post_submit_captcha_extends_receipt_wait_without_second_submit(mo
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SUBMITTED
     assert receipt.await_count == 8
-    agent.act.assert_awaited_once()
+    agent.native_action.assert_awaited_once()
     indeed_mod.mark_submission_intent.assert_called_once()
 
 
@@ -913,7 +939,7 @@ async def test_solver_finished_does_not_authorize_submit_when_page_still_shows_c
     monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.CAPTCHA
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
 
 
@@ -934,7 +960,7 @@ async def test_captcha_start_and_finish_during_idle_wait_discards_stale_submit(m
     await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert agent.extract.await_count == 3
     applier._check_answer.assert_not_awaited()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
 
 @pytest.mark.asyncio
@@ -956,7 +982,7 @@ async def test_rpc_budget_stop_is_truthful_and_never_retried(monkeypatch, after_
     if after_submit:
         assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
     agent.extract.assert_awaited_once()
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
     applier._capture_screenshot.assert_not_awaited()
     build = MagicMock(side_effect=AssertionError('Supervisor must not spend after a budget stop'))
@@ -974,14 +1000,13 @@ async def test_non_submit_action_timeout_replans_before_different_action(monkeyp
         ('act', 'Click Review your application'),
         ('act', 'Open a required question'),
         ('park', 'Required answer missing')]])
-    agent.act.side_effect = [TimeoutError('act() timed out after 45000ms'),
+    agent.native_action.side_effect = [TimeoutError('act() timed out after 45000ms'),
                             SimpleNamespace(data=SimpleNamespace(success=True))]
     applier = IndeedApplier(page, 's1', stagehand=agent)
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
     assert agent.extract.await_count == 3
-    assert all(c.kwargs['timeout'] == 90000 for c in agent.act.await_args_list)
-    assert [c.args[0] for c in agent.act.await_args_list] == [
+    assert [c.args[0] for c in agent.native_action.await_args_list] == [
         'Click Review your application', 'Open a required question']
     assert 'timed out' in agent.extract.await_args_list[1].args[0]
     assert agent.browser.context.active_page.return_value.snapshot.await_count >= 3
@@ -992,14 +1017,14 @@ async def test_second_non_submit_action_timeout_stops_bounded_recovery():
     page = _page('https://smartapply.indeed.com/form/questions')
     agent = _stagehand(page, [dict(kind='act', instruction=i, reason='') for i in [
         'Click Review your application', 'Open a required question']])
-    agent.act.side_effect = TimeoutError('act() timed out after 45000ms')
+    agent.native_action.side_effect = TimeoutError('act() timed out after 45000ms')
     result = await IndeedApplier(page, 's1', stagehand=agent).run(
         job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.FAILED
     assert result.error_category == ApplicationErrorCategory.TIMEOUT
     assert 'action timed out' in result.error_message
     assert 'Application time limit reached' not in result.error_message
-    assert agent.act.await_count == 2
+    assert agent.native_action.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -1007,14 +1032,13 @@ async def test_submit_action_timeout_never_replans_or_repeats(monkeypatch):
     page = _page('https://smartapply.indeed.com/form/review')
     agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
         ('upload', ''), ('submit', 'Submit application')]])
-    agent.act.side_effect = TimeoutError('act() timed out after 45000ms')
+    agent.native_action.side_effect = TimeoutError('act() timed out after 45000ms')
     applier = IndeedApplier(page, 's1', stagehand=agent)
     monkeypatch.setattr(applier, '_upload_original', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
     assert 'operation timed out' in result.error_message
-    agent.act.assert_awaited_once()
-    assert agent.act.await_args.kwargs['timeout'] == 90000
+    agent.native_action.assert_awaited_once()
     assert agent.extract.await_count == 2
 
 
@@ -1051,7 +1075,7 @@ async def test_submit_preserves_action_and_receipt_window_before_intent(monkeypa
     assert result.status == ApplicationStatus.FAILED
     assert result.error_category == ApplicationErrorCategory.TIMEOUT
     assert 'not submitted' in result.error_message
-    agent.act.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
 
 
@@ -1066,10 +1090,10 @@ async def test_final_act_local_deadline_retains_uncertainty_without_replay(monke
     monkeypatch.setattr(indeed_mod, 'ACTION_TIMEOUT_MS', 1)
     async def never_returns(*args, **kwargs):
         await asyncio.Event().wait()
-    agent.act.side_effect = never_returns
+    agent.native_action.side_effect = never_returns
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
     assert result.status == ApplicationStatus.FAILED
     indeed_mod.mark_submission_intent.assert_called_once()
-    agent.act.assert_awaited_once()
+    agent.native_action.assert_awaited_once()
     assert 'operation timed out' in result.error_message

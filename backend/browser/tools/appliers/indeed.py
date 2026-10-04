@@ -1,5 +1,5 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
-"""Indeed Apply with Stagehand's natural-language actions, without wizard selectors."""
+"""Indeed Apply with Stagehand understanding and validated native control actions."""
 from __future__ import annotations
 
 import asyncio
@@ -24,14 +24,15 @@ from backend.shared.application_rules import ApplicationParked, format_rules_blo
 from backend.shared.models.schemas import ApplicationErrorCategory, ApplicationStatus
 from backend.shared.resume_store import get_resume_bytes
 from backend.shared.application_store import mark_submission_intent
+from backend.browser.grounded_actions import resolve_action, GroundedAction, control_label as _snapshot_control_label
 
 logger = logging.getLogger(__name__)
 MAX_ACTIONS = 40
 # Leave two minutes for setup/cleanup inside a 900s Browserbase session.
 # Model spending remains independently bounded by the persisted ledger.
 MAX_SECONDS = 780
-# act includes model inference; 45s expired during a grounded review click.
-# Submit gets the same execution window, but never a retry after uncertainty.
+# Bound native execution and reserve its window before final submission.
+# Submit never gets a retry after uncertainty.
 ACTION_TIMEOUT_MS = 90000
 RECEIPT_TIMEOUT_SECONDS = 90
 # Do not initiate an irreversible click at the edge of the overall deadline.
@@ -89,19 +90,6 @@ submit button is available. A solver-finished event is not proof that the site a
 verification. Never attempt to solve the challenge yourself.
 Do not change account settings, passwords, notifications, profile visibility, or opt into marketing.
 """
-
-
-def _snapshot_control_label(snapshot, selector):
-    """Read the observed control's accessible label without interpreting its XPath."""
-    target = selector.removeprefix('xpath=')
-    ids = {node_id for node_id, path in snapshot.xpath_map.items()
-           if path.removeprefix('xpath=') == target}
-    labels = []
-    for line in snapshot.formatted_tree.splitlines():
-        match = re.match(r'\s*\[([^]]+)\]\s+([^:]+):\s*(.*)', line)
-        if match and match.group(1) in ids:
-            labels.append(match.group(3))
-    return labels[0] if len(labels) == 1 else ''
 
 
 class IndeedApplier(BaseApplier):
@@ -284,7 +272,6 @@ class IndeedApplier(BaseApplier):
         loading_waits = 0
         previous = None
         repetitions = 0
-        action_failures = 0
         action_timeout_recoveries = 0
         history = []
         for index in range(MAX_ACTIONS):
@@ -333,6 +320,11 @@ class IndeedApplier(BaseApplier):
                 # Do not let a model equate an old selected filename with the supplied PDF.
                 step = NextStep(kind='act', reason='The supplied PDF must replace the saved resume.',
                                 instruction='Click the Resume options button for the selected resume to reveal the replace or upload option.')
+            grounded_action = None
+            if step.kind == 'act':
+                grounded_action = await resolve_action(self.stagehand, stage_page, step.instruction)
+                if grounded_action.is_submission:
+                    step = step.model_copy(update={'kind': 'submit'})
             progress_fingerprint = None
             if step.kind == 'act':
                 # Wizard steps can change inside an iframe without changing the tab URL.
@@ -380,7 +372,10 @@ class IndeedApplier(BaseApplier):
                 # The navigation guard captures and blocks the new destination. No
                 # applicant data is entered until the employer queue processes it.
                 try:
-                    await self.stagehand.act(step.instruction, page=stage_page, timeout=ACTION_TIMEOUT_MS)
+                    external_action = await resolve_action(self.stagehand, stage_page, step.instruction)
+                    if external_action.is_submission:
+                        raise ApplicationParked('The employer link resolved to a submission control.')
+                    await external_action.execute(stage_page)
                 except Exception:
                     if not self._external_route(str(job.id)):
                         raise
@@ -429,10 +424,12 @@ class IndeedApplier(BaseApplier):
                     raise ApplicationParked('The supplied resume has not been uploaded; the observed control was not a resume editor.')
                 await self._check_answer('Click the visible resume-edit control to replace the resume', grounding_facts)
                 await self._emit_step('Opening the resume editor to attach your supplied file...')
-                recovery = await self.stagehand.act(action, page=stage_page, timeout=ACTION_TIMEOUT_MS)
-                if not recovery.data.success:
-                    raise ApplicationParked('The supplied resume has not been uploaded; the resume editor could not be opened.')
+                await GroundedAction(action.selector, label, 'click', ()).execute(stage_page)
                 continue
+            if step.kind == 'submit' and grounded_action is None:
+                grounded_action = await resolve_action(self.stagehand, stage_page, step.instruction)
+                if not grounded_action.is_submission:
+                    raise ApplicationParked('The observed control was not a final submission control.')
             captcha_generation = None
             if step.kind == 'submit' and self._captcha_monitor:
                 generation_before_wait = self._captcha_monitor.generation
@@ -455,7 +452,7 @@ class IndeedApplier(BaseApplier):
             if step.kind == 'submit' and not self._has_submission_window():
                 return self._insufficient_submission_time(str(job.id))
             try:
-                await self._check_answer(step.instruction, grounding_facts, review=(
+                await self._check_answer(step.instruction + '\nValidated browser action: ' + grounded_action.audit_text(), grounding_facts, review=(
                     step.kind == 'submit' or bool(re.search(r'\b(signature|sign|certify|attest)\b', step.instruction, re.I))))
             except ApplicationParked as parked:
                 if await resolve_parked_answer(parked.question):
@@ -480,13 +477,10 @@ class IndeedApplier(BaseApplier):
                 mark_submission_intent(self.session_id, str(job.id))
                 self._submission_attempted = True
             try:
-                # Enforce the final action bound locally as well as in the SDK,
-                # so receipt verification retains its reserved window.
-                async with asyncio.timeout(ACTION_TIMEOUT_MS / 1000 if step.kind == 'submit' else None):
-                    action = await self.stagehand.act(
-                        step.instruction, page=stage_page,
-                        timeout=ACTION_TIMEOUT_MS,
-                    )
+                # Bound native execution locally so receipt verification retains
+                # its reserved window even if an SDK request stalls.
+                async with asyncio.timeout(ACTION_TIMEOUT_MS / 1000):
+                    await grounded_action.execute(stage_page)
             except TimeoutError:
                 if self._submission_attempted:
                     raise  # Submission may have happened; never replan or replay it.
@@ -522,16 +516,6 @@ class IndeedApplier(BaseApplier):
                     return self._make_result(str(job.id), ApplicationStatus.SUBMITTED, cover_letter_used=cover_letter)
                 await self._capture_screenshot(job)
                 return self._fail(str(job.id), 'Submission was attempted but no Indeed receipt was verified. Check Indeed before retrying.')
-            if not action.data.success:
-                action_failures += 1
-                history.append({'instruction': step.instruction, 'success': False,
-                                'message': str(getattr(action.data, 'message', 'Action failed'))[:500]})
-                if action_failures >= 3:
-                    await self._capture_screenshot(job)
-                    return self._fail(str(job.id), f'Stagehand could not complete: {step.instruction[:240]}')
-                await self._emit_step('Action did not complete; checking the current form before continuing...')
-                continue
-            action_failures = 0
             history.append({'instruction': step.instruction, 'success': True})
         return self._fail(str(job.id), f'Stagehand reached its {MAX_ACTIONS}-action limit.')
 
@@ -544,6 +528,8 @@ class IndeedApplier(BaseApplier):
                 result.ats_type = self.PLATFORM
                 return result
         except ApplicationParked:
+            if self._submission_attempted:
+                return self._fail(str(job.id), 'Submission outcome is unverified; check Indeed before retrying.')
             raise
         except TimeoutError:
             message = ('Application time limit reached; check Indeed before retrying.' if deadline.expired()
