@@ -27,9 +27,12 @@ from backend.shared.application_store import mark_submission_intent
 
 logger = logging.getLogger(__name__)
 MAX_ACTIONS = 40
-MAX_SECONDS = 600
+# Leave two minutes for setup/cleanup inside a 900s Browserbase session.
+# Model spending remains independently bounded by the persisted ledger.
+MAX_SECONDS = 780
 # act includes model inference; 45s expired during a grounded review click.
-NON_SUBMIT_ACTION_TIMEOUT_MS = 90000
+# Submit gets the same execution window, but never a retry after uncertainty.
+ACTION_TIMEOUT_MS = 90000
 
 
 class NextStep(BaseModel):
@@ -363,7 +366,7 @@ class IndeedApplier(BaseApplier):
                 # The navigation guard captures and blocks the new destination. No
                 # applicant data is entered until the employer queue processes it.
                 try:
-                    await self.stagehand.act(step.instruction, page=stage_page, timeout=45000)
+                    await self.stagehand.act(step.instruction, page=stage_page, timeout=ACTION_TIMEOUT_MS)
                 except Exception:
                     if not self._external_route(str(job.id)):
                         raise
@@ -412,7 +415,7 @@ class IndeedApplier(BaseApplier):
                     raise ApplicationParked('The supplied resume has not been uploaded; the observed control was not a resume editor.')
                 await self._check_answer('Click the visible resume-edit control to replace the resume', grounding_facts)
                 await self._emit_step('Opening the resume editor to attach your supplied file...')
-                recovery = await self.stagehand.act(action, page=stage_page, timeout=45000)
+                recovery = await self.stagehand.act(action, page=stage_page, timeout=ACTION_TIMEOUT_MS)
                 if not recovery.data.success:
                     raise ApplicationParked('The supplied resume has not been uploaded; the resume editor could not be opened.')
                 continue
@@ -460,7 +463,7 @@ class IndeedApplier(BaseApplier):
             try:
                 action = await self.stagehand.act(
                     step.instruction, page=stage_page,
-                    timeout=45000 if step.kind == 'submit' else NON_SUBMIT_ACTION_TIMEOUT_MS,
+                    timeout=ACTION_TIMEOUT_MS,
                 )
             except TimeoutError:
                 if self._submission_attempted:

@@ -459,7 +459,7 @@ async def test_direct_review_resume_recovery_is_one_attempt_only(monkeypatch):
     agent.observe.return_value.data = [observed]
     result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED
-    agent.act.assert_awaited_once_with(observed, page=agent.browser.context.active_page.return_value, timeout=45000)
+    agent.act.assert_awaited_once_with(observed, page=agent.browser.context.active_page.return_value, timeout=90000)
     agent.observe.assert_awaited_once()
     indeed_mod.mark_submission_intent.assert_not_called()
 
@@ -506,7 +506,7 @@ async def test_observed_iframe_selector_is_delegated_unchanged_to_native_stageha
     result = await IndeedApplier(page, 's1', stagehand=agent).run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SKIPPED  # fresh upload still required
     native_page.locator.assert_any_call(selector)
-    agent.act.assert_awaited_once_with(observed, page=native_page, timeout=45000)
+    agent.act.assert_awaited_once_with(observed, page=native_page, timeout=90000)
     native_page.snapshot.assert_awaited_once_with(include_iframes=True)
     page.locator.assert_not_called()
     page.frame_locator.assert_not_called()
@@ -827,7 +827,7 @@ async def test_active_captcha_finishes_then_requires_fresh_planner_and_final_aud
     assert result.status == ApplicationStatus.SUBMITTED
     assert agent.extract.await_count == 3  # discarded stale submit, read page again
     audit.assert_awaited_once()
-    agent.act.assert_awaited_once_with('Submit application', page=agent.browser.context.active_page.return_value, timeout=45000)
+    agent.act.assert_awaited_once_with('Submit application', page=agent.browser.context.active_page.return_value, timeout=90000)
     indeed_mod.mark_submission_intent.assert_called_once()
 
 
@@ -1014,6 +1014,7 @@ async def test_submit_action_timeout_never_replans_or_repeats(monkeypatch):
     assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
     assert 'operation timed out' in result.error_message
     agent.act.assert_awaited_once()
+    assert agent.act.await_args.kwargs['timeout'] == 90000
     assert agent.extract.await_count == 2
 
 
