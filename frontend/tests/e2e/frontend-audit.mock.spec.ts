@@ -157,4 +157,15 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     expect(String(payload!.resume_text)).toContain('Current Fixture Engineer');
   });
 
+  test('New Search fits a 320px viewport in Quick and Custom modes', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 320, height: 812 });
+    await page.goto('/session/new');
+    await expect(page.getByLabel('Describe your job search')).toBeVisible();
+    const overflow = () => page.evaluate(() => [...document.querySelectorAll('body *')].map(el => ({tag:el.tagName,cls:el.className,text:el.textContent?.slice(0,60),right:el.getBoundingClientRect().right})).filter(el => el.right > innerWidth + 1));
+    expect(await overflow()).toEqual([]);
+    await page.getByRole('button', { name: 'Custom Search', exact: true }).click();
+    expect(await overflow()).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath('custom-320.png'), fullPage: true });
+  });
+
 });
