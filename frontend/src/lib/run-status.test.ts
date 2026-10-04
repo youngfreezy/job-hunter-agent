@@ -21,8 +21,8 @@ describe("authoritative approval gates", () => {
   it("preserves a deselection when the delayed shortlist GET arrives", () => {
     const initial = restoreShortlistSelection(new Set(), ["indeed", "employer"], false);
     initial.delete("employer");
-    expect([...restoreShortlistSelection(initial, ["indeed", "employer"], true)]).toEqual(["indeed"]);
-    expect([...restoreShortlistSelection(new Set(), ["indeed"], true)]).toEqual([]);
+    expect(Array.from(restoreShortlistSelection(initial, ["indeed", "employer"], true))).toEqual(["indeed"]);
+    expect(Array.from(restoreShortlistSelection(new Set(), ["indeed"], true))).toEqual([]);
   });
   it("allows progress after approval and ignores backwards routine replay", () => {
     expect(resolveRunStatus("awaiting_coach_review", "discovering", "stream", { coach: true })).toBe("discovering");
