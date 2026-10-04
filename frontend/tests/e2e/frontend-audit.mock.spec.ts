@@ -201,4 +201,21 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     await expect.poll(() => approval).toEqual({ approved_job_ids: ['met', 'unknown'], feedback: '' });
   });
 
+  test('Stopped approved work keeps zero recorded results without claiming no approval', async ({ page, context }) => {
+    await context.route('**/api/sessions/stopped-approved**', async route => {
+      if (new URL(route.request().url()).pathname.endsWith('/stream')) return route.fulfill({ contentType: 'text/event-stream', body: ': connected\n\n' });
+      return route.fulfill({ json: { session_id: 'stopped-approved', status: 'failed', keywords: ['Engineer'], locations: ['SF'], discovered_jobs: [{ id: 'job' }], scored_jobs: [{ job: { id: 'job', title: 'Engineer', company: 'Fixture', location: 'SF', board: 'indeed' }, score: 90 }], application_queue: ['job'], applications_submitted: [], applications_failed: [], applications_skipped: [], applications_used: 0, session_config: {} } });
+    });
+    await page.goto('/session/stopped-approved');
+    const pipeline = page.getByRole('list', { name: 'Pipeline', exact: true });
+    const apply = pipeline.getByRole('listitem').filter({ has: page.getByText('Apply', { exact: true }) });
+    await expect(apply).toContainText('Stopped before an application result was recorded');
+    await expect(apply.getByText('–', { exact: true })).toBeVisible();
+    await expect(apply).not.toContainText(/0\s*attempted/);
+    await expect(pipeline.getByRole('listitem').filter({ has: page.getByText('Report', { exact: true }) })).toContainText(/0\s*submitted/);
+    await expect(page.getByLabel('Shortlist approval: approved', { exact: true })).toBeVisible();
+    await expect(page.getByText('No jobs were approved', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Stopped · no submission confirmed', { exact: true })).toBeVisible();
+  });
+
 });

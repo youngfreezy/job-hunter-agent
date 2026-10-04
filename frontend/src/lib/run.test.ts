@@ -59,6 +59,21 @@ describe("buildLedger", () => {
     expect(phases[3].state).toBe("todo");
   });
 
+  it("keeps approved interrupted work distinct from missing approval without inventing an attempt", () => {
+    const { phases, gates } = buildLedger({ status: "failed", found: 4, shortlisted: 1, attempted: null, submitted: 0, shortlistApproved: true });
+    expect(phases[3]).toMatchObject({ count: null, reason: "Stopped before an application result was recorded" });
+    expect(phases[4].count).toBe(0);
+    expect(gates.shortlist).toBe("passed");
+  });
+  it("does not invent zero attempts when an approved queue outlives its scored snapshot", () => {
+    const { phases } = buildLedger({ status: "failed", shortlisted: 0, attempted: null, submitted: 0, shortlistApproved: true });
+    expect(phases[3].count).toBeNull();
+    expect(phases[4].count).toBe(0);
+  });
+  it("does not infer a user's approval decision from zero persisted outcomes", () => {
+    const { phases } = buildLedger({ status: "completed", found: 4, shortlisted: 1, attempted: 0, submitted: 0 });
+    expect(phases[3].reason).toBe("No application results recorded");
+  });
   it("leaves unknown counts empty instead of inventing them", () => {
     const { phases } = buildLedger({ status: "discovering" });
     expect(phases.map((p) => p.count)).toEqual([null, null, null, null, null]);

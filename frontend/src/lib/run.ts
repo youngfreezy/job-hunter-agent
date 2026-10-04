@@ -104,6 +104,7 @@ export interface LedgerInput {
   shortlisted?: number | null;
   selectedJobUrls?: string[];
   attempted?: number | null;
+  shortlistApproved?: boolean;
   submitted?: number | null;
   failed?: number | null;
   uncertain?: number | null;
@@ -141,7 +142,7 @@ export function buildLedger(input: LedgerInput): {
 
   // Once a later phase has started, earlier unknown counts that must be zero
   // (nothing shortlisted means nothing attempted) are filled in.
-  if (finished && shortlisted === 0) {
+  if (finished && shortlisted === 0 && !input.shortlistApproved) {
     counts.apply.count = counts.apply.count ?? 0;
     counts.report.count = counts.report.count ?? 0;
   }
@@ -171,9 +172,17 @@ export function buildLedger(input: LedgerInput): {
           : before
           ? `0 of ${before} passed your filters`
           : "Nothing passed your filters";
-    else if (p.key === "apply") p.reason = "No jobs were approved";
+    else if (p.key === "apply") p.reason = input.shortlistApproved
+      ? status === "failed" ? "Stopped before an application result was recorded" : "No application results recorded for approved jobs"
+      : "No application results recorded";
     else if (p.key === "report" && (input.failed ?? 0) > 0)
       p.reason = `${input.failed} ${input.failed === 1 ? "application" : "applications"} failed`;
+  }
+
+  if (finished && input.shortlistApproved && input.attempted == null) {
+    phases.find((phase) => phase.key === "apply")!.reason = status === "failed"
+      ? "Stopped before an application result was recorded"
+      : "No application results recorded for approved jobs";
   }
 
   if ((input.uncertain ?? 0) > 0) {
@@ -185,7 +194,7 @@ export function buildLedger(input: LedgerInput): {
   const shortlist: GateState =
     status === "awaiting_review"
       ? "open"
-      : idx > 2 && shortlisted !== 0 && !(finished && input.attempted === 0)
+      : input.shortlistApproved || (idx > 2 && shortlisted !== 0 && !(finished && input.attempted === 0))
       ? "passed"
       : "todo";
 

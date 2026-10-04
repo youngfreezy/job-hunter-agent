@@ -108,6 +108,7 @@ type SessionData = {
   coach_chat_history?: Array<{ role: string; text: string }>;
   linkedin_url?: string;
   applications_used: number;
+  application_queue?: string[];
   applications_skipped: string[] | number;
   created_at?: string;
   session_config?: {
@@ -887,7 +888,7 @@ export default function SessionPage() {
       latestStatusRef.current = "applying";
       setShortlistReviewOpen(false);
       setShortlistSubmitting(false);
-      setSession((prev) => (prev ? { ...prev, status: "applying" } : prev));
+      setSession((prev) => (prev ? { ...prev, status: "applying", application_queue: jobIds } : prev));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not approve the shortlist. Try again.");
       setShortlistSubmitting(false);
@@ -1128,8 +1129,14 @@ export default function SessionPage() {
     : pastShortlist
     ? session.scored_jobs?.length ?? shortlistJobs.length
     : null;
-  const attempted = finished ? submittedCount + failedCount + uncertainCount + skippedCount : session.applications_used || null;
   const threshold = scoreThreshold(session.session_config as { scoring_strictness?: unknown; discovery_mode?: unknown });
+  const approvalRecorded = Boolean(session.application_queue?.length)
+    || events.some((event) => ["application_start", "application_progress", "application_submitted", "application_failed"].includes(event.event));
+  const recordedAttempts = submittedCount + failedCount + uncertainCount + skippedCount;
+  // An interrupted approved job can have browser activity without a durable result.
+  const attempted = finished
+    ? approvalRecorded && recordedAttempts === 0 ? null : recordedAttempts
+    : session.applications_used || null;
   const ledger = buildLedger({
     status,
     pauseNode: session.pause_resume_node,
@@ -1141,6 +1148,7 @@ export default function SessionPage() {
       ? session.session_config.job_urls ?? session.job_urls ?? []
       : undefined,
     attempted,
+    shortlistApproved: approvalRecorded,
     submitted: finished || phaseKey === "apply" || phaseKey === "report" ? submittedCount : null,
     failed: failedCount,
     uncertain: uncertainCount,
@@ -1166,7 +1174,7 @@ export default function SessionPage() {
     if (queuedEmployerCount > 0) return `${queuedEmployerCount} employer ${queuedEmployerCount === 1 ? "application" : "applications"} queued · nothing sent`;
     if (skippedCount > 0) return `${skippedCount} skipped${failedCount > 0 ? `, ${failedCount} failed` : ""} · nothing sent`;
     if (failedCount > 0) return "every application failed";
-    return "you didn't approve any jobs";
+    return approvalRecorded ? "approved jobs have no recorded application result" : "no application results recorded";
   })();
 
   const elapsedLabel = `${elapsedMin}:${elapsedSec.toString().padStart(2, "0")}`;
@@ -1174,7 +1182,7 @@ export default function SessionPage() {
     status === "completed"
       ? `Finished${durationMin != null ? ` in ${formatDuration(durationMin)}` : ""} · ${finishedReason}`
       : status === "failed"
-      ? uncertainCount > 0 ? "Stopped · Confirmation pending—check before retrying" : `Stopped${submittedCount > 0 ? ` · ${submittedCount} sent before it stopped` : " · nothing was sent"}`
+      ? uncertainCount > 0 ? "Stopped · Confirmation pending—check before retrying" : `Stopped${submittedCount > 0 ? ` · ${submittedCount} sent before it stopped` : approvalRecorded && recordedAttempts === 0 ? " · no submission confirmed" : " · nothing was sent"}`
       : status === "awaiting_coach_review"
       ? "Waiting for you to approve your resume"
       : status === "awaiting_review"
