@@ -31,26 +31,19 @@ with optional resume text and produce a structured search configuration that
 downstream agents will use to discover job listings.
 
 **Instructions**
-1. Normalise and deduplicate keywords.  Expand obvious abbreviations
-   (e.g. "ML" -> "Machine Learning", "SWE" -> "Software Engineer").
-2. Keep the final keyword list to **at most 6 keywords**. Focus on the
-   user's original keywords plus 1-2 high-value expansions from the resume.
-   Do NOT exhaustively list every skill from the resume.
+1. Preserve explicitly supplied keyword phrases, locations, remote-only choice,
+   and minimum salary. Do not split, paraphrase, broaden, or replace those fields.
+2. Only when keywords are absent, infer at most 6 relevant job-title phrases.
+   Do not exhaustively list every skill from the resume.
 3. If resume text is provided, extract:
-   - 1-2 additional relevant job-title keywords the user may not have listed.
+   - Relevant job-title keywords only when no keywords were supplied.
    - An experience level estimate: "entry", "mid", "senior", or "executive".
    - Inferred job type if not specified (e.g. "full-time").
 3. Respect explicit user preferences -- they always take priority over
    inferences from the resume.
-4. The discovery_prompt is the user's primary search instruction. Extract
-   roles and locations from it. Never replace its roles with resume-derived
-   roles. For 'hybrid or remote', set work_arrangements to ['hybrid', 'remote']
-   and remote_only=false. Keep the specified city for hybrid work. For
-   remote-only requests set remote_only=true and work_arrangements=['remote'].
-5. For discovery_prompt searches, keywords must be complete job-title search
-   phrases (e.g. 'Applied AI Engineer', 'AI Software Engineer'), not isolated
-   skills like 'AI', 'LLM', or 'AI-Native'. Use at most three focused phrases.
-   Populate exclude_title_keywords and exclude_companies from explicit exclusions.
+4. Additional discovery prose supplies preferences and missing fields; it must
+   not replace the explicitly supplied structured fields.
+5. Populate exclude_title_keywords and exclude_companies from explicit exclusions.
 6. A target or desired salary is not a minimum. Only populate salary_min from
    an explicit minimum, including the owner's saved application rules.
 """
@@ -142,16 +135,22 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
         preferences = state.get("preferences") or {}
         raw_prompt = preferences.get("discovery_prompt")
         discovery_prompt = raw_prompt.strip() if isinstance(raw_prompt, str) else ""
+        keywords = state.get("keywords", [])
+        # QuickStart can carry resume-derived chips beside its primary prompt.
+        # Custom Search marks fields as intentional, even when a prompt is also
+        # present. Unmarked keyword-only API/Autopilot searches are structured.
+        structured_search = not discovery_prompt or preferences.get("search_input_mode") == "structured"
+        prompt_driven = bool(discovery_prompt) and not (structured_search and keywords)
         llm = build_llm(model=default_model(), max_tokens=4096, temperature=0.0)
-        structured_llm = llm.with_structured_output(_PromptSearchConfig if discovery_prompt else SearchConfig)
+        structured_llm = llm.with_structured_output(_PromptSearchConfig if prompt_driven else SearchConfig)
 
         # -- Build the user message from available state fields -------------
         parts: list[str] = []
 
-        keywords = state.get("keywords", [])
         if discovery_prompt:
-            parts.append(f"Primary discovery prompt:\n{discovery_prompt}")
-        elif keywords:
+            label = "Primary discovery prompt" if prompt_driven else "Additional discovery preferences (explicit form fields take precedence)"
+            parts.append(f"{label}:\n{discovery_prompt}")
+        if keywords and not prompt_driven:
             parts.append(f"Keywords: {', '.join(keywords)}")
 
         remote_only = state.get("remote_only", False)
@@ -187,13 +186,26 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
 
         # -- Invoke the LLM with structured output -------------------------
         messages = [
-            SystemMessage(content=PROMPT_INTAKE_SYSTEM_PROMPT if discovery_prompt else INTAKE_SYSTEM_PROMPT),
+            SystemMessage(content=PROMPT_INTAKE_SYSTEM_PROMPT if prompt_driven else INTAKE_SYSTEM_PROMPT),
             HumanMessage(content=user_message),
         ]
 
         search_config: SearchConfig = await invoke_with_retry(structured_llm, messages)
-        if discovery_prompt:
+        if prompt_driven:
             search_config = _normalize_prompt_search(search_config)
+
+        if structured_search:
+            # Enforce the input contract in code; a prompt alone cannot prevent
+            # model expansions from changing a user's targeted query.
+            if keywords:
+                search_config.keywords = list(dict.fromkeys(k.strip() for k in keywords if k.strip()))
+            if "locations" in state:
+                search_config.locations = list(state["locations"])
+            if "remote_only" in state:
+                search_config.remote_only = state["remote_only"]
+                search_config.work_arrangements = ["remote"] if state["remote_only"] else []
+            if salary_min is not None:
+                search_config.salary_min = salary_min
 
         # Only saved owner permission may widen salary discovery. Keep the
         # minimum intact for published-pay/offer screening downstream.
