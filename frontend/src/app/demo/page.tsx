@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     title: "JobHunter Agent — Product Demo",
     description: "A closer look at the application, its cloud browser, and the controls behind each run.",
     url: "/demo",
-    images: [{ url: "/media/jobhunter-browserbase-demo-v1.webp", width: 1920, height: 1080, alt: "JobHunter Agent product demo" }],
+    images: [{ url: "/media/jobhunter-browserbase-demo-v2.webp", width: 1920, height: 1080, alt: "JobHunter Agent product demo" }],
   },
 };
 

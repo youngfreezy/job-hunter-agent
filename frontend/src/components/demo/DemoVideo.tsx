@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const videoUrl = "/media/jobhunter-browserbase-demo-v1.mp4";
+const videoUrl = "/media/jobhunter-browserbase-demo-v2.mp4";
 
 export function DemoVideo() {
   const [failed, setFailed] = useState(false);
@@ -13,7 +13,7 @@ export function DemoVideo() {
         controls
         playsInline
         preload="none"
-        poster="/media/jobhunter-browserbase-demo-v1.webp"
+        poster="/media/jobhunter-browserbase-demo-v2.webp"
         aria-label="JobHunter Agent product demo"
         aria-describedby="demo-description"
         className="aspect-video w-full rounded-xl border border-zinc-200 bg-zinc-950 dark:border-zinc-800"
