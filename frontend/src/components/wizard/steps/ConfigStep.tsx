@@ -159,7 +159,7 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
               {(
                 [
                   { value: "standard", label: "Standard", desc: "Fast and cost-effective" },
-                  { value: "premium", label: "Premium", desc: "Top-tier model for best 20%" },
+                  { value: "premium", label: "Premium", desc: "Top-tier model for best 20%, subject to the run's spending policy" },
                 ] as const
               ).map((opt) => (
                 <button

@@ -27,13 +27,17 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     ANTHROPIC_WORKSPACE_ID: Optional[str] = None  # required when the key is org-scoped (sent as anthropic-workspace-id)
-    OPENAI_DEFAULT_MODEL: str = "gpt-5-mini"
-    OPENAI_PREMIUM_MODEL: str = "gpt-5"
-    OPENAI_BROWSER_MODEL: str = "gpt-5-mini"
-    ANTHROPIC_DEFAULT_MODEL: str = "claude-sonnet-4-6"
-    ANTHROPIC_PREMIUM_MODEL: str = "claude-opus-4-6"
+    # Stable model families verified against provider catalogs October 4, 2026.
+    # Keep the existing economical/default and premium workload roles.
+    OPENAI_DEFAULT_MODEL: str = "gpt-6-luna"
+    OPENAI_PREMIUM_MODEL: str = "gpt-6-astra"
+    OPENAI_BROWSER_MODEL: str = "gpt-6-luna"
+    ANTHROPIC_DEFAULT_MODEL: str = "claude-sonnet-5-5"
+    ANTHROPIC_PREMIUM_MODEL: str = "claude-opus-5-5"
     ANTHROPIC_LIGHT_MODEL: str = "claude-haiku-4-5-20251001"
-    ANTHROPIC_BROWSER_MODEL: str = "claude-sonnet-4-5"
+    # Alternate browser-use client requires forced tool use. Native Stagehand
+    # uses the default model above with native JSON structured responses.
+    ANTHROPIC_BROWSER_MODEL: str = "claude-haiku-4-5-20251001"
 
     # --- Postgres ---
     DATABASE_URL: str = (

@@ -42,6 +42,23 @@ The application flow is:
 
 This guard supports the approved Anthropic model path and requires persistent storage across restarts. It does **not** cap Browserbase browser time/proxy traffic or requests made by other processes. Without the variable, this local model-spend ceiling is not active.
 
+### Models
+
+Defaults verified against the provider catalogs on October 4, 2026:
+
+| Workload | Anthropic | Optional OpenAI provider |
+| --- | --- | --- |
+| Main workflow and browser | Sonnet 5.5 | GPT-6 Luna |
+| Premium resume tailoring | Opus 5.5 | GPT-6 Astra |
+| Lightweight checks and reports | Haiku 4.5 | GPT-6 Luna |
+| Alternate browser-use path | Haiku 4.5 | GPT-6 Luna |
+
+The budgeted demo pins all requests through its shared model factory, including Stagehand's model callback, answer judging, and cover-letter generation, to **Sonnet 5.5**. It reserves the model's full 1M input bound plus the configured output maximum at $2/$10 per million tokens; an 8,192-output call reserves $2.081920 before dispatch. Existing charges and unresolved reservations are never repriced by a model upgrade. Browserbase runs the browser; the application pays for inference through its own model client.
+
+Explicit model environment variables override the regular defaults, so update those on Railway and in local `.env` files when upgrading. Budget mode uses its own reviewed model pin. Sonnet/Opus 5.5 use native JSON structured responses and omit unsupported temperature settings. The optional OpenAI shared client uses Responses for GPT-6 tools; the alternate browser-use client uses GPT-6 Luna's supported non-reasoning Chat Completions path. The alternate Anthropic browser-use client uses current Haiku because its forced-tool protocol is incompatible with Sonnet/Opus 5.5; the Indeed demo uses Stagehand with Sonnet 5.5.
+
+Sources: [Anthropic models](https://platform.claude.com/docs/en/models/overview), [Sonnet 5.5 limits and pricing](https://platform.claude.com/docs/en/models/sonnet-5-5/overview), [OpenAI models](https://developers.openai.com/api/docs/models), [GPT-6 migration guide](https://developers.openai.com/api/docs/guides/latest-model).
+
 ---
 
 ## How It Works

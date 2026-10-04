@@ -128,8 +128,8 @@ export default function SessionSettingsPage() {
               <span>Creative</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Lower = more predictable responses. Higher = more varied and
-              creative.
+              Controls response variation on models that support temperature.
+              Reasoning models use their supported settings instead.
             </p>
           </div>
         </CardContent>
