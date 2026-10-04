@@ -22,6 +22,7 @@ import { CoachPanel } from "@/components/CoachPanel";
 import { LiveBrowserPanel } from "@/components/LiveBrowserPanel";
 import { ApplicationFollowups, type ApplicationQuestion, type EmployerApplication } from "@/components/ApplicationFollowups";
 import { addApplicationAnswer, type AnswerScope } from "@/lib/applicationAnswers";
+import { resolveRunStatus, restoreShortlistSelection } from "@/lib/run-status";
 import { liveViewEnds, liveViewFromEvent, type LiveViewState } from "@/lib/liveView";
 import { PipelineLedger } from "@/components/run/PipelineLedger";
 import { AdjustDialog, type RunOverrides } from "@/components/run/AdjustDialog";
@@ -179,20 +180,6 @@ type SSEEvent = {
     error?: string | null;
   }>;
 };
-
-const PIPELINE_STEPS = [
-  "intake",
-  "coaching",
-  "awaiting_coach_review",
-  "discovering",
-  "scoring",
-  "awaiting_review",
-  "tailoring",
-  "applying",
-  "verifying",
-  "reporting",
-  "completed",
-];
 
 const AGENT_PHASE: Record<string, PhaseKey> = {
   intake: "resume",
@@ -464,6 +451,15 @@ export default function SessionPage() {
   const latestStatusRef = useRef("intake");
   const coachApprovedRef = useRef(false);
   const shortlistApprovedRef = useRef(false);
+  const approvalVersionRef = useRef(0);
+  const settlingReviewRef = useRef<string | null>(null);
+  const shortlistSelectionInitializedRef = useRef(false);
+  function restoreShortlist(jobs: ScoredJobData[]) {
+    setShortlistJobs(jobs);
+    const initialized = shortlistSelectionInitializedRef.current;
+    shortlistSelectionInitializedRef.current = true;
+    setSelectedJobIds((current) => restoreShortlistSelection(current, jobs.map((sj) => sj.job.id), initialized));
+  }
 
   // Persist events & session to sessionStorage so navigation doesn't lose progress
   useEffect(() => {
@@ -498,10 +494,15 @@ export default function SessionPage() {
   const elapsedMin = Math.floor(elapsedSeconds / 60);
   const elapsedSec = elapsedSeconds % 60;
   useEffect(() => {
+    const requestedAtApproval = approvalVersionRef.current;
     getSession(sessionId)
       .then((data) => {
-        const s = data as unknown as SessionData;
-        setSession(s);
+        if (requestedAtApproval !== approvalVersionRef.current) return;
+        const snapshot = data as unknown as SessionData;
+        const s = { ...snapshot, status: resolveRunStatus(latestStatusRef.current, snapshot.status, "snapshot", {
+          coach: coachApprovedRef.current, shortlist: shortlistApprovedRef.current, settling: settlingReviewRef.current,
+        }) };
+        setSession((prev) => prev && TERMINAL.has(prev.status) ? { ...s, status: prev.status } : s);
         latestStatusRef.current = s.status;
         const pastCoach = [
           "discovering",
@@ -533,8 +534,7 @@ export default function SessionPage() {
         }
         if (s.status === "awaiting_review" && s.scored_jobs && s.scored_jobs.length > 0) {
           const jobs = s.scored_jobs as ScoredJobData[];
-          setShortlistJobs(jobs);
-          setSelectedJobIds(new Set(jobs.map((sj) => sj.job.id)));
+          restoreShortlist(jobs);
           setShortlistReviewOpen(true);
         }
         if (s.status === "completed" && s.session_summary) {
@@ -542,7 +542,8 @@ export default function SessionPage() {
         }
       })
       .catch(() => {
-        setSession({
+        if (requestedAtApproval !== approvalVersionRef.current) return;
+        setSession((prev) => prev || {
           session_id: sessionId,
           status: "intake",
           keywords: [],
@@ -583,7 +584,7 @@ export default function SessionPage() {
           evt.event === "coach_review" ||
           evt.event === "shortlist_review")
       ) {
-        latestStatusRef.current = evt.status;
+        latestStatusRef.current = resolveRunStatus(latestStatusRef.current, evt.status, "stream", { coach: coachApprovedRef.current, shortlist: shortlistApprovedRef.current, settling: settlingReviewRef.current });
       }
 
       setSession((prev) => {
@@ -596,12 +597,9 @@ export default function SessionPage() {
             evt.event === "coach_review" ||
             evt.event === "shortlist_review")
         ) {
-          // Prevent SSE replay from regressing the pipeline status backwards
-          const prevIdx = PIPELINE_STEPS.indexOf(prev.status);
-          const nextIdx = PIPELINE_STEPS.indexOf(evt.status);
-          if (nextIdx >= prevIdx || nextIdx === -1 || evt.event === "done") {
-            updates.status = evt.status;
-          }
+          updates.status = resolveRunStatus(prev.status, evt.status, "stream", {
+            coach: coachApprovedRef.current, shortlist: shortlistApprovedRef.current, settling: settlingReviewRef.current,
+          });
         }
         if (evt.coach_output)
           updates.coach_output = evt.coach_output as unknown as SessionData["coach_output"];
@@ -656,20 +654,35 @@ export default function SessionPage() {
       if (
         shouldRefreshSession(evt)
       ) {
+        const requestedAtApproval = approvalVersionRef.current;
         getSession(sessionId)
           .then((data) => {
+            if (requestedAtApproval !== approvalVersionRef.current) return;
             const s = data as unknown as SessionData;
-            // Apply same monotonic guard — don't let refetch regress status
-            setSession((prev) => {
-              if (!prev) return s;
-              const prevIdx = PIPELINE_STEPS.indexOf(prev.status);
-              const fetchedIdx = PIPELINE_STEPS.indexOf(s.status);
-              if (fetchedIdx < prevIdx && prevIdx !== -1 && fetchedIdx !== -1) {
-                // Keep current (more advanced) status, merge other fields
-                return { ...s, status: prev.status };
-              }
-              return s;
+            const nextStatus = resolveRunStatus(latestStatusRef.current, s.status, "snapshot", {
+              coach: coachApprovedRef.current, shortlist: shortlistApprovedRef.current, settling: settlingReviewRef.current,
             });
+            latestStatusRef.current = nextStatus;
+            // Once durable state has advanced, a later interrupt can be a new gate.
+            if (s.status === nextStatus && s.status !== "awaiting_coach_review" && s.status !== "awaiting_review") settlingReviewRef.current = null;
+            if (nextStatus === "awaiting_coach_review") {
+              coachApprovedRef.current = false;
+              if (s.coach_output) {
+                setCoachReviewData(s.coach_output as unknown as CoachOutput);
+                setCoachReviewOpen(true);
+              }
+            }
+            if (nextStatus === "awaiting_review") {
+              shortlistApprovedRef.current = false;
+              if (s.scored_jobs?.length) {
+                const jobs = s.scored_jobs as ScoredJobData[];
+                restoreShortlist(jobs);
+                setShortlistReviewOpen(true);
+              }
+            }
+            setSession((prev) => ({ ...s, status: prev ? resolveRunStatus(prev.status, nextStatus, "snapshot", {
+              coach: coachApprovedRef.current, shortlist: shortlistApprovedRef.current, settling: settlingReviewRef.current,
+            }) : nextStatus }));
           })
           .catch(() => {});
       }
@@ -698,22 +711,16 @@ export default function SessionPage() {
           setCoachReviewOpen(true);
         }
       }
-      if (evt.status && evt.status !== "coaching" && evt.status !== "awaiting_coach_review") {
+      if (evt.status && latestStatusRef.current !== "coaching" && latestStatusRef.current !== "awaiting_coach_review") {
         setCoachReviewOpen(false);
       }
 
-      if (evt.event === "shortlist_review" && evt.scored_jobs) {
+      if (evt.event === "shortlist_review" && evt.scored_jobs && latestStatusRef.current === "awaiting_review" && !shortlistApprovedRef.current) {
         const jobs = evt.scored_jobs as ScoredJobData[];
-        setShortlistJobs(jobs);
-        setSelectedJobIds(new Set(jobs.map((sj) => sj.job.id)));
-        if (
-          !shortlistApprovedRef.current &&
-          (latestStatusRef.current === "tailoring" || latestStatusRef.current === "awaiting_review")
-        ) {
-          setShortlistReviewOpen(true);
-        }
+        restoreShortlist(jobs);
+        setShortlistReviewOpen(true);
       }
-      if (evt.status && evt.status !== "tailoring" && evt.status !== "awaiting_review") {
+      if (evt.status && latestStatusRef.current !== "tailoring" && latestStatusRef.current !== "awaiting_review") {
         setShortlistReviewOpen(false);
       }
 
@@ -859,6 +866,10 @@ export default function SessionPage() {
       const jobIds = Array.from(selectedJobIds);
       await submitReview(sessionId, { approved_job_ids: jobIds, feedback: "" });
       shortlistApprovedRef.current = true;
+      shortlistSelectionInitializedRef.current = false;
+      settlingReviewRef.current = "awaiting_review";
+      approvalVersionRef.current += 1;
+      latestStatusRef.current = "applying";
       setShortlistReviewOpen(false);
       setShortlistSubmitting(false);
       setSession((prev) => (prev ? { ...prev, status: "applying" } : prev));
@@ -882,6 +893,9 @@ export default function SessionPage() {
     try {
       await submitCoachReview(sessionId, { approved: true, use_original: useOriginal });
       coachApprovedRef.current = true;
+      settlingReviewRef.current = "awaiting_coach_review";
+      approvalVersionRef.current += 1;
+      latestStatusRef.current = "discovering";
       setCoachReviewOpen(false);
       setSession((prev) => (prev ? { ...prev, status: "discovering" } : prev));
     } catch (e) {
@@ -930,6 +944,10 @@ export default function SessionPage() {
       setSubmitConfirmData(null);
       // Reset approval refs so HITL modals can appear again
       shortlistApprovedRef.current = false;
+      shortlistSelectionInitializedRef.current = false;
+      settlingReviewRef.current = null;
+      approvalVersionRef.current += 1;
+      latestStatusRef.current = "applying";
       // Update session status
       setSession((prev) => (prev ? { ...prev, status: "applying" } : prev));
       // Trigger SSE reconnection (old EventSource was closed on "done")
@@ -993,6 +1011,10 @@ export default function SessionPage() {
     setRunAction("stop");
     try {
       await killSession(sessionId);
+      approvalVersionRef.current += 1;
+      latestStatusRef.current = "failed";
+      setCoachReviewOpen(false);
+      setShortlistReviewOpen(false);
       setStopOpen(false);
       toast("Run stopped. Applications already sent are kept.");
       setSession((prev) => (prev ? { ...prev, status: "failed" } : prev));

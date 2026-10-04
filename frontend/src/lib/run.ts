@@ -251,6 +251,6 @@ export function scoreThreshold(config?: { scoring_strictness?: unknown; discover
 
 /** Result events carry job details, not cumulative counts. Reload durable state. */
 export function shouldRefreshSession(event: { event: string; status?: string }) {
-  return ["done", "application_start", "application_submitted", "application_failed", "shortlist_review"].includes(event.event)
+  return ["done", "application_start", "application_submitted", "application_failed", "coach_review", "shortlist_review"].includes(event.event)
     || (event.event === "status" && ["completed", "failed", "awaiting_review", "awaiting_coach_review"].includes(event.status ?? ""));
 }

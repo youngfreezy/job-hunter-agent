@@ -82,7 +82,7 @@ describe("scoreThreshold and formatElapsed", () => {
 // local counters; replaying them therefore cannot count an application twice.
 describe("durable application totals", () => {
   it("refreshes sparse results and a circuit-breaker shortlist", () => {
-    for (const event of ["application_start", "application_failed", "application_submitted", "shortlist_review"]) {
+    for (const event of ["application_start", "application_failed", "application_submitted", "coach_review", "shortlist_review"]) {
       expect(shouldRefreshSession({ event })).toBe(true);
     }
   });
