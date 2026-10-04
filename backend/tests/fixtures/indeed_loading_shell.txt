@@ -1,0 +1,56 @@
+[4-1119] RootWebArea: Review the contents of this job application | Indeed
+  [4-1121] scrollable, html
+    [4-1159] body
+      [4-1170] navigation: Primary
+        [4-1174] div
+          [4-1176] div
+            [4-1177] div
+              [4-1663] button: Skip to main content
+              [4-1179] link: Indeed Home
+              [4-1183] list
+                [4-1184] listitem
+                  [4-1187] link: Home
+                [4-1188] listitem
+                  [4-1190] link: Company reviews
+                [4-1191] listitem
+                  [4-1193] link: Find salaries
+            [4-1195] div
+              [4-1197] list
+                [4-1198] listitem
+                  [4-1201] link: My jobs
+                [4-1205] listitem
+                  [4-1207] link: Messages Unread count 0
+                [4-1219] listitem
+                  [4-1221] link: Notifications Unread count 0
+                [4-1224] listitem
+                  [4-1230] button: Account
+                [4-1239] listitem
+                  [4-1241] link: Career Scout
+              [4-1264] link: Employers / Post Job
+          [4-1298] StaticText: Start of main content
+      [4-1779] div
+        [4-1705] complementary
+          [4-1702] div
+            [4-1691] image: Fuku logo
+            [4-1701] div
+              [4-1693] heading: Machine Learning Engineer - Search, Ranking & Personalization
+              [4-1821] StaticText: Fuku - New York, NY
+        [4-1778] div
+          [4-1754] section
+            [4-1745] button: Save and close
+            [4-1750] progressbar: Progress
+          [4-1772] div
+            [4-1769] main
+              [4-1988] div
+                [4-1986] paragraph
+                  [4-1991] StaticText: Preparing review
+                [4-1987] progressbar: Preparing review
+            [4-1770] div
+              [4-1761] button: Report an issue
+              [4-1768] contentinfo
+                [4-1765] div
+                  [4-1825] StaticText: This site is protected by reCAPTCHA and the Google
+                  [4-1763] link: Privacy Policy
+                  [4-1827] StaticText: and
+                  [4-1764] link: Terms of Service
+                  [4-1829] StaticText: apply.

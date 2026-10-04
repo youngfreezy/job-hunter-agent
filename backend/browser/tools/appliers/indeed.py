@@ -38,6 +38,15 @@ RECEIPT_TIMEOUT_SECONDS = 90
 # Do not initiate an irreversible click at the edge of the overall deadline.
 # Reserve the whole action + receipt windows and a small persistence margin.
 SUBMISSION_MARGIN_SECONDS = 10
+LOADING_RECOVERY_TIMEOUT_SECONDS = 30
+LOADING_RECOVERY_MIN_REMAINING_SECONDS = 320
+RECEIPT_PHRASES = (
+    'your application has been submitted', 'your application was submitted',
+    'application submitted', 'thank you for applying', 'thanks for applying',
+    'your application has been sent', 'your application was sent',
+    'we have received your application', 'application successfully submitted',
+)
+
 
 
 class NextStep(BaseModel):
@@ -100,6 +109,7 @@ class IndeedApplier(BaseApplier):
         super().__init__(page, session_id, application_rules)
         self.stagehand = stagehand
         self._submission_attempted = False
+        self._loading_recovery_used = False
         self.employer_site = employer_site
         self._captcha_monitor = getattr(stagehand, '_jobhunter_captcha_monitor', None)
         if employer_site:
@@ -153,12 +163,7 @@ class IndeedApplier(BaseApplier):
             return False
         if not self.employer_site and urlparse(snapshot['url']).hostname != 'smartapply.indeed.com':
             return False
-        return not snapshot['submitting'] and any(phrase in snapshot['text'].lower() for phrase in (
-            'your application has been submitted', 'your application was submitted',
-            'application submitted', 'thank you for applying', 'thanks for applying',
-            'your application has been sent', 'your application was sent',
-            'we have received your application', 'application successfully submitted',
-        ))
+        return not snapshot['submitting'] and any(phrase in snapshot['text'].lower() for phrase in RECEIPT_PHRASES)
 
     async def _visible_application_snapshot(self):
         """Read visible application content through Stagehand, without model inference.
@@ -189,6 +194,81 @@ class IndeedApplier(BaseApplier):
                     raise
                 await asyncio.sleep(0.25)
 
+
+    @staticmethod
+    def _loading_only_snapshot(text):
+        """Recognize the form's loading shell using native accessibility structure."""
+        if not isinstance(text, str):
+            return False
+        ignored_depth = None
+        form_text = []
+        for line in text.splitlines():
+            match = re.match(r'^(\s*)\[[^]\n]+\]\s+([^:\n]+)(?::\s*(.*))?$', line)
+            if not match:
+                continue
+            indent, role, label = len(match[1]), match[2].strip().lower(), (match[3] or '').strip()
+            if ignored_depth is not None and indent > ignored_depth:
+                continue
+            ignored_depth = None
+            roles = {item.strip() for item in role.split(',')}
+            if roles & {'navigation', 'contentinfo', 'banner'}:
+                ignored_depth = indent
+                continue  # Global navigation and legal CAPTCHA boilerplate are not form controls.
+            form_text.append(label)
+            if roles & {'textbox', 'combobox', 'checkbox', 'radio', 'listbox', 'option',
+                                      'searchbox', 'spinbutton', 'slider', 'switch', 'input', 'textarea', 'select'}:
+                return False
+            if 'button' in roles and label.lower() not in {'save and close', 'close', 'cancel', 'report an issue'}:
+                return False
+            if 'link' in roles and re.search(r'\b(?:apply|continue|next|submit|send|finish)\b', label, re.I):
+                return False
+        content = '\n'.join(form_text)
+        return (bool(re.search(r'\b(?:preparing|loading)\b', content, re.I))
+                and not any(phrase in text.lower() for phrase in RECEIPT_PHRASES)
+                and not re.search(r'captcha|verify you are human|not a robot|security verification', content, re.I))
+
+    async def _recover_loading_shell(self, stage_page, expected_url, expected_page_id):
+        """One explicit GET of this observed page; never reload a POST document."""
+        deadline = getattr(self, '_application_deadline_at', None)
+        if (self.employer_site or self._submission_attempted or self._loading_recovery_used
+                or not isinstance(expected_page_id, str) or not expected_page_id
+                or not is_indeed_url(expected_url)
+                or deadline is None
+                or deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS):
+            return False
+        monitor = self._captcha_monitor
+        generation = monitor.generation if monitor else None
+        if monitor and monitor.active:
+            return False
+        current = await self.stagehand.browser.context.active_page()
+        if current.page_id != expected_page_id or stage_page.page_id != expected_page_id:
+            return False
+        if await stage_page.url() != expected_url:
+            return False
+        snapshot = await asyncio.wait_for(stage_page.snapshot(include_iframes=True), timeout=15)
+        if not self._loading_only_snapshot(snapshot.formatted_tree):
+            return False
+        # Recheck after awaited reads. No stale active-page lookup may choose a
+        # different tab, and no solver event may be discarded by re-navigation.
+        current = await self.stagehand.browser.context.active_page()
+        if (self._submission_attempted or current.page_id != expected_page_id
+                or await stage_page.url() != expected_url
+                or (monitor and (monitor.active or monitor.generation != generation))):
+            return False
+        if deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS:
+            return False
+        self._loading_recovery_used = True  # consumed even on timeout/ambiguous navigation
+        await self._emit_step('The form is still loading; reopening this application page once...')
+        current = await self.stagehand.browser.context.active_page()
+        if (self._submission_attempted or current.page_id != expected_page_id
+                or await stage_page.url() != expected_url
+                or deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS
+                or (monitor and (monitor.active or monitor.generation != generation))):
+            return False
+        async with asyncio.timeout(LOADING_RECOVERY_TIMEOUT_SECONDS):
+            await stage_page.goto(expected_url, wait_until='domcontentloaded',
+                                  timeout=LOADING_RECOVERY_TIMEOUT_SECONDS * 1000)
+        return True
 
     def _has_submission_window(self):
         deadline = getattr(self, '_application_deadline_at', None)
@@ -275,6 +355,7 @@ class IndeedApplier(BaseApplier):
 
         captcha_waits = 0
         loading_waits = 0
+        loading_target = None
         previous = None
         repetitions = 0
         action_timeout_recoveries = 0
@@ -372,13 +453,29 @@ class IndeedApplier(BaseApplier):
                 await self._emit_step('The field did not progress; checking the control before another action...')
                 continue
             if step.kind == 'wait':
+                target = (getattr(stage_page, 'page_id', None), active_url)
+                if target != loading_target:
+                    loading_target = target
+                    loading_waits = 0
                 loading_waits += 1
                 if loading_waits > 6:
+                    if await self._recover_loading_shell(stage_page, active_url, target[0]):
+                        uploaded = False  # GET may restore an older parsed/saved resume.
+                        resume_recovery_attempted = False
+                        loading_waits = 0
+                        loading_target = None
+                        previous = None
+                        repetitions = 0
+                        history.append({'instruction': 'Reopen the observed application URL', 'success': True,
+                                        'message': 'Page reopened once after loading stalled. Re-read current state; '
+                                        'the supplied resume must be uploaded again before any submission.'})
+                        continue
                     return self._fail(str(job.id), 'The application form did not finish loading.', ApplicationErrorCategory.TIMEOUT)
                 await self._emit_step('Waiting for the application form to load...')
                 await asyncio.sleep(10)
                 continue
             loading_waits = 0
+            loading_target = None
             if step.kind == 'park':
                 if await resolve_parked_answer(step.reason):
                     continue
