@@ -2,7 +2,7 @@
 
 An open-source AI agent that discovers jobs, scores them against your resume, tailors applications, and submits them autonomously — with a live browser feed so you can watch and intervene in real time.
 
-**Built with:** FastAPI + LangGraph (Python) | Next.js 14 | Browserbase + Stagehand (Indeed demo) | Skyvern + Bright Data MCP (alternative paths) | EvoAgentX (prompt optimization)
+**Built with:** FastAPI + LangGraph (Python) | Next.js 15 | Browserbase + Stagehand (Indeed demo) | Skyvern + Bright Data MCP (alternative paths) | EvoAgentX (prompt optimization)
 
 **Live at:** [jobhunteragent.com](https://jobhunteragent.com)
 
@@ -24,13 +24,15 @@ BROWSERBASE_PROJECT_ID=...
 BROWSERBASE_PROXIES=true
 ```
 
-Browserbase credentials and proxy preferences can also be saved per user in **Settings**. Complete the Indeed login capture there before applying. Application sessions reuse that user's persisted Browserbase Context; server-provided context IDs are restricted to `BROWSERBASE_CONTEXT_USER_ID`. Browserbase login and the app's Google login are separate.
+Sign in with Google, then open **Settings**. Public visitors supply their own Anthropic API key and Browserbase API key/project; keys are encrypted and never returned in full. Complete the Indeed login capture before applying. Application sessions reuse that user's persisted Browserbase Context. Server-funded model/browser credentials and contexts are available only to the explicit `BROWSERBASE_CONTEXT_USER_ID` owner. Missing visitor keys block model work without falling back to the owner's account. Browserbase login and the app's Google login are separate.
+
+Settings shows the effective model IDs and, for the demo owner only, the model budget's settled charges, held reservations, and remaining allowance. Opening a saved résumé does not start an AI request; résumé analysis is an explicit action and matching cached analysis is reused.
 
 Upload the original resume and save application rules, then describe the roles, location, work arrangement, and salary preferences in the UI. For the initial end-to-end check, use **Quick Apply with one Indeed URL** and aim for **one verified submission**. Quick Apply processes its supplied URLs; discovery sessions can backfill eligible jobs toward a configured submission target.
 
 The application flow is:
 
-1. **Discover and queue.** Search Indeed, score eligible jobs, and process native applications. Employer-site redirects enter a separate application queue.
+1. **Discover and queue.** Search Indeed, score eligible jobs, and process native applications. With `INDEED_EASY_APPLY_ONLY=true`, employer-site redirects and nested employer sign-ins are skipped. The separate employer application queue is available only outside that policy.
 2. **Operate the browser.** Stagehand uses `extract` / `observe` / `act`, native locators, original-file upload, and iframe-aware snapshots. Browserbase reuses authentication and manages supported CAPTCHAs. The app waits on solving events and rechecks the page; a finished event alone does not prove readiness.
 3. **Ground answers.** An independent LLM judge uses the uploaded resume, profile, and explicit owner rules. It can synthesize supported experience and dates, with one bounded correction opportunity and source quotations. It must not invent credentials or personal facts.
 4. **Queue unknowns in the app.** **Needs your answer** displays the exact unresolved question while other eligible jobs continue. Saving an answer does not restart the run; the UI offers an explicit retry. API/SSE consumers receive the same question state.
@@ -102,7 +104,7 @@ Self-improvement: EvoAgentX optimizes prompts based on session outcomes
 
 ```
 ┌─────────────┐     ┌──────────────────────────────────────┐
-│  Next.js 14 │     │ FastAPI (port 8000)                  │
+│  Next.js 15 │     │ FastAPI (port 8000)                  │
 │  (port 3000)│────►│                                      │
 │             │     │  ├── API Routes (REST + SSE)          │
 │  App Router │◄────│  ├── LangGraph Pipeline (8 agents)   │
@@ -205,7 +207,7 @@ Cost: ~$0.50-1.00 per optimization run (Haiku for execution, Sonnet for optimiza
 | Component | Technology |
 |-----------|-----------|
 | Backend | FastAPI + LangGraph (Python 3.11) |
-| Frontend | Next.js 14 + Tailwind + shadcn/ui |
+| Frontend | Next.js 15 + Tailwind + shadcn/ui |
 | Form Filling | Stagehand on Browserbase for the Indeed demo; Skyvern for alternative paths |
 | Job Discovery | Indeed browser discovery; Bright Data MCP + Greenhouse API for alternative paths |
 | Prompt Optimization | EvoAgentX (TextGrad) |
@@ -246,7 +248,7 @@ job-hunter-agent/
 │       ├── config.py, llm.py, db.py
 │       └── redis_client.py, event_bus.py
 ├── frontend/
-│   └── src/app/              # Next.js 14 App Router
+│   └── src/app/              # Next.js 15 App Router
 ├── docker-compose.yml
 ├── package.json              # npm start orchestrates everything
 └── CLAUDE.md                 # AI coding instructions
