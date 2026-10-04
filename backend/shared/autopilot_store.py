@@ -310,6 +310,31 @@ async def mark_run_complete(schedule_id: str) -> None:
     await asyncio.to_thread(_mark)
 
 
+async def complete_terminal_session(session_id: str) -> None:
+    """Release only schedules still owned by this durably stopped session.
+
+    Lookup by last_session_id works after process restart. The terminal-status
+    predicate prevents premature release, and cannot clear a newer run's flag.
+    Recurrence activation, next-run time and history are deliberately unchanged.
+    """
+    import asyncio
+
+    def _complete():
+        with _connect() as conn:
+            conn.execute(
+                """UPDATE autopilot_schedules ap
+                   SET is_running = FALSE, updated_at = NOW()
+                   WHERE ap.last_session_id = %s AND ap.is_running = TRUE
+                     AND EXISTS (SELECT 1 FROM sessions s
+                                 WHERE s.id = ap.last_session_id
+                                   AND s.status IN ('completed', 'failed'))""",
+                (session_id,),
+            )
+            conn.commit()
+
+    await asyncio.to_thread(_complete)
+
+
 def clear_zombie_running() -> int:
     """Clear is_running for schedules whose last session is dead.
 

@@ -14,6 +14,7 @@ from backend.shared.db import get_connection
 
 @pytest.mark.asyncio
 async def test_kill_updates_registry_as_well_as_durable_status(monkeypatch):
+    monkeypatch.setattr('backend.shared.autopilot_store.complete_terminal_session', AsyncMock())
     row = {'user_id': 'user', 'status': 'applying'}
     monkeypatch.setattr('backend.gateway.deps.get_current_user', lambda _: {'id': 'user'})
     monkeypatch.setattr(session_store, 'get_session_by_id', lambda _: row)

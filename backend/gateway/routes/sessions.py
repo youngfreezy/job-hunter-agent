@@ -139,7 +139,13 @@ def _spawn_background(coro: Any) -> asyncio.Task[Any]:
 
 
 async def _release_task_slot(session_id: str) -> None:
-    """Release the task queue concurrency slot for a completed/failed session."""
+    """Release terminal run state and its task queue concurrency slot."""
+    try:
+        from backend.shared.autopilot_store import complete_terminal_session
+        # The SQL predicate requires durable completion and current schedule ownership.
+        await complete_terminal_session(session_id)
+    except Exception:
+        logger.debug("Failed to clear terminal autopilot state", exc_info=True)
     try:
         from backend.shared.task_queue import mark_complete
         await mark_complete(session_id)
@@ -384,15 +390,11 @@ async def _stream_graph_bound(
                 "status": status,
                 "session_summary": summary,
             })
-            # Clear is_running on autopilot schedule if applicable
-            meta = session_registry.get(session_id, {})
-            ap_schedule_id = meta.get("autopilot_schedule_id")
-            if ap_schedule_id:
-                try:
-                    from backend.shared.autopilot_store import mark_run_complete
-                    await mark_run_complete(ap_schedule_id)
-                except Exception:
-                    logger.debug("Failed to clear autopilot is_running", exc_info=True)
+            try:
+                from backend.shared.autopilot_store import complete_terminal_session
+                await complete_terminal_session(session_id)
+            except Exception:
+                logger.debug("Failed to clear terminal autopilot state", exc_info=True)
             return None  # Terminal — no interrupt
 
     return None
@@ -590,15 +592,17 @@ async def _run_pipeline(
             await _send_completion_notifications(session_id)
 
     except Exception as exc:
+        from backend.browser.indeed_policy import IndeedPageUnavailable
+        message = str(exc) if isinstance(exc, IndeedPageUnavailable) else "An internal error occurred"
         logger.exception("Pipeline error for session %s", session_id)
         _set_session_status(session_id, "failed")
         await _emit(session_id, "error", {
-            "message": "An internal error occurred",
+            "message": message,
             "session_id": session_id,
         })
         await _emit(session_id, "done", {
             "status": "failed",
-            "error": "An internal error occurred",
+            "error": message,
         })
         unregister_emitter(session_id)
         await _release_task_slot(session_id)
@@ -660,11 +664,11 @@ async def _resume_pipeline(
             "error": "An internal error occurred",
         })
         unregister_emitter(session_id)
-        await _release_task_slot(session_id)
         await _send_completion_notifications(session_id)
     finally:
         if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
             unregister_emitter(session_id)
+            await _release_task_slot(session_id)
 
 
 @single_pipeline_run
@@ -709,6 +713,7 @@ async def _resume_stalled_pipeline(session_id: str, graph: Any, config: dict) ->
     finally:
         if session_registry.get(session_id, {}).get("status") in {"completed", "failed"}:
             unregister_emitter(session_id)
+            await _release_task_slot(session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1283,7 +1288,10 @@ async def kill_session(session_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Session not found")
     if str(session["user_id"]) != user_id:
         raise HTTPException(status_code=403, detail="Not your session")
+    from backend.shared.autopilot_store import complete_terminal_session
     if session["status"] in ("completed", "failed") and not is_pipeline_active(session_id):
+        await complete_terminal_session(session_id)
+        await _release_task_slot(session_id)
         return {"status": "already_done"}
 
     await cancel_pipeline(session_id)
@@ -1291,6 +1299,7 @@ async def kill_session(session_id: str, request: Request):
     # Update DB
     update_session_status(session_id, "completed", raise_on_error=True)
     session_registry.setdefault(session_id, {"session_id": session_id, "user_id": user_id})["status"] = "completed"
+    await complete_terminal_session(session_id)
     # Release Redis concurrency slot
     await _release_task_slot(session_id)
 

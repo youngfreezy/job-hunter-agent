@@ -9,6 +9,7 @@ from fastapi import HTTPException
 async def test_email_bulk_approval_requires_established_user_constraints(monkeypatch, verdict):
     from backend.gateway.routes import autopilot, sessions
     from backend.gateway import main
+    monkeypatch.setattr('backend.shared.autopilot_store.complete_terminal_session', AsyncMock())
     monkeypatch.setattr(autopilot, 'verify_approval_token', lambda *args:True)
     monkeypatch.setattr(sessions, 'session_registry', {'s':{'status':'awaiting_review'}})
     graph=SimpleNamespace(aget_state=AsyncMock(return_value=SimpleNamespace(values={
@@ -33,6 +34,7 @@ async def test_email_bulk_approval_requires_established_user_constraints(monkeyp
 async def test_confirmed_email_skip_releases_slot_after_durable_stop(monkeypatch):
     from backend.gateway.routes import autopilot, sessions
     from backend.shared import session_store
+    monkeypatch.setattr('backend.shared.autopilot_store.complete_terminal_session', AsyncMock())
     monkeypatch.setattr(autopilot, 'verify_approval_token', lambda *args:True)
     monkeypatch.setattr(sessions, 'session_registry', {'s':{'status':'awaiting_review'}})
     order=[]
@@ -50,6 +52,7 @@ async def test_confirmed_email_skip_releases_slot_after_durable_stop(monkeypatch
 async def test_failed_durable_email_skip_does_not_release_running_slot(monkeypatch):
     from backend.gateway.routes import autopilot, sessions
     from backend.shared import session_store
+    monkeypatch.setattr('backend.shared.autopilot_store.complete_terminal_session', AsyncMock())
     monkeypatch.setattr(autopilot, 'verify_approval_token', lambda *args:True)
     monkeypatch.setattr(sessions, 'session_registry', {'s':{'status':'awaiting_review'}})
     monkeypatch.setattr(sessions, 'cancel_pipeline', AsyncMock())

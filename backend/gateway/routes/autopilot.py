@@ -8,6 +8,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
+from urllib.parse import quote
 from pydantic import BaseModel, Field
 
 from backend.shared.autopilot_runner import (
@@ -218,6 +220,17 @@ async def run_now(schedule_id: str, request: Request):
 # ---------------------------------------------------------------------------
 
 @router.get("/approve/{schedule_id}/{session_id}")
+async def review_autopilot_session(schedule_id: str, session_id: str, token: str = Query(...)):
+    """Opening a signed email link is read-only, including mail-scanner requests."""
+    if not verify_approval_token(schedule_id, session_id, token):
+        raise HTTPException(status_code=403, detail="Invalid or expired approval link")
+    return RedirectResponse(
+        f"https://jobhunteragent.com/session/{quote(session_id, safe='')}", status_code=303,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+@router.post("/approve/{schedule_id}/{session_id}")
 async def approve_autopilot_session(
     schedule_id: str,
     session_id: str,
@@ -240,6 +253,8 @@ async def approve_autopilot_session(
         if session_id in session_registry:
             session_registry[session_id]["status"] = "failed"
         unregister_emitter(session_id)
+        from backend.shared.autopilot_store import complete_terminal_session
+        await complete_terminal_session(session_id)
         await _release_task_slot(session_id)
         return {"status": "skipped", "session_id": session_id}
 
