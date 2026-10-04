@@ -58,6 +58,15 @@ def _ensure_table() -> None:
     pool = get_pool()
     with pool.connection() as conn:
         conn.execute(_CREATE_TABLE)
+        # CREATE IF NOT EXISTS leaves tables from older releases unchanged.
+        # Repair only additive analytics fields, preserving saved strategy tips.
+        conn.execute("""
+            ALTER TABLE ats_strategies
+                ADD COLUMN IF NOT EXISTS success_rate FLOAT DEFAULT 0.0,
+                ADD COLUMN IF NOT EXISTS total_attempts INT DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS top_errors JSONB,
+                ADD COLUMN IF NOT EXISTS top_failure_steps JSONB
+        """)
         conn.commit()
     _TABLE_ENSURED = True
 
