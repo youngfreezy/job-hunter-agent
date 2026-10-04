@@ -54,4 +54,21 @@ test.describe("Authentication entry points", () => {
     expect(response.status()).toBe(401);
     expect(response.headers()["cache-control"]).toContain("no-store");
   });
+  test("old Autopilot emails navigate to sign-in without approving or forwarding their token", async ({ request }) => {
+    const id = "0e3df91d-92ce-47b1-9dbb-c37a6a3809ba";
+    const url = `/api/autopilot/approve?schedule=fixture&session=${id}&token=fixture-nonsecret&action=approve`;
+    for (const method of ["GET", "HEAD"]) {
+      const response = await request.fetch(url, { method, maxRedirects: 0 });
+      expect(response.status()).toBe(303);
+      expect(response.headers().location).toBe(`/session/${id}`);
+      expect(response.headers()["cache-control"]).toContain("no-store");
+      expect(response.headers()["referrer-policy"]).toBe("no-referrer");
+    }
+    const final = await request.get(url);
+    expect(new URL(final.url()).pathname).toBe("/auth/login");
+    expect(new URL(final.url()).searchParams.get("callbackUrl")).toBe(`/session/${id}`);
+    expect(final.url()).not.toContain("token=");
+    expect((await request.post(url, { maxRedirects: 0 })).status()).toBe(405);
+  });
+
 });

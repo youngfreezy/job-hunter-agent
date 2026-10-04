@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from html import escape
+from urllib.parse import quote
 
 import httpx
 
@@ -254,7 +255,7 @@ _AUTOPILOT_STARTED_TEMPLATE = """\
                 </tr>
               </table>
 
-              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">You'll receive another email when the session completes with a summary of discovered jobs. If approval is required, you can review and approve directly from that email.</p>
+              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">You'll receive another email when the session completes with a summary of discovered jobs. If approval is required, you can open the app from that email to review and choose jobs.</p>
 
               <!-- CTA -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -323,22 +324,19 @@ _AUTOPILOT_APPROVAL_TEMPLATE = """\
           <!-- Body -->
           <tr>
             <td style="padding:32px;">
-              <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e;">Shortlist Ready for Approval</h2>
-              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">Your autopilot session found <strong>{jobs_found}</strong> jobs matching your criteria. Review and approve to start applying.</p>
+              <h2 style="margin:0 0 8px;font-size:22px;color:#1a1a2e;">Shortlist Ready for Review</h2>
+              <p style="margin:0 0 24px;color:#6b7280;font-size:14px;">Your autopilot session found <strong>{jobs_found}</strong> jobs to review. Check the search criteria notes and choose which jobs to approve.</p>
 
               <!-- CTA buttons -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
                 <tr>
-                  <td align="center" style="padding:8px;">
-                    <a href="{approve_url}" style="display:inline-block;padding:14px 32px;background-color:#16a34a;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">Approve &amp; Apply</a>
-                  </td>
                   <td align="center" style="padding:8px;">
                     <a href="{review_url}" style="display:inline-block;padding:14px 32px;background-color:#1a1a2e;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;">Review Shortlist</a>
                   </td>
                 </tr>
               </table>
 
-              <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">This link expires in 24 hours. If you don't approve, no applications will be sent.</p>
+              <p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Sign in to review the shortlist. Opening this link does not send applications.</p>
             </td>
           </tr>
           <!-- Footer -->
@@ -364,15 +362,14 @@ async def send_autopilot_approval_email(
     approval_token: str,
 ) -> bool:
     """Send an email asking the user to approve an autopilot shortlist."""
-    subject = f"Autopilot: {jobs_found} jobs ready — approve to apply"
+    subject = f"Autopilot: {jobs_found} jobs to review"
 
     base_url = "https://jobhunteragent.com"
-    approve_url = f"{base_url}/api/autopilot/approve?schedule={escape(schedule_id)}&session={escape(session_id)}&token={escape(approval_token)}&action=approve"
-    review_url = f"{base_url}/session/{escape(session_id)}"
+    # Retain legacy parameters for callers; email links no longer carry approval capabilities.
+    review_url = escape(f"{base_url}/session/{quote(session_id, safe='')}", quote=True)
 
     html = _AUTOPILOT_APPROVAL_TEMPLATE.format(
         jobs_found=jobs_found,
-        approve_url=approve_url,
         review_url=review_url,
     )
 

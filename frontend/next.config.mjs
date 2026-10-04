@@ -36,6 +36,11 @@ const nextConfig = {
           },
         ],
       },
+      {
+        source: "/api/autopilot/approve",
+        // Legacy emails carried a token in their URL; never forward it as Referer.
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
     ];
   },
 };
