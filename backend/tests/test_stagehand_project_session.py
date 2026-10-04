@@ -96,7 +96,10 @@ async def test_owned_resources_clean_up_on_every_failure(transport, failure):
         await cleanup.aclose()
     assert transport.events[-1] == 'delete-extension'
     assert ('release' in transport.events) == (failure != 'create')
-    if failure == 'project': transport.connect.assert_not_awaited()
+    if failure == 'project':
+        transport.connect.assert_not_awaited()
+        release = next(r for r in transport.requests if r.method == 'POST' and r.url.path.endswith('/session-one'))
+        assert json.loads(release.content)['projectId'] == 'wrong-project'
 
 
 @pytest.mark.asyncio

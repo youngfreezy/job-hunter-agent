@@ -53,7 +53,7 @@ async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
             raise RuntimeError("Browserbase returned an invalid session ID.")
         cleanup.push_async_callback(
             provider.sessions.update, session.id,
-            project_id=config.project_id, status="REQUEST_RELEASE",
+            project_id=session.project_id, status="REQUEST_RELEASE",
         )
         if session.project_id != config.project_id:
             raise RuntimeError("Browserbase returned a session outside the selected project.")
