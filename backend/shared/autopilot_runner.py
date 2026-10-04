@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional
 
 from croniter import croniter
 
-from backend.shared.autopilot_store import get_due_schedules, get_schedule, mark_run
+from backend.shared.autopilot_store import get_due_schedules, get_schedule, mark_run, defer_run
 from backend.shared.config import get_settings
 from backend.shared.models.schemas import SessionConfig, StartSessionRequest
 
@@ -164,9 +164,9 @@ async def _run_schedule(
     if not resume_bytes or not resume_text:
         raise ValueError("Autopilot needs a readable saved resume. Upload a PDF, DOCX, or TXT resume in New search or Quick Apply before running Autopilot.")
 
-    # Check task queue concurrency (max 2 per user)
+    # Reserve the shared per-user execution slot before creating any work.
     try:
-        from backend.shared.task_queue import enqueue_session, mark_active
+        from backend.shared.task_queue import enqueue_session, mark_active, QueueAtCapacity
         session_id = str(uuid.uuid4())
         enqueued = await enqueue_session(session_id, user_id)
         if not enqueued:
@@ -176,12 +176,15 @@ async def _run_schedule(
             )
             # Retry in 15 minutes
             retry_at = datetime.now(timezone.utc) + timedelta(minutes=15)
-            await mark_run(schedule_id, "", retry_at)
-            return
+            await defer_run(schedule_id, retry_at)
+            raise QueueAtCapacity("No session slot is available. Wait for a current run to finish.")
         await mark_active(session_id)
-    except Exception:
-        logger.debug("Autopilot: task queue unavailable, proceeding anyway", exc_info=True)
-        session_id = str(uuid.uuid4())
+    except QueueAtCapacity:
+        raise
+    except Exception as exc:
+        from backend.shared.task_queue import QueueUnavailable
+        logger.warning("Autopilot admission unavailable (%s); no pipeline started", type(exc).__name__)
+        raise QueueUnavailable("Session admission is temporarily unavailable. Try again shortly.") from exc
 
     if resume_bytes:
         resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")

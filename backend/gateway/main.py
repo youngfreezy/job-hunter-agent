@@ -193,11 +193,10 @@ async def lifespan(app: FastAPI):
     from backend.shared.redis_client import redis_client
     try:
         await redis_client.connect()
-        # Clear stale task queue counters from previous runs
-        from backend.shared.task_queue import flush_all_active
-        await flush_all_active()
+        # Admission leases survive restarts; never erase another worker's slots.
+        # Individual fixed leases expire if a worker cannot release them.
     except Exception as exc:
-        logger.warning("Redis connection failed (%s) — rate limiting and task queue disabled", exc)
+        logger.warning("Redis connection failed (%s) — new pipeline admission will fail closed", type(exc).__name__)
 
     # Attach to app.state so route handlers can access them
     app.state.graph = graph

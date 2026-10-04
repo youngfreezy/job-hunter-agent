@@ -255,7 +255,32 @@ async def _stream_graph(
     # Fresh starts also carry the server-authenticated owner in initial state.
     if not owner and isinstance(input_state, dict):
         owner = input_state.get("user_id")
-    return await run_model_task(owner, lambda: _stream_graph_bound(session_id, graph, config, input_state))
+    async def admitted_stream():
+        from backend.shared.task_queue import admit_session, QueueAtCapacity, QueueUnavailable
+        try:
+            await admit_session(session_id, str(owner))
+        except (QueueAtCapacity, QueueUnavailable) as exc:
+            # Resume/recovery runs in a background task: surface a recoverable
+            # pause instead of leaving the UI running or calling any providers.
+            message = ('No session slot is available. Finish or stop a current session, then resume this run.'
+                       if isinstance(exc, QueueAtCapacity) else
+                       'Session admission is temporarily unavailable. Try resuming shortly.')
+            _set_session_status(session_id, 'paused')
+            await _emit(session_id, 'error', {'message': message, 'session_id': session_id,
+                                           'error_category': 'queue_admission'})
+            await _emit(session_id, 'done', {'status': 'paused', 'message': message})
+            return 'queue_admission'
+        try:
+            return await _stream_graph_bound(session_id, graph, config, input_state)
+        except BaseException:
+            # Failed/cancelled workers must release their own admission; model
+            # spend and uncertain-submission holds are independent and untouched.
+            await _release_task_slot(session_id)
+            raise
+        finally:
+            if session_registry.get(session_id, {}).get('status') in {'completed', 'failed'}:
+                await _release_task_slot(session_id)
+    return await run_model_task(owner, admitted_stream)
 
 
 async def _stream_graph_bound(
@@ -379,8 +404,8 @@ async def _handle_shortlist_interrupt(session_id: str, graph: Any, config: dict)
     try:
         graph_state = await graph.aget_state(config)
         channel_values = graph_state.values if hasattr(graph_state, "values") else {}
-        all_scored = channel_values.get("scored_jobs", [])
-        top_scored = sorted(all_scored, key=lambda sj: sj.score, reverse=True)[:MAX_APPLICATION_JOBS]
+        from backend.orchestrator.pipeline.graph import shortlist_candidates
+        top_scored = shortlist_candidates(channel_values)
         tailored_resumes = channel_values.get("tailored_resumes", {})
         await _emit(session_id, "shortlist_review", {
             "status": "awaiting_review",
@@ -755,11 +780,15 @@ async def _synthesise_snapshot(session_id: str, checkpointer, graph=None):
         # Emit shortlist_review if scored jobs exist
         scored_jobs = cv.get("scored_jobs", [])
         if scored_jobs:
-            top_scored = sorted(
-                scored_jobs,
-                key=lambda sj: sj.score if hasattr(sj, "score") else sj.get("score", 0),
-                reverse=True,
-            )[:MAX_APPLICATION_JOBS]
+            if status == "awaiting_review":
+                from backend.orchestrator.pipeline.graph import shortlist_candidates
+                top_scored = shortlist_candidates(cv)
+            else:
+                top_scored = sorted(
+                    scored_jobs,
+                    key=lambda sj: sj.score if hasattr(sj, "score") else sj.get("score", 0),
+                    reverse=True,
+                )[:MAX_APPLICATION_JOBS]
             shortlist_data = {
                 "status": status,
                 "scored_jobs": _serialize(top_scored),
@@ -1084,8 +1113,8 @@ async def start_session(body: StartSessionRequest, request: Request):
     except HTTPException:
         raise
     except Exception:
-        # Redis unavailable — allow the request through (graceful degradation)
-        logger.debug("Task queue unavailable — skipping concurrency check", exc_info=True)
+        logger.warning("Session start blocked: task queue unavailable")
+        raise HTTPException(status_code=503, detail="Session admission is temporarily unavailable. Try again shortly.")
 
     # Initialize event log and subscriber list
     event_logs[session_id] = []
@@ -1191,7 +1220,8 @@ async def rerun_session(session_id: str, body: RerunRequest, request: Request):
     except HTTPException:
         raise
     except Exception:
-        logger.debug("Task queue unavailable — skipping concurrency check", exc_info=True)
+        logger.warning("Session rerun blocked: task queue unavailable")
+        raise HTTPException(status_code=503, detail="Session admission is temporarily unavailable. Try again shortly.")
 
     event_logs[new_session_id] = []
     sse_subscribers[new_session_id] = []
@@ -1481,6 +1511,10 @@ async def get_session(session_id: str, request: Request):
             durable = get_session_by_id(session_id)
             if durable and durable['status'] in ('completed', 'failed'):
                 result['status'] = durable['status']
+
+        if isinstance(result, dict) and result.get("status") == "awaiting_review" and isinstance(cv, dict):
+            from backend.orchestrator.pipeline.graph import shortlist_candidates
+            result["scored_jobs"] = _serialize(shortlist_candidates(cv))
 
         # Overlay live application counts from the DB (checkpointer only
         # updates when the full application node completes, so mid-run the

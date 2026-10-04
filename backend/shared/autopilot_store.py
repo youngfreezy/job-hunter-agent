@@ -252,6 +252,21 @@ async def get_due_schedules() -> List[Dict[str, Any]]:
     return await asyncio.to_thread(_query)
 
 
+async def defer_run(schedule_id: str, next_run_at: datetime) -> None:
+    """Delay an unstarted run without claiming it is running or erasing history."""
+    import asyncio
+
+    def _defer():
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE autopilot_schedules SET next_run_at = %s, updated_at = NOW() WHERE id = %s",
+                (next_run_at, schedule_id),
+            )
+            conn.commit()
+
+    await asyncio.to_thread(_defer)
+
+
 async def mark_run(schedule_id: str, session_id: str, next_run_at: datetime) -> None:
     """Update last_run_at, last_session_id, and next_run_at after a run."""
     import asyncio

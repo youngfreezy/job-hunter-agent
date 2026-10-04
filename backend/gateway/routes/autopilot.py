@@ -199,9 +199,14 @@ async def run_now(schedule_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Schedule not found")
 
     from backend.shared.autopilot_runner import _run_schedule
+    from backend.shared.task_queue import QueueUnavailable, QueueAtCapacity
     # Fetch full schedule with resume_bytes possibility
     try:
         await _run_schedule(schedule)
+    except QueueAtCapacity as exc:
+        raise HTTPException(status_code=429, detail="No session slot is available. Wait for a current run to finish.") from exc
+    except QueueUnavailable as exc:
+        raise HTTPException(status_code=503, detail="Session admission is temporarily unavailable. Try again shortly.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -224,10 +229,18 @@ async def approve_autopilot_session(
         raise HTTPException(status_code=403, detail="Invalid or expired approval link")
 
     if action == "skip":
-        # Mark session as skipped/cancelled
-        from backend.gateway.routes.sessions import _set_session_status, session_registry
+        # Confirm the durable stop before freeing the admission slot, just as
+        # the authenticated Stop action does. A valid signed link authorizes it.
+        from backend.gateway.routes.sessions import (
+            session_registry, cancel_pipeline, unregister_emitter, _release_task_slot,
+        )
+        from backend.shared.session_store import update_session_status
+        await cancel_pipeline(session_id)
+        update_session_status(session_id, "failed", raise_on_error=True)
         if session_id in session_registry:
-            _set_session_status(session_id, "failed")
+            session_registry[session_id]["status"] = "failed"
+        unregister_emitter(session_id)
+        await _release_task_slot(session_id)
         return {"status": "skipped", "session_id": session_id}
 
     # Approve: resume the pipeline past the shortlist review gate
@@ -241,6 +254,12 @@ async def approve_autopilot_session(
         from backend.gateway.main import _app_ref
         graph = _app_ref.state.graph if _app_ref else None
         if graph:
+            snapshot = await graph.aget_state({"configurable": {"thread_id": session_id}})
+            scored = (snapshot.values or {}).get("scored_jobs", [])
+            if any((job.get("eligibility_status", "unknown") if isinstance(job, dict)
+                    else getattr(job, "eligibility_status", "unknown")) == "unknown" for job in scored):
+                raise HTTPException(status_code=409, detail=(
+                    "Some jobs have unresolved eligibility. Review and select individual jobs in the dashboard."))
             _spawn_background(_resume_pipeline(
                 session_id,
                 graph,

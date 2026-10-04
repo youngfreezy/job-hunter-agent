@@ -15,6 +15,8 @@ def funding(monkeypatch):
     monkeypatch.setattr(settings, 'BROWSERBASE_CONTEXT_USER_ID', 'owner')
     monkeypatch.setattr(settings, 'LLM_PROVIDER', 'anthropic')
     monkeypatch.setattr(settings, 'ANTHROPIC_API_KEY', 'owner-key')
+    # Queue lifecycle is exercised with real Redis in test_task_queue_admission.
+    monkeypatch.setattr('backend.shared.task_queue.admit_session', AsyncMock())
     monkeypatch.setattr('backend.shared.model_key_store.get_model_key', lambda uid: {'alice': 'alice-key', 'bob': 'bob-key'}.get(uid))
     with model_access.model_user_scope(None):
         yield
