@@ -40,8 +40,12 @@ async def hydrate_indeed_urls(urls: list[str], *, user_id: str, session_id: str)
         page = context.pages[0] if context.pages else await context.new_page()
         async with asyncio.timeout(600):
             for url in dict.fromkeys(urls):
+                monitor = getattr(manager.stagehand, "_jobhunter_captcha_monitor", None)
+                generation = monitor.generation if monitor else None
                 await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                await wait_for_indeed_page(page)
+                await wait_for_indeed_page(
+                    page, captcha_monitor=monitor, since_generation=generation,
+                )
                 stage_page = await manager.stagehand.browser.context.active_page()
                 if not is_indeed_url(await stage_page.url()):
                     raise ValueError("Indeed redirected outside the supported application flow.")

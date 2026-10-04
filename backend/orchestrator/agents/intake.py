@@ -104,6 +104,7 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
     job_urls = state.get("job_urls", [])
     if job_urls:
         from backend.orchestrator.agents.url_hydrator import hydrate_urls
+        from backend.browser.indeed_policy import IndeedPageUnavailable
         try:
             if get_settings().INDEED_ONLY:
                 from backend.browser.tools.indeed_hydration import hydrate_indeed_urls
@@ -124,6 +125,8 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
                 "status": "coaching",
                 "agent_statuses": {"intake": "done"},
             }
+        except IndeedPageUnavailable:
+            raise  # Fixed public message reaches the pipeline UI safely.
         except Exception as exc:
             logger.exception("URL hydration failed: %s", exc)
             return {
