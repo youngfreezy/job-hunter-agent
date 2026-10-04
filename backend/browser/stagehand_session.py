@@ -5,34 +5,59 @@ to an already-running cloud browser. BrowserManager owns this lifecycle.
 https://docs.stagehand.dev/v4/configuration/browser
 """
 
+import asyncio
 from contextlib import AsyncExitStack
 
 import httpx
+from browserbase import AsyncBrowserbase, omit
 from stagehand import Stagehand, browserbase
+from stagehand.extension_assets import build_extension_archive
 
 from backend.browser.browserbase_client import BrowserbaseConfig, BrowserbaseSession
-from backend.shared.config import get_settings
 from backend.shared.model_access import current_model_credentials, current_model_user, model_user_scope
 from backend.browser.stagehand_model import generate
 
 
 async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
-    settings = get_settings()
     credentials = current_model_credentials()
     key = credentials.api_key
     model_user_id = current_model_user()
-    if not key or not config.api_key or not context_id:
-        raise RuntimeError("Stagehand requires model credentials and your saved Indeed login.")
+    if not key or not config.api_key or not config.project_id or not context_id:
+        raise RuntimeError("Stagehand requires model credentials, a Browserbase project, and your saved Indeed login.")
     cleanup = AsyncExitStack()
     try:
-        browser = await browserbase.launch(
-            api_key=config.api_key, proxies=config.proxies,
-            timeout=config.session_timeout,
+        # Stagehand 4.1 launch() has no project_id. Use its documented SDK
+        # alternative so a visitor's selected project is honored explicitly.
+        # Connected Stagehand browsers do not own the provider session; the
+        # exit stack releases it and deletes our uploaded extension separately.
+        provider = await cleanup.enter_async_context(AsyncBrowserbase(
+            api_key=config.api_key, max_retries=0,
+        ))
+        archive = await asyncio.to_thread(build_extension_archive)
+        extension = await provider.extensions.create(file=("stagehand-extension.zip", archive))
+        if not extension.id:
+            raise RuntimeError("Browserbase returned an invalid extension ID.")
+        cleanup.push_async_callback(
+            provider.extensions.delete, extension.id,
+            extra_headers={"Content-Type": omit},
+        )
+        session = await provider.sessions.create(
+            project_id=config.project_id, extension_id=extension.id,
+            proxies=config.proxies, api_timeout=config.session_timeout,
             browser_settings={
                 "context": {"id": context_id, "persist": True},
                 "solve_captchas": True,
             },
         )
+        if not session.id:
+            raise RuntimeError("Browserbase returned an invalid session ID.")
+        cleanup.push_async_callback(
+            provider.sessions.update, session.id,
+            project_id=config.project_id, status="REQUEST_RELEASE",
+        )
+        if session.project_id != config.project_id:
+            raise RuntimeError("Browserbase returned a session outside the selected project.")
+        browser = await browserbase.connect(api_key=config.api_key, session_id=session.id)
         cleanup.push_async_callback(browser.close)
         # The SDK may invoke callbacks from its own long-lived dispatch task.
         # Bind the session's owner explicitly; never rely on that task's context.

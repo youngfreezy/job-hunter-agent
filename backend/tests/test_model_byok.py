@@ -100,7 +100,15 @@ async def test_stagehand_callback_is_bound_even_in_another_dispatch_context(monk
     from backend.browser.browserbase_client import BrowserbaseConfig
     browser = MagicMock()
     browser.session_id = 'offline-session'; browser.close = AsyncMock()
-    monkeypatch.setattr(session.browserbase, 'launch', AsyncMock(return_value=browser))
+    monkeypatch.setattr(session.browserbase, 'connect', AsyncMock(return_value=browser))
+    provider = MagicMock()
+    provider.__aenter__ = AsyncMock(return_value=provider); provider.__aexit__ = AsyncMock()
+    provider.extensions.create = AsyncMock(return_value=MagicMock(id='offline-extension'))
+    provider.extensions.delete = AsyncMock()
+    provider.sessions.create = AsyncMock(return_value=MagicMock(id='offline-session', project_id='alice-project'))
+    provider.sessions.update = AsyncMock()
+    monkeypatch.setattr(session, 'AsyncBrowserbase', lambda **_: provider)
+    monkeypatch.setattr(session, 'build_extension_archive', lambda: b'offline-extension')
     agent = MagicMock(); agent.close = AsyncMock()
     create = AsyncMock(return_value=agent); monkeypatch.setattr(session.Stagehand, 'create', create)
     response = MagicMock(); response.json.return_value = {'connectUrl': 'wss://offline', 'debuggerUrl': 'https://offline'}
