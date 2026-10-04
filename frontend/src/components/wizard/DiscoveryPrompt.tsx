@@ -1,9 +1,11 @@
 "use client";
 
 import { useField } from "formik";
+import { indeedEasyApplyOnly } from "@/lib/indeed-policy";
 
 const demoTargetSalary = Number(process.env.NEXT_PUBLIC_DEMO_TARGET_BASE_SALARY || 0);
 const DEFAULT_DISCOVERY_PROMPT = "Find applied AI and AI-native software engineering positions in San Francisco that are hybrid or remote."
+  + (indeedEasyApplyOnly ? " Use Indeed Easy Apply only. Skip employer websites and additional sign-in flows. Prefer short applications." : "")
   + (demoTargetSalary > 0 ? ` Target base salary: $${demoTargetSalary.toLocaleString("en-US")}. Use my saved application rules for eligibility.` : "");
 
 export function DiscoveryPrompt() {
@@ -23,7 +25,7 @@ export function DiscoveryPrompt() {
         className="w-full rounded-md border border-zinc-300 bg-transparent p-3 text-sm dark:border-zinc-700" />
       <p id="discoveryPromptHint" className="text-xs text-zinc-500">Press Tab in the empty box to use the example above.</p>
       <p className="text-sm text-zinc-500">Describe the roles, location, work arrangement, and exclusions you want. Your prompt guides discovery and ranking; you review the shortlist before applying.</p>
-      <p className="text-sm text-zinc-500">For this demo, select Indeed only and connect your Indeed login in Settings → Browserbase.</p>
+      <p className="text-sm text-zinc-500">{indeedEasyApplyOnly ? "Indeed Easy Apply only. Employer redirects and additional sign-in flows are skipped. Forms may still have multiple steps or required questions. Connect your Indeed login in Settings → Browserbase." : "For this demo, select Indeed only and connect your Indeed login in Settings → Browserbase."}</p>
       {meta.touched && meta.error && <p role="alert" className="text-sm text-red-500">{meta.error}</p>}
     </section>
   );

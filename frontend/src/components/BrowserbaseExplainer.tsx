@@ -2,6 +2,7 @@
 
 import { Cloud, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { indeedEasyApplyOnly } from "@/lib/indeed-policy";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 /** Temporary interview demo UI; disable NEXT_PUBLIC_BROWSERBASE_DEMO after the demo. */
@@ -16,7 +17,7 @@ export function BrowserbaseExplainer({ compact = false }: { compact?: boolean })
             <Cloud className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
             <div>
               <p className="text-sm font-semibold">A real browser, powered by <a href="https://www.browserbase.com/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 focus-visible:outline focus-visible:outline-2">Browserbase<span className="sr-only"> (opens in a new tab)</span></a></p>
-              <p className="mt-1 text-sm text-muted-foreground">Watch the agent search Indeed and work through applications.</p>
+              <p className="mt-1 text-sm text-muted-foreground">{indeedEasyApplyOnly ? "Watch the agent find and complete Indeed Easy Apply forms. Employer websites and additional sign-ins are skipped." : "Watch the agent search Indeed and work through applications."}</p>
             </div>
           </div>
         )}
@@ -36,6 +37,7 @@ export function BrowserbaseExplainer({ compact = false }: { compact?: boolean })
             ["Live View", "The browser embedded in this app shows the actual cloud session, so you can watch what the agent is doing."],
             ["CAPTCHA handling", "Browserbase’s managed solver is enabled for supported challenges. Some challenges, sign-in checks, or application questions may still need your input."],
             ["Stagehand application flow", "JobHunter interprets your prompt and ranks matches. Stagehand works through each Indeed form using your resume and saved answers. JobHunter checks the actual confirmation page before counting a submission."],
+            ...(indeedEasyApplyOnly ? [["Indeed Easy Apply only", "Only applications completed on Indeed are eligible. Employer redirects and additional sign-in flows are skipped. Easy Apply can still include multiple pages and screening questions; it does not guarantee one-click submission."]] : []),
           ].map(([title, description]) => (
             <div key={title} className="py-3 first:pt-0">
               <dt className="font-semibold">{title}</dt>

@@ -13,6 +13,7 @@ import { FormikFileUpload } from "@/components/forms/FormikFileUpload";
 import { DiscoveryPrompt } from "./DiscoveryPrompt";
 import { analyzeResume, getWallet, startSession } from "@/lib/api";
 import { buildQuickStartConfig } from "@/lib/quick-start-config";
+import { indeedEasyApplyOnly } from "@/lib/indeed-policy";
 import type { SessionFormValues } from "@/lib/schemas/session";
 import { sessionInitialValues } from "@/lib/schemas/session";
 
@@ -267,7 +268,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
               <select id="application-count" value={maxJobs} onChange={(event) => setMaxJobs(Number(event.target.value))} className="mt-2 rounded-md border bg-background p-2 text-foreground">
                 {[1, 5, 10, 15, 20].map((count) => <option key={count} value={count}>{count} {count === 1 ? "application" : "applications"}</option>)}
               </select>
-              <p className="mt-2">Indeed only. Review the shortlist before applying. Premium searches try additional matching jobs and limited retries toward this submission target. Other accounts target this many attempts. Actual submissions depend on suitable jobs, available credits, and each application form.</p>
+              <p className="mt-2">{indeedEasyApplyOnly ? "Indeed Easy Apply only. Employer redirects and additional sign-in flows are skipped." : "Indeed only."} Review the shortlist before applying. Premium searches try additional matching jobs and limited retries toward this submission target. Other accounts target this many attempts. Actual submissions depend on suitable jobs, available credits, and each application form.</p>
             </div>
           </CardContent>
         </Card>
