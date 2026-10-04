@@ -196,7 +196,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
             "coach_output": coach_output,
             "coached_resume": coach_output.rewritten_resume,
             "cover_letter_template": coach_output.cover_letter_template,
-            "status": "discovering",
+            "status": "coaching",
             "agent_statuses": {"career_coach": "done"},
         }
 

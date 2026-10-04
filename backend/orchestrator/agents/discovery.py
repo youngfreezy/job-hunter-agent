@@ -1,10 +1,9 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Discovery Agent -- Serper-based agentic discovery.
+"""Discover listings through the configured job-board path.
 
-Uses Serper (Google Search API) to find jobs directly on ATS
-platforms (Greenhouse, Lever, Ashby, Workday, etc.) plus the free
-Greenhouse public API.  No browser required, no auth-wall issues.
+Indeed searches use the user's authenticated Browserbase Context. Other boards
+retain the MCP/Serper and public ATS API discovery path when enabled.
 """
 
 from __future__ import annotations
@@ -26,6 +25,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PER_BOARD_MAX = 20
+INDEED_CANDIDATE_FLOOR = 10
+INDEED_CANDIDATE_CAP = 60
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +55,7 @@ def _dedup_key(job: JobListing) -> str:
 # ---------------------------------------------------------------------------
 
 async def run_discovery_agent(state: Dict[str, Any]) -> dict:
-    """Discover job listings via MCP search + Greenhouse API."""
+    """Discover a bounded candidate pool before scoring and shortlist approval."""
     from backend.browser.tools.mcp_discovery import discover_all_boards
 
     session_id: str = state.get("session_id", "")
@@ -132,7 +133,12 @@ async def run_discovery_agent(state: Dict[str, Any]) -> dict:
             from backend.browser.tools.indeed_discovery import discover_indeed
             all_jobs = await discover_indeed(
                 search_config=search_config, session_id=session_id,
-                user_id=user_id, max_results=total_max,
+                # Search beyond the application target: early listings can fail
+                # salary/title scoring. The scorer still caps the shortlist to
+                # max_jobs, and existing page/budget limits remain in force.
+                user_id=user_id, max_results=min(
+                    INDEED_CANDIDATE_CAP, max(INDEED_CANDIDATE_FLOOR, total_max),
+                ),
                 excluded_urls=applied_urls,
                 excluded_companies=blocked_companies,
                 excluded_job_keys={

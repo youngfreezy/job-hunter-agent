@@ -138,7 +138,7 @@ async def coach_review_gate(state: JobHunterState) -> dict:
 
     # human_input expected shape:
     # {"approved": True/False, "edited_resume": "...", "feedback": "..."}
-    updates: dict = {}
+    updates: dict = {"status": "discovering"}
     if human_input.get("use_original"):
         updates["coached_resume"] = state.get("resume_text", "")
     elif human_input.get("edited_resume"):

@@ -74,7 +74,7 @@ async def test_indeed_selection_routes_discovery_to_authenticated_browser(offlin
         search_config=search,
         session_id="ui-session",
         user_id="signed-in-user",
-        max_results=3,
+        max_results=10,
         excluded_urls=set(), excluded_companies=set(), excluded_job_keys=set(),
         round_number=0,
     )
@@ -266,3 +266,44 @@ async def test_backfill_scraper_keeps_page_budget_and_cumulative_exclusions(monk
     assert page.goto.await_count == 4  # Two pages per query, not pages 0 through 6.
     offsets = [parse_qs(urlsplit(call.args[0]).query)['start'][0] for call in page.goto.await_args_list]
     assert offsets == ['50', '60', '50', '60']
+
+@pytest.mark.asyncio
+async def test_one_application_search_scores_later_candidate_after_first_is_rejected(offline_discovery, monkeypatch):
+    from backend.orchestrator.agents import scoring
+    indeed, _ = offline_discovery
+    jobs = [_listing().model_copy(update={'id': str(i), 'company': f'Company {i}',
+            'url': f'https://www.indeed.com/viewjob?jk=job{i}'}) for i in range(3)]
+    async def discover(**kwargs):
+        return jobs[:kwargs['max_results']]
+    indeed.side_effect = discover
+    monkeypatch.setattr(scoring, 'build_llm', lambda **_: MagicMock())
+    monkeypatch.setattr(scoring, 'get_active_prompt', lambda _: None)
+    monkeypatch.setattr('backend.moltbook.strategies.get_strategy_patches', lambda: '')
+    monkeypatch.setattr('backend.shared.application_rules.load_application_rules', lambda _: '')
+    monkeypatch.setattr('backend.shared.billing_store.get_user_by_id', lambda _: {})
+    async def score(_llm, messages):
+        ids = [line.removeprefix('- ID: ').strip() for line in messages[-1].content.splitlines() if line.startswith('- ID: ')]
+        return scoring.ScoringBatchResult(scores=[{
+            'job_id': job_id, 'score': 18 if job_id == '0' else 90,
+            'score_breakdown': dict(keyword_match=80, location_match=100, salary_match=50, experience_match=80),
+            'reasons': ['Below salary minimum' if job_id == '0' else 'Relevant AI engineering role'],
+        } for job_id in ids])
+    monkeypatch.setattr(scoring, 'invoke_with_retry', score)
+    async def verify(jobs, **kwargs):
+        return jobs
+    monkeypatch.setattr('backend.browser.fetch_verifier.verify_shortlist_candidates', verify)
+    state = {'session_id': 's', 'user_id': 'user', 'resume_text': 'Engineer',
+             'search_config': SearchConfig(keywords=['AI Engineer'], locations=['San Francisco, CA']),
+             'session_config': {'job_boards': ['indeed'], 'max_jobs': 1}}
+    discovered = await run_discovery_agent(state)
+    result = await scoring.run_scoring_agent({**state, **discovered})
+    assert [job.job.id for job in result['scored_jobs']] == ['1']
+    assert state['session_config']['max_jobs'] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target,expected', [(1, 10), (20, 20), (100, 60)])
+async def test_indeed_candidate_pool_is_bounded(offline_discovery, target, expected):
+    indeed, _ = offline_discovery
+    await run_discovery_agent({'session_id': 's', 'session_config': {'max_jobs': target, 'job_boards': ['indeed']}})
+    assert indeed.await_args.kwargs['max_results'] == expected

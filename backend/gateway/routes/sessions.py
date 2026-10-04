@@ -279,6 +279,17 @@ async def _stream_graph_bound(
         state_snapshot = chunk["data"]
         interrupts = chunk.get("interrupts", ())
 
+        # An interrupt snapshot retains the prior node's status. Let the
+        # caller publish the actual review gate before any progress event.
+        # v2 streaming: interrupts arrive as data, not exceptions
+        if interrupts:
+            for intr in interrupts:
+                stage = intr.value.get("stage") if isinstance(intr.value, dict) else None
+                if stage:
+                    logger.info("Pipeline paused at interrupt '%s' for session %s", stage, session_id)
+                    return stage
+            return "unknown_interrupt"
+
         status = state_snapshot.get("status", "unknown")
 
         # Update registry status
@@ -291,9 +302,11 @@ async def _stream_graph_bound(
                 "coach_output": _serialize(state_snapshot["coach_output"]),
             })
 
-        if status == "discovering":
+        if status == "scoring" and str(
+            state_snapshot.get("agent_statuses", {}).get("discovery", "")
+        ).startswith("done"):
             await _emit(session_id, "discovery", {
-                "status": "discovering",
+                "status": "scoring",
                 "jobs_found": len(state_snapshot.get("discovered_jobs", [])),
             })
 
@@ -356,15 +369,6 @@ async def _stream_graph_bound(
                 except Exception:
                     logger.debug("Failed to clear autopilot is_running", exc_info=True)
             return None  # Terminal — no interrupt
-
-        # v2 streaming: interrupts arrive as data, not exceptions
-        if interrupts:
-            for intr in interrupts:
-                stage = intr.value.get("stage") if isinstance(intr.value, dict) else None
-                if stage:
-                    logger.info("Pipeline paused at interrupt '%s' for session %s", stage, session_id)
-                    return stage
-            return "unknown_interrupt"
 
     return None
 
