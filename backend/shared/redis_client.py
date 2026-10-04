@@ -42,7 +42,7 @@ class RedisClient:
             decode_responses=True,
         )
         self._redis = aioredis.Redis(connection_pool=self._pool)
-        logger.info("Redis connected to %s", self._url)
+        logger.info("Redis connected")
 
     async def close(self) -> None:
         """Gracefully shut down the connection pool."""
