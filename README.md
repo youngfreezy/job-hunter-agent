@@ -122,6 +122,26 @@ Self-improvement: EvoAgentX optimizes prompts based on session outcomes
 
 ---
 
+## Production dependency scope
+
+The default `backend/requirements.txt` and Docker image use the hardened
+Browserbase + Stagehand runtime for Indeed Easy Apply. Resume uploads use the
+patched PDF/image parsers in that dependency set. Model-backed career, freelance,
+and interview tools continue to use the shared model gateway and your own keys.
+
+Legacy browser-use automation (including the LinkedIn profile updater) is an
+optional runtime. Its upstream dependency pins conflict with the patched upload
+parsers, so it is not installed in the public backend image. Selecting a legacy
+capability without that package returns a setup error; it does not silently use
+another provider. `backend/requirements-legacy-browser.txt` records this separate,
+non-production development dependency set. Do not install it over the hardened
+public runtime or expose its parsers to untrusted uploads.
+
+EvoAgentX prompt optimization is also optional and excluded from the public image.
+Its dependencies are recorded in `backend/requirements-optimization.txt` for an
+isolated, trusted-input environment; that set is not certified for public traffic.
+Optimization remains disabled whenever the model spend ledger is configured.
+
 ## Quick Start
 
 ### Prerequisites

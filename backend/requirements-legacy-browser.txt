@@ -1,0 +1,6 @@
+# OPTIONAL LEGACY RUNTIME ONLY — not installed in the production Docker image.
+# browser-use pins older pypdf/AnyIO versions and cannot be combined with the
+# hardened requirements.txt. Use a separate development environment/worker.
+# This optional dependency set is not certified for untrusted public uploads.
+# Retained for developers migrating legacy multi-board/LinkedIn browser features.
+browser-use==0.13.10

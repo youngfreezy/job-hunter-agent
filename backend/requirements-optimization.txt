@@ -1,0 +1,6 @@
+# OPTIONAL OFFLINE OPTIMIZATION ONLY — not installed in the production image.
+# Use a separate trusted-input environment. EvoAgentX brings large ML/model-file
+# dependencies (including PyPDF2/torch); this set is not audited for public input.
+# Optimization remains disabled whenever the model spend ledger is active.
+evoagentx>=0.1.0
+litellm>=1.96.2
