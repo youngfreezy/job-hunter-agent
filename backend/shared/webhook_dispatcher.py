@@ -55,24 +55,29 @@ async def _deliver_single(
     last_body = None
     success = False
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        for attempt in range(_MAX_RETRIES):
-            try:
-                resp = await client.post(webhook["url"], content=body, headers=headers)
-                last_status = resp.status_code
-                last_body = resp.text[:500]  # Truncate for storage
-                if 200 <= resp.status_code < 300:
-                    success = True
-                    break
-            except Exception as exc:
-                last_body = str(exc)[:500]
-                logger.debug(
-                    "Webhook delivery attempt %d failed for %s: %s",
-                    attempt + 1, webhook["url"], exc,
-                )
-
-            if attempt < _MAX_RETRIES - 1:
-                await asyncio.sleep(2 ** attempt)  # 1s, 2s backoff
+    from backend.shared.webhook_url import resolve_webhook_destination
+    for attempt in range(_MAX_RETRIES):
+        try:
+            # Saved DNS may have changed since registration or the prior attempt.
+            destination, authority, tls_name = await asyncio.to_thread(resolve_webhook_destination, webhook["url"])
+        except ValueError:
+            last_body = "Webhook destination rejected by network policy."
+            break
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=False, trust_env=False) as client:
+                resp = await client.post(destination, content=body, headers={**headers, "Host": authority},
+                                         extensions={"sni_hostname": tls_name})
+            last_status = resp.status_code
+            last_body = resp.text[:500]
+            if 200 <= resp.status_code < 300:
+                success = True
+                break
+        except Exception as exc:
+            last_body = "Webhook request failed (" + type(exc).__name__ + ")."
+            logger.debug("Webhook delivery attempt %d failed for id=%s (%s)",
+                         attempt + 1, webhook["id"], type(exc).__name__)
+        if attempt < _MAX_RETRIES - 1:
+            await asyncio.sleep(2 ** attempt)
 
     log_delivery(
         webhook_id=webhook["id"],
@@ -85,8 +90,8 @@ async def _deliver_single(
 
     if not success:
         logger.warning(
-            "Webhook delivery failed after %d retries: %s (status=%s)",
-            _MAX_RETRIES, webhook["url"], last_status,
+            "Webhook delivery failed for id=%s (status=%s)",
+            webhook["id"], last_status,
         )
 
 

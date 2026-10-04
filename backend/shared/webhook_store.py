@@ -79,6 +79,8 @@ def create_webhook(
     events: List[str],
 ) -> Dict[str, Any]:
     """Create a new webhook subscription. Auto-generates HMAC signing secret."""
+    from backend.shared.webhook_url import validate_webhook_url
+    validate_webhook_url(url)
     # Validate events
     invalid = set(events) - VALID_EVENTS
     if invalid:
@@ -144,6 +146,8 @@ def update_webhook(
     updates = []
     params: list = []
     if url is not None:
+        from backend.shared.webhook_url import validate_webhook_url
+        validate_webhook_url(url)
         updates.append("url = %s")
         params.append(url)
     if events is not None:
