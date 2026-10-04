@@ -1029,3 +1029,47 @@ async def test_overall_deadline_still_stops_and_reports_total_limit(monkeypatch)
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.TIMEOUT
     assert 'Application time limit reached' in result.error_message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('audit_consumes_time', [False, True])
+async def test_submit_preserves_action_and_receipt_window_before_intent(monkeypatch, audit_consumes_time):
+    import asyncio
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
+                              dict(kind='submit', instruction='Submit application', reason='Ready')])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    if audit_consumes_time:
+        async def slow_audit(*args, **kwargs):
+            applier._application_deadline_at = asyncio.get_running_loop().time() + 100
+        monkeypatch.setattr(applier, '_check_answer', slow_audit)
+    else:
+        monkeypatch.setattr(indeed_mod, 'MAX_SECONDS', 100)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.status == ApplicationStatus.FAILED
+    assert result.error_category == ApplicationErrorCategory.TIMEOUT
+    assert 'not submitted' in result.error_message
+    agent.act.assert_not_awaited()
+    indeed_mod.mark_submission_intent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_final_act_local_deadline_retains_uncertainty_without_replay(monkeypatch):
+    import asyncio
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
+                              dict(kind='submit', instruction='Submit application', reason='Ready')])
+    applier = IndeedApplier(page, 's1', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    monkeypatch.setattr(indeed_mod, 'ACTION_TIMEOUT_MS', 1)
+    async def never_returns(*args, **kwargs):
+        await asyncio.Event().wait()
+    agent.act.side_effect = never_returns
+    result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
+    assert result.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN
+    assert result.status == ApplicationStatus.FAILED
+    indeed_mod.mark_submission_intent.assert_called_once()
+    agent.act.assert_awaited_once()
+    assert 'operation timed out' in result.error_message

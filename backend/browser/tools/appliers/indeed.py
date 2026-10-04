@@ -33,6 +33,10 @@ MAX_SECONDS = 780
 # act includes model inference; 45s expired during a grounded review click.
 # Submit gets the same execution window, but never a retry after uncertainty.
 ACTION_TIMEOUT_MS = 90000
+RECEIPT_TIMEOUT_SECONDS = 90
+# Do not initiate an irreversible click at the edge of the overall deadline.
+# Reserve the whole action + receipt windows and a small persistence margin.
+SUBMISSION_MARGIN_SECONDS = 10
 
 
 class NextStep(BaseModel):
@@ -197,11 +201,21 @@ class IndeedApplier(BaseApplier):
                 await asyncio.sleep(0.25)
 
 
+    def _has_submission_window(self):
+        deadline = getattr(self, '_application_deadline_at', None)
+        required = ACTION_TIMEOUT_MS / 1000 + RECEIPT_TIMEOUT_SECONDS + SUBMISSION_MARGIN_SECONDS
+        return deadline is not None and deadline - asyncio.get_running_loop().time() >= required
+
+    def _insufficient_submission_time(self, job_id):
+        return self._fail(job_id,
+            'Not enough time remains to submit and verify a receipt; application was not submitted.',
+            ApplicationErrorCategory.TIMEOUT)
+
     async def _wait_for_receipt(self):
         """Allow managed solving to settle after submit, without replaying submit."""
         saw_solving = False
         try:
-            async with asyncio.timeout(90):
+            async with asyncio.timeout(RECEIPT_TIMEOUT_SECONDS):
                 for index in range(45):
                     saw_solving |= bool(self._captcha_monitor and self._captcha_monitor.active)
                     if index >= 5 and not saw_solving:
@@ -438,6 +452,8 @@ class IndeedApplier(BaseApplier):
                     await self._emit_step('Browserbase finished verification; checking the current page...')
                     continue
                 captcha_generation = self._captcha_monitor.generation
+            if step.kind == 'submit' and not self._has_submission_window():
+                return self._insufficient_submission_time(str(job.id))
             try:
                 await self._check_answer(step.instruction, grounding_facts, review=(
                     step.kind == 'submit' or bool(re.search(r'\b(signature|sign|certify|attest)\b', step.instruction, re.I))))
@@ -457,14 +473,20 @@ class IndeedApplier(BaseApplier):
             await self._emit_step('Stagehand: submitting the reviewed application...' if step.kind == 'submit'
                                   else f'Stagehand: {step.instruction[:240]}')
             if step.kind == 'submit':
+                # Audit/event delivery can consume the window after the first check.
+                if not self._has_submission_window():
+                    return self._insufficient_submission_time(str(job.id))
                 # Commit before clicking: cancellation or restart must not lose the hold.
                 mark_submission_intent(self.session_id, str(job.id))
                 self._submission_attempted = True
             try:
-                action = await self.stagehand.act(
-                    step.instruction, page=stage_page,
-                    timeout=ACTION_TIMEOUT_MS,
-                )
+                # Enforce the final action bound locally as well as in the SDK,
+                # so receipt verification retains its reserved window.
+                async with asyncio.timeout(ACTION_TIMEOUT_MS / 1000 if step.kind == 'submit' else None):
+                    action = await self.stagehand.act(
+                        step.instruction, page=stage_page,
+                        timeout=ACTION_TIMEOUT_MS,
+                    )
             except TimeoutError:
                 if self._submission_attempted:
                     raise  # Submission may have happened; never replan or replay it.
@@ -515,6 +537,7 @@ class IndeedApplier(BaseApplier):
 
     async def apply(self, job, user_profile, resume_text, cover_letter, resume_file_path=None):
         deadline = asyncio.timeout(MAX_SECONDS)
+        self._application_deadline_at = deadline.when()
         try:
             async with deadline:
                 result = await self._drive(job, user_profile, resume_text, cover_letter)

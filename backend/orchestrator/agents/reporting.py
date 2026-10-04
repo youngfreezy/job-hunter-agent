@@ -15,6 +15,7 @@ from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.llm import build_llm as _shared_build_llm, invoke_with_retry, HAIKU_MODEL
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import (
+    ApplicationErrorCategory,
     ApplicationResult,
     ScoredJob,
     SessionSummary,
@@ -93,7 +94,10 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
         total_discovered = len(discovered_jobs)
         total_scored = len(scored_jobs)
         total_applied = len(submitted)
-        total_failed = len(failed)
+        total_uncertain = sum(
+            app.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN for app in failed
+        )
+        total_failed = len(failed) - total_uncertain
         total_skipped = len(skipped)
 
         # --- Top companies from submitted applications ---
@@ -144,6 +148,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
                 f"- Jobs scored: {total_scored}\n"
                 f"- Applications submitted: {total_applied}\n"
                 f"- Applications failed: {total_failed}\n"
+                f"- Submissions unverified: {total_uncertain}; reconcile Indeed receipts before retrying these jobs.\n"
                 f"- Applications skipped: {total_skipped}\n"
                 f"- Top companies: {', '.join(top_companies) or 'None'}\n"
                 f"- Average fit score: {avg_fit_score}\n"
@@ -167,6 +172,9 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
                 "Expand search to additional job boards or locations.",
             ]
 
+        if total_uncertain:
+            next_steps.insert(0, "Check Indeed for the unverified submission receipt before retrying; the duplicate hold remains in place.")
+
         # --- Build summary ---
         coach_output = state.get("coach_output")
         resume_score = coach_output.resume_score if coach_output else None
@@ -177,6 +185,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
             total_scored=total_scored,
             total_applied=total_applied,
             total_failed=total_failed,
+            total_uncertain=total_uncertain,
             total_skipped=total_skipped,
             top_companies=top_companies,
             avg_fit_score=avg_fit_score,
@@ -186,7 +195,7 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
         )
 
         await emit_agent_event(session_id, "reporting_progress", {
-            "step": f"Summary ready — {total_applied} {'application' if total_applied == 1 else 'applications'} submitted, average fit score {avg_fit_score}",
+            "step": f"Summary ready — {total_applied} submitted, {total_uncertain} awaiting verification, average fit score {avg_fit_score}",
             "progress": 100,
         })
 
@@ -255,7 +264,8 @@ async def run_reporting_agent(state: JobHunterState) -> dict:
             for app in failed:
                 ats = getattr(app, "ats_type", "unknown") or "unknown"
                 ats_breakdown.setdefault(ats, {"submitted": 0, "failed": 0})
-                ats_breakdown[ats]["failed"] += 1
+                outcome = "uncertain" if app.error_category == ApplicationErrorCategory.SUBMISSION_UNCERTAIN else "failed"
+                ats_breakdown[ats][outcome] = ats_breakdown[ats].get(outcome, 0) + 1
 
             session_config = state.get("session_config", {})
             search_config = {}

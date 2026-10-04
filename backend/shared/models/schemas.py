@@ -234,6 +234,7 @@ class SessionSummary(BaseModel):
     total_scored: int
     total_applied: int
     total_failed: int
+    total_uncertain: int = 0
     total_skipped: int
     top_companies: List[str]
     avg_fit_score: float
