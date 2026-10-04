@@ -51,7 +51,7 @@ async def test_intake_overrides_model_permission_from_saved_owner_rule(monkeypat
     read_rules = MagicMock(return_value=rules)
     monkeypatch.setattr(billing_store, 'get_application_rules', read_rules)
     monkeypatch.setattr(intake, 'build_llm', lambda **_: MagicMock())
-    extracted = SearchConfig(keywords=['Applied AI Engineer'], locations=['San Francisco, CA'],
+    extracted = intake._PromptSearchConfig(primary_role='Applied AI Engineer', keywords=[], locations=['San Francisco, CA'],
                              salary_min=220000, allow_unpublished_salary=model_permission)
     invoke = AsyncMock(return_value=extracted)
     monkeypatch.setattr(intake, 'invoke_with_retry', invoke)

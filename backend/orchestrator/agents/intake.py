@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import Field
 
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.llm import build_llm, default_model, invoke_with_retry
@@ -54,6 +55,48 @@ downstream agents will use to discover job listings.
    an explicit minimum, including the owner's saved application rules.
 """
 
+PROMPT_INTAKE_SYSTEM_PROMPT = """\
+Extract a search configuration from the user's primary discovery prompt.
+The prompt alone determines the requested roles. Its explicit locations and
+work arrangements take priority; otherwise use the separate preference fields.
+Do not add roles, technologies, specializations, or seniority terms from the resume.
+Use the resume only to estimate experience_level; it does not expand roles.
+
+Return primary_role as the broad core job-title phrase that faithfully matches
+the request, without unnecessary modifiers (for an AI software engineering
+request, for example, AI Engineer). Return at most two additional faithful
+job-title variants in keywords. Do not add unrelated roles to reach the limit.
+Do not broaden past an explicit specialization or other restriction.
+
+Preserve the owner's saved eligibility rules and explicit preferences,
+including exclusions and minimum compensation. A desired salary is not a
+minimum; only populate salary_min from an explicit minimum. For hybrid or
+remote, use work_arrangements=['hybrid', 'remote'], remote_only=false, and
+retain the requested city. For remote-only, use work_arrangements=['remote']
+and remote_only=true. Extract explicit title/company exclusions.
+"""
+
+
+class _PromptSearchConfig(SearchConfig):
+    primary_role: str = Field(min_length=1, description="Broad core role explicitly requested by the discovery prompt.")
+    keywords: list[str] = Field(default_factory=list, max_length=2, description="At most two additional role phrases from the prompt; never resume-derived roles.")
+
+
+def _normalize_prompt_search(config: _PromptSearchConfig) -> SearchConfig:
+    """Make the core phrase first and bound the actual query count in code."""
+    primary = ' '.join(config.primary_role.split())
+    if not primary:
+        raise ValueError('Discovery prompt did not produce a primary role.')
+    phrases: dict[str, str] = {}
+    for value in [primary, *config.keywords]:
+        phrase = ' '.join(value.split())
+        if phrase:
+            phrases.setdefault(phrase.casefold(), phrase)
+    return SearchConfig.model_validate({
+        **config.model_dump(exclude={'primary_role'}),
+        'keywords': list(phrases.values())[:3],
+    })
+
 
 # ---------------------------------------------------------------------------
 # Agent entry-point
@@ -96,14 +139,19 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
             }
 
     try:
+        preferences = state.get("preferences") or {}
+        raw_prompt = preferences.get("discovery_prompt")
+        discovery_prompt = raw_prompt.strip() if isinstance(raw_prompt, str) else ""
         llm = build_llm(model=default_model(), max_tokens=4096, temperature=0.0)
-        structured_llm = llm.with_structured_output(SearchConfig)
+        structured_llm = llm.with_structured_output(_PromptSearchConfig if discovery_prompt else SearchConfig)
 
         # -- Build the user message from available state fields -------------
         parts: list[str] = []
 
         keywords = state.get("keywords", [])
-        if keywords:
+        if discovery_prompt:
+            parts.append(f"Primary discovery prompt:\n{discovery_prompt}")
+        elif keywords:
             parts.append(f"Keywords: {', '.join(keywords)}")
 
         remote_only = state.get("remote_only", False)
@@ -119,9 +167,11 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
         if salary_min is not None:
             parts.append(f"Minimum salary: ${salary_min:,}")
 
-        preferences = state.get("preferences", {})
-        if preferences:
-            parts.append(f"Additional preferences: {json.dumps(preferences)}")
+        additional_preferences = dict(preferences)
+        if discovery_prompt:
+            additional_preferences.pop('discovery_prompt', None)
+        if additional_preferences:
+            parts.append(f"Additional preferences: {json.dumps(additional_preferences)}")
         from backend.shared.application_rules import load_application_rules, allows_unpublished_salary
         owner_rules = load_application_rules(state.get("user_id"))
         if owner_rules:
@@ -137,11 +187,13 @@ async def run_intake_agent(state: JobHunterState) -> Dict[str, Any]:
 
         # -- Invoke the LLM with structured output -------------------------
         messages = [
-            SystemMessage(content=INTAKE_SYSTEM_PROMPT),
+            SystemMessage(content=PROMPT_INTAKE_SYSTEM_PROMPT if discovery_prompt else INTAKE_SYSTEM_PROMPT),
             HumanMessage(content=user_message),
         ]
 
         search_config: SearchConfig = await invoke_with_retry(structured_llm, messages)
+        if discovery_prompt:
+            search_config = _normalize_prompt_search(search_config)
 
         # Only saved owner permission may widen salary discovery. Keep the
         # minimum intact for published-pay/offer screening downstream.
