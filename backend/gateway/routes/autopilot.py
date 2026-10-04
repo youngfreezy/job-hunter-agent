@@ -200,7 +200,10 @@ async def run_now(schedule_id: str, request: Request):
 
     from backend.shared.autopilot_runner import _run_schedule
     # Fetch full schedule with resume_bytes possibility
-    await _run_schedule(schedule)
+    try:
+        await _run_schedule(schedule)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return {"triggered": True, "schedule_id": schedule_id}
 

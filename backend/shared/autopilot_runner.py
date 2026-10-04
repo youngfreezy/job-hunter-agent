@@ -8,6 +8,7 @@ from saved preferences and invokes the same pipeline used by manual sessions.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -15,7 +16,7 @@ import os
 import tempfile
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
 from croniter import croniter
@@ -33,7 +34,9 @@ logger = logging.getLogger(__name__)
 
 def generate_approval_token(schedule_id: str, session_id: str, expires_hours: int = 24) -> str:
     """Create an HMAC token for email approval links."""
-    secret = get_settings().NEXTAUTH_SECRET or "fallback-secret"
+    secret = get_settings().NEXTAUTH_SECRET
+    if not secret:
+        raise ValueError("Autopilot approval signing secret is not configured")
     expires = int(time.time()) + (expires_hours * 3600)
     message = f"{schedule_id}:{session_id}:{expires}"
     sig = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
@@ -42,7 +45,9 @@ def generate_approval_token(schedule_id: str, session_id: str, expires_hours: in
 
 def verify_approval_token(schedule_id: str, session_id: str, token: str) -> bool:
     """Verify an HMAC approval token. Returns False if expired or invalid."""
-    secret = get_settings().NEXTAUTH_SECRET or "fallback-secret"
+    secret = get_settings().NEXTAUTH_SECRET
+    if not secret:
+        return False
     try:
         expires_str, sig = token.split(":", 1)
         expires = int(expires_str)
@@ -124,27 +129,6 @@ async def _run_schedule(
 
     logger.info("Autopilot: running schedule %s for user %s", schedule_id, user_id)
 
-    # Check task queue concurrency (max 2 per user)
-    try:
-        from backend.shared.task_queue import enqueue_session, mark_active
-        session_id = str(uuid.uuid4())
-        enqueued = await enqueue_session(session_id, user_id)
-        if not enqueued:
-            logger.warning(
-                "Autopilot: user %s at concurrency limit, retrying schedule %s in 15min",
-                user_id, schedule_id,
-            )
-            # Retry in 15 minutes
-            retry_at = datetime.now(timezone.utc).replace(
-                minute=datetime.now(timezone.utc).minute + 15,
-            )
-            await mark_run(schedule_id, "", retry_at)
-            return
-        await mark_active(session_id)
-    except Exception:
-        logger.debug("Autopilot: task queue unavailable, proceeding anyway", exc_info=True)
-        session_id = str(uuid.uuid4())
-
     # Write resume bytes to temp file if available
     resume_file_path = None
     resume_bytes: Optional[bytes] = None
@@ -168,6 +152,36 @@ async def _run_schedule(
                 logger.info("Autopilot: using user's latest resume for schedule %s", schedule_id)
         except Exception:
             logger.debug("Autopilot: failed to fetch user's latest resume", exc_info=True)
+
+    # Resolve canonical facts before reserving a queue slot or starting any models.
+    from backend.shared.resume_text import extract_resume_text
+    resume_text = (sched.get("resume_text") or "").strip()
+    if resume_bytes:
+        try:
+            resume_text = await asyncio.to_thread(extract_resume_text, resume_bytes, ext)
+        except Exception as exc:
+            raise ValueError("Autopilot needs a readable saved resume. Upload a PDF, DOCX, or TXT resume in Settings.") from exc
+    if not resume_bytes or not resume_text:
+        raise ValueError("Autopilot needs a readable saved resume. Upload a PDF, DOCX, or TXT resume in Settings.")
+
+    # Check task queue concurrency (max 2 per user)
+    try:
+        from backend.shared.task_queue import enqueue_session, mark_active
+        session_id = str(uuid.uuid4())
+        enqueued = await enqueue_session(session_id, user_id)
+        if not enqueued:
+            logger.warning(
+                "Autopilot: user %s at concurrency limit, retrying schedule %s in 15min",
+                user_id, schedule_id,
+            )
+            # Retry in 15 minutes
+            retry_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+            await mark_run(schedule_id, "", retry_at)
+            return
+        await mark_active(session_id)
+    except Exception:
+        logger.debug("Autopilot: task queue unavailable, proceeding anyway", exc_info=True)
+        session_id = str(uuid.uuid4())
 
     if resume_bytes:
         resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
@@ -205,7 +219,7 @@ async def _run_schedule(
         salary_min=sched.get("salary_min"),
         search_radius=sched.get("search_radius", 100),
         country="US",
-        resume_text=sched.get("resume_text"),
+        resume_text=resume_text,
         resume_file_path=resume_file_path,
         linkedin_url=sched.get("linkedin_url"),
         preferences={
