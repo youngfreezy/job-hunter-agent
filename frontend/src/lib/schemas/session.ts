@@ -56,7 +56,7 @@ export const resumeProfileSchema = Yup.object({
 
 // ---------- Step 3: Configuration ----------
 export const configSchema = Yup.object({
-  maxJobs: Yup.number().min(3).max(20).default(5),
+  maxJobs: Yup.number().min(1).max(20).default(process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true" ? 1 : 5),
   minimumSubmittedApplications: Yup.number()
     .min(0)
     .max(20)
@@ -99,7 +99,7 @@ export const sessionInitialValues: SessionFormValues = {
   resumeFilePath: "",
   resumeFileUuid: "",
   linkedinUrl: "",
-  maxJobs: 5,
+  maxJobs: process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true" ? 1 : 5,
   minimumSubmittedApplications: 0,
   tailoringQuality: "standard",
   applicationMode: "auto_apply",

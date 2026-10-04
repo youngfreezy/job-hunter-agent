@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FormikConfig, FormikValues, useFormik } from "formik";
+import { clampMaxJobs } from "@/lib/quick-start-config";
 
 const STORAGE_PREFIX = "jh_form_";
 
@@ -39,10 +40,7 @@ export function usePersistedFormik<T extends FormikValues>({
         const parsed = JSON.parse(stored) as Partial<T>;
         // Clamp maxJobs to valid range (stale localStorage may have old uncapped values)
         if ("maxJobs" in parsed && typeof (parsed as Record<string, unknown>).maxJobs === "number") {
-          (parsed as Record<string, unknown>).maxJobs = Math.min(
-            Math.max((parsed as Record<string, unknown>).maxJobs as number, 3),
-            20,
-          );
+          (parsed as Record<string, unknown>).maxJobs = clampMaxJobs((parsed as Record<string, unknown>).maxJobs as number);
         }
         if (
           "minimumSubmittedApplications" in parsed &&

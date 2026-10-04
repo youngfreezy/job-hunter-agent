@@ -76,7 +76,7 @@ export function SessionWizard() {
           linkedin_url: values.linkedinUrl || null,
           preferences: { discovery_prompt: values.discoveryPrompt || "" },
           config: {
-            max_jobs: values.maxJobs ?? 20,
+            max_jobs: values.maxJobs ?? sessionInitialValues.maxJobs,
             minimum_submitted_applications: values.minimumSubmittedApplications ?? 0,
             tailoring_quality: values.tailoringQuality ?? "standard",
             application_mode: values.applicationMode ?? "auto_apply",

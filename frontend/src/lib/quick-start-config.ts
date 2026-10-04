@@ -2,6 +2,10 @@ import type { startSession } from './api';
 
 type SessionConfig = NonNullable<Parameters<typeof startSession>[0]['config']>;
 
+export function clampMaxJobs(count: number): number {
+  return Math.min(Math.max(count, 1), 20);
+}
+
 /** Premium searches replenish failed attempts toward the selected submission target. */
 export function buildQuickStartConfig(
   maxJobs: number,

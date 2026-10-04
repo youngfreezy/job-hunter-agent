@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildQuickStartConfig } from './quick-start-config';
+import { buildQuickStartConfig, clampMaxJobs } from './quick-start-config';
 
 describe('Quick Start application target', () => {
-  it.each([5, 10, 15, 20])('targets %i successful submissions for premium accounts', (count) => {
+  it.each([[1, 1], [0, 1], [5, 5], [20, 20], [30, 20]])('restores persisted count %i as %i', (saved, expected) => {
+    expect(clampMaxJobs(saved)).toBe(expected);
+  });
+  it.each([1, 5, 10, 15, 20])('targets %i successful submissions for premium accounts', (count) => {
     const config = buildQuickStartConfig(count, true, { max_jobs: 5, minimum_submitted_applications: 2 });
     expect(config.max_jobs).toBe(count);
     expect(config.minimum_submitted_applications).toBe(count);

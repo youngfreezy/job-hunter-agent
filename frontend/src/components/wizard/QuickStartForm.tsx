@@ -41,7 +41,7 @@ declare global {
 function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolean) => void }) {
   const router = useRouter();
   const { values, isSubmitting } = useFormikContext<SessionFormValues>();
-  const [maxJobs, setMaxJobs] = useState(10);
+  const [maxJobs, setMaxJobs] = useState(process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true" ? 1 : 10);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [remoteOnly, setRemoteOnly] = useState(false);
@@ -265,7 +265,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
             <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-500 dark:bg-zinc-900/60">
               <label htmlFor="application-count" className="block font-medium text-foreground">Application target</label>
               <select id="application-count" value={maxJobs} onChange={(event) => setMaxJobs(Number(event.target.value))} className="mt-2 rounded-md border bg-background p-2 text-foreground">
-                {[5, 10, 15, 20].map((count) => <option key={count} value={count}>{count} applications</option>)}
+                {[1, 5, 10, 15, 20].map((count) => <option key={count} value={count}>{count} {count === 1 ? "application" : "applications"}</option>)}
               </select>
               <p className="mt-2">Indeed only. Review the shortlist before applying. Premium searches try additional matching jobs and limited retries toward this submission target. Other accounts target this many attempts. Actual submissions depend on suitable jobs, available credits, and each application form.</p>
             </div>
