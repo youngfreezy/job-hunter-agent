@@ -21,6 +21,7 @@ from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.llm import build_llm, premium_model, invoke_with_retry
 from backend.shared.models.schemas import CoachOutput
+from backend.shared.coaching_context import coaching_date_context
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ async def run_career_coach_agent(state: JobHunterState) -> Dict[str, Any]:
             "progress": 0,
         })
         messages = [
-            SystemMessage(content=COACH_SYSTEM_PROMPT),
+            SystemMessage(content=COACH_SYSTEM_PROMPT + "\n" + coaching_date_context()),
             HumanMessage(content=user_message),
         ]
         await emit_agent_event(session_id, "coaching_progress", {

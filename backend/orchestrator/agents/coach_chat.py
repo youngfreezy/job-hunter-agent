@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from backend.shared.llm import build_llm, premium_model, invoke_with_retry
 from backend.shared.models.schemas import CoachOutput
+from backend.shared.coaching_context import coaching_date_context
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ async def revise_coach_output(
     result: CoachChatResult = await invoke_with_retry(
         llm,
         [
-            SystemMessage(content=_SYSTEM_PROMPT),
+            SystemMessage(content=_SYSTEM_PROMPT + "\n" + coaching_date_context()),
             HumanMessage(content=json.dumps(payload, indent=2)),
         ],
     )
