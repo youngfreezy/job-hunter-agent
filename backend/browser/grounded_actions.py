@@ -6,6 +6,10 @@ import re
 from backend.shared.application_rules import ApplicationParked
 
 
+class UnresolvedControl(ApplicationParked):
+    """Observation found no unique target; no browser action was executed."""
+
+
 def _control(snapshot, selector: str) -> tuple[str, str]:
     target = selector.removeprefix('xpath=')
     ids = {key for key, path in snapshot.xpath_map.items()
@@ -71,7 +75,7 @@ async def resolve_action(agent, page, instruction: str) -> GroundedAction:
                                    'Use only click, fill, selectOption, check, or uncheck. '
                                    'Do not combine actions, press Enter, or return JavaScript.', page=page, cache=False)
     if len(observed.data) != 1:
-        raise ApplicationParked('Could not identify one unambiguous control for the requested action.')
+        raise UnresolvedControl('Could not identify one unambiguous control for the requested action.')
     action = observed.data[0]
     method = action.method
     arguments = tuple(action.arguments or ())

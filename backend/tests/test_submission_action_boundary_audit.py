@@ -9,6 +9,78 @@ from backend.browser.tools.appliers.indeed import IndeedApplier
 
 
 @pytest.mark.asyncio
+async def test_stale_review_control_replans_before_audited_claimed_submit(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''),
+                            dict(kind='act', instruction='Click Review your application', reason='Stale page'),
+                            dict(kind='submit', instruction='Click Submit application', reason='Fresh review')])
+    native = agent.browser.context.active_page.return_value
+    native.snapshot.side_effect = None
+    native.snapshot.return_value = SimpleNamespace(
+        formatted_tree='[1-1] button: Submit application', xpath_map={'1-1':'/button[1]'})
+    agent.observe.side_effect = [SimpleNamespace(data=[]), SimpleNamespace(data=[SimpleNamespace(
+        method='click', selector='/button[1]', arguments=[])])]
+    order = []
+    marker = MagicMock(side_effect=lambda *_: order.append('claim'))
+    monkeypatch.setattr(indeed_mod, 'mark_submission_intent', marker)
+    native.control.click = AsyncMock(side_effect=lambda: order.append('submit'))
+    applier = IndeedApplier(page, 'offline-audit', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    monkeypatch.setattr(applier, '_wait_for_receipt', AsyncMock(return_value=True))
+    monkeypatch.setattr(applier, '_capture_screenshot', AsyncMock())
+    audit = AsyncMock(side_effect=lambda *a, **k: order.append('audit'))
+    monkeypatch.setattr(applier, '_check_answer', audit)
+    result = await applier.run(job=_job(), user_profile={}, resume_text='Facts', cover_letter='')
+    assert result.status.value == 'submitted'
+    assert order == ['audit', 'claim', 'submit']
+    assert audit.await_args.kwargs['review'] is True
+    assert agent.extract.await_count == 3
+    assert 'No browser action was executed' in agent.extract.await_args.args[0]
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind,expected_reads', [('act', 2), ('submit', 1)])
+async def test_unresolved_controls_are_technical_failures_not_personal_questions(monkeypatch, kind, expected_reads):
+    from unittest.mock import AsyncMock
+    page = _page('https://smartapply.indeed.com/form/review')
+    decision = dict(kind=kind, instruction='Click Review application' if kind == 'act' else 'Click Submit application', reason='')
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason=''), decision, decision])
+    agent.observe.side_effect = None
+    agent.observe.return_value = SimpleNamespace(data=[])
+    applier = IndeedApplier(page, 'offline-audit', stagehand=agent)
+    monkeypatch.setattr(applier, '_upload_original', AsyncMock())
+    result = await applier.run(job=_job(), user_profile={}, resume_text='Facts', cover_letter='')
+    assert result.status.value == 'failed'
+    assert result.error_category.value == 'form_navigation'
+    assert 'control' in result.error_message.lower()
+    assert agent.observe.await_count == expected_reads
+    agent.native_action.assert_not_awaited()
+    indeed_mod.mark_submission_intent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_unresolved_control_after_submission_intent_never_replans(monkeypatch):
+    from unittest.mock import AsyncMock
+    from backend.browser.grounded_actions import UnresolvedControl
+    page = _page('https://smartapply.indeed.com/form/review')
+    agent = _stagehand(page, [dict(kind='act', instruction='Click Continue', reason='')])
+    agent.observe.side_effect = UnresolvedControl('No unique control')
+    applier = IndeedApplier(page, 'offline-audit', stagehand=agent)
+    applier._submission_attempted = True
+    read = AsyncMock()
+    monkeypatch.setattr(applier, '_visible_application_snapshot', read)
+    result = await applier.apply(_job(), {}, 'Facts', '')
+    assert result.error_category.value == 'submission_uncertain'
+    assert 'check Indeed before retrying' in result.error_message
+    agent.extract.assert_awaited_once()
+    agent.observe.assert_awaited_once()
+    read.assert_not_awaited()
+    agent.native_action.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_misclassified_submit_cannot_run_without_resume_audit_and_durable_claim():
     page = _page('https://smartapply.indeed.com/form/review')
     agent = _stagehand(page, [

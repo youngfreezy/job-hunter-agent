@@ -24,7 +24,7 @@ from backend.shared.application_rules import ApplicationParked, format_rules_blo
 from backend.shared.models.schemas import ApplicationErrorCategory, ApplicationStatus
 from backend.shared.resume_store import get_resume_bytes
 from backend.shared.application_store import mark_submission_intent
-from backend.browser.grounded_actions import resolve_action, GroundedAction, control_label as _snapshot_control_label
+from backend.browser.grounded_actions import resolve_action, GroundedAction, UnresolvedControl, control_label as _snapshot_control_label
 
 logger = logging.getLogger(__name__)
 MAX_ACTIONS = 40
@@ -278,6 +278,7 @@ class IndeedApplier(BaseApplier):
         previous = None
         repetitions = 0
         action_timeout_recoveries = 0
+        control_resolution_recoveries = 0
         history = []
         for index in range(MAX_ACTIONS):
             routed = self._external_route(str(job.id))
@@ -327,7 +328,24 @@ class IndeedApplier(BaseApplier):
                                 instruction='Click the Resume options button for the selected resume to reveal the replace or upload option.')
             grounded_action = None
             if step.kind == 'act':
-                grounded_action = await resolve_action(self.stagehand, stage_page, step.instruction)
+                try:
+                    grounded_action = await resolve_action(self.stagehand, stage_page, step.instruction)
+                except UnresolvedControl:
+                    if self._submission_attempted or control_resolution_recoveries >= 1:
+                        raise
+                    control_resolution_recoveries += 1
+                    # A page may finish navigating between extract and observe.
+                    # Read current state, then discard the stale plan. Never pick
+                    # an arbitrary candidate or replay an already-executed action.
+                    await self._visible_application_snapshot()
+                    history.append({'instruction': step.instruction, 'success': False,
+                                    'message': 'No browser action was executed: observation did not identify '
+                                    'one unique control. The page may have changed. Read the current page '
+                                    'and choose its next action; do not repeat a completed transition.'})
+                    previous = None
+                    repetitions = 0
+                    await self._emit_step('The page changed; reading the current form before continuing...')
+                    continue
                 if grounded_action.is_submission:
                     step = step.model_copy(update={'kind': 'submit'})
             progress_fingerprint = None
@@ -532,6 +550,12 @@ class IndeedApplier(BaseApplier):
                 result = await self._drive(job, user_profile, resume_text, cover_letter)
                 result.ats_type = self.PLATFORM
                 return result
+        except UnresolvedControl:
+            if self._submission_attempted:
+                return self._fail(str(job.id), 'Submission outcome is unverified; check Indeed before retrying.')
+            return self._fail(str(job.id),
+                'Could not resolve the application control after checking the current page; '
+                'technical review is needed. No action was executed for the unresolved control.')
         except ApplicationParked:
             if self._submission_attempted:
                 return self._fail(str(job.id), 'Submission outcome is unverified; check Indeed before retrying.')
