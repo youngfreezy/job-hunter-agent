@@ -149,7 +149,7 @@ def store_screenshot_bytes(
     return row_id
 
 
-def get_screenshot(screenshot_id: int) -> Optional[tuple[bytes, str]]:
+def get_screenshot(screenshot_id: int, *, session_id: str) -> Optional[tuple[bytes, str]]:
     """Retrieve screenshot bytes and content_type by ID.
 
     Returns (image_data, content_type) or None.
@@ -158,8 +158,8 @@ def get_screenshot(screenshot_id: int) -> Optional[tuple[bytes, str]]:
     pool = get_pool()
     with pool.connection() as conn:
         row = conn.execute(
-            "SELECT image_data, content_type FROM failure_screenshots WHERE id = %s",
-            (screenshot_id,),
+            "SELECT image_data, content_type FROM failure_screenshots WHERE id = %s AND session_id = %s",
+            (screenshot_id, session_id),
         ).fetchone()
     if row:
         return (bytes(row[0]), row[1])

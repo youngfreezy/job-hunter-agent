@@ -1586,6 +1586,12 @@ async def get_application_screenshot(session_id: str, path: str, request: Reques
     real_path = Path(path).resolve()
     if not real_path.is_relative_to(allowed_dir):
         raise HTTPException(status_code=403, detail="Access denied")
+    from backend.shared.application_store import get_results_for_session
+    owned_paths = {Path(entry["screenshot_path"]).resolve()
+                   for entry in get_results_for_session(session_id)
+                   if entry.get("screenshot_path")}
+    if real_path not in owned_paths:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
     if not real_path.is_file():
         raise HTTPException(status_code=404, detail="Screenshot not found")
     return FileResponse(str(real_path), media_type="image/png")
@@ -2582,6 +2588,8 @@ async def get_totp_code(session_id: str, request: Request):
 @router.get("/{session_id}/screenshots")
 async def list_screenshots(session_id: str, request: Request):
     """List all persisted failure screenshots for a session."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    await verify_session_owner(session_id, get_current_user(request), request)
     from backend.shared.screenshot_store import get_screenshots_for_session
     screenshots = get_screenshots_for_session(session_id)
     return {"screenshots": screenshots}
@@ -2590,8 +2598,10 @@ async def list_screenshots(session_id: str, request: Request):
 @router.get("/{session_id}/screenshots/{screenshot_id}")
 async def get_screenshot(session_id: str, screenshot_id: int, request: Request):
     """Serve a persisted failure screenshot by ID."""
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    await verify_session_owner(session_id, get_current_user(request), request)
     from backend.shared.screenshot_store import get_screenshot as _get_screenshot
-    result = _get_screenshot(screenshot_id)
+    result = _get_screenshot(screenshot_id, session_id=session_id)
     if not result:
         raise HTTPException(status_code=404, detail="Screenshot not found")
     image_data, content_type = result
@@ -2605,6 +2615,8 @@ async def list_artifacts(session_id: str, request: Request):
     Each artifact contains the full task result: status, failure_reason,
     extracted_information, screenshot URLs, and timestamps.
     """
+    from backend.gateway.deps import get_current_user, verify_session_owner
+    await verify_session_owner(session_id, get_current_user(request), request)
     from backend.shared.screenshot_store import get_artifacts_for_session
     artifacts = get_artifacts_for_session(session_id)
     return {"artifacts": artifacts}

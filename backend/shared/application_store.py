@@ -419,7 +419,7 @@ def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
                 SELECT job_id, status, job_title, job_company, job_url,
                        job_board, job_location, error_message, cover_letter,
                        tailored_resume_text, duration_seconds, created_at,
-                       screenshot_path
+                       screenshot_path, error_category
                 FROM application_results
                 WHERE session_id = %s
                 ORDER BY created_at ASC
@@ -444,6 +444,7 @@ def get_results_for_session(session_id: str) -> List[Dict[str, Any]]:
                     "duration": r[10],
                     "submitted_at": r[11].isoformat() if r[11] else None,
                     "screenshot_path": r[12] or None,
+                    "error_category": r[13] or None,
                 }
                 for r in rows
             ]
