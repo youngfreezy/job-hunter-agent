@@ -75,7 +75,7 @@ export function SessionWizard() {
           resume_file_path: values.resumeFilePath || null,
           resume_uuid: values.resumeFileUuid || null,
           linkedin_url: values.linkedinUrl || null,
-          preferences: { discovery_prompt: values.discoveryPrompt || "" },
+          preferences: { discovery_prompt: values.discoveryPrompt || "", search_input_mode: "structured" },
           config: {
             max_jobs: values.maxJobs ?? sessionInitialValues.maxJobs,
             minimum_submitted_applications: values.minimumSubmittedApplications ?? 0,

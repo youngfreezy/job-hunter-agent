@@ -143,8 +143,9 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     await context.route('**/api/sessions',async route=>{payload=route.request().postDataJSON();await route.fulfill({json:{session_id:'custom-run'}});});
     await context.route('**/api/sessions/custom-run**',route=>route.fulfill({json:{session_id:'custom-run',status:'completed',keywords:['AI Engineer'],locations:['SF'],scored_jobs:[],applications_submitted:[],applications_failed:[],session_config:{}}}));
     await page.goto('/session/new');await page.getByRole('button',{name:'Custom Search',exact:true}).click();
-    await page.getByPlaceholder('e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner').fill('AI Engineer');
+    await page.getByPlaceholder('e.g. React, Senior Engineer, Data Scientist, Nurse Practitioner').fill('Senior Applied AI Engineer');
     await page.getByPlaceholder('e.g. San Francisco, New York, Austin').fill('San Francisco');
+    await page.locator('[name=salaryMin]').fill('220000');
     await page.getByRole('button',{name:'Next',exact:true}).click();
     await expect(page.locator('#resume-upload')).toBeEnabled();
     await page.locator('#resume-upload').setInputFiles({name:'current.txt',mimeType:'text/plain',buffer:Buffer.from('Current Fixture Engineer fixture@example.test. Experience in applied AI software systems. Skills Python and TypeScript. Education BS Computer Science.')});
@@ -152,7 +153,7 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     await page.getByRole('button',{name:'Next',exact:true}).click();
     await page.getByRole('button',{name:'Start Job Hunt Session',exact:true}).click();
     await expect.poll(()=>payload).not.toBeNull();
-    expect(payload).toMatchObject({keywords:['AI Engineer'],locations:['San Francisco'],resume_uuid:'current.txt-uuid',resume_file_path:'/mock/current.txt',config:{max_jobs:1,job_boards:['indeed']}});
+    expect(payload).toMatchObject({keywords:['Senior Applied AI Engineer'],locations:['San Francisco'],salary_min:220000,preferences:{search_input_mode:'structured'},resume_uuid:'current.txt-uuid',resume_file_path:'/mock/current.txt',config:{max_jobs:1,job_boards:['indeed']}});
     expect(String(payload!.resume_text)).toContain('Current Fixture Engineer');
   });
 
