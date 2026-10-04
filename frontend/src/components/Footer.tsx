@@ -27,7 +27,7 @@ export function Footer() {
               reserved.
             </p>
           </div>
-          <div className="flex gap-6 text-sm text-zinc-500">
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm text-zinc-500">
             <Link
               href="/about"
               className="hover:text-zinc-900 dark:hover:text-white"

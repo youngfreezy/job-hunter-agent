@@ -474,6 +474,12 @@ export default function Home() {
                   </Button>
                 </Link>
               </div>
+              <Link
+                href="/demo"
+                className="mt-5 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-zinc-700 underline underline-offset-4 hover:text-zinc-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 dark:text-zinc-300 dark:hover:text-white"
+              >
+                Watch the product demo →
+              </Link>
               <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
                 No account or credit card required. Upload your resume and go.
               </p>
