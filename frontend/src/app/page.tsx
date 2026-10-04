@@ -129,45 +129,18 @@ const pricingPacks = [
   },
 ];
 
-const testimonials = [
-  {
-    name: "Marcus Thompson",
-    role: "Software Engineer at Datadog",
-    company: "Previously at a Series B startup",
-    quote:
-      "I was mass-applying to jobs for weeks with zero callbacks. After using JobHunter Agent, I landed 4 interviews in my first week because every resume was actually tailored to the role. The AI caught keywords from JDs I would have missed.",
-    result: "4 interviews in 1 week",
-  },
-  {
-    name: "Sarah Kim",
-    role: "Senior Product Manager at Stripe",
-    company: "Transitioned from consulting",
-    quote:
-      "The two approval checkpoints sold me. I see exactly what goes out. The AI rewrote my resume way better than I could have and the cover letters actually reference the JD. Went from 5% callback rate to over 15%.",
-    result: "3x more callbacks",
-  },
-  {
-    name: "David Liu",
-    role: "Data Analyst at Spotify",
-    company: "Career switcher from finance",
-    quote:
-      "I was spending 3 hours a night applying after work. Now I set up a session in 5 minutes, approve the shortlist, and let it run. Got an offer within 3 weeks. The ROI on 50 credits was insane.",
-    result: "Offer in 3 weeks",
-  },
-];
-
 const faqs = [
   {
     q: "How does JobHunter Agent apply to jobs?",
-    a: "Our AI agent uses browser automation to fill out application forms on your behalf, using your approved resume and cover letter. You review and approve everything before submission. For sites that require human verification (CAPTCHAs, 2FA), your tailored materials are ready so you can complete them in seconds.",
+    a: "Stagehand uses browser automation through Browserbase to fill application forms with your resume and saved answers. Search runs include resume and shortlist review; Quick Apply starts from the job links you explicitly choose. Missing answers appear in the app, and verification may require your input in the live browser.",
   },
   {
     q: "Is my personal data safe?",
-    a: "Your resume and personal information are encrypted at rest and in transit. We never share your data with third parties. All payment processing is handled by Stripe, a PCI-compliant payment processor. You can delete your data at any time from your account settings.",
+    a: "Your selected AI provider processes resume and application content, and Browserbase runs the browser used to apply. Information you submit is shared with the job board and employer. Saved API keys are encrypted. See our Privacy Policy for details about storage and service providers.",
   },
   {
     q: "Does this comply with job site terms of service?",
-    a: "JobHunter Agent automates the manual process of filling out forms with your real information. Unlike scraping tools, we submit genuine applications with your authentic, tailored materials. You maintain a real account on each platform and approve every application before it goes out.",
+    a: "Job boards set their own rules for automation. Review the terms of the platform you use; a genuine account or an approval step does not itself guarantee compliance. The app uses the job links, resume, and application facts you provide.",
   },
   {
     q: "What job boards are supported?",
@@ -207,13 +180,6 @@ const jsonLd = {
       description: "Unlimited monthly subscription",
     },
   ],
-  aggregateRating: {
-    "@type": "AggregateRating",
-    ratingValue: "4.8",
-    ratingCount: "1200",
-    bestRating: "5",
-    worstRating: "1",
-  },
   featureList: [
     "AI resume optimization",
     indeedEasyApplyOnly ? "Indeed Easy Apply discovery" : "Automated job board search across LinkedIn, Indeed, Glassdoor, ZipRecruiter",
@@ -289,18 +255,18 @@ function ROICalculator() {
         </div>
       </div>
       <div className="flex flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50/50 p-6 dark:border-emerald-900 dark:bg-emerald-950/20">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">Weekly time saved</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Manual time estimate</p>
         <p className="text-3xl font-bold text-zinc-900 dark:text-white">
           {weeklyHoursSaved.toFixed(1)} hours
         </p>
         <div className="my-4 h-px w-full bg-emerald-200 dark:bg-emerald-800" />
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">Value of time saved</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Value of manual time</p>
         <p className="text-3xl font-bold text-emerald-600">${weeklyCostManual.toFixed(0)}/week</p>
         <div className="my-4 h-px w-full bg-emerald-200 dark:bg-emerald-800" />
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">JobHunter Agent cost</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Application credit pack estimate</p>
         <p className="text-lg font-semibold text-zinc-900 dark:text-white">${creditCost}</p>
         <div className="mt-4 rounded-xl bg-emerald-600 px-4 py-2 text-white font-bold">
-          {roi > 0 ? `${roi}% ROI` : "Great value"} &mdash; save $
+          {roi > 0 ? `${roi}% illustrative ROI` : "Illustrative comparison"} &mdash; difference $
           {savings > 0 ? savings.toFixed(0) : "0"}/week
         </div>
       </div>
@@ -593,28 +559,28 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Live Counter / Social Proof */}
+      {/* Workflow features */}
       <section className="px-6 pb-10">
         <div className="mx-auto max-w-4xl">
           <div className="rounded-2xl border border-blue-200/60 bg-blue-50/50 px-6 py-5 dark:border-blue-900/40 dark:bg-blue-950/20">
             <div className="grid gap-4 sm:grid-cols-4 text-center">
               <div>
-                <p className="text-2xl font-bold text-zinc-900 dark:text-white">2,847</p>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-white">Coach</p>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Applications sent this month
+                  Resume feedback
                 </p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-zinc-900 dark:text-white">1,200+</p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">Job seekers helped</p>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-white">Review</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Shortlist approval</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-emerald-600">34%</p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">Average callback rate</p>
+                <p className="text-2xl font-bold text-emerald-600">Watch</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Browserbase Live View</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-zinc-900 dark:text-white">4.8/5</p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">User satisfaction rating</p>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-white">Track</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Application outcomes</p>
               </div>
             </div>
           </div>
@@ -633,7 +599,7 @@ export default function Home() {
                 </p>
                 <ul className="space-y-2 text-sm text-zinc-700 dark:text-zinc-300">
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 text-red-500">&#10005;</span>15+ hours/week copy-pasting
+                    <span className="mt-0.5 text-red-500">&#10005;</span>Repeatedly copying information
                     into forms
                   </li>
                   <li className="flex items-start gap-2">
@@ -662,8 +628,8 @@ export default function Home() {
                 </p>
                 <ul className="space-y-2 text-sm text-zinc-700 dark:text-zinc-300">
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 text-emerald-600">&#10003;</span>5-minute setup, AI does
-                    the rest
+                    <span className="mt-0.5 text-emerald-600">&#10003;</span>Prompt-driven setup with
+                    visible browser execution
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="mt-0.5 text-emerald-600">&#10003;</span>Resume tailored per
@@ -674,12 +640,12 @@ export default function Home() {
                     every application
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 text-emerald-600">&#10003;</span>Full application log
-                    with proofs
+                    <span className="mt-0.5 text-emerald-600">&#10003;</span>Application log with
+                    recorded outcomes
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 text-emerald-600">&#10003;</span>More interviews, less
-                    effort
+                    <span className="mt-0.5 text-emerald-600">&#10003;</span>Required questions surfaced
+                    in the app
                   </li>
                 </ul>
               </CardContent>
@@ -755,7 +721,7 @@ export default function Home() {
             See inside the platform — no signup required
           </h2>
           <p className="mb-12 text-center text-zinc-600 dark:text-zinc-400">
-            These are real screens from JobHunter Agent. Explore each step of the workflow below.
+            Illustrative interface examples with sample data. For recorded app footage, watch the {" "}<Link href="/demo" className="underline">product demo</Link>.
           </p>
           <div className="grid gap-6 md:grid-cols-2">
             {/* Card 1: AI Career Coach */}
@@ -1009,192 +975,14 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="px-6 py-20 bg-white dark:bg-zinc-900/50">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-4 text-center text-3xl font-bold">What job seekers are saying</h2>
-          <p className="mb-12 text-center text-zinc-600 dark:text-zinc-400">
-            Real results from real users.
-          </p>
-          <div className="grid gap-6 md:grid-cols-3">
-            {testimonials.map((t) => (
-              <Card
-                key={t.name}
-                className="rounded-3xl border-zinc-200/80 bg-zinc-50 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
-              >
-                <CardContent className="p-6">
-                  <div className="mb-3 flex items-center gap-1">
-                    {[...Array(5)].map((_, i) => (
-                      <svg
-                        key={i}
-                        className="h-4 w-4 text-yellow-400"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
-                    ))}
-                  </div>
-                  <p className="text-sm leading-6 text-zinc-600 dark:text-zinc-400 italic">
-                    &ldquo;{t.quote}&rdquo;
-                  </p>
-                  <div className="mt-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                        {t.name}
-                      </p>
-                      <p className="text-xs text-zinc-500">{t.role}</p>
-                      <p className="text-xs text-zinc-400">{t.company}</p>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                    >
-                      {t.result}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Case Studies */}
-      <section className="px-6 py-20">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-4 text-center text-3xl font-bold">Case Studies: Real Results</h2>
-          <p className="mb-12 text-center text-zinc-600 dark:text-zinc-400">
-            Detailed breakdowns from verified users who transformed their job search.
-          </p>
-          <div className="grid gap-6 md:grid-cols-3">
-            <Card className="rounded-3xl border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-              <CardContent className="p-6">
-                <Badge
-                  variant="secondary"
-                  className="mb-3 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                >
-                  Software Engineering
-                </Badge>
-                <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                  Marcus T., Software Engineer
-                </p>
-                <p className="text-xs text-zinc-500 mb-3">
-                  Previously applying manually to 200+ roles
-                </p>
-                <div className="space-y-3 text-xs text-zinc-600 dark:text-zinc-400">
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Situation:</strong> Spending
-                    25 minutes per application, sending generic resumes to 200+ roles over 3 months
-                    with a 2% callback rate.
-                  </div>
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Action:</strong> Used
-                    JobHunter Agent to auto-tailor resumes and cover letters. Approved 47 targeted
-                    applications in 21 days.
-                  </div>
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Result:</strong> 4 interview
-                    requests, 2 offers. Application time dropped from 25 min to under 2 minutes
-                    each.
-                  </div>
-                </div>
-                <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-center dark:bg-emerald-950/30">
-                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
-                    2 offers in 21 days
-                  </p>
-                  <p className="text-xs text-zinc-500">25 min/app → under 2 minutes</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-3xl border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-              <CardContent className="p-6">
-                <Badge
-                  variant="secondary"
-                  className="mb-3 bg-secondary text-foreground dark:bg-secondary dark:text-foreground"
-                >
-                  Career Pivot
-                </Badge>
-                <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                  Priya S., Product Manager
-                </p>
-                <p className="text-xs text-zinc-500 mb-3">Transitioning from consulting to tech</p>
-                <div className="space-y-3 text-xs text-zinc-600 dark:text-zinc-400">
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Situation:</strong> Career
-                    switcher from management consulting. Only 3% of manual applications to PM roles
-                    received responses.
-                  </div>
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Action:</strong> AI coach
-                    repositioned consulting experience for tech PM roles. Tailored 35 applications
-                    highlighting transferable skills.
-                  </div>
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Result:</strong> Callback rate
-                    jumped to 17%. Landed a PM role with 40% salary increase over consulting
-                    compensation.
-                  </div>
-                </div>
-                <div className="mt-4 rounded-xl bg-secondary p-3 text-center dark:bg-secondary">
-                  <p className="text-lg font-bold text-foreground dark:text-foreground">
-                    40% salary increase
-                  </p>
-                  <p className="text-xs text-zinc-500">3% → 17% callback rate</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-3xl border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-              <CardContent className="p-6">
-                <Badge
-                  variant="secondary"
-                  className="mb-3 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                >
-                  New Graduate
-                </Badge>
-                <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                  James R., Recent Graduate
-                </p>
-                <p className="text-xs text-zinc-500 mb-3">CS grad with 150+ rejections</p>
-                <div className="space-y-3 text-xs text-zinc-600 dark:text-zinc-400">
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Situation:</strong> Applied to
-                    150+ entry-level roles manually over 4 months. Zero interviews. Generic resume
-                    wasn&apos;t passing ATS filters.
-                  </div>
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Action:</strong> AI rewrote
-                    resume with optimized keywords and project descriptions. Sent 30 highly targeted
-                    applications in one week.
-                  </div>
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white">Result:</strong> 8 responses
-                    (27% rate), 3 interviews, hired as a junior developer within 14 days of
-                    starting.
-                  </div>
-                </div>
-                <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-center dark:bg-emerald-950/30">
-                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
-                    Hired in 14 days
-                  </p>
-                  <p className="text-xs text-zinc-500">0 interviews → 27% response rate</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
       {/* ROI Calculator */}
       <section className="px-6 py-20 bg-white dark:bg-zinc-900/50">
         <div className="mx-auto max-w-4xl">
           <h2 className="mb-4 text-center text-3xl font-bold">
-            See how much time and money you save
+            Estimate time and cost for your search
           </h2>
           <p className="mb-10 text-center text-zinc-600 dark:text-zinc-400">
-            Adjust the sliders to match your job search. Most users save 10-15 hours per week.
+            Explore an illustrative estimate using your own inputs. These figures are assumptions, not measured customer results, and exclude AI-provider and Browserbase fees.
           </p>
           <ROICalculator />
         </div>
@@ -1369,10 +1157,9 @@ export default function Home() {
       {/* Infrastructure & Reliability */}
       <section className="px-6 py-20 bg-white dark:bg-zinc-900/50">
         <div className="mx-auto max-w-6xl">
-          <h2 className="mb-4 text-center text-3xl font-bold">Enterprise-Grade Infrastructure</h2>
+          <h2 className="mb-4 text-center text-3xl font-bold">Application Infrastructure</h2>
           <p className="mb-10 text-center text-zinc-600 dark:text-zinc-400">
-            Built for reliability, security, and scale. Your job search runs on infrastructure you
-            can trust.
+            A hosted application with saved run state, browser visibility, and service health checks.
           </p>
           <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3">
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
@@ -1391,9 +1178,9 @@ export default function Home() {
                   />
                 </svg>
               </div>
-              <p className="font-semibold text-zinc-900 dark:text-white">99.9% Uptime SLA</p>
+              <p className="font-semibold text-zinc-900 dark:text-white">Public Service Status</p>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Monitored 24/7 with automated health checks. View real-time status at our{" "}
+                Check API, database, and queue availability on our{" "}
                 <Link
                   href="/status"
                   className="underline hover:text-zinc-700 dark:hover:text-zinc-300"
@@ -1442,11 +1229,11 @@ export default function Home() {
                 </svg>
               </div>
               <p className="font-semibold text-zinc-900 dark:text-white">
-                Automatic Retry &amp; Recovery
+                Recorded Run Outcomes
               </p>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Exponential backoff on transient failures, graceful degradation, and automatic
-                recovery ensure your applications never get lost.
+                Submitted, failed, and uncertain outcomes are tracked separately. An uncertain
+                submission requires checking before another attempt.
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
@@ -1466,11 +1253,11 @@ export default function Home() {
                 </svg>
               </div>
               <p className="font-semibold text-zinc-900 dark:text-white">
-                Auto-Scaling Infrastructure
+                Hosted Services
               </p>
               <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Containerized Docker microservices with PostgreSQL and Redis, designed for
-                horizontal scaling and automatic failover.
+                Containerized services on Railway use PostgreSQL and Redis for application data
+                and orchestration.
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-800 dark:bg-zinc-950">
@@ -1620,16 +1407,15 @@ export default function Home() {
                       <strong className="text-zinc-900 dark:text-white">
                         Real accounts, real applications.
                       </strong>{" "}
-                      We submit genuine applications using your authentic credentials — never fake
-                      profiles or scraped data.
+                      Applications use your signed-in account and the resume and facts you provide.
                     </span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="mt-0.5 text-emerald-600 shrink-0">&#10003;</span>
                     <span>
                       <strong className="text-zinc-900 dark:text-white">Human-in-the-loop.</strong>{" "}
-                      Two mandatory approval checkpoints ensure you review and approve everything
-                      before submission.
+                      Search runs include resume and shortlist review. Quick Apply uses the job links
+                      you explicitly select; missing facts are queued for your answer.
                     </span>
                   </div>
                 </div>
@@ -1640,16 +1426,16 @@ export default function Home() {
                       <strong className="text-zinc-900 dark:text-white">
                         Rate-limited and respectful.
                       </strong>{" "}
-                      We pace submissions to avoid overwhelming any platform — your accounts stay in
-                      good standing.
+                      Applications run sequentially. Platform limits and account restrictions can still
+                      interrupt a run.
                     </span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="mt-0.5 text-emerald-600 shrink-0">&#10003;</span>
                     <span>
                       <strong className="text-zinc-900 dark:text-white">No data selling.</strong>{" "}
-                      Your resume, personal info, and application history are never shared with or
-                      sold to third parties.
+                      Resume and application content is processed by the selected AI provider and
+                      Browserbase, and submitted to the selected job board and employer. We do not sell it.
                     </span>
                   </div>
                 </div>
