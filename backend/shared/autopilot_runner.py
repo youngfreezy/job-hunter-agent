@@ -160,9 +160,9 @@ async def _run_schedule(
         try:
             resume_text = await asyncio.to_thread(extract_resume_text, resume_bytes, ext)
         except Exception as exc:
-            raise ValueError("Autopilot needs a readable saved resume. Upload a PDF, DOCX, or TXT resume in Settings.") from exc
+            raise ValueError("Autopilot needs a readable saved resume. Upload a PDF, DOCX, or TXT resume in New search or Quick Apply before running Autopilot.") from exc
     if not resume_bytes or not resume_text:
-        raise ValueError("Autopilot needs a readable saved resume. Upload a PDF, DOCX, or TXT resume in Settings.")
+        raise ValueError("Autopilot needs a readable saved resume. Upload a PDF, DOCX, or TXT resume in New search or Quick Apply before running Autopilot.")
 
     # Check task queue concurrency (max 2 per user)
     try:
