@@ -89,21 +89,13 @@ def decrypt_nextauth_jwt(token: str, secret: str) -> dict:
 
 
 def _extract_email(request: Request) -> Optional[str]:
-    """Try to extract user email from JWT in Authorization header or query param.
-
-    EventSource (SSE) cannot send custom headers, so we also accept
-    ``?token=<jwt>`` for SSE stream endpoints.
-    """
+    """Authenticate bearer headers only; URL tokens leak through request logs."""
     token: Optional[str] = None
 
     # 1. Prefer Authorization header
     auth_header = request.headers.get("authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
-
-    # 2. Fall back to ?token= query param (for EventSource / SSE)
-    if not token:
-        token = request.query_params.get("token")
 
     if not token:
         return None

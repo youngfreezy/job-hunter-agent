@@ -25,6 +25,9 @@ if os.environ.get("LOG_TO_FILE", "true").lower() == "true":
     _file.setFormatter(_log_fmt)
     _handlers.append(_file)
 logging.basicConfig(level=logging.INFO, handlers=_handlers)
+from backend.gateway.access_logging import install_access_log_redaction
+
+install_access_log_redaction()
 for _noisy in (
     "httpcore", "httpx", "neo4j", "urllib3", "watchfiles", "asyncio",
     "browser_use", "cdp_use", "bubus",
