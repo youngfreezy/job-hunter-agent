@@ -203,9 +203,13 @@ async def test_unsupported_observed_mutations_never_execute(method, arguments):
     agent.observe = AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(
         method=method, arguments=arguments, selector='/button[1]')]))
     page = MagicMock()
+    page.url = AsyncMock(return_value='https://smartapply.indeed.com/questions')
+    page.snapshot = AsyncMock(return_value=SimpleNamespace(formatted_tree='', xpath_map={}))
+    page.locator.return_value.count = AsyncMock(return_value=0)
+    page.locator.return_value.click = AsyncMock()
     with pytest.raises(ApplicationParked):
         await resolve_action(agent, page, 'Continue')
-    page.locator.assert_not_called()
+    page.locator.return_value.click.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -225,6 +229,7 @@ async def test_checkbox_native_action_is_idempotent(method, initial, expected):
         checked = not checked
     rpc = MagicMock(send=AsyncMock(side_effect=send))
     page = MagicMock()
+    page.url = AsyncMock(return_value='https://smartapply.indeed.com/questions')
     page.snapshot = AsyncMock(return_value=SimpleNamespace(
         formatted_tree='[1-1] checkbox: I acknowledge the privacy notice',
         xpath_map={'1-1': '/input[1]'}))
@@ -246,6 +251,9 @@ async def test_check_cannot_disguise_a_submit_button():
         method='check', arguments=[], selector='/button[1]')])) )
     page = MagicMock(snapshot=AsyncMock(return_value=SimpleNamespace(
         formatted_tree='[1-1] button: Submit application', xpath_map={'1-1': '/button[1]'})))
+    page.url = AsyncMock(return_value='https://smartapply.indeed.com/questions')
+    page.locator.return_value.count = AsyncMock(return_value=0)
+    page.locator.return_value.click = AsyncMock()
     with pytest.raises(ApplicationParked):
         await resolve_action(agent, page, 'Acknowledge')
-    page.locator.assert_not_called()
+    page.locator.return_value.click.assert_not_awaited()

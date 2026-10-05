@@ -18,6 +18,7 @@ from stagehand.extension_assets import build_extension_archive
 from backend.browser.browserbase_client import BrowserbaseConfig, BrowserbaseSession
 from backend.shared.model_access import current_model_credentials, current_model_user, model_user_scope
 from backend.browser.stagehand_model import generate
+from backend.browser.stagehand_cache import routine_cache_options
 from backend.gateway.routes.stagehand_telemetry import STAGEHAND_TELEMETRY_PATH
 from backend.shared.config import settings
 
@@ -111,6 +112,7 @@ async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
             browser=browser, model=owned_generate,
             logging={"level": "off"},  # Prompts contain applicant personal information.
             telemetry=telemetry,
+            cache=routine_cache_options(),  # 4.1's bundled extension defaults to off.
             self_heal=True,
         )
         cleanup.push_async_callback(agent.close)

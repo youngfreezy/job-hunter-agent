@@ -135,6 +135,31 @@ async def test_app_owned_telemetry_is_explicit_in_installed_sdk_contract(transpo
 
 
 @pytest.mark.asyncio
+async def test_result_cache_is_explicit_in_installed_sdk_contract(transport):
+    from stagehand._generated.models import StagehandInitParams
+    _, _, cleanup = await launch()
+    try:
+        cache = transport.create.await_args.kwargs['cache']
+        wire = StagehandInitParams.model_validate({
+            'protocol_version': '1.0.0', 'client_info': {'name': 'test', 'version': '1.0.0'},
+            'cache': cache,
+        }).model_dump(mode='json', by_alias=True)
+        assert wire['cache'] == {'threshold': 1}
+    finally:
+        await cleanup.aclose()
+
+
+@pytest.mark.asyncio
+async def test_operator_cache_opt_out_reaches_sdk(transport, monkeypatch):
+    monkeypatch.setattr(settings, 'STAGEHAND_CACHE_ENABLED', False)
+    _, _, cleanup = await launch()
+    try:
+        assert transport.create.await_args.kwargs['cache'] is False
+    finally:
+        await cleanup.aclose()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('origin', [
     None, '', 'http://api.jobhunteragent.com', 'https://localhost',
     'https://127.0.0.1', 'https://example.com',

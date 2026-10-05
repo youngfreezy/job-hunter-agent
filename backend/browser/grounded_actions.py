@@ -4,6 +4,7 @@ import json
 import re
 
 from backend.shared.application_rules import ApplicationParked
+from backend.browser.stagehand_cache import record_result_cache, page_cache_options
 
 
 class UnresolvedControl(ApplicationParked):
@@ -70,10 +71,7 @@ class GroundedAction:
             raise ApplicationParked('Unsupported browser action; application was not advanced.')
 
 
-async def resolve_action(agent, page, instruction: str) -> GroundedAction:
-    observed = await agent.observe(instruction + '\nReturn exactly one atomic action on a visible control. '
-                                   'Use only click, fill, selectOption, check, or uncheck. '
-                                   'Do not combine actions, press Enter, or return JavaScript.', page=page, cache=False)
+def _validated_action(observed, snapshot) -> GroundedAction:
     if len(observed.data) != 1:
         raise UnresolvedControl('Could not identify one unambiguous control for the requested action.')
     action = observed.data[0]
@@ -87,13 +85,44 @@ async def resolve_action(agent, page, instruction: str) -> GroundedAction:
             or (method == 'fill' and len(arguments) != 1)
             or (method == 'selectOption' and not arguments)):
         raise ApplicationParked('Unsupported browser action; application was not advanced.')
-    snapshot = await page.snapshot(include_iframes=True)
     role, _ = _control(snapshot, action.selector)
     if method in ('check', 'uncheck') and (
             role not in ('checkbox', 'radio') or (role == 'radio' and method == 'uncheck')):
         raise ApplicationParked('The observed control is not a supported checkbox or radio button.')
     label = control_label(snapshot, action.selector)
-    locator = page.locator(action.selector)
-    if not label or await locator.count() != 1 or not await locator.is_visible():
+    if not label:
         raise ApplicationParked('Could not verify the observed control in the current form.')
     return GroundedAction(action.selector, label, method, arguments)
+
+
+async def resolve_action(agent, page, instruction: str, *, fresh: bool = False) -> GroundedAction:
+    """Reuse observations, never action outcomes; validate the live target before acting."""
+    prompt = instruction + '\nReturn exactly one atomic action on a visible control. ' \
+        'Use only click, fill, selectOption, check, or uncheck. ' \
+        'Do not combine actions, press Enter, or return JavaScript.'
+    for attempt in range(2):
+        url = await page.url()
+        cache = await page_cache_options(page, instruction, fresh=fresh)
+        before = await page.snapshot(include_iframes=True) if cache is not False or attempt else None
+        observed = await agent.observe(prompt, page=page, cache=cache)
+        metadata = record_result_cache(agent, 'observe', observed)
+        hit = bool(metadata and metadata['status'] == 'HIT')
+        try:
+            snapshot = await page.snapshot(include_iframes=True)
+            action = _validated_action(observed, snapshot)
+            if (hit or attempt) and (before is None or await page.url() != url
+                        or _control(before, action.selector) != _control(snapshot, action.selector)):
+                raise UnresolvedControl('The cached control changed; a fresh observation is required.')
+            locator = page.locator(action.selector)
+            if await locator.count() != 1 or not await locator.is_visible():
+                raise UnresolvedControl('The observed control is no longer unique and visible.')
+        except ApplicationParked:
+            if hit and not fresh and attempt == 0:
+                fresh = True
+                continue  # Read again once; no browser mutation has happened.
+            raise
+        if action.is_submission and cache is not False:
+            fresh = True
+            continue  # A planner's "act" can conceal the final submit control.
+        return action
+    raise UnresolvedControl('Could not resolve a fresh application control.')

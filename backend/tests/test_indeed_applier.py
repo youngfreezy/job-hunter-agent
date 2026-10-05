@@ -165,6 +165,7 @@ async def test_auth_and_missing_answers_do_not_act():
         assert result.status == status
         assert result.error_message == 'Work authorization?'
         agent.native_action.assert_not_awaited()
+        assert agent.extract.await_args.kwargs['cache'] is False
 
 
 @pytest.mark.asyncio

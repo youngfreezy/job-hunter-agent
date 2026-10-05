@@ -41,6 +41,12 @@ The application flow is:
 4. **Queue unknowns in the app.** **Needs your answer** displays the exact unresolved question while other eligible jobs continue. Saving an answer does not restart the run; the UI offers an explicit retry. API/SSE consumers receive the same question state.
 5. **Verify submission.** Final review is audited before a durable submission intent is recorded. Only a current confirmation with no remaining submit button counts as submitted. An uncertain outcome remains held for reconciliation instead of being automatically submitted again.
 
+### Stagehand result caching
+
+`STAGEHAND_CACHE_ENABLED=true` explicitly enables Browserbase's managed result cache with a one-result threshold; it does not rely on the pinned SDK's default. Routine control observations and listing reads can reuse an identical result without model inference. Page content, URL, instruction, and options must still match, so different job forms may miss. The full applicant-aware planner, answer judge, resume-recovery reads, and final submission resolution stay fresh. Credential instructions and password/verification-code forms bypass caching.
+
+Cached selectors are checked against the current visible control before native execution. An unusable cache hit gets one uncached observation, without replaying any browser action. Cache misses retain the existing owner-scoped model client and spending guard. Set `STAGEHAND_CACHE_ENABLED=false` to disable reads/writes. Application activity and logs report cache hits, misses, and cache-reported tokens avoided; these are separate from provider prompt-cached tokens and are not a dollar-savings guarantee. See [Stagehand's caching contract](https://docs.stagehand.dev/v4/best-practices/caching).
+
 ### Local demo spending guard
 
 `JOBHUNTER_MODEL_BUDGET_LEDGER` is an opt-in **backend process environment variable** pointing to an absolute, initialized SQLite ledger. Initialize it once with `Ledger.create(path, limit_usd=...)` from `backend.shared.model_budget`, then export the path before starting the backend. Merely adding it to the Settings model or assuming the local value exists on Railway does not enable it. Existing ledgers must not be replaced to reset spend; missing or corrupt configured ledgers block paid model calls.

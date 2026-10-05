@@ -14,7 +14,8 @@ URL = "https://www.indeed.com/viewjob?jk=example"
 @pytest.fixture
 def cloud(monkeypatch):
     page = SimpleNamespace(goto=AsyncMock(), wait_for_function=AsyncMock())
-    stage_page = SimpleNamespace(url=AsyncMock(return_value=URL))
+    stage_page = SimpleNamespace(url=AsyncMock(return_value=URL),
+                                 locator=MagicMock(return_value=SimpleNamespace(count=AsyncMock(return_value=0))))
     manager = MagicMock()
     manager.start_for_task = AsyncMock()
     manager.new_context = AsyncMock(return_value=("ctx", SimpleNamespace(pages=[page])))
@@ -44,6 +45,7 @@ async def test_quick_apply_reads_listing_in_owner_cloud_context(monkeypatch, clo
     cloud.start_for_task.assert_awaited_once_with(board=module.JobBoard.INDEED, purpose="hydrate", user_id="owner")
     cloud.stop.assert_awaited_once()
     http.assert_not_awaited()
+    assert cloud.stagehand.extract.await_args.kwargs['cache'] == {'threshold': 1}
 
 
 @pytest.mark.asyncio
@@ -79,6 +81,9 @@ async def test_managed_challenge_can_clear_before_listing_extraction(cloud):
     cloud.stagehand.extract.side_effect = [blocked, good]
     jobs = await module.hydrate_indeed_urls([URL], user_id="owner", session_id="session")
     assert len(jobs) == 1
+    assert [call.kwargs['cache'] for call in cloud.stagehand.extract.await_args_list] == [
+        {'threshold': 1}, False,
+    ]
     module.asyncio.sleep.assert_awaited_once_with(10)
     cloud.stop.assert_awaited_once()
 

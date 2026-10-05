@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from backend.browser.indeed_policy import is_indeed_url, wait_for_indeed_page
 from backend.browser.manager import BrowserManager
+from backend.browser.stagehand_cache import record_result_cache, page_cache_options
 from backend.shared.config import MAX_APPLICATION_JOBS
 from backend.shared.event_bus import emit_agent_event
 from backend.shared.models.schemas import ATSType, JobBoard, JobListing
@@ -56,7 +57,9 @@ async def hydrate_indeed_urls(urls: list[str], *, user_id: str, session_id: str)
                         "Do not invent missing details. Determine whether the listing is expired, "
                         "blocked by sign-in or a challenge, and offers an active application on Indeed. "
                         "Do not click Apply or submit anything.", IndeedListing, page=stage_page,
+                        cache=await page_cache_options(stage_page, fresh=attempt > 0),
                     )
+                    record_result_cache(manager.stagehand, 'extract', result)
                     data = result.data
                     if not data.blocked or attempt == 3:
                         break
