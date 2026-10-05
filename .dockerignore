@@ -13,3 +13,17 @@ screenshots/
 test_screenshots/
 .pytest_cache/
 .playwright/
+
+# Keep host dependencies, build output, credentials, and test artifacts out of nested packages.
+**/node_modules/
+**/.next/
+**/.next-dev/
+**/.env
+**/.env.*
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.runtime/
+**/.playwright/
+**/test-results/
+**/playwright-report/
