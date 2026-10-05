@@ -98,6 +98,7 @@ async def test_stagehand_callback_is_bound_even_in_another_dispatch_context(monk
     from unittest.mock import AsyncMock
     from backend.browser import stagehand_session as session
     from backend.browser.browserbase_client import BrowserbaseConfig
+    monkeypatch.setattr(session.settings, 'BACKEND_PUBLIC_URL', 'https://api.jobhunteragent.com')
     browser = MagicMock()
     browser.session_id = 'offline-session'; browser.close = AsyncMock()
     monkeypatch.setattr(session.browserbase, 'connect', AsyncMock(return_value=browser))

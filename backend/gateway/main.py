@@ -385,6 +385,11 @@ def create_app() -> FastAPI:
     from backend.gateway.routes.model_settings import router as model_settings_router
     app.include_router(model_settings_router)
 
+    # The SDK's credential-free extension trace sink must discard bytes before
+    # auth/CSRF/rate-limit middleware. Only this exact path bypasses that stack.
+    from backend.gateway.routes.stagehand_telemetry import StagehandTelemetryDiscard
+    app.add_middleware(StagehandTelemetryDiscard)
+
     return app
 
 

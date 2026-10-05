@@ -22,7 +22,10 @@ ANTHROPIC_API_KEY=...
 BROWSERBASE_API_KEY=...
 BROWSERBASE_PROJECT_ID=...
 BROWSERBASE_PROXIES=true
+BACKEND_PUBLIC_URL=https://your-backend-host
 ```
+
+`BACKEND_PUBLIC_URL` must be your backend's public HTTPS origin without a path; use an HTTPS tunnel to the local backend for cloud-browser development. Stagehand 4.1 exports traces even with logging off, so JobHunter explicitly routes those exports to its own `/api/stagehand/v1/traces` endpoint. That endpoint returns an empty response without reading or storing the request body. Missing or invalid configuration stops the run before a paid browser is allocated.
 
 Sign in with Google, then open **Settings**. Public visitors supply their own Anthropic API key and Browserbase API key/project; keys are encrypted and never returned in full. Complete the Indeed login capture before applying. Application sessions reuse that user's persisted Browserbase Context. Server-funded model/browser credentials and contexts are available only to the explicit `BROWSERBASE_CONTEXT_USER_ID` owner. Missing visitor keys block model work without falling back to the owner's account. Browserbase login and the app's Google login are separate.
 

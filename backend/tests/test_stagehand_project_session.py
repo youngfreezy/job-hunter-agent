@@ -10,12 +10,14 @@ from browserbase import AsyncBrowserbase as RealBrowserbase
 
 from backend.browser import stagehand_session as subject
 from backend.browser.browserbase_client import BrowserbaseConfig
+from backend.shared.config import settings
 
 
 @pytest.fixture
 def transport(monkeypatch):
     requests, events = [], []
     state = {'project': 'visitor-project', 'fail': None}
+    monkeypatch.setattr(settings, 'BACKEND_PUBLIC_URL', 'https://api.jobhunteragent.com')
     real_http = httpx.AsyncClient
 
     def respond(request):
@@ -115,3 +117,36 @@ async def test_missing_project_refused_before_any_provider_request(transport):
     with pytest.raises(RuntimeError, match='Browserbase project'):
         await subject.launch_stagehand(BrowserbaseConfig(api_key='fictional', project_id=''), 'context')
     assert not transport.requests
+
+
+@pytest.mark.asyncio
+async def test_app_owned_telemetry_is_explicit_in_installed_sdk_contract(transport):
+    from stagehand._generated.models import StagehandInitParams
+    _, _, cleanup = await launch()
+    telemetry = transport.create.await_args.kwargs['telemetry']
+    wire = StagehandInitParams.model_validate({
+        'protocol_version': '1.0.0', 'client_info': {'name': 'test', 'version': '1.0.0'},
+        'telemetry': telemetry,
+    }).model_dump(mode='json', by_alias=True)
+    assert wire['telemetry'] == {'traces': {
+        'endpoint': 'https://api.jobhunteragent.com/api/stagehand/v1/traces', 'headers': {}}}
+    assert 'example.com' not in json.dumps(wire)
+    await cleanup.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('origin', [
+    None, '', 'http://api.jobhunteragent.com', 'https://localhost',
+    'https://127.0.0.1', 'https://example.com',
+    'https://user:secret@api.jobhunteragent.com',
+    'https://api.jobhunteragent.com/path', 'https://api.jobhunteragent.com?redirect=example.com',
+    'https://api.jobhunteragent.com#fragment', 'https://api.jobhunteragent.com:bad',
+    'https://api.jobhunteragent.com\\evil',
+])
+async def test_invalid_telemetry_origin_fails_before_allocating_provider_resources(transport, monkeypatch, origin):
+    monkeypatch.setattr(settings, 'BACKEND_PUBLIC_URL', origin)
+    with pytest.raises(RuntimeError, match='BACKEND_PUBLIC_URL'):
+        await launch()
+    assert transport.requests == []
+    transport.connect.assert_not_awaited()
+    transport.create.assert_not_awaited()

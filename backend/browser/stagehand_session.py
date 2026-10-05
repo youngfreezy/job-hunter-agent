@@ -7,6 +7,8 @@ https://docs.stagehand.dev/v4/configuration/browser
 
 import asyncio
 from contextlib import AsyncExitStack
+from ipaddress import ip_address
+from urllib.parse import urlsplit
 
 import httpx
 from browserbase import AsyncBrowserbase, omit
@@ -16,6 +18,43 @@ from stagehand.extension_assets import build_extension_archive
 from backend.browser.browserbase_client import BrowserbaseConfig, BrowserbaseSession
 from backend.shared.model_access import current_model_credentials, current_model_user, model_user_scope
 from backend.browser.stagehand_model import generate
+from backend.gateway.routes.stagehand_telemetry import STAGEHAND_TELEMETRY_PATH
+from backend.shared.config import settings
+
+
+def _telemetry_config() -> dict:
+    """Keep SDK traces on our discard endpoint, never its example.com default."""
+    error = "Stagehand requires BACKEND_PUBLIC_URL to be a public HTTPS origin."
+    origin = settings.BACKEND_PUBLIC_URL
+    if not origin or origin != origin.strip() or "\\" in origin:
+        raise RuntimeError(error)
+    try:
+        parsed = urlsplit(origin)
+        hostname = parsed.hostname or ""
+        port = parsed.port  # Validate malformed ports before allocating a session.
+    except ValueError:
+        raise RuntimeError(error) from None
+    if (
+        parsed.scheme != "https" or not hostname or "." not in hostname
+        or parsed.username is not None or parsed.password is not None
+        or parsed.path not in ("", "/") or parsed.query or parsed.fragment
+        or any(character.isspace() for character in origin)
+        or hostname.rstrip(".").lower() in ("localhost", "example.com")
+        or hostname.rstrip(".").lower().endswith((".localhost", ".local", ".example.com"))
+        or (port is not None and port != 443)
+    ):
+        raise RuntimeError(error)
+    try:
+        address = ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        if not address.is_global:
+            raise RuntimeError(error)
+    return {"traces": {
+        "endpoint": origin.rstrip("/") + STAGEHAND_TELEMETRY_PATH,
+        "headers": {},
+    }}
 
 
 async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
@@ -24,6 +63,9 @@ async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
     model_user_id = current_model_user()
     if not key or not config.api_key or not config.project_id or not context_id:
         raise RuntimeError("Stagehand requires model credentials, a Browserbase project, and your saved Indeed login.")
+    # Stagehand 4.1 always exports traces, including prompt data even when logs
+    # are off. Validate our no-storage sink before creating paid resources.
+    telemetry = _telemetry_config()
     cleanup = AsyncExitStack()
     try:
         # Stagehand 4.1 launch() has no project_id. Use its documented SDK
@@ -68,6 +110,7 @@ async def launch_stagehand(config: BrowserbaseConfig, context_id: str):
         agent = await Stagehand.create(
             browser=browser, model=owned_generate,
             logging={"level": "off"},  # Prompts contain applicant personal information.
+            telemetry=telemetry,
             self_heal=True,
         )
         cleanup.push_async_callback(agent.close)
