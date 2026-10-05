@@ -2,6 +2,8 @@
 
 "use client";
 
+import { readSavedResume } from "@/lib/resume-storage";
+
 import { RecoveryNotice } from "@/components/RecoveryNotice";
 import { resultStreamError } from "@/lib/result-stream";
 import { useEffect, useState } from "react";
@@ -205,8 +207,7 @@ export default function InterviewPrepPage() {
 
   // Show start form / loading until questions arrive
   if (questions.length === 0 && !error && status !== "completed") {
-    const savedResume =
-      typeof window !== "undefined" ? localStorage.getItem("jh_resume_text") || "" : "";
+    const savedResume = readSavedResume().text;
     return (
       <div className="container mx-auto max-w-3xl p-6 space-y-6">
         <h1 className="text-2xl font-bold">Interview Prep</h1>

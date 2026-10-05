@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 
 interface ScreenshotViewerProps {
@@ -11,16 +11,7 @@ interface ScreenshotViewerProps {
 }
 
 export function ScreenshotViewer({ imageUrl, currentUrl, fps, status = "connecting" }: ScreenshotViewerProps) {
-  const imgRef = useRef<HTMLImageElement>(null);
   const [dimensions, setDimensions] = useState({ w: 0, h: 0 });
-
-  useEffect(() => {
-    if (imgRef.current && imageUrl) {
-      const img = new Image();
-      img.onload = () => setDimensions({ w: img.width, h: img.height });
-      img.src = imageUrl;
-    }
-  }, [imageUrl]);
 
   const statusColor = {
     connecting: "bg-yellow-500",
@@ -49,8 +40,10 @@ export function ScreenshotViewer({ imageUrl, currentUrl, fps, status = "connecti
 
       {/* Screenshot */}
       {imageUrl ? (
+        // Native image rendering preserves streaming blob/data URLs without an optimizer request.
+        // eslint-disable-next-line @next/next/no-img-element
         <img
-          ref={imgRef}
+          onLoad={(event) => setDimensions({ w: event.currentTarget.naturalWidth, h: event.currentTarget.naturalHeight })}
           src={imageUrl}
           alt="Live browser view"
           className="max-w-full max-h-full object-contain"
@@ -64,7 +57,7 @@ export function ScreenshotViewer({ imageUrl, currentUrl, fps, status = "connecti
       )}
 
       {/* Dimensions overlay */}
-      {dimensions.w > 0 && (
+      {imageUrl && dimensions.w > 0 && (
         <div className="absolute bottom-3 right-3 text-xs text-zinc-500">
           {dimensions.w}x{dimensions.h}
         </div>

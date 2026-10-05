@@ -61,8 +61,12 @@ export default function SessionSettingsPage() {
 
   const save = (updated: SessionSettings) => {
     setSettings(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    toast.success("Settings saved");
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      toast.success("Settings saved");
+    } catch {
+      toast.error("Browser storage is unavailable. These settings could not be saved.");
+    }
   };
 
   const update = <K extends keyof SessionSettings>(

@@ -4,7 +4,7 @@
 
 import { RecoveryNotice } from "@/components/RecoveryNotice";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -174,7 +174,7 @@ export default function AutopilotPage() {
     }
   }
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const headers = await getAuthHeaders();
       if (!headers.Authorization) {
@@ -184,16 +184,16 @@ export default function AutopilotPage() {
       const data = await listAutopilotSchedules();
       setSchedules(data);
       setLoadError(null);
-    } catch (err) {
+    } catch {
       setLoadError("Could not load schedules. Please try again.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [router]);
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
 
   async function handleCreate() {
     if (!keywords.trim()) return;

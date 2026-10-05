@@ -43,15 +43,11 @@ export default function SessionCareerPivotPage() {
   const [unlocking, setUnlocking] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
-  const [hasResume, setHasResume] = useState(false);
-
-  useEffect(() => {
-    setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
-  }, []);
+  const [resumeText, setResumeText] = useState("");
+  const hasResume = Boolean(resumeText.trim());
 
   // Start pivot session
   async function handleStart() {
-    const resumeText = localStorage.getItem("jh_resume_text") || "";
     if (!resumeText.trim()) {
       setError("Please upload your resume first.");
       return;
@@ -168,7 +164,7 @@ export default function SessionCareerPivotPage() {
           </div>
 
           <div className="max-w-lg mx-auto">
-            <ResumeUpload onResumeReady={() => setHasResume(true)} />
+            <ResumeUpload onResumeReady={setResumeText} />
           </div>
 
           {error && <p className="text-destructive text-sm text-center">{error}</p>}
