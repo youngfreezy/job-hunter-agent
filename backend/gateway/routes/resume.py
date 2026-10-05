@@ -85,6 +85,6 @@ async def analyze_resume(body: ResumeAnalyzeRequest, request: Request):
             remote_likely=config.remote_only,
         )
 
-    except Exception as e:
-        logger.exception("Resume analysis failed")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    except Exception as exc:
+        logger.error("Resume analysis failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Resume analysis is temporarily unavailable. Please try again.") from None

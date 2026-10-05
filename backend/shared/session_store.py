@@ -218,17 +218,18 @@ def unarchive_session(session_id: str, user_id: str) -> bool:
 
 def delete_session(session_id: str, user_id: str) -> bool:
     """Permanently delete a session and all associated data."""
+    from backend.shared.data_deletion import ActiveWorkDeletionError, delete_session_data, require_stopped_sessions
+
     with _connect() as conn:
         try:
-            # Delete resume file
-            conn.execute("DELETE FROM resume_files WHERE session_id = %s", (session_id,))
-
-            # Clean up LangGraph checkpoints (no FK cascade)
-            for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
-                try:
-                    conn.execute(f"DELETE FROM {table} WHERE thread_id = %s", (session_id,))
-                except Exception:
-                    logger.debug("Checkpoint table %s cleanup skipped", table)
+            owned = conn.execute(
+                "SELECT id, status FROM sessions WHERE id = %s AND user_id::text = %s FOR UPDATE",
+                (session_id, str(user_id)),
+            ).fetchone()
+            if not owned:
+                return False
+            require_stopped_sessions([owned])
+            delete_session_data(conn, [session_id])
 
             # Delete session row (CASCADE handles application_results, dead_letter_queue)
             cur = conn.execute(
@@ -237,10 +238,25 @@ def delete_session(session_id: str, user_id: str) -> bool:
             )
             conn.commit()
             return cur.rowcount > 0
+        except ActiveWorkDeletionError:
+            conn.rollback()
+            raise
         except Exception:
             conn.rollback()
             logger.error("Failed to delete session %s", session_id, exc_info=True)
             return False
+
+
+def get_session_ids_for_user(user_id: str, *, require_stopped: bool = False) -> list[str]:
+    """Load durable ownership for erasure; storage failures must reach the caller."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, status FROM sessions WHERE user_id::text = %s", (str(user_id),)
+        ).fetchall()
+    if require_stopped:
+        from backend.shared.data_deletion import require_stopped_sessions
+        require_stopped_sessions(rows)
+    return [str(row[0]) for row in rows]
 
 
 def get_interrupted_sessions(max_age_hours: int = 2) -> List[Dict[str, Any]]:

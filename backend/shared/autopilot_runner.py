@@ -186,6 +186,17 @@ async def _run_schedule(
         logger.warning("Autopilot admission unavailable (%s); no pipeline started", type(exc).__name__)
         raise QueueUnavailable("Session admission is temporarily unavailable. Try again shortly.") from exc
 
+    # The scheduler may have prefetched this row before an account/schedule delete.
+    # No await between this final ownership read and persistence/background launch.
+    from backend.shared.autopilot_store import schedule_owner_exists
+    try:
+        if not schedule_owner_exists(schedule_id, user_id):
+            raise ValueError("This autopilot schedule or its account no longer exists.")
+    except Exception:
+        from backend.shared.task_queue import mark_complete
+        await mark_complete(session_id)
+        raise
+
     if resume_bytes:
         resume_dir = os.path.join(tempfile.gettempdir(), "jobhunter_resumes")
         os.makedirs(resume_dir, exist_ok=True)

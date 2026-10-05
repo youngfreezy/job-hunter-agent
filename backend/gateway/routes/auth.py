@@ -118,33 +118,45 @@ async def update_minimum_submitted(request: Request, body: MinimumSubmittedUpdat
 async def delete_user_data(request: Request):
     """GDPR: permanently delete all data associated with the current user."""
     from backend.gateway.routes.sessions import session_registry
-    from backend.shared.application_store import delete_application_results_for_sessions
     from backend.shared.billing_store import delete_user_data as delete_billing_data
     from backend.shared.redis_client import redis_client
+    from backend.shared.session_store import get_session_ids_for_user
+    from backend.shared.data_deletion import ActiveWorkDeletionError, require_idle_sessions
 
     user = get_current_user(request)
     user_id = user["id"]
-    user_email = user["email"]
-    # Remove the owner's model key before deleting the identity that scopes it.
-    from backend.shared.model_key_store import save_model_key
+    logger.info("Account data delete requested for user %s", user_id)
+
+    # Resolve durable ownership before deletion, including sessions not in memory.
     try:
-        save_model_key(str(user_id), "")
+        stored_session_ids = get_session_ids_for_user(str(user_id), require_stopped=True)
+    except ActiveWorkDeletionError:
+        raise HTTPException(status_code=409, detail="Stop queued and active sessions before deleting their data.") from None
     except Exception:
         raise HTTPException(status_code=503, detail="Account data deletion is temporarily unavailable") from None
-    logger.info("GDPR delete requested for user %s (%s)", user_id, user_email)
-
-    # 1. Collect session IDs owned by this user
-    user_session_ids = [
+    user_session_ids = sorted(set(stored_session_ids) | {
         sid
         for sid, meta in session_registry.items()
-        if meta.get("user_id") == user_id
-    ]
+        if str(meta.get("user_id")) == str(user_id)
+    })
 
-    # 2. Delete application results for those sessions
-    app_deleted = delete_application_results_for_sessions(user_session_ids)
+    # Stop must settle workers and queue admission before credentials/data vanish.
+    from backend.shared.model_key_store import save_model_key
+    try:
+        await require_idle_sessions(str(user_id), user_session_ids, entire_account=True)
+        save_model_key(str(user_id), "")
+    except ActiveWorkDeletionError:
+        raise HTTPException(status_code=409, detail="Stop queued and active sessions before deleting their data.") from None
+    except Exception:
+        raise HTTPException(status_code=503, detail="Account data deletion is temporarily unavailable") from None
 
-    # 3. Delete billing data (wallet_transactions + users row)
-    billing_deleted = delete_billing_data(user_id)
+    # All owned database records are erased in one transaction.
+    try:
+        billing_deleted = delete_billing_data(user_id)
+    except ActiveWorkDeletionError:
+        raise HTTPException(status_code=409, detail="Stop queued and active sessions before deleting their data.") from None
+    if not billing_deleted:
+        raise HTTPException(status_code=503, detail="Account data deletion is temporarily unavailable")
 
     # 4. Clear Redis keys for this user's sessions (gmail tokens)
     redis_keys_deleted = 0
@@ -157,38 +169,23 @@ async def delete_user_data(request: Request):
 
     # 5. Clear rate-limit keys for this user
     try:
-        rl_pattern = f"ratelimit:user:{user_id}:*"
-        keys = await redis_client.client.keys(rl_pattern)
-        if keys:
-            await redis_client.client.delete(*keys)
-            redis_keys_deleted += len(keys)
+        from backend.gateway.middleware.rate_limit import clear_user_rate_limits
+        redis_keys_deleted += await clear_user_rate_limits(user["email"])
     except Exception:
         logger.exception("Failed to clear rate-limit keys for user %s", user_id)
 
-    # 6. Delete failure screenshots for those sessions
-    screenshots_deleted = 0
-    try:
-        from backend.shared.screenshot_store import delete_for_session
-        for sid in user_session_ids:
-            screenshots_deleted += delete_for_session(sid)
-    except Exception:
-        logger.exception("Failed to delete screenshots for user %s", user_id)
-
-    # 7. Remove sessions from in-memory registry
+    # Screenshots/checkpoints/resumes were included in the database transaction.
     for sid in user_session_ids:
         session_registry.pop(sid, None)
 
-    success = app_deleted and billing_deleted
-    status_code = 200 if success else 207
-
     return JSONResponse(
-        status_code=status_code,
+        status_code=200,
         content={
             "deleted": True,
             "user_id": user_id,
             "sessions_cleared": len(user_session_ids),
             "redis_keys_deleted": redis_keys_deleted,
             "billing_deleted": billing_deleted,
-            "application_results_deleted": app_deleted,
+            "application_results_deleted": True,
         },
     )

@@ -1039,12 +1039,20 @@ async def archive_session_endpoint(session_id: str, request: Request):
 @router.delete("/{session_id}")
 async def delete_session_endpoint(session_id: str, request: Request):
     """Permanently delete a session and all associated data."""
-    from backend.gateway.deps import get_current_user
+    from backend.gateway.deps import get_current_user, verify_session_owner
     from backend.shared.session_store import delete_session
+    from backend.shared.data_deletion import ActiveWorkDeletionError, require_idle_sessions
     user = get_current_user(request)
     user_id = str(user["id"])
 
-    ok = delete_session(session_id, user_id)
+    await verify_session_owner(session_id, user, request)
+    try:
+        await require_idle_sessions(user_id, [session_id])
+        ok = delete_session(session_id, user_id)
+    except ActiveWorkDeletionError:
+        raise HTTPException(status_code=409, detail="Stop queued and active sessions before deleting their data.") from None
+    except Exception:
+        raise HTTPException(status_code=503, detail="Session deletion is temporarily unavailable") from None
     if not ok:
         return JSONResponse({"error": "Session not found"}, status_code=404)
 

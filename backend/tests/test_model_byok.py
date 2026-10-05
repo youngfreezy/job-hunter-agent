@@ -1,6 +1,6 @@
 """No-network multi-tenant model routing and encrypted-key regressions."""
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -140,6 +140,8 @@ async def test_public_user_cannot_spend_server_skyvern_validation(monkeypatch):
 async def test_account_deletion_stops_if_owned_model_key_cannot_be_removed(monkeypatch):
     from backend.gateway.routes import auth
     monkeypatch.setattr(auth, 'get_current_user', lambda _: {'id': 'alice', 'email': 'alice@example.com'})
+    monkeypatch.setattr('backend.shared.session_store.get_session_ids_for_user', lambda *args, **kwargs: [])
+    monkeypatch.setattr('backend.shared.task_queue.get_user_active_count', AsyncMock(return_value=0))
     remove = MagicMock(side_effect=RuntimeError('storage unavailable'))
     monkeypatch.setattr(store, 'save_model_key', remove)
     billing_delete = MagicMock()

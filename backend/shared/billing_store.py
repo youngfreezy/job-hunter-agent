@@ -436,13 +436,17 @@ def set_premium(user_id: str, is_premium: bool = True) -> bool:
 
 
 def delete_user_data(user_id: str) -> bool:
-    """Delete all billing data for a user (GDPR deletion).
+    """Atomically delete the account and its owned database records.
 
-    Removes all wallet_transactions, then the users row itself.
+    Clear non-cascading stores before deleting the users row and FK children.
     Returns True on success, False on error.
     """
+    from backend.shared.data_deletion import ActiveWorkDeletionError, delete_user_children
+
     with _connect() as conn:
         try:
+            conn.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
+            delete_user_children(conn, str(user_id))
             conn.execute(
                 "DELETE FROM wallet_transactions WHERE user_id = %s",
                 (user_id,),
@@ -454,6 +458,9 @@ def delete_user_data(user_id: str) -> bool:
             conn.commit()
             logger.info("Deleted billing data for user %s", user_id)
             return True
+        except ActiveWorkDeletionError:
+            conn.rollback()
+            raise
         except Exception:
             conn.rollback()
             logger.exception("Failed to delete billing data for user %s", user_id)

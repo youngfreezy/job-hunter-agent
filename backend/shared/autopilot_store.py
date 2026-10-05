@@ -66,6 +66,15 @@ def _connect():
     return get_connection()
 
 
+def schedule_owner_exists(schedule_id: str, user_id: str) -> bool:
+    """Revalidate a prefetched schedule before persisting or dispatching work."""
+    with _connect() as conn:
+        return conn.execute(
+            """SELECT 1 FROM autopilot_schedules a JOIN users u ON u.id = a.user_id
+               WHERE a.id = %s AND a.user_id = %s""", (schedule_id, user_id)
+        ).fetchone() is not None
+
+
 async def ensure_autopilot_tables() -> None:
     """Create autopilot_schedules table if it doesn't exist."""
     import asyncio

@@ -6,6 +6,7 @@ from backend.shared import autopilot_runner as runner
 
 @pytest.fixture
 def launch(monkeypatch):
+    monkeypatch.setattr('backend.shared.autopilot_store.schedule_owner_exists', lambda *_: True)
     from backend.gateway.routes import sessions
     from backend.gateway import main
     from backend.shared import model_access, task_queue, resume_store, session_store
@@ -38,6 +39,19 @@ async def test_unreadable_saved_resume_stops_before_queue_or_pipeline(monkeypatc
         await runner._run_schedule({'id':'schedule','user_id':'owner','cron_expression':'0 9 * * *','auto_approve':True})
     assert not tasks and not calls
     enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_deleted_prefetched_schedule_releases_admission_without_starting(monkeypatch, launch):
+    calls, tasks, enqueue = launch
+    release = AsyncMock()
+    monkeypatch.setattr('backend.shared.autopilot_store.schedule_owner_exists', lambda *_: False)
+    monkeypatch.setattr('backend.shared.task_queue.mark_complete', release)
+    with pytest.raises(ValueError, match='no longer exists'):
+        await runner._run_schedule({'id':'schedule','user_id':'owner','cron_expression':'0 9 * * *','auto_approve':True})
+    enqueue.assert_awaited_once()
+    release.assert_awaited_once_with(enqueue.call_args.args[0])
+    assert not calls and not tasks
 
 
 def test_approval_requires_configured_signing_secret(monkeypatch):
