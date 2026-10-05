@@ -60,6 +60,16 @@ Browserbase runs the browser; Stagehand performs page actions behind the existin
 cache and spending controls. Model judgment cannot override confirmed receipts,
 unknown delivery, spending reservations, or missing-history holds.
 
+Stagehand discovers each control through `observe`; the app does not invent a
+fallback selector. The returned action is checked against the current native
+snapshot, audited for applicant facts, and executed through Stagehand's locator
+API on that exact target. This deliberately prevents an approved action from
+self-healing into a different, unaudited control. An absent or ambiguous target
+before execution is a technical state change, not a question for the applicant.
+It permits one fresh Stagehand plan before submission intent; a second mismatch
+stops the run. Once submission intent is recorded, an uncertain result retains
+its hold and cannot trigger another action attempt.
+
 Stagehand owns the next-step judgment, including whether the form is still
 loading. Application code does not classify loading pages from button names.
 A fresh `wait` decision can be reused only when native snapshots before and

@@ -470,9 +470,10 @@ class IndeedApplier(BaseApplier):
                 # uploads. Read again after waiting, then stop if it stays active.
                 step = NextStep(kind='captcha', instruction='', reason='Managed verification remains active.')
             grounded_action = None
-            if step.kind == 'act':
+            if step.kind == 'act' or (step.kind == 'submit' and uploaded):
                 try:
-                    grounded_action = await resolve_action(self.stagehand, stage_page, step.instruction)
+                    grounded_action = await resolve_action(
+                        self.stagehand, stage_page, step.instruction, fresh=step.kind == 'submit')
                 except UnresolvedControl:
                     if self._submission_attempted or control_resolution_recoveries >= 1:
                         raise
@@ -489,6 +490,8 @@ class IndeedApplier(BaseApplier):
                     repetitions = 0
                     await self._emit_step('The page changed; reading the current form before continuing...')
                     continue
+                if step.kind == 'submit' and not grounded_action.is_submission:
+                    raise ApplicationParked('The observed control was not a final submission control.')
                 if grounded_action.is_submission:
                     step = step.model_copy(update={'kind': 'submit'})
             progress_fingerprint = None
@@ -612,10 +615,6 @@ class IndeedApplier(BaseApplier):
                 await self._emit_step('Opening the resume editor to attach your supplied file...')
                 await GroundedAction(action.selector, label, 'click', ()).execute(stage_page)
                 continue
-            if step.kind == 'submit' and grounded_action is None:
-                grounded_action = await resolve_action(self.stagehand, stage_page, step.instruction, fresh=True)
-                if not grounded_action.is_submission:
-                    raise ApplicationParked('The observed control was not a final submission control.')
             captcha_generation = None
             if step.kind == 'submit' and self._captcha_monitor:
                 generation_before_wait = self._captcha_monitor.generation

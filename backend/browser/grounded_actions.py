@@ -85,13 +85,14 @@ def _validated_action(observed, snapshot) -> GroundedAction:
             or (method == 'fill' and len(arguments) != 1)
             or (method == 'selectOption' and not arguments)):
         raise ApplicationParked('Unsupported browser action; application was not advanced.')
-    role, _ = _control(snapshot, action.selector)
+    role, label = _control(snapshot, action.selector)
+    if not label:
+        # The page can change after observe. No mutation has happened: let the
+        # caller request one fresh Stagehand plan, not an applicant answer.
+        raise UnresolvedControl('Could not verify the observed control in the current form.')
     if method in ('check', 'uncheck') and (
             role not in ('checkbox', 'radio') or (role == 'radio' and method == 'uncheck')):
         raise ApplicationParked('The observed control is not a supported checkbox or radio button.')
-    label = control_label(snapshot, action.selector)
-    if not label:
-        raise ApplicationParked('Could not verify the observed control in the current form.')
     return GroundedAction(action.selector, label, method, arguments)
 
 

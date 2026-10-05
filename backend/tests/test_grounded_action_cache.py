@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.browser.grounded_actions import resolve_action
+from backend.browser.grounded_actions import UnresolvedControl, resolve_action
 from backend.shared.application_rules import ApplicationParked
 from backend.shared.config import settings
 
@@ -145,6 +145,25 @@ async def test_invalid_model_result_is_not_retried_as_a_cache_failure():
         await resolve_action(agent, page, 'Click Continue')
     agent.observe.assert_awaited_once()
     page._locator('/button[1]').click.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('method,arguments', [('click', ()), ('fill', ('Facts',)), ('check', ())])
+@pytest.mark.parametrize('controls', [
+    {},
+    {'/button[1]': ('button', '')},
+])
+async def test_uncached_control_without_current_identity_requires_replanning(method, arguments, controls):
+    page = Form()
+    page.controls = controls
+    agent = SimpleNamespace(observe=AsyncMock(return_value=_result(
+        _action(method=method, arguments=arguments), status='MISS')))
+    with pytest.raises(UnresolvedControl):
+        await resolve_action(agent, page, 'Operate the observed control')
+    # Resolution reports a technical mismatch; the caller owns bounded replanning.
+    agent.observe.assert_awaited_once()
+    page._locator('/button[1]').click.assert_not_awaited()
+    page._locator('/button[1]').fill.assert_not_awaited()
 
 
 @pytest.mark.asyncio
