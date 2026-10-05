@@ -20,10 +20,13 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+.pytest_cache/
 
 # Node
 node_modules/
 .next/
+*.tsbuildinfo
+packages/marketing-agent/dist/
 
 # Documentation (generated, not tracked)
 docs/
@@ -39,6 +42,7 @@ CLAUDE.md
 # OS
 .DS_Store
 frontend/playwright-report/
+frontend/test-results/
 
 # Test artifacts
 test_screenshots/
@@ -47,7 +51,7 @@ screenshots/
 eval_results/
 FINAL_STATUS.md
 
-package-lock.json
+# Dependency lockfiles are tracked so CI and deployments use the same versions.
 
 # CodeYam local files (contains secrets and local database)
 .codeyam

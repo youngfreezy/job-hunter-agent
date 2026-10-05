@@ -5,9 +5,10 @@
   "author": "V2 Software LLC",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
-    "node": ">=18.17.0"
+    "node": ">=20.19.0"
   },
   "scripts": {
+    "test": "node --test scripts/*.test.js",
     "kill": "bash ./scripts/stop-app.sh",
     "start": "bash ./scripts/start-app.sh",
     "dev": "npm run kill && npm run start",
