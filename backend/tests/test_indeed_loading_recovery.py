@@ -101,13 +101,16 @@ async def test_navigation_timeout_consumes_only_recovery(recovery):
 @pytest.mark.asyncio
 async def test_stalled_loop_recovers_once_reuploads_and_audits_before_submission(monkeypatch):
     steps = ([dict(kind='upload', instruction='', reason='Attach original')] +
-             [dict(kind='wait', instruction='', reason='Preparing review')] * 7 +
+             [dict(kind='wait', instruction='', reason='Preparing review')] +
              [dict(kind='upload', instruction='', reason='Attach original again'),
               dict(kind='submit', instruction='Submit application', reason='Reviewed')])
     page = _page(URL); agent = _stagehand(page, steps)
     native = agent.browser.context.active_page.return_value
     native.page_id = 'observed-tab'; native.goto = AsyncMock(); native.reload = AsyncMock()
     native.snapshot.side_effect = None; native.snapshot.return_value = SimpleNamespace(formatted_tree=TREE)
+    async def form_loaded_after_recovery(*args, **kwargs):
+        native.snapshot.return_value = SimpleNamespace(formatted_tree='[1] button: Edit resume')
+    native.goto.side_effect = form_loaded_after_recovery
     applier = IndeedApplier(page, 'offline', stagehand=agent)
     applier._application_deadline_at = asyncio.get_running_loop().time() + 700
     monkeypatch.setattr(mod.asyncio, 'sleep', AsyncMock())
@@ -126,7 +129,7 @@ async def test_stalled_loop_recovers_once_reuploads_and_audits_before_submission
     result = await applier._drive(_job(), {}, 'canonical', '')
     assert result.status.value == 'submitted'
     assert upload.await_count == 2; native.goto.assert_awaited_once(); native.reload.assert_not_awaited()
-    assert 'uploaded in this application: False' in agent.extract.await_args_list[8].args[0]
+    assert 'uploaded in this application: False' in agent.extract.await_args_list[2].args[0]
     intent.assert_called_once(); action.execute.assert_awaited_once()
 
 
@@ -142,6 +145,55 @@ async def test_second_sustained_stall_stops_instead_of_looping(monkeypatch):
     result = await applier._drive(_job(), {}, '', '')
     assert result.error_category.value == 'timeout'
     native.goto.assert_awaited_once();native.reload.assert_not_awaited()
+    # One model classification per loading episode; native reads handle idle polls.
+    assert agent.extract.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('new_state', [
+    '[x] textbox: Work authorization', '[x] button: Continue',
+    '[x] checkbox: I am not a robot', '[x] StaticText: Your application has been submitted',
+])
+async def test_native_loading_poll_replans_when_form_or_verification_changes(monkeypatch, new_state):
+    page = _page(URL)
+    agent = _stagehand(page, [dict(kind='wait', instruction='', reason='Loading'),
+                             dict(kind='park', instruction='', reason='Required factual answer')])
+    native = agent.browser.context.active_page.return_value
+    native.page_id = 'observed-tab'
+    native.snapshot.side_effect = None
+    native.snapshot.return_value = SimpleNamespace(formatted_tree=TREE + '\n' + new_state)
+    applier = IndeedApplier(page, 'offline', stagehand=agent)
+    monkeypatch.setattr(mod.asyncio, 'sleep', AsyncMock())
+    monkeypatch.setattr(applier, '_emit_step', AsyncMock())
+    monkeypatch.setattr(mod, 'resolve_application_question', AsyncMock(return_value=None))
+    with pytest.raises(ApplicationParked, match='Required factual answer'):
+        await applier._drive(_job(), {}, '', '')
+    assert agent.extract.await_count == 2
+    agent.act.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_solver_start_during_native_loading_poll_uses_managed_wait(monkeypatch):
+    page = _page(URL)
+    agent = _stagehand(page, [dict(kind='wait', instruction='', reason='Loading')])
+    native = agent.browser.context.active_page.return_value
+    native.page_id = 'observed-tab'
+    monitor = SimpleNamespace(active=False, generation=0)
+    agent._jobhunter_captcha_monitor = monitor
+    async def challenge_started(**kwargs):
+        monitor.active = True
+        monitor.generation += 1
+        return SimpleNamespace(formatted_tree=TREE)
+    native.snapshot.side_effect = challenge_started
+    applier = IndeedApplier(page, 'offline', stagehand=agent)
+    monkeypatch.setattr(mod.asyncio, 'sleep', AsyncMock())
+    monkeypatch.setattr(applier, '_emit_step', AsyncMock())
+    managed_wait = AsyncMock(return_value=False)
+    monkeypatch.setattr(applier, '_wait_for_captcha', managed_wait)
+    result = await applier._drive(_job(), {}, '', '')
+    assert result.error_category.value == 'captcha'
+    assert agent.extract.await_count == 1
+    managed_wait.assert_awaited_once()
 
 
 @pytest.mark.asyncio
