@@ -30,6 +30,14 @@ from backend.browser.indeed_policy import is_indeed_url
 from backend.shared.event_bus import emit_agent_event
 
 from backend.orchestrator.pipeline.backfill import should_backfill
+from backend.orchestrator.application_policy import (
+    MAX_CONSECUTIVE_FAILURES,
+    MAX_RETRY_PER_JOB,
+    RETRYABLE_ERROR_CATEGORIES,
+    completed_job_ids,
+    requires_explicit_pause,
+    select_retry_jobs,
+)
 
 from backend.orchestrator.agents import (
     application,
@@ -50,20 +58,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-# Maximum consecutive application failures before the circuit breaker trips.
-MAX_CONSECUTIVE_FAILURES = 3
-MAX_RETRY_PER_JOB = 1
-
-RETRYABLE_ERROR_CATEGORIES = {
-    "form_navigation",
-    "form_fill_error",
-    "submit_failed",
-    "no_confirmation",
-    "timeout",
-    "unknown",
-}
-
 
 # ===================================================================
 # Node functions
@@ -210,7 +204,7 @@ def make_workflow_supervisor_node(
 ) -> Callable[[JobHunterState], dict]:
     async def _node(state: JobHunterState) -> dict:
         if state.get('pause_requested') and any(
-            result.failure_step in ('model_budget', 'duplicate_check')
+            requires_explicit_pause(result)
             for result in (state.get('applications_failed') or [])
         ):
             # Go directly to the existing interrupt. Even steering adjudication
@@ -336,10 +330,10 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
 
         # Continue assessed jobs first; keep unresolved, unattempted candidates
         # for individual review after this queue drains. Never requeue a receipt.
-        done_ids = (
-            {r.job_id for r in (state.get("applications_submitted") or [])}
-            | {r.job_id for r in (state.get("applications_failed") or [])}
-            | set(state.get("applications_skipped") or [])
+        done_ids = completed_job_ids(
+            state.get("applications_submitted") or [],
+            state.get("applications_failed") or [],
+            state.get("applications_skipped") or [],
         )
         pending_review = [str(sj.job.id) for sj in all_scored
                           if not is_quick_apply and sj.eligibility_status == "unknown"
@@ -355,33 +349,15 @@ async def auto_approve_gate(state: JobHunterState) -> dict:
 
         approved_ids = [str(sj.job.id) for sj in candidates][:desired_queue_size]
         retry_job_ids: list[str] = []
-
+        retry_counts = dict(state.get("application_retry_counts") or {})
         if is_backfill and minimum_submitted_target > 0 and len(approved_ids) < desired_queue_size:
-            retry_counts = dict(state.get("application_retry_counts") or {})
-            retried_this_round: set[str] = set()
-            for failure in reversed(state.get("applications_failed") or []):
-                job_id = str(failure.job_id)
-                if (
-                    job_id not in eligible_ids
-                    or job_id in approved_ids
-                    or job_id in retried_this_round
-                    or retry_counts.get(job_id, 0) >= MAX_RETRY_PER_JOB
-                ):
-                    continue
-                # Only the latest outcome is authoritative. An earlier navigation
-                # failure must not revive a later, possibly successful submission.
-                retried_this_round.add(job_id)
-                category = getattr(failure, "error_category", None)
-                category_value = category.value if hasattr(category, "value") else category
-                if category_value not in RETRYABLE_ERROR_CATEGORIES:
-                    continue
-                retry_job_ids.append(job_id)
-                retried_this_round.add(job_id)
-                retry_counts[job_id] = retry_counts.get(job_id, 0) + 1
-                if len(approved_ids) + len(retry_job_ids) >= desired_queue_size:
-                    break
-        else:
-            retry_counts = dict(state.get("application_retry_counts") or {})
+            retry_job_ids, retry_counts = select_retry_jobs(
+                state.get("applications_failed") or [],
+                eligible_ids=eligible_ids,
+                excluded_ids=set(approved_ids) | {r.job_id for r in (state.get("applications_submitted") or [])},
+                retry_counts=retry_counts,
+                limit=desired_queue_size - len(approved_ids),
+            )
 
         approved_ids.extend(retry_job_ids)
         label = "quick_apply" if is_quick_apply else ("backfill" if is_backfill else ("free_trial" if is_free_trial else "autopilot"))
@@ -626,11 +602,12 @@ def route_after_application(
     (even if all failed), proceed to verification so the summary is generated.
     """
     queue = state.get("application_queue", [])
-    submitted = {r.job_id for r in (state.get("applications_submitted") or [])}
-    failed = {r.job_id for r in (state.get("applications_failed") or [])}
-    skipped = set(state.get("applications_skipped") or [])
-    active_retry_ids = set(state.get("active_retry_job_ids") or [])
-    done = submitted | (failed - active_retry_ids) | skipped
+    done = completed_job_ids(
+        state.get("applications_submitted") or [],
+        state.get("applications_failed") or [],
+        state.get("applications_skipped") or [],
+        state.get("active_retry_job_ids") or [],
+    )
 
     remaining = [jid for jid in queue if jid not in done]
 

@@ -1,17 +1,10 @@
 # Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
-"""Application Agent -- submits job applications via direct API or Playwright.
+"""Execute application decisions using the configured browser and persistence.
 
-Uses direct API submission (Greenhouse, Lever) when possible, falls back to
-Playwright + Claude Haiku for browser-based form filling. Previously used Skyvern;
-fields, upload files, and submit applications on any ATS platform.
-
-For each job in the queue:
-1. Pre-flight checks (credits, dedup, rate limits)
-2. Navigate to job URL, detect auth walls / expired pages
-3. Generate a tailored cover letter
-4. Hand off to Skyvern for form filling + submission
-5. Record the result to DB + Neo4j
+Browserbase and Stagehand drive the default Indeed flow. Experimental direct API
+submission stays disabled by default. Pure queue, routing and outcome decisions
+live in application_policy; this module owns browser/model/storage effects.
 """
 
 from __future__ import annotations
@@ -22,6 +15,21 @@ import time
 from typing import Any, Dict, List, Optional
 
 from backend.browser.manager import BrowserManager, apply_stealth
+from backend.orchestrator.application_policy import (
+    MAX_CONSECUTIVE_FAILURES,
+    ApplicationCandidate,
+    ApplicationPolicy,
+    ApplicationSupervisorResult,
+    OutcomeKind,
+    SupervisorDecision,
+    classify_outcome,
+    completed_job_ids,
+    fallback_supervisor_decision as _hardcoded_fallback,
+    infer_error_category as _infer_error_category,
+    requires_explicit_pause,
+    select_company_batch,
+    select_explicit_pause,
+)
 from backend.orchestrator.pipeline.state import JobHunterState
 from backend.shared.application_store import (
     DuplicateCheckUnavailable,
@@ -123,67 +131,14 @@ _NOT_FOUND_INDICATORS = [
 
 logger = logging.getLogger(__name__)
 
-# Circuit-breaker threshold
-MAX_CONSECUTIVE_FAILURES = 3
-
-
-def _infer_error_category(error_message: str | None) -> ApplicationErrorCategory | None:
-    """Infer a structured error category from a free-text error message."""
-    if not error_message:
-        return None
-    msg = error_message.lower()
-    if any(kw in msg for kw in ["totp", "verification code", "2fa", "two-factor", "one-time"]):
-        return ApplicationErrorCategory.TOTP_REQUIRED
-    if any(kw in msg for kw in ["auth", "login", "sign in", "easy apply", "sign_in"]):
-        return ApplicationErrorCategory.AUTH_REQUIRED
-    if any(kw in msg for kw in ["expired", "removed", "no longer", "404", "not found", "job_expired"]):
-        return ApplicationErrorCategory.JOB_EXPIRED
-    if any(kw in msg for kw in ["captcha", "recaptcha"]):
-        return ApplicationErrorCategory.CAPTCHA
-    if any(kw in msg for kw in ["timeout", "timed out"]):
-        return ApplicationErrorCategory.TIMEOUT
-    if any(kw in msg for kw in ["insufficient_credits", "credit"]):
-        return ApplicationErrorCategory.CREDIT_INSUFFICIENT
-    if any(kw in msg for kw in ["duplicate", "already applied"]):
-        return ApplicationErrorCategory.DUPLICATE
-    if any(kw in msg for kw in ["rate limit", "rate_limit"]):
-        return ApplicationErrorCategory.RATE_LIMITED
-    if any(kw in msg for kw in ["confirmation", "no_confirmation"]):
-        return ApplicationErrorCategory.NO_CONFIRMATION
-    if any(kw in msg for kw in ["submit", "button"]):
-        return ApplicationErrorCategory.SUBMIT_FAILED
-    if any(kw in msg for kw in ["form", "field", "fill"]):
-        return ApplicationErrorCategory.FORM_FILL_ERROR
-    if any(kw in msg for kw in ["navigate", "navigation", "element", "selector"]):
-        return ApplicationErrorCategory.FORM_NAVIGATION
-    return ApplicationErrorCategory.UNKNOWN
-
-
-# ---------------------------------------------------------------------------
-# Application Supervisor -- LLM-based circuit breaker replacement
-# ---------------------------------------------------------------------------
-
-from enum import Enum as _Enum
-
-from pydantic import BaseModel as _BaseModel, Field as _Field
-
-
-class SupervisorDecision(str, _Enum):
-    CONTINUE = "continue"  # proceed to next job in queue
-    PAUSE = "pause"        # stop and return to shortlist review
-    ABORT = "abort"        # stop entirely, go to verification/summary
-
-
-class ApplicationSupervisorResult(_BaseModel):
-    decision: SupervisorDecision = _Field(
-        description="What to do next after this failure"
-    )
-    reasoning: str = _Field(
-        description="1-2 sentence explanation for logging"
-    )
-    is_systemic: bool = _Field(
-        default=False,
-        description="True if this failure suggests a systemic issue, not job-specific",
+def _application_policy() -> ApplicationPolicy:
+    """Snapshot runtime configuration at the I/O boundary."""
+    settings = get_settings()
+    return ApplicationPolicy(
+        api_enabled=settings.API_APPLY_ENABLED,
+        indeed_only=settings.INDEED_ONLY,
+        easy_apply_only=settings.INDEED_EASY_APPLY_ONLY,
+        browser_concurrency=settings.SKYVERN_CONCURRENCY,
     )
 
 
@@ -257,50 +212,6 @@ def _build_supervisor_context(
         "remaining_jobs": remaining_count,
         "is_quick_apply": is_quick_apply,
     }, indent=2)
-
-
-def _hardcoded_fallback(
-    result: ApplicationResult,
-    failed_history: list,
-    remaining_count: int,
-    is_quick_apply: bool,
-) -> ApplicationSupervisorResult:
-    """Replicate existing circuit breaker logic as safe LLM-failure degradation."""
-    effective_cat = result.error_category or _infer_error_category(result.error_message)
-    is_site_blocker = effective_cat in (
-        ApplicationErrorCategory.CAPTCHA,
-        ApplicationErrorCategory.AUTH_REQUIRED,
-        ApplicationErrorCategory.JOB_EXPIRED,
-        ApplicationErrorCategory.DUPLICATE,
-    )
-
-    # Count recent consecutive systemic failures
-    consecutive_systemic = 0
-    for f in reversed(failed_history):
-        cat = f.error_category or _infer_error_category(f.error_message)
-        if cat in (
-            ApplicationErrorCategory.CAPTCHA,
-            ApplicationErrorCategory.AUTH_REQUIRED,
-            ApplicationErrorCategory.JOB_EXPIRED,
-            ApplicationErrorCategory.DUPLICATE,
-        ):
-            break  # streak broken by a site-specific failure
-        consecutive_systemic += 1
-
-    threshold = 5 if is_quick_apply else 3
-
-    if consecutive_systemic >= threshold:
-        return ApplicationSupervisorResult(
-            decision=SupervisorDecision.PAUSE,
-            reasoning=f"Fallback: {consecutive_systemic} consecutive systemic failures",
-            is_systemic=True,
-        )
-
-    return ApplicationSupervisorResult(
-        decision=SupervisorDecision.CONTINUE,
-        reasoning="Fallback: failure appears job-specific, continuing",
-        is_systemic=not is_site_blocker,
-    )
 
 
 async def _call_application_supervisor(
@@ -1008,12 +919,13 @@ async def _apply_to_job(
 
         # Compute queue progress for frontend
         _queue = state.get("application_queue", [])
-        _done_ids = (
-            {r.job_id for r in (state.get("applications_submitted") or [])}
-            | {r.job_id for r in (state.get("applications_failed") or [])}
-            | set(state.get("applications_skipped") or [])
+        _done_ids = completed_job_ids(
+            state.get("applications_submitted") or [],
+            state.get("applications_failed") or [],
+            state.get("applications_skipped") or [],
+            state.get("active_retry_job_ids") or [],
         )
-        _app_idx = len((_done_ids - set(state.get("active_retry_job_ids") or [])) & set(_queue))
+        _app_idx = len(_done_ids & set(_queue))
         _total_q = len(_queue)
         _pct = int((_app_idx / _total_q) * 100) if _total_q else 0
 
@@ -1044,7 +956,7 @@ async def _apply_to_job(
         # --- Fast path: direct API submission (only if handler registered) ---
         settings = get_settings()
         from backend.browser.tools.api_applier import _ATS_HANDLERS
-        if settings.API_APPLY_ENABLED and not settings.INDEED_ONLY and not settings.INDEED_EASY_APPLY_ONLY and job.ats_type in _ATS_HANDLERS:
+        if _application_policy().uses_api(job, _ATS_HANDLERS, state.get("api_failed_job_ids") or []):
             user_profile = await _extract_user_profile(state)
             resume_file = state.get("resume_file_path")
 
@@ -1535,7 +1447,6 @@ async def _apply_to_job(
 async def run_application_agent(state: JobHunterState) -> dict:
     """Process the next pending application in the queue.
 
-    Uses Skyvern AI browser agent for form filling and submission.
     The graph loops this node between jobs so the workflow supervisor
     can authoritatively steer the run after every application attempt.
 
@@ -1554,12 +1465,14 @@ async def run_application_agent(state: JobHunterState) -> dict:
     consecutive_failures: int = state.get("consecutive_failures", 0)
     session_id: str = state.get("session_id", "unknown")
     user_id: str = state.get("user_id", "")
+    api_failed_ids = set(state.get("api_failed_job_ids") or [])
 
     manager: Optional[BrowserManager] = None
+    pause_result: ApplicationResult | None = None
+    pause_supervisor: ApplicationSupervisorResult | None = None
 
     try:
         application_queue: List[str] = state.get("application_queue", [])
-        active_retry_job_ids = set(state.get("active_retry_job_ids") or [])
         if not application_queue:
             return {
                 "applications_submitted": [],
@@ -1575,10 +1488,12 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 "active_retry_job_ids": [],
             }
 
-        submitted_ids = {r.job_id for r in (state.get("applications_submitted") or [])}
-        failed_ids = {r.job_id for r in (state.get("applications_failed") or [])}
-        skipped_ids = set(state.get("applications_skipped") or [])
-        done_ids = submitted_ids | (failed_ids - active_retry_job_ids) | skipped_ids
+        done_ids = completed_job_ids(
+            state.get("applications_submitted") or [],
+            state.get("applications_failed") or [],
+            state.get("applications_skipped") or [],
+            state.get("active_retry_job_ids") or [],
+        )
 
         # Track companies already applied to in this session (1 per company)
         session_applied_companies: set = set()
@@ -1716,48 +1631,33 @@ async def run_application_agent(state: JobHunterState) -> dict:
         settings = get_settings()
 
         # --- Batch API-eligible jobs (fast path, ~3s each) ---
-        # Partition remaining into API-eligible and Skyvern-required.
-        # Jobs whose API already failed in a prior iteration go straight to Skyvern.
-        api_failed_ids: set = set(state.get("api_failed_job_ids") or [])
-        api_jobs: List[tuple] = []
-        skyvern_jobs: List[tuple] = []
+        # Failed API attempts use the browser directly on subsequent turns.
+        policy = _application_policy()
+        api_jobs: list[ApplicationCandidate] = []
+        browser_jobs: list[ApplicationCandidate] = []
         # Only route to API if there's actually a registered handler
         from backend.browser.tools.api_applier import _ATS_HANDLERS
         for jid in remaining:
             j = _find_job_in_state(jid, state)
             if j is None:
                 continue
-            if (
-                settings.API_APPLY_ENABLED and not settings.INDEED_ONLY and not settings.INDEED_EASY_APPLY_ONLY
-                and j.ats_type in _ATS_HANDLERS
-                and jid not in api_failed_ids
-            ):
+            if policy.uses_api(j, _ATS_HANDLERS, api_failed_ids):
                 api_jobs.append((jid, j))
             else:
-                skyvern_jobs.append((jid, j))
+                browser_jobs.append((jid, j))
 
         # Process API jobs in parallel (no browser needed)
         if api_jobs:
             # Deduplicate: at most one job per company in each batch to avoid
             # TOCTOU race in the per-company rate limit check during gather().
-            seen_companies: set[str] = set()
-            deduped_batch: list[tuple] = []
-            deferred_batch: list[tuple] = []
-            for jid, j in api_jobs[:settings.API_APPLY_BATCH_SIZE]:
-                company_key = j.company.lower().strip()
-                if company_key in seen_companies:
-                    deferred_batch.append((jid, j))
-                else:
-                    seen_companies.add(company_key)
-                    deduped_batch.append((jid, j))
-            batch = deduped_batch
+            batch, deferred_batch = select_company_batch(api_jobs, settings.API_APPLY_BATCH_SIZE)
             # Put deferred same-company jobs back for next iteration
             if deferred_batch:
                 logger.info(
                     "Deferred %d jobs to avoid same-company race condition in batch",
                     len(deferred_batch),
                 )
-                skyvern_jobs.extend(deferred_batch)
+                browser_jobs.extend(deferred_batch)
             logger.info(
                 "Batching %d API-eligible jobs in parallel (Greenhouse/Lever)",
                 len(batch),
@@ -1767,46 +1667,47 @@ async def run_application_agent(state: JobHunterState) -> dict:
                 for jid, j in batch
             ]
             api_results = await asyncio.gather(*api_tasks, return_exceptions=True)
-            for i, res in enumerate(api_results):
-                jid = batch[i][0]
-                j = batch[i][1]
-                if isinstance(res, Exception):
-                    logger.warning("API batch job %s failed — re-queuing for Skyvern: %s", jid, res)
-                    skyvern_jobs.append((jid, j))
+            for (jid, j), res in zip(batch, api_results):
+                if isinstance(res, BaseException):
+                    if not isinstance(res, Exception):
+                        raise res
+                    # The transport may have sent the POST before raising. An
+                    # unclassified exception is not permission to submit again.
+                    res = ApplicationResult(
+                        job_id=jid, status=ApplicationStatus.FAILED,
+                        error_category=ApplicationErrorCategory.SUBMISSION_UNCERTAIN,
+                        error_message="API delivery could not be determined; reconcile before retrying.",
+                        failure_step="submit",
+                    )
+                    _db_record_result(
+                        session_id=session_id, job_id=jid, status="failed",
+                        job_title=j.title, job_company=j.company, job_url=j.url,
+                        job_board=j.board.value, job_location=j.location or "",
+                        error_message=res.error_message, error_category=res.error_category.value,
+                        user_id=user_id,
+                    )
+                outcome = classify_outcome(res, source="api")
+                if outcome is OutcomeKind.BROWSER_FALLBACK:
+                    browser_jobs.append((jid, j))
                     api_failed_ids.add(jid)
-                elif res.status == ApplicationStatus.SUBMITTED:
+                elif outcome is OutcomeKind.SUBMITTED:
                     submitted.append(res)
                     consecutive_failures = 0
-                elif res.status == ApplicationStatus.FAILED:
-                    # API failed (401, blocked, etc.) — re-queue for Skyvern browser fallback
-                    logger.info(
-                        "API submission failed for %s at %s — re-queuing for Skyvern",
-                        j.title, j.company,
-                    )
-                    skyvern_jobs.append((jid, j))
-                    api_failed_ids.add(jid)
+                elif outcome is OutcomeKind.FAILED:
+                    failed.append(res)
+                    if requires_explicit_pause(res) and pause_supervisor is None:
+                        pause_result = res
+                        pause_supervisor = await _call_application_supervisor(
+                            res, list(state.get("applications_failed") or []) + failed,
+                            len(remaining) - len(batch), _qa_mode, session_id,
+                        )
                 else:
                     skipped.append(res)
                     consecutive_failures = 0
 
-        # Process Skyvern jobs (browser automation)
-        # Deduplicate: at most one job per company to avoid rate limit race
-        seen_skyvern_companies: set[str] = set()
-        deduped_skyvern: list[tuple] = []
-        # Indeed uses Browserbase's managed default tab and shared login.
-        # Keep one active form so concurrent jobs cannot overwrite each other.
-        browser_batch_size = 1 if (settings.INDEED_ONLY or settings.INDEED_EASY_APPLY_ONLY) else settings.SKYVERN_CONCURRENCY
-        for jid, j in skyvern_jobs[:browser_batch_size]:
-            company_key = j.company.lower().strip()
-            if company_key not in seen_skyvern_companies:
-                seen_skyvern_companies.add(company_key)
-                deduped_skyvern.append((jid, j))
-        skyvern_batch = deduped_skyvern
-        if skyvern_batch:
-            job_id = skyvern_batch[0][0]
-            job = skyvern_batch[0][1]
-            job_label = f"{job.title} at {job.company}"
-
+        browser_batch, _ = select_company_batch(browser_jobs, policy.browser_batch_size)
+        if browser_batch and pause_supervisor is None:
+            job_id, job = browser_batch[0]
             manager = BrowserManager()
             await manager.start_for_task(
                 board=job.board,
@@ -1816,7 +1717,6 @@ async def run_application_agent(state: JobHunterState) -> dict:
             )
             _, context = await manager.new_context()
             if manager.live_view_url:
-                # Browserbase mode: the UI can embed this to watch the cloud browser.
                 await emit_agent_event(session_id, "browser_live_view", {
                     "url": manager.live_view_url,
                     "provider": "browserbase",
@@ -1824,150 +1724,110 @@ async def run_application_agent(state: JobHunterState) -> dict:
                     "job_id": job_id,
                 })
 
-            if len(skyvern_batch) == 1:
-                # Single Skyvern job (common case)
-                try:
-                    result = await _apply_to_job(
-                        job_id=job_id, job=job, state=state,
-                        session_id=session_id, context=context,
-                        stagehand=manager.stagehand,
-                        employer_url=(employer_queue.get(job_id) or {}).get("url"),
-                    )
-                    if result.status != ApplicationStatus.QUEUED and job_id in employer_queue:
-                        employer_queue[job_id] = {**employer_queue[job_id], "status": result.status.value}
-                    if result.status == ApplicationStatus.QUEUED and result.external_application_url:
-                        employer_queue[job_id] = {
-                            "url": result.external_application_url,
-                            "source_url": job.url,
-                            "title": job.title,
-                            "company": job.company,
-                            "status": "queued",
-                        }
-                        consecutive_failures = 0
-                    elif result.status == ApplicationStatus.SUBMITTED:
-                        submitted.append(result)
-                        consecutive_failures = 0
-                    elif result.status == ApplicationStatus.FAILED:
-                        failed.append(result)
-                        # --- LLM Supervisor decides whether to continue ---
-                        all_failed = list(state.get("applications_failed") or []) + failed
-                        remaining_count = len(remaining) - (app_idx + 1)
-                        supervisor = await _call_application_supervisor(
-                            result=result,
-                            failed_history=all_failed,
-                            remaining_count=remaining_count,
-                            is_quick_apply=_qa_mode,
-                            session_id=session_id,
-                        )
-                        if supervisor.is_systemic:
-                            consecutive_failures += 1
-                        else:
-                            consecutive_failures = 0
-                        if supervisor.decision in (SupervisorDecision.PAUSE, SupervisorDecision.ABORT):
-                            return {
-                                "applications_submitted": submitted,
-                                "applications_failed": failed,
-                                "applications_skipped": skipped,
-                                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
-                                "status": "paused",
-                                "agent_statuses": {"application": f"paused — {supervisor.reasoning}"},
-                                "errors": errors,
-                                "skip_next_job_requested": False,
-                                "active_retry_job_ids": [],
-                                **({
-                                    "pause_requested": True,
-                                    "status_before_pause": "applying",
-                                    "pause_resume_node": "application",
-                                    "pending_supervisor_response": supervisor.reasoning,
-                                } if result.failure_step in ('model_budget', 'duplicate_check') else {}),
-                            }
-                        if result.error_message:
-                            errors.append(f"Application failed for {job_id}: {result.error_message}")
-                    else:
-                        skipped.append(result)
-                        if result.error_category == ApplicationErrorCategory.NEEDS_INPUT:
-                            questions[job_id] = {
-                                "question": result.error_message or "Required answer missing.",
-                                "title": job.title, "company": job.company,
-                                "source_url": job.url,
-                                "application_url": (employer_queue.get(job_id) or {}).get("url", job.url),
-                            }
-                        consecutive_failures = 0
-                except Exception as exc:
-                    error_msg = f"Application failed for job {job_id}: {exc}"
+            # Stagehand owns a single managed tab. Legacy concurrent browser
+            # jobs retain their individual pages; Indeed is always a batch of one.
+            browser_results = await asyncio.gather(*(
+                _apply_to_job(
+                    job_id=jid, job=j, state={**state, "api_failed_job_ids": list(api_failed_ids)},
+                    session_id=session_id, context=context,
+                    stagehand=manager.stagehand if len(browser_batch) == 1 else None,
+                    employer_url=(employer_queue.get(jid) or {}).get("url"),
+                ) for jid, j in browser_batch
+            ), return_exceptions=True)
+
+            pause_result = select_explicit_pause(browser_results)
+            if pause_result is not None:
+                pause_supervisor = await _call_application_supervisor(
+                    result=pause_result, failed_history=failed,
+                    remaining_count=max(0, len(remaining) - len(browser_batch)),
+                    is_quick_apply=_qa_mode, session_id=session_id,
+                )
+
+            # One outcome path for every batch size preserves questions,
+            # employer handoffs and safety interrupts in legacy modes too.
+            for index, ((job_id, job), result) in enumerate(zip(browser_batch, browser_results)):
+                if isinstance(result, BaseException):
+                    if not isinstance(result, Exception):
+                        raise result  # cancellation is control flow, never a failed job
+                    error_msg = f"Application failed for job {job_id}: {result}"
                     logger.error(error_msg)
                     errors.append(error_msg)
-                    fail_result = ApplicationResult(
+                    failed.append(ApplicationResult(
                         job_id=job_id, status=ApplicationStatus.FAILED,
-                        error_message=str(exc),
-                    )
-                    failed.append(fail_result)
-                    # Unhandled exceptions are always systemic
+                        error_message=str(result),
+                    ))
                     consecutive_failures += 1
-                    if job is not None:
-                        _db_record_result(
-                            session_id=session_id, job_id=job_id,
-                            status="failed", job_title=job.title,
-                            job_company=job.company, job_url=job.url,
-                            job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
-                            job_location=job.location or "",
-                            error_message=str(exc), user_id=user_id,
-                        )
-            else:
-                # Multiple Skyvern jobs in parallel
-                skyvern_tasks = [
-                    _apply_to_job(jid, j, state, session_id, context=context)
-                    for jid, j in skyvern_batch
-                ]
-                skyvern_results = await asyncio.gather(*skyvern_tasks, return_exceptions=True)
-                for i, res in enumerate(skyvern_results):
-                    jid = skyvern_batch[i][0]
-                    j = skyvern_batch[i][1]
-                    if isinstance(res, Exception):
-                        logger.error("Skyvern job %s failed: %s", jid, res)
-                        fail_result = ApplicationResult(
-                            job_id=jid, status=ApplicationStatus.FAILED,
-                            error_message=str(res),
-                        )
-                        failed.append(fail_result)
-                        consecutive_failures += 1
-                        errors.append(f"Application failed for {jid}: {res}")
-                    elif res.status == ApplicationStatus.SUBMITTED:
-                        submitted.append(res)
-                        consecutive_failures = 0
-                    elif res.status == ApplicationStatus.FAILED:
-                        failed.append(res)
-                        # --- LLM Supervisor decides whether to continue ---
-                        all_failed_batch = list(state.get("applications_failed") or []) + failed
-                        remaining_batch = len(remaining) - (i + 1)
-                        sv = await _call_application_supervisor(
-                            result=res,
-                            failed_history=all_failed_batch,
-                            remaining_count=remaining_batch,
+                    _db_record_result(
+                        session_id=session_id, job_id=job_id,
+                        status="failed", job_title=job.title,
+                        job_company=job.company, job_url=job.url,
+                        job_board=job.board.value if hasattr(job.board, "value") else str(job.board),
+                        job_location=job.location or "",
+                        error_message=str(result), user_id=user_id,
+                    )
+                    continue
+
+                outcome = classify_outcome(result)
+                if result.status != ApplicationStatus.QUEUED and job_id in employer_queue:
+                    employer_queue[job_id] = {**employer_queue[job_id], "status": result.status.value}
+                if outcome is OutcomeKind.HANDOFF:
+                    employer_queue[job_id] = {
+                        "url": result.external_application_url, "source_url": job.url,
+                        "title": job.title, "company": job.company, "status": "queued",
+                    }
+                    consecutive_failures = 0
+                elif outcome is OutcomeKind.SUBMITTED:
+                    submitted.append(result)
+                    consecutive_failures = 0
+                elif outcome is OutcomeKind.FAILED:
+                    failed.append(result)
+                    if pause_supervisor is None:
+                        supervisor = await _call_application_supervisor(
+                            result=result,
+                            failed_history=list(state.get("applications_failed") or []) + failed,
+                            remaining_count=max(0, len(remaining) - index - 1),
                             is_quick_apply=_qa_mode,
                             session_id=session_id,
                         )
-                        if sv.is_systemic:
-                            consecutive_failures += 1
-                        else:
-                            consecutive_failures = 0
-                        if sv.decision in (SupervisorDecision.PAUSE, SupervisorDecision.ABORT):
-                            return {
-                                "applications_submitted": submitted,
-                                "applications_failed": failed,
-                                "applications_skipped": skipped,
-                                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
-                                "status": "paused",
-                                "agent_statuses": {"application": f"paused — {sv.reasoning}"},
-                                "errors": errors,
-                                "skip_next_job_requested": False,
-                                "active_retry_job_ids": [],
-                            }
-                        if res.error_message:
-                            errors.append(f"Application failed for {jid}: {res.error_message}")
-                    else:
-                        skipped.append(res)
-                        consecutive_failures = 0
+                        consecutive_failures = consecutive_failures + 1 if supervisor.is_systemic else 0
+                        if supervisor.decision in (SupervisorDecision.PAUSE, SupervisorDecision.ABORT):
+                            pause_result, pause_supervisor = result, supervisor
+                    # Collect every already-running member before returning a
+                    # pause. Deterministic safety stops outrank ordinary pauses.
+                    if result.error_message:
+                        errors.append(f"Application failed for {job_id}: {result.error_message}")
+                else:
+                    skipped.append(result)
+                    if outcome is OutcomeKind.NEEDS_INPUT:
+                        questions[job_id] = {
+                            "question": result.error_message or "Required answer missing.",
+                            "title": job.title, "company": job.company,
+                            "source_url": job.url,
+                            "application_url": (employer_queue.get(job_id) or {}).get("url", job.url),
+                        }
+                    consecutive_failures = 0
+
+        if pause_supervisor is not None:
+            return {
+                "applications_submitted": submitted,
+                "applications_failed": failed,
+                "applications_skipped": [r.job_id for r in skipped],
+                "consecutive_failures": MAX_CONSECUTIVE_FAILURES,
+                "status": "paused",
+                "agent_statuses": {"application": f"paused — {pause_supervisor.reasoning}"},
+                "errors": errors,
+                "skip_next_job_requested": False,
+                "active_retry_job_ids": [],
+                "api_failed_job_ids": list(api_failed_ids),
+                "employer_application_queue": employer_queue,
+                "application_questions": questions,
+                **({
+                    "pause_requested": True,
+                    "status_before_pause": "applying",
+                    "pause_resume_node": "application",
+                    "pending_supervisor_response": pause_supervisor.reasoning,
+                } if pause_result is not None and requires_explicit_pause(pause_result) else {}),
+            }
 
         # Summary
         total_processed = len(submitted) + len(failed) + len(skipped)
