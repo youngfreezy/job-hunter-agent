@@ -5,9 +5,9 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from backend.gateway.deps import get_current_user
@@ -127,7 +127,7 @@ async def delete_webhook_endpoint(webhook_id: str, request: Request):
 
 
 @router.get("/webhooks/{webhook_id}/deliveries")
-async def get_deliveries(webhook_id: str, request: Request, limit: int = 20):
+async def get_deliveries(webhook_id: str, request: Request, limit: Annotated[int, Query(ge=1)] = 20):
     """List recent delivery logs for a webhook."""
     user = get_current_user(request)
     deliveries = list_deliveries(webhook_id, user["id"], limit=min(limit, 50))

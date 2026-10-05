@@ -5,8 +5,8 @@
 from __future__ import annotations
 
 import logging
-import random
-import string
+import secrets
+from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -40,14 +40,14 @@ async def twilio_webhook(request: Request):
     from_number = params.get("From", "")
     body = params.get("Body", "").strip().upper()
 
-    logger.info("Inbound SMS from %s: %s", from_number, body[:50])
+    logger.info("Received authenticated inbound SMS")
 
     response_text = await _handle_command(from_number, body)
 
     # Return TwiML response
     return PlainTextResponse(
         f'<?xml version="1.0" encoding="UTF-8"?>'
-        f"<Response><Message>{response_text}</Message></Response>",
+        f"<Response><Message>{escape(response_text)}</Message></Response>",
         media_type="application/xml",
     )
 
@@ -222,7 +222,7 @@ async def send_verification(body: VerifyPhoneRequest, request: Request):
     user = get_current_user(request)
     user_id = user["id"]
 
-    code = "".join(random.choices(string.digits, k=6))
+    code = f"{secrets.randbelow(1_000_000):06d}"
 
     # Store code in Redis with 10-minute TTL
     from backend.shared.redis_client import redis_client

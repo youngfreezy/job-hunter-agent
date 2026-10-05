@@ -3,8 +3,8 @@
 """Redis-backed sliding window rate limiting middleware for FastAPI.
 
 Uses a sliding window counter algorithm with Redis sorted sets to provide
-distributed rate limiting. Requests are identified by user ID (from the
-``X-User-Id`` header) or by client IP address as a fallback.
+distributed rate limiting. Requests are identified by authenticated user
+email or by the client address supplied by trusted ASGI proxy middleware.
 
 Usage::
 
@@ -52,6 +52,11 @@ _ROUTE_RULES: list[Tuple[str, Optional[str], int, int, str]] = [
 
 # Paths that are never rate-limited.
 _EXEMPT_PATHS = frozenset({"/api/health", "/health", "/docs", "/openapi.json"})
+
+_FAIL_CLOSED_BUCKETS = frozenset({"auth_login", "auth_register", "session_create", "test_apply"})
+_FAIL_CLOSED_POST_PATHS = frozenset({
+    "/api/sms/verify", "/api/sms/confirm", "/api/browserbase/login-sessions",
+})
 
 
 def _classify_request(path: str, method: str) -> Optional[Tuple[int, int, str]]:
@@ -114,13 +119,17 @@ def _get_identifier(request: Request) -> str:
     if user_email:
         return f"user:{user_email}"
 
-    # Use X-Forwarded-For if behind a reverse proxy, otherwise use client host.
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        ip = forwarded.split(",")[0].strip()
-    else:
-        ip = request.client.host if request.client else "unknown"
+    # ASGI proxy middleware may normalize this for configured trusted peers.
+    # Never parse client-controlled forwarding headers at the application layer.
+    ip = request.client.host if request.client else "unknown"
     return f"ip:{ip}"
+
+
+async def clear_user_rate_limits(email: str) -> int:
+    """Erase exact authenticated bucket keys without a user-controlled glob."""
+    buckets = {bucket for _, _, maximum, _, bucket in _ROUTE_RULES if maximum > 0}
+    keys = [f"ratelimit:user:{email}:{bucket}" for bucket in sorted(buckets)]
+    return await redis_client.client.delete(*keys)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -151,10 +160,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             allowed, retry_after = await self._check_rate_limit(
                 identifier, bucket, max_requests, window_seconds
             )
-        except Exception:
-            # If Redis is down, allow the request through rather than blocking
-            # all traffic.  Log the error so it can be investigated.
-            logger.exception("Rate limiter Redis error — allowing request")
+        except Exception as exc:
+            sensitive = bucket in _FAIL_CLOSED_BUCKETS or (
+                method == "POST" and path.rstrip("/") in _FAIL_CLOSED_POST_PATHS
+            )
+            logger.warning("Rate limiter unavailable for bucket %s (%s)", bucket, type(exc).__name__)
+            if sensitive:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Request protection is temporarily unavailable. Please try again shortly."},
+                    headers={"Retry-After": "5"},
+                )
             return await call_next(request)
 
         if not allowed:

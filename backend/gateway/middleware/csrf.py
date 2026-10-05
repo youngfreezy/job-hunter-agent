@@ -27,6 +27,7 @@ _EXEMPT_PATHS = {
     "/api/health",
     "/api/health/ready",
     "/api/stripe/webhook",
+    "/api/sms/webhook",  # Twilio authenticates the request with its signature.
     "/api/auth/register",
     "/api/auth/login",
     "/api/auth/link-google",

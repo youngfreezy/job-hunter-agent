@@ -8,9 +8,9 @@ Browse agents, view details, submit reviews.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from backend.gateway.deps import get_current_user
@@ -89,7 +89,7 @@ async def post_review(slug: str, body: ReviewRequest, request: Request):
 
 
 @router.get("/agents/{slug}/reviews")
-async def get_reviews(slug: str, limit: int = 20, offset: int = 0):
+async def get_reviews(slug: str, limit: Annotated[int, Query(ge=1)] = 20, offset: Annotated[int, Query(ge=0)] = 0):
     """List reviews for an agent. Public."""
     reviews = list_reviews(slug, limit=min(limit, 50), offset=offset)
     return {"reviews": reviews}
