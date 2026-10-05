@@ -7,30 +7,39 @@ platforms by inspecting URL patterns, page content, and DOM structure.
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
+from urllib.parse import urlsplit
 
 from backend.shared.models.schemas import ATSType
 
 logger = logging.getLogger(__name__)
 
-# URL-pattern -> ATS type mapping
-_URL_PATTERNS = [
-    (re.compile(r"linkedin\.com/jobs", re.I), ATSType.LINKEDIN),
-    (re.compile(r"(^|[./])indeed\.com/", re.I), ATSType.INDEED),
-    (re.compile(r"myworkday(jobs)?\.com|workday\.com", re.I), ATSType.WORKDAY),
-    (re.compile(r"greenhouse\.io|boards\.greenhouse", re.I), ATSType.GREENHOUSE),
-    (re.compile(r"lever\.co|jobs\.lever", re.I), ATSType.LEVER),
-    (re.compile(r"ashbyhq\.com|jobs\.ashbyhq", re.I), ATSType.ASHBY),
-    (re.compile(r"icims\.com|careers-.*\.icims", re.I), ATSType.ICIMS),
-    (re.compile(r"taleo\.(net|com)|oracle.*cloud.*taleo", re.I), ATSType.TALEO),
-]
+_ATS_DOMAINS = {
+    "linkedin.com": ATSType.LINKEDIN,
+    "indeed.com": ATSType.INDEED,
+    "myworkdayjobs.com": ATSType.WORKDAY,
+    "myworkday.com": ATSType.WORKDAY,
+    "workday.com": ATSType.WORKDAY,
+    "greenhouse.io": ATSType.GREENHOUSE,
+    "lever.co": ATSType.LEVER,
+    "ashbyhq.com": ATSType.ASHBY,
+    "icims.com": ATSType.ICIMS,
+    "taleo.net": ATSType.TALEO,
+    "taleo.com": ATSType.TALEO,
+}
 
 
 def detect_ats_from_url(url: str) -> ATSType:
     """Detect ATS type from URL only (no browser needed)."""
-    for pattern, ats_type in _URL_PATTERNS:
-        if pattern.search(url):
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return ATSType.UNKNOWN
+    if parsed.scheme not in ("http", "https") or parsed.username or parsed.password:
+        return ATSType.UNKNOWN
+    for domain, ats_type in _ATS_DOMAINS.items():
+        if host == domain or host.endswith(f".{domain}"):
             return ats_type
     return ATSType.UNKNOWN
 
@@ -50,10 +59,10 @@ async def detect_ats_type(page: Any) -> ATSType:
     url = page.url
 
     # 1. Check URL patterns first (most reliable)
-    for pattern, ats_type in _URL_PATTERNS:
-        if pattern.search(url):
-            logger.info("ATS detected from URL: %s", ats_type.value)
-            return ats_type
+    ats_type = detect_ats_from_url(url)
+    if ats_type is not ATSType.UNKNOWN:
+        logger.info("ATS detected from URL: %s", ats_type.value)
+        return ats_type
 
     # 2. Check page content / meta tags
     try:

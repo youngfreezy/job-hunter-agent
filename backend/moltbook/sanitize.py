@@ -18,6 +18,7 @@ import base64
 import logging
 import re
 from typing import List
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ _TAG_PATTERN = re.compile(r"<[^>]{1,200}>")
 
 # URL pattern
 _URL_PATTERN = re.compile(
-    r"https?://[^\s<>\"')\]]{4,200}",
+    r"https?://[^\s<>\"')\]]+",
     re.IGNORECASE,
 )
 
@@ -176,10 +177,18 @@ def sanitize(
     # 6. Strip URLs (except allowed domains)
     def _filter_url(match: re.Match) -> str:
         url = match.group(0)
-        for domain in _ALLOWED_URL_DOMAINS:
-            if domain in url.lower():
+        try:
+            parsed = urlsplit(url)
+            host = (parsed.hostname or "").lower().rstrip(".")
+            if (not parsed.username and not parsed.password
+                    and parsed.port in (None, 80, 443)
+                    and any(host == domain or host.endswith(f".{domain}")
+                            for domain in _ALLOWED_URL_DOMAINS)):
                 return url
-        removals.append(f"url:{url[:60]}")
+        except ValueError:
+            pass
+        # Never copy rejected URLs into logs: query strings may carry secrets.
+        removals.append("url")
         return ""
 
     result = _URL_PATTERN.sub(_filter_url, result)

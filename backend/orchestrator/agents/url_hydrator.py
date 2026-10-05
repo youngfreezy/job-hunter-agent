@@ -16,33 +16,36 @@ from uuid import uuid4
 
 import httpx
 
+from backend.browser.tools.ats_detector import detect_ats_from_url
 from backend.shared.models.schemas import ATSType, JobBoard, JobListing
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 12.0
 
-# Domain -> (ATSType, JobBoard)
-_ATS_DOMAINS: dict[str, Tuple[ATSType, JobBoard]] = {
-    "greenhouse.io": (ATSType.GREENHOUSE, JobBoard.OTHER),
-    "lever.co": (ATSType.LEVER, JobBoard.OTHER),
-    "ashbyhq.com": (ATSType.ASHBY, JobBoard.OTHER),
-    "myworkdayjobs.com": (ATSType.WORKDAY, JobBoard.OTHER),
-    "icims.com": (ATSType.ICIMS, JobBoard.OTHER),
-    "linkedin.com": (ATSType.LINKEDIN, JobBoard.LINKEDIN),
-    "indeed.com": (ATSType.UNKNOWN, JobBoard.INDEED),
-    "glassdoor.com": (ATSType.UNKNOWN, JobBoard.GLASSDOOR),
-    "ziprecruiter.com": (ATSType.UNKNOWN, JobBoard.ZIPRECRUITER),
+# Board provenance is separate from the canonical ATS classifier.
+_BOARD_DOMAINS: dict[str, JobBoard] = {
+    "linkedin.com": JobBoard.LINKEDIN,
+    "indeed.com": JobBoard.INDEED,
+    "glassdoor.com": JobBoard.GLASSDOOR,
+    "ziprecruiter.com": JobBoard.ZIPRECRUITER,
 }
 
 
 def _detect_ats(url: str) -> Tuple[ATSType, JobBoard]:
     """Detect ATS type and board from URL domain."""
-    host = urlparse(url).hostname or ""
-    for domain, result in _ATS_DOMAINS.items():
-        if domain in host:
-            return result
-    return ATSType.UNKNOWN, JobBoard.OTHER
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return ATSType.UNKNOWN, JobBoard.OTHER
+    if parsed.scheme not in ("http", "https") or parsed.username or parsed.password:
+        return ATSType.UNKNOWN, JobBoard.OTHER
+    ats_type = detect_ats_from_url(url)
+    for domain, board in _BOARD_DOMAINS.items():
+        if host == domain or host.endswith(f".{domain}"):
+            return ats_type, board
+    return ats_type, JobBoard.OTHER
 
 
 def _extract_meta(html: str, name: str) -> Optional[str]:

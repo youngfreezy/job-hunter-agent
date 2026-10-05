@@ -369,20 +369,29 @@ async def _call_application_supervisor(
 
 async def _drain_steering_commands(session_id: str) -> List[str]:
     """Return and clear queued steering messages for a session."""
+    redis_client = None
     try:
         import redis.asyncio as aioredis
 
         settings = get_settings()
         redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         key = f"steer:queue:{session_id}"
-        messages = await redis_client.lrange(key, 0, -1)
-        if messages:
-            await redis_client.delete(key)
-        await redis_client.close()
+        # MULTI/EXEC prevents a concurrently queued pause/skip from being erased
+        # between reading the list and deleting only the messages we received.
+        async with redis_client.pipeline(transaction=True) as pipeline:
+            pipeline.lrange(key, 0, -1)
+            pipeline.delete(key)
+            messages, _ = await pipeline.execute()
         return [m.strip() for m in messages if isinstance(m, str) and m.strip()]
     except Exception:
         logger.debug("Failed to drain steering queue for %s", session_id, exc_info=True)
         return []
+    finally:
+        if redis_client is not None:
+            try:
+                await redis_client.aclose()
+            except Exception:
+                logger.debug("Failed to close steering queue connection", exc_info=True)
 
 
 def _is_pause_command(message: str) -> bool:
