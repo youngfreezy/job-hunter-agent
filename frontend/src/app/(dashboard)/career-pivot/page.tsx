@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { responseError } from "@/lib/api-error";
 import { useRouter } from "next/navigation";
@@ -14,14 +14,10 @@ export default function CareerPivotPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasResume, setHasResume] = useState(false);
-
-  useEffect(() => {
-    setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
-  }, []);
+  const [resumeText, setResumeText] = useState("");
+  const hasResume = Boolean(resumeText.trim());
 
   async function handleStart() {
-    const resumeText = localStorage.getItem("jh_resume_text") || "";
     if (!resumeText.trim()) {
       setError("Please upload your resume above first.");
       return;
@@ -69,7 +65,7 @@ export default function CareerPivotPage() {
         </div>
 
         <div className="max-w-lg mx-auto">
-          <ResumeUpload onResumeReady={(text) => setHasResume(Boolean(text.trim()))} />
+          <ResumeUpload onResumeReady={setResumeText} />
         </div>
 
         {error && <div role="alert" className="text-destructive text-sm text-center"><p>{error}</p><Link href="/settings" className="underline">Check API keys in Settings</Link></div>}

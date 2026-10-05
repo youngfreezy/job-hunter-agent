@@ -4,19 +4,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FormikConfig, FormikValues, useFormik } from "formik";
-import { clampMaxJobs } from "@/lib/quick-start-config";
 
 const STORAGE_PREFIX = "jh_form_";
 
 interface UsePersistedFormikOptions<T extends FormikValues> extends FormikConfig<T> {
   persistKey: string;
   debounceMs?: number;
+  restoreValues: (stored: unknown) => T;
 }
 
 export function usePersistedFormik<T extends FormikValues>({
   persistKey,
   debounceMs = 300,
   initialValues,
+  restoreValues,
   ...formikConfig
 }: UsePersistedFormikOptions<T>) {
   const storageKey = `${STORAGE_PREFIX}${persistKey}`;
@@ -37,22 +38,7 @@ export function usePersistedFormik<T extends FormikValues>({
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
-        const parsed = JSON.parse(stored) as Partial<T>;
-        // Clamp maxJobs to valid range (stale localStorage may have old uncapped values)
-        if ("maxJobs" in parsed && typeof (parsed as Record<string, unknown>).maxJobs === "number") {
-          (parsed as Record<string, unknown>).maxJobs = clampMaxJobs((parsed as Record<string, unknown>).maxJobs as number);
-        }
-        if (
-          "minimumSubmittedApplications" in parsed &&
-          typeof (parsed as Record<string, unknown>).minimumSubmittedApplications === "number"
-        ) {
-          (parsed as Record<string, unknown>).minimumSubmittedApplications = Math.min(
-            Math.max((parsed as Record<string, unknown>).minimumSubmittedApplications as number, 0),
-            20,
-          );
-        }
-        const merged = { ...initialValues, ...parsed };
-        formik.resetForm({ values: merged });
+        formik.resetForm({ values: restoreValues(JSON.parse(stored)) });
       }
     } catch {
       // Corrupted data -- ignore

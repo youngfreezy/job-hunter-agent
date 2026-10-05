@@ -7,86 +7,9 @@ import { useFormikContext } from "formik";
 import type { SessionFormValues } from "@/lib/schemas/session";
 import { parseResume } from "@/lib/api";
 import { FilePicker } from "./FilePicker";
+import { clearResumeUuid, fileToBase64, getCachedResumeFile, readSavedResume, saveResumeToStorage, saveResumeUuid } from "@/lib/resume-storage";
 
 type ParseFn = (file: File) => Promise<{ text: string; filename: string; file_path?: string; resume_uuid?: string }>;
-
-const STORAGE_KEY = "jh_resume_text";
-const FILENAME_KEY = "jh_resume_filename";
-const FILE_BYTES_KEY = "jh_resume_bytes";
-const FILE_SAVED_AT_KEY = "jh_resume_saved_at";
-const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-function saveResumeToStorage(text: string, fileName: string, fileBytes?: string) {
-  try {
-    localStorage.removeItem("jh_resume_uuid");
-    localStorage.removeItem(FILE_BYTES_KEY);
-    localStorage.removeItem(FILE_SAVED_AT_KEY);
-    localStorage.setItem(STORAGE_KEY, text);
-    localStorage.setItem(FILENAME_KEY, fileName);
-    if (fileBytes) {
-      localStorage.setItem(FILE_BYTES_KEY, fileBytes);
-      localStorage.setItem(FILE_SAVED_AT_KEY, Date.now().toString());
-    }
-  } catch {
-    // localStorage full — try without bytes
-    try {
-      localStorage.removeItem(FILE_BYTES_KEY);
-      localStorage.removeItem(FILE_SAVED_AT_KEY);
-      localStorage.setItem(STORAGE_KEY, text);
-      localStorage.setItem(FILENAME_KEY, fileName);
-    } catch {
-      // truly full, give up
-    }
-  }
-}
-
-function getCachedResumeBytes(): { bytes: string; fileName: string } | null {
-  try {
-    const bytes = localStorage.getItem(FILE_BYTES_KEY);
-    const savedAt = localStorage.getItem(FILE_SAVED_AT_KEY);
-    const fileName = localStorage.getItem(FILENAME_KEY) || "resume.pdf";
-    if (!bytes || !savedAt) return null;
-    if (Date.now() - parseInt(savedAt, 10) > TTL_MS) {
-      // Expired — clean up
-      localStorage.removeItem(FILE_BYTES_KEY);
-      localStorage.removeItem(FILE_SAVED_AT_KEY);
-      return null;
-    }
-    return { bytes, fileName };
-  } catch {
-    return null;
-  }
-}
-
-function base64ToFile(base64: string, fileName: string): File {
-  const byteString = atob(base64);
-  const bytes = new Uint8Array(byteString.length);
-  for (let i = 0; i < byteString.length; i++) {
-    bytes[i] = byteString.charCodeAt(i);
-  }
-  const ext = fileName.split(".").pop()?.toLowerCase() || "pdf";
-  const mime =
-    ext === "pdf"
-      ? "application/pdf"
-      : ext === "docx"
-      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      : "text/plain";
-  return new File([bytes], fileName, { type: mime });
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip the data:... prefix to get raw base64
-      const base64 = result.split(",")[1] || result;
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 const SECTION_PATTERNS = [
   { label: "Summary", pattern: /\b(summary|profile|about)\b/i },
@@ -98,7 +21,7 @@ const SECTION_PATTERNS = [
 
 export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
   const parse = parseFn || parseResume;
-  const { values, errors, setFieldValue } = useFormikContext<SessionFormValues>();
+  const { values, errors, setValues } = useFormikContext<SessionFormValues>();
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const restoredRef = useRef(false);
@@ -109,42 +32,30 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    // Restore text from localStorage if form is empty
-    if (!values.resumeText) {
-      try {
-        const savedText = localStorage.getItem(STORAGE_KEY) || "";
-        const savedName = localStorage.getItem(FILENAME_KEY) || "";
-        if (savedText) {
-          setFieldValue("resumeText", savedText);
-          setFieldValue("resumeFileName", savedName);
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    // Always re-upload cached bytes to get a fresh UUID/path.
-    // Formik persistence may restore a stale resumeFileUuid from a previous session.
-    setFieldValue("resumeFilePath", "");
-    setFieldValue("resumeFileUuid", "");
-    try { localStorage.removeItem("jh_resume_uuid"); } catch {}
-    const cached = getCachedResumeBytes();
-    if (cached) {
-      const file = base64ToFile(cached.bytes, cached.fileName);
+    const saved = readSavedResume();
+    clearResumeUuid();
+    const file = getCachedResumeFile();
+    // Draft text may belong to another upload. Related fields form one state transition.
+    void setValues((current) => ({
+      ...current,
+      resumeText: file ? "" : current.resumeText || saved.text,
+      resumeFileName: file?.name || current.resumeFileName || saved.fileName,
+      resumeFilePath: "",
+      resumeFileUuid: "",
+    }), !file);
+    if (file) {
       setParsing(true);
       parse(file)
-        .then((result) => {
-          if (result.file_path) {
-            setFieldValue("resumeFilePath", result.file_path);
-          }
-          if (result.resume_uuid) {
-            setFieldValue("resumeFileUuid", result.resume_uuid);
-            try { localStorage.setItem("jh_resume_uuid", result.resume_uuid); } catch {}
-          }
+        .then(async (result) => {
+          await setValues((current) => ({
+            ...current, resumeText: result.text, resumeFileName: file.name,
+            resumeFilePath: result.file_path || "", resumeFileUuid: result.resume_uuid || "",
+          }));
+          if (result.resume_uuid) saveResumeUuid(result.resume_uuid);
         })
         .catch(() => {
           setError("Could not restore the saved resume file. Please upload it again.");
-          setFieldValue("resumeText", "");
+          void setValues((current) => ({ ...current, resumeText: "" }));
         })
         .finally(() => setParsing(false));
     }
@@ -157,29 +68,27 @@ export function FormikFileUpload({ parseFn }: { parseFn?: ParseFn } = {}) {
 
   const handleFileUpload = async (file: File) => {
     setError(null);
-    setFieldValue("resumeFileName", file.name);
-    setFieldValue("resumeText", "");
-    setFieldValue("resumeFilePath", "");
-    setFieldValue("resumeFileUuid", "");
+    void setValues((current) => ({
+      ...current, resumeFileName: file.name, resumeText: "", resumeFilePath: "", resumeFileUuid: "",
+    }), false);
     saveResumeToStorage("", file.name);
-
 
     // All advertised formats need server-owned bytes/UUID for browser upload.
     setParsing(true);
     try {
       const [result, base64] = await Promise.all([parse(file), fileToBase64(file)]);
-      setFieldValue("resumeText", result.text);
+      await setValues((current) => ({
+        ...current, resumeText: result.text, resumeFileName: file.name,
+        resumeFilePath: result.file_path || "", resumeFileUuid: result.resume_uuid || "",
+      }));
       saveResumeToStorage(result.text, file.name, base64);
-      setFieldValue("resumeFilePath", result.file_path || "");
-      setFieldValue("resumeFileUuid", result.resume_uuid || "");
       if (result.resume_uuid) {
-        try { localStorage.setItem("jh_resume_uuid", result.resume_uuid); } catch {}
+        saveResumeUuid(result.resume_uuid);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to parse file";
       setError(msg);
-      setFieldValue("resumeFileName", "");
-      setFieldValue("resumeText", "");
+      await setValues((current) => ({ ...current, resumeFileName: "", resumeText: "" }));
     } finally {
       setParsing(false);
     }

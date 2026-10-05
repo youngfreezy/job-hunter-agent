@@ -18,7 +18,7 @@ const BOARDS = [
 ];
 
 export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: (v: boolean) => void }) {
-  const { values, setFieldValue } = useFormikContext<SessionFormValues>();
+  const { values, setFieldValue, setValues } = useFormikContext<SessionFormValues>();
   const [balance, setBalance] = useState<number | null>(null);
   const [isPremium, setIsPremium] = useState(false);
   const [submittedCost, setSubmittedCost] = useState(1);
@@ -41,12 +41,15 @@ export function ConfigStep({ onInsufficientCredits }: { onInsufficientCredits?: 
         if (!data) return;
         const user = data.user || data;
         const saved = user.minimum_submitted_applications || 0;
-        if (saved > 0 && (values.minimumSubmittedApplications ?? 0) === 0) {
-          setFieldValue("minimumSubmittedApplications", saved);
+        if (typeof saved === "number" && Number.isFinite(saved) && saved > 0) {
+          // Read current form state when the request resolves, not the mount-time snapshot.
+          setValues((current) => current.minimumSubmittedApplications === 0
+            ? { ...current, minimumSubmittedApplications: Math.min(Math.floor(saved), current.maxJobs) }
+            : current);
         }
       })
       .catch(() => {});
-  }, []);
+  }, [setValues]);
 
   const boards = indeedEasyApplyOnly ? ["indeed"] : values.jobBoards ?? ["indeed"];
   const availableBoards = indeedEasyApplyOnly ? BOARDS.filter((board) => board.id === "indeed") : BOARDS;

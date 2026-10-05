@@ -9,6 +9,7 @@ import { FormikProvider } from "formik";
 import { usePersistedFormik } from "@/lib/hooks/usePersistedFormik";
 import { sessionInitialValues, stepSchemas, type SessionFormValues } from "@/lib/schemas/session";
 import { startSession } from "@/lib/api";
+import { restoreSessionDraft } from "@/lib/session-draft";
 import { WizardStepper } from "./WizardStepper";
 import { WizardNavigation } from "./WizardNavigation";
 import { JobSearchStep } from "./steps/JobSearchStep";
@@ -43,6 +44,7 @@ export function SessionWizard() {
 
   const { formik, hydrated } = usePersistedFormik<SessionFormValues>({
     persistKey: "session_wizard",
+    restoreValues: restoreSessionDraft,
     initialValues: sessionInitialValues,
     validationSchema: stepSchemas[step],
     onSubmit: async (values) => {

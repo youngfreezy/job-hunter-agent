@@ -5,85 +5,16 @@
 import { useState, useEffect, useRef } from "react";
 import { parseResume } from "@/lib/api";
 import { FilePicker } from "@/components/forms/FilePicker";
+import { clearResumeUuid, fileToBase64, getCachedResumeFile, readSavedResume, saveResumeToStorage, saveResumeUuid } from "@/lib/resume-storage";
 
-const STORAGE_KEY = "jh_resume_text";
-const FILENAME_KEY = "jh_resume_filename";
-const FILE_BYTES_KEY = "jh_resume_bytes";
-const FILE_SAVED_AT_KEY = "jh_resume_saved_at";
-const RESUME_UUID_KEY = "jh_resume_uuid";
-const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(",")[1] || result;
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function saveResumeToStorage(text: string, fileName: string, fileBytes?: string) {
-  try {
-    localStorage.removeItem("jh_resume_uuid");
-    localStorage.removeItem(FILE_BYTES_KEY);
-    localStorage.removeItem(FILE_SAVED_AT_KEY);
-    localStorage.setItem(STORAGE_KEY, text);
-    localStorage.setItem(FILENAME_KEY, fileName);
-    if (fileBytes) {
-      localStorage.setItem(FILE_BYTES_KEY, fileBytes);
-      localStorage.setItem(FILE_SAVED_AT_KEY, Date.now().toString());
-    }
-  } catch {
-    try {
-      localStorage.removeItem(FILE_BYTES_KEY);
-      localStorage.removeItem(FILE_SAVED_AT_KEY);
-      localStorage.setItem(STORAGE_KEY, text);
-      localStorage.setItem(FILENAME_KEY, fileName);
-    } catch {
-      // truly full
-    }
-  }
-}
-
-function getCachedResumeBytes(): { bytes: string; fileName: string } | null {
-  try {
-    const bytes = localStorage.getItem(FILE_BYTES_KEY);
-    const savedAt = localStorage.getItem(FILE_SAVED_AT_KEY);
-    const fileName = localStorage.getItem(FILENAME_KEY) || "resume.pdf";
-    if (!bytes || !savedAt) return null;
-    if (Date.now() - parseInt(savedAt, 10) > TTL_MS) {
-      localStorage.removeItem(FILE_BYTES_KEY);
-      localStorage.removeItem(FILE_SAVED_AT_KEY);
-      return null;
-    }
-    return { bytes, fileName };
-  } catch {
-    return null;
-  }
-}
-
-function base64ToFile(base64: string, fileName: string): File {
-  const byteString = atob(base64);
-  const bytes = new Uint8Array(byteString.length);
-  for (let i = 0; i < byteString.length; i++) {
-    bytes[i] = byteString.charCodeAt(i);
-  }
-  const ext = fileName.split(".").pop()?.toLowerCase() || "pdf";
-  const mime =
-    ext === "pdf"
-      ? "application/pdf"
-      : ext === "docx"
-      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      : "text/plain";
-  return new File([bytes], fileName, { type: mime });
+export interface ResumeAttachment {
+  fileName: string;
+  resumeUuid: string;
+  filePath: string;
 }
 
 interface ResumeUploadProps {
-  onResumeReady?: (text: string) => void;
+  onResumeReady?: (text: string, attachment: ResumeAttachment | null) => void;
 }
 
 export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
@@ -99,29 +30,32 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    const saved = localStorage.getItem(STORAGE_KEY) || "";
-    const savedName = localStorage.getItem(FILENAME_KEY) || "";
+    const { text: saved, fileName: savedName } = readSavedResume();
     setResumeText(saved);
     setFileName(savedName);
 
     // If we have cached file bytes, re-upload to get a fresh server path
-    try { localStorage.removeItem(RESUME_UUID_KEY); } catch {}
-    const cached = getCachedResumeBytes();
-    if (cached && saved) {
-      const file = base64ToFile(cached.bytes, cached.fileName);
+    clearResumeUuid();
+    const file = getCachedResumeFile();
+    if (file && saved) {
       setParsing(true);
       parseResume(file)
         .then((result) => {
-          if (result.resume_uuid) {
-            try { localStorage.setItem(RESUME_UUID_KEY, result.resume_uuid); } catch {}
-          }
+          setResumeText(result.text);
+          if (result.resume_uuid) saveResumeUuid(result.resume_uuid);
+          onResumeReadyRef.current?.(result.text, {
+            fileName: file.name, resumeUuid: result.resume_uuid || "", filePath: result.file_path || "",
+          });
         })
         .catch(() => {
           setError("Could not restore the saved resume file. Please upload it again.");
           setResumeText("");
-          onResumeReadyRef.current?.("");
+          onResumeReadyRef.current?.("", null);
         })
         .finally(() => setParsing(false));
+    } else if (saved) {
+      setError("Saved resume attachment is unavailable. Please upload it again.");
+      onResumeReadyRef.current?.(saved, null);
     }
   }, []);
 
@@ -130,8 +64,7 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
     setFileName(file.name);
     setResumeText("");
     saveResumeToStorage("", file.name);
-    onResumeReady?.("");
-
+    onResumeReady?.("", null);
 
     setParsing(true);
     try {
@@ -139,9 +72,11 @@ export function ResumeUpload({ onResumeReady }: ResumeUploadProps) {
       setResumeText(result.text);
       saveResumeToStorage(result.text, file.name, base64);
       if (result.resume_uuid) {
-        try { localStorage.setItem(RESUME_UUID_KEY, result.resume_uuid); } catch {}
+        saveResumeUuid(result.resume_uuid);
       }
-      onResumeReady?.(result.text);
+      onResumeReady?.(result.text, {
+        fileName: file.name, resumeUuid: result.resume_uuid || "", filePath: result.file_path || "",
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to parse file";
       setError(msg);

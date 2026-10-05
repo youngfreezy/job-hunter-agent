@@ -29,6 +29,96 @@ test.describe('Auxiliary recovery', () => {
     });
   });
 
+  test('Quick Apply revalidates the attachment before launching and never reuses the saved UUID', async ({ page, context }) => {
+    let requestBody: Record<string, unknown> | null = null;
+    await context.route('**/api/sessions', async route => {
+      requestBody = route.request().postDataJSON();
+      await route.fulfill({ status: 503, json: { detail: 'Fixture stopped after capturing launch payload' } });
+    });
+    await page.goto('/quick-apply');
+    await expect(page.getByRole('button', { name: 'Change resume' })).toBeVisible();
+    await page.getByLabel('Job URLs, one per line').fill('https://www.indeed.com/viewjob?jk=fixture');
+    await page.getByRole('button', { name: 'Apply to 1 job', exact: true }).click();
+    await expect.poll(() => requestBody).not.toBeNull();
+    expect(requestBody).toMatchObject({ resume_uuid: 'restored-uuid', resume_file_path: '/mock/original.pdf' });
+  });
+
+  for (const path of ['/quick-apply', '/session/new']) test(`${path} corrupt cached bytes leave a usable upload control`, async ({ page, context }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await context.addInitScript(() => localStorage.setItem('jh_resume_bytes', '%%% invalid base64 %%%'));
+    await page.goto(path);
+    const input = page.locator(path === '/quick-apply' ? '#resume-upload-standalone' : '#resume-upload');
+    await expect(input).toBeEnabled();
+    await input.setInputFiles({ name: 'recovered.txt', mimeType: 'text/plain', buffer: Buffer.from('Recovered resume fixture@example.test') });
+    await expect(page.getByText(path === '/quick-apply' ? 'Using recovered.txt' : 'recovered.txt', { exact: true })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test('Quick Apply works with a current upload when browser storage is unavailable', async ({ page, context }) => {
+    let requestBody: Record<string, unknown> | null = null;
+    await context.addInitScript(() => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Storage unavailable', 'SecurityError'); } }));
+    await context.route('**/api/sessions', async route => {
+      requestBody = route.request().postDataJSON();
+      await route.fulfill({ status: 503, json: { detail: 'Fixture stopped after capturing launch payload' } });
+    });
+    await page.goto('/quick-apply');
+    await page.locator('#resume-upload-standalone').setInputFiles({ name: 'current.txt', mimeType: 'text/plain', buffer: Buffer.from('Current resume fixture@example.test') });
+    await page.getByLabel('Job URLs, one per line').fill('https://www.indeed.com/viewjob?jk=fixture');
+    await page.getByRole('button', { name: 'Apply to 1 job', exact: true }).click();
+    await expect.poll(() => requestBody).not.toBeNull();
+    expect(requestBody).toMatchObject({ resume_uuid: 'restored-uuid', resume_file_path: '/mock/original.pdf' });
+  });
+
+  test('Custom wizard restores text from the same attachment rather than an older form draft', async ({ page, context }) => {
+    await context.addInitScript(() => localStorage.setItem('jh_form_session_wizard', JSON.stringify({
+      keywords: 'AI Engineer', resumeText: 'STALE FORM RESUME old@example.test', resumeFileName: 'old.txt', resumeFileUuid: 'old-uuid',
+    })));
+    await page.goto('/session/new');
+    await page.getByRole('button', { name: 'Custom Search', exact: true }).click();
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.locator('#resume-upload')).toBeEnabled();
+    await page.getByText('Preview parsed text', { exact: true }).click();
+    await expect(page.getByText('Fixture Engineer. Experience building accessible software and reliable APIs.', { exact: true })).toBeVisible();
+    await expect(page.getByText('STALE FORM RESUME old@example.test', { exact: true })).not.toBeVisible();
+  });
+
+  for (const [path, buttonName, apiPath] of [
+    ['/career-pivot', 'Start Assessment', '/api/career-pivot'],
+    ['/interview-prep', 'Start Mock Interview', '/api/interview-prep'],
+    ['/freelance', 'Generate sample briefs', '/api/freelance'],
+  ]) test(`${path} uses the current upload even without browser storage`, async ({ page, context }) => {
+    let requestBody: Record<string, unknown> | null = null;
+    await context.addInitScript(() => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Storage unavailable', 'SecurityError'); } }));
+    await context.route(`**${apiPath}`, async route => {
+      requestBody = route.request().postDataJSON();
+      await route.fulfill({ status: 503, json: { detail: 'Fixture stopped after capturing launch payload' } });
+    });
+    await page.goto(path);
+    await page.locator('#resume-upload-standalone').setInputFiles({ name: 'current.txt', mimeType: 'text/plain', buffer: Buffer.from('Current resume fixture@example.test') });
+    if (path === '/interview-prep') {
+      await page.getByLabel('Company name', { exact: true }).fill('Fixture');
+      await page.getByLabel('Role title', { exact: true }).fill('Engineer');
+    }
+    await page.getByRole('button', { name: buttonName, exact: true }).click();
+    await expect.poll(() => requestBody).not.toBeNull();
+    expect(requestBody).toMatchObject({ resume_text: 'Fixture Engineer. Experience building accessible software and reliable APIs.' });
+    await expect(page.getByRole('button', { name: buttonName, exact: true })).toBeEnabled();
+  });
+
+  test('Parsed resume validation uses the same final values as its attachment', async ({ page, context }) => {
+    await context.route('**/api/**/parse-resume', route => route.fulfill({json:{
+      text:'Current Fixture Engineer fixture@example.test. Experience in software.', filename:'current.txt', resume_uuid:'current-uuid', file_path:'/mock/current.txt',
+    }}));
+    await page.goto('/session/new');
+    await expect(page.locator('#resume-upload')).toBeEnabled();
+    await expect(page.getByText('Upload a resume file (.pdf, .docx, or .txt).', {exact:true})).toHaveCount(0);
+    await page.locator('#resume-upload').setInputFiles({name:'current.txt',mimeType:'text/plain',buffer:Buffer.from('Current Fixture Engineer fixture@example.test')});
+    await expect(page.locator('#resume-upload')).toBeEnabled();
+    await expect(page.getByText('Upload a resume file (.pdf, .docx, or .txt).', {exact:true})).toHaveCount(0);
+    await expect(page.getByRole('alert').filter({hasText:/resume must include an email/})).toHaveCount(0);
+  });
+
   const resultRoutes = ['/career-pivot/result','/interview-prep/result','/freelance/result','/session/main/career-pivot','/session/main/interview-prep'];
   for (const path of resultRoutes) test(`${path} denied stream offers reconnect without starting another session`,async({page,context})=>{
     let streams=0,starts=0;

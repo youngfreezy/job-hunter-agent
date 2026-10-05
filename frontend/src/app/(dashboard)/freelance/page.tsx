@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { responseError } from "@/lib/api-error";
 import { useRouter } from "next/navigation";
@@ -25,19 +25,15 @@ export default function FreelancePage() {
   const [rateMax, setRateMax] = useState(120);
   const [platforms, setPlatforms] = useState(["upwork", "linkedin"]);
   const [availability, setAvailability] = useState("part_time");
-  const [hasResume, setHasResume] = useState(false);
-
-  useEffect(() => {
-    setHasResume(!!(localStorage.getItem("jh_resume_text") || "").trim());
-  }, []);
+  const [resumeText, setResumeText] = useState("");
+  const hasResume = Boolean(resumeText.trim());
 
   function togglePlatform(id: string) {
     setPlatforms((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   }
 
   async function handleStart() {
-    const savedResume = localStorage.getItem("jh_resume_text") || "";
-    if (!savedResume.trim()) {
+    if (!resumeText.trim()) {
       setError("Please upload your resume above first.");
       return;
     }
@@ -55,7 +51,7 @@ export default function FreelancePage() {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          resume_text: localStorage.getItem("jh_resume_text") || "",
+          resume_text: resumeText,
           hourly_rate_min: rateMin,
           hourly_rate_max: rateMax,
           platforms,
@@ -85,7 +81,7 @@ export default function FreelancePage() {
           AI-generated sample briefs for proposal practice. These are not live job listings; no marketplaces are searched.
         </p>
 
-        <ResumeUpload onResumeReady={(text) => setHasResume(Boolean(text.trim()))} />
+        <ResumeUpload onResumeReady={setResumeText} />
 
         <div>
           <label className="block text-sm font-medium mb-2">Hourly Rate Range</label>
@@ -94,6 +90,7 @@ export default function FreelancePage() {
               <span className="text-muted-foreground">$</span>
               <input
                 type="number"
+                aria-label="Minimum hourly rate"
                 value={rateMin}
                 onChange={(e) => setRateMin(Number(e.target.value))}
                 className="w-20 rounded border bg-background px-2 py-1 text-sm"
@@ -104,6 +101,7 @@ export default function FreelancePage() {
               <span className="text-muted-foreground">$</span>
               <input
                 type="number"
+                aria-label="Maximum hourly rate"
                 value={rateMax}
                 onChange={(e) => setRateMax(Number(e.target.value))}
                 className="w-20 rounded border bg-background px-2 py-1 text-sm"
@@ -120,6 +118,7 @@ export default function FreelancePage() {
               <button
                 key={p.id}
                 onClick={() => togglePlatform(p.id)}
+                aria-pressed={platforms.includes(p.id)}
                 className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
                   platforms.includes(p.id)
                     ? "bg-primary text-primary-foreground border-primary"
@@ -142,6 +141,7 @@ export default function FreelancePage() {
               <button
                 key={opt.id}
                 onClick={() => setAvailability(opt.id)}
+                aria-pressed={availability === opt.id}
                 className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
                   availability === opt.id
                     ? "bg-primary text-primary-foreground border-primary"

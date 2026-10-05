@@ -179,7 +179,7 @@ function QuickStartInner({ onAnalyzingChange }: { onAnalyzingChange?: (v: boolea
             </p>
           </div>
           <FormikFileUpload />
-          {values.resumeText && !analyzed && <Button type="button" variant="outline" disabled={analyzing} onClick={handleRetryAnalysis}>{analyzing ? "Analyzing…" : "Suggest roles from resume (uses AI)"}</Button>}
+          {values.resumeText && !analyzed && <Button type="button" variant="outline" className="h-auto max-w-full whitespace-normal py-2" disabled={analyzing} onClick={handleRetryAnalysis}>{analyzing ? "Analyzing…" : "Suggest roles from resume (uses AI)"}</Button>}
         </CardContent>
       </Card>
 

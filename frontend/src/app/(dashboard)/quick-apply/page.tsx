@@ -8,16 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import { SetupNotice } from "@/components/SetupNotice";
-import { ResumeUpload } from "@/components/ResumeUpload";
+import { ResumeUpload, type ResumeAttachment } from "@/components/ResumeUpload";
 import { startSession } from "@/lib/api";
 import { quickApplyInitialUrls } from "@/lib/applicationAnswers";
 import { indeedEasyApplyOnly } from "@/lib/indeed-policy";
 import { validateJobUrls } from "@/lib/quick-apply-urls";
 import { toast } from "sonner";
 
-const RESUME_TEXT_KEY = "jh_resume_text";
-const RESUME_FILENAME_KEY = "jh_resume_filename";
-const RESUME_UUID_KEY = "jh_resume_uuid";
 const URLS_STORAGE_KEY = "jh_quick_apply_urls";
 const INDEED_DEMO = indeedEasyApplyOnly || process.env.NEXT_PUBLIC_BROWSERBASE_DEMO === "true";
 
@@ -25,21 +22,14 @@ export default function QuickApplyPage() {
   const router = useRouter();
   const [urls, setUrls] = useState("");
   const [resumeText, setResumeText] = useState("");
-  const [resumeFileName, setResumeFileName] = useState("");
+  const [resumeAttachment, setResumeAttachment] = useState<ResumeAttachment | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showResumeUpload, setShowResumeUpload] = useState(false);
 
-  // Restore saved resume from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem(RESUME_TEXT_KEY) || "";
-    const savedName = localStorage.getItem(RESUME_FILENAME_KEY) || "";
-    setResumeText(saved);
-    setResumeFileName(savedName);
-    if (!saved) setShowResumeUpload(true);
-
-    // Restore saved URLs
-    const savedUrls = localStorage.getItem(URLS_STORAGE_KEY) || "";
+    let savedUrls = "";
+    try { savedUrls = localStorage.getItem(URLS_STORAGE_KEY) || ""; } catch { /* Storage is optional. */ }
     setUrls(quickApplyInitialUrls(window.location.search, savedUrls));
   }, []);
 
@@ -51,11 +41,13 @@ export default function QuickApplyPage() {
     } catch {}
   }, []);
 
-  const handleResumeReady = useCallback((text: string) => {
+  const handleResumeReady = useCallback((text: string, attachment: ResumeAttachment | null) => {
     setResumeText(text);
-    const name = localStorage.getItem(RESUME_FILENAME_KEY) || "resume.pdf";
-    setResumeFileName(name);
+    setResumeAttachment(attachment);
+    if (attachment) setShowResumeUpload(false);
   }, []);
+
+  const resumeReady = Boolean(resumeText && (resumeAttachment?.resumeUuid || resumeAttachment?.filePath));
 
   const { urls: parsedUrls, errors: urlErrors } = validateJobUrls(urls, INDEED_DEMO);
 
@@ -80,7 +72,7 @@ export default function QuickApplyPage() {
       toast.error("Paste at least one job URL.");
       return;
     }
-    if (!resumeText) {
+    if (!resumeReady) {
       toast.error("Upload your resume first.");
       setShowResumeUpload(true);
       return;
@@ -95,8 +87,8 @@ export default function QuickApplyPage() {
         remote_only: false,
         salary_min: null,
         resume_text: resumeText,
-        resume_file_path: null,
-        resume_uuid: localStorage.getItem(RESUME_UUID_KEY) || null,
+        resume_file_path: resumeAttachment?.filePath || null,
+        resume_uuid: resumeAttachment?.resumeUuid || null,
         linkedin_url: null,
         preferences: {},
         job_urls: parsedUrls,
@@ -135,12 +127,12 @@ export default function QuickApplyPage() {
       {/* Resume status */}
       <Card className="mb-6">
         <CardContent className="p-6">
-          {resumeText && !showResumeUpload ? (
+          {resumeReady && !showResumeUpload && (
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium text-sm">Resume ready</p>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Using {resumeFileName || "your saved resume"}
+                  Using {resumeAttachment?.fileName || "your saved resume"}
                 </p>
               </div>
               <Button
@@ -151,19 +143,13 @@ export default function QuickApplyPage() {
                 Change resume
               </Button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="font-medium text-sm">
-                {resumeText ? "Upload a different resume" : "Upload your resume"}
-              </p>
-              <ResumeUpload
-                onResumeReady={(text) => {
-                  handleResumeReady(text);
-                  setShowResumeUpload(false);
-                }}
-              />
-            </div>
           )}
+          <div className="space-y-3" hidden={resumeReady && !showResumeUpload}>
+            <p className="font-medium text-sm">
+              {resumeText ? "Upload a different resume" : "Upload your resume"}
+            </p>
+            <ResumeUpload onResumeReady={handleResumeReady} />
+          </div>
         </CardContent>
       </Card>
 
@@ -214,7 +200,7 @@ export default function QuickApplyPage() {
       {/* Submit */}
       <Button
         onClick={handleSubmit}
-        disabled={submitting || parsedUrls.length === 0 || urlErrors.length > 0}
+        disabled={submitting || !resumeReady || parsedUrls.length === 0 || urlErrors.length > 0}
         className="w-full h-12 text-base font-semibold"
         size="lg"
       >

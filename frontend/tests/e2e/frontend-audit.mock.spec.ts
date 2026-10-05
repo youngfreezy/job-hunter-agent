@@ -52,7 +52,7 @@ test.describe('Mocked frontend recovery and resume identity', () => {
       const input = page.locator('#' + id);
       await expect(input).toBeEnabled();
       await input.setInputFiles({ name: 'replacement.txt', mimeType: 'text/plain', buffer: Buffer.from('Replacement Engineer. Different applicant content, never use the old PDF.') });
-      await expect(page.getByText(/^(Using )?replacement\.txt$/)).toBeVisible();
+      await expect(page.getByText(route === '/quick-apply' ? 'Using replacement.txt' : 'replacement.txt', { exact: true })).toBeVisible();
       await expect.poll(() => page.evaluate(() => localStorage.getItem('jh_resume_uuid'))).toBe('replacement.txt-uuid');
       const attachment = await page.evaluate(() => ({ bytes: localStorage.getItem('jh_resume_bytes'), uuid: localStorage.getItem('jh_resume_uuid') }));
       expect(attachment.uuid).toBe('replacement.txt-uuid');
