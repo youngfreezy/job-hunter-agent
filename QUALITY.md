@@ -64,7 +64,7 @@ These choices follow [React's purity rules](https://react.dev/reference/rules/co
 [effect guidance](https://react.dev/learn/you-might-not-need-an-effect), and
 [Next.js data security guidance](https://nextjs.org/docs/app/guides/data-security).
 
-## Verification
+## Initial audit verification
 
 | Check | Result |
 | --- | --- |
@@ -84,6 +84,30 @@ provider metadata are retained in the local audit artifacts, not committed with
 user data. CI and deployment checks are separate release gates, recorded in the
 release evidence after the exact committed revision passes.
 
+## Architectural follow-up verification
+
+The subsequent architecture release implements all five follow-ups. A separate
+reviewer compared moved JSX and public API signatures against the baseline; a
+second review checked backend policies and transport contracts. A mixed-batch
+safety-stop ordering finding was reproduced, fixed, and re-reviewed.
+
+| Check | Result |
+| --- | --- |
+| Fresh locked Python 3.11 and 3.12, isolated local PostgreSQL databases | 1,105 passed on each version |
+| Clean Linux hash-checked wheel installs, imports, and `pip check` | Passed on both Python versions |
+| Python dependency audits | No known advisories in either fresh inventory |
+| Frontend unit tests, lint, TypeScript, production build | 164 tests passed; all checks passed |
+| Browserbase against local production build with mocked APIs | 44 distinct workflows passed: 43 in the full run and the corrected one-job fixture in a targeted retest |
+| Marketing package on Node 24 | Five tests passed, compiled ESM/CLI build passed, npm audit clean |
+| Backend Docker image | Built successfully using the production hash lock |
+
+The initial wizard test assumed the demo's one-job default. The normal app defaults
+to five and correctly refused to spend five credits from a three-credit fixture.
+The test now selects one job through the UI before asserting its request. No
+product guard was weakened. These checks made no model calls or real applications;
+Browserbase was used only for UI validation. Exact release, provider usage, and
+post-deploy evidence are retained separately from this local verification.
+
 ## Dependency decisions and follow-up
 
 Review date: **2026-10-05**. Reassess remaining advisories by **2026-10-12** and
@@ -98,26 +122,25 @@ Tracked in [dependency follow-up #2](https://github.com/youngfreezy/job-hunter-a
   No patched braces release was available. These paths consume repository-controlled
   build globs, not HTTP inputs. Keep build configuration trusted; do not force npm's
   suggested framework/lint downgrade. Upgrade when a compatible fix is available.
-- **Marketing package:** patched form-data (2.5.6 / 4.0.6) and nanoid (3.3.20) in
-  the lockfile. Seven audit entries remain: five low, one moderate, one high.
-  The AI SDK 4 dependency tree includes jsondiffpatch HTML/prototype advisories,
-  attachment/download advisory paths, and an esbuild Windows development-server
-  advisory. This package only uses plain `generateText`; it does not use streaming
-  UI diffs, file attachments/downloads, or an esbuild server. Keep those APIs unused
-  until a separately tested AI SDK migration resolves the graph. Model output now
-  has a validated and HTML-encoded boundary regardless of SDK version.
-- **Python:** pip-audit found no known vulnerabilities in the installed audit
-  runtime. The requirements still contain version ranges; this result is not a
-  guarantee for all future resolutions. Produce and maintain resolved production
-  constraints in a separate build-reproducibility change.
+- **Marketing package:** migrated the standalone package to AI SDK 7.0.127 and
+  Anthropic provider 4.0.71 with exact npm lockfile pins. Request-contract tests
+  preserve model selection, output budgets, validated JSON, HTML encoding, and
+  provider-default sampling for Claude 5.5. Compiled ESM library and CLI entry
+  points are exercised. The resolved package audit reports no known advisories.
+- **Python:** production and test dependencies now have generated version/hash
+  locks, with conditional resolutions for Python 3.11 and 3.12. Clean Linux
+  installs require binary wheels and hashes; both versions pass `pip check`,
+  runtime imports, and dependency audits. See [lock maintenance](backend/DEPENDENCIES.md).
+  Stagehand and its Anthropic adapter retain their independently tested pins.
 
-Optional architectural follow-ups require dedicated parity tests: split the large
-session page into subscription/control orchestration and review panels; separate
-transport/auth from feature API clients; consolidate duplicate result pages; and
-retire unused agent modes before extracting a typed application policy. Those
-changes are intentionally separate from this correctness-focused cleanup. Track
-them with acceptance criteria instead of a cosmetic repository-wide rewrite.
-See [architecture follow-up #3](https://github.com/youngfreezy/job-hunter-agent/issues/3).
+The five architectural follow-ups are implemented: session orchestration and
+panels are separate; typed pure application policies govern planning, settlement,
+and retries; feature clients share one authentication/transport layer; result UI
+is shared and the landing page composes focused sections; dependencies have
+reproducible locks and the standalone marketing SDK is migrated. Existing routes,
+provider guards, resume identity, approval gates, and public API exports remain.
+See [architecture boundaries](ARCHITECTURE.md) and
+[architecture follow-up #3](https://github.com/youngfreezy/job-hunter-agent/issues/3).
 
 Dependency review sources: [Vitest migration](https://vitest.dev/guide/migration/),
 [Vitest advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-82fw-gwwq-j7x9),

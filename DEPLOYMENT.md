@@ -81,7 +81,7 @@ immediate ingress peers for your deployment; never trust `*` on a publicly
 reachable listener. Uvicorn reads this environment variable itself.
 
 For this Railway deployment, the verified immediate peers on 2026-10-05 were
-`100.64.0.1`, `100.64.0.2`, and `100.64.0.3`, plus loopback. These are an observed
+`100.64.0.1` through `100.64.0.6`, each listed explicitly, plus loopback. These are an observed
 deployment configuration, not a universal Railway contract. Recheck peer addresses
 after networking changes and confirm that Railway replaces client-supplied
 forwarding headers. A missing trusted peer conservatively groups visitors under
