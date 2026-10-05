@@ -155,7 +155,7 @@ Optimization remains disabled whenever the model spend ledger is configured.
 
 ### Prerequisites
 - Python 3.11 or 3.12 (CI runs both; the Docker image uses 3.11)
-- Node.js 20.19+ (required by the test toolchain)
+- Node.js 20.19+ for the app; Node.js 22+ for the standalone marketing package (CI uses 24)
 - Docker (for Postgres + Redis)
 
 ### Setup
@@ -172,7 +172,8 @@ cp .env.example .env
 # Backend
 cd backend
 python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+python -m pip install pip==26.1.2
+python -m pip install --require-hashes -r requirements.txt
 
 # Frontend
 cd ../frontend
@@ -189,6 +190,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ```bash
 # Backend (from the repo root; Postgres-backed tests skip with a reason when no DB is up)
+python -m pip install --require-hashes -r backend/requirements-test.txt
 python -m pytest backend/tests -q
 
 # Frontend unit tests, lint, typecheck, production build
@@ -208,6 +210,9 @@ Use a dedicated local test database for backend tests. Mocked suites do not subm
 applications or call paid models. Live Playwright workflows are separate: do not
 run the entire `frontend/tests/e2e` directory against production without selecting
 the intended workflow and setting a budget.
+
+Production and CI require hashed binary wheels. See [Python dependency locks](backend/DEPENDENCIES.md)
+for reproducible installs, regeneration, and macOS Intel compiler requirements.
 
 See [the repository quality audit](QUALITY.md) for reviewed boundaries, functional
 design conventions, verification evidence, and tracked limitations.
