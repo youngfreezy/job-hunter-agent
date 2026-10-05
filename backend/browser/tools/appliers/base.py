@@ -637,7 +637,8 @@ class BaseApplier(ABC):
         try:
             png_bytes = await self.page.screenshot(full_page=True)
             from backend.shared.screenshot_store import store_screenshot_bytes
-            row_id = store_screenshot_bytes(
+            # A slow database must not block browser deadlines or cancellation.
+            row_id = await asyncio.to_thread(store_screenshot_bytes,
                 session_id=self.session_id,
                 job_id=str(job.id),
                 image_data=png_bytes,

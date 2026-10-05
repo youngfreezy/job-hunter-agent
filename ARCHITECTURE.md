@@ -90,6 +90,17 @@ existing deadline and retain the time reserved for submission and its receipt.
 This uses Browserbase's [solver lifecycle events](https://docs.browserbase.com/platform/identity/captcha-solving)
 and Stagehand's [visual extraction](https://docs.stagehand.dev/v4/basics/extract#visual-extract).
 
+Visual extraction captures the current viewport, so a long review can leave
+verification below the fold. After an inconclusive post-solver visual decision,
+the application permits one inspection attempt: Stagehand selects a scroll
+container, a scroll-only executor reveals its lower section, and Stagehand reads
+a fresh screenshot after scrolling settles. This adds at most one uncached
+observation and one visual extraction per application, inside the original
+verification deadline. Tab, URL, and solver guards apply throughout; inspection
+cannot click, fill, or submit. A timeout saves a bounded full-page diagnostic
+screenshot through the existing authenticated screenshot store. Seeing no
+challenge in one viewport never establishes a successful application.
+
 Recovery remains a bounded application policy: one GET of the same observed
 page, before any submission attempt, with sufficient time for recovery and
 receipt verification. It rechecks the observation before navigating and defers
