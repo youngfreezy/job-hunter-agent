@@ -71,8 +71,6 @@ class ProviderModel:
             payload = {'scores':[dict(job_id=jid, score=90, eligibility_status='met', eligibility_reasons=['Fixture requirements match original resume.'], score_breakdown=dict(keyword_match=90,experience_match=90,location_match=90,salary_match=90),reasons=['Relevant Python role']) for jid in ids]}
         elif name == 'AnswerCheck':
             payload = dict(supported=True, reason='Resume demonstrates Python experience.', question='')
-        elif name == 'VerificationResult':
-            payload = dict(verified_count=1, failed_count=0, details=[], summary='Receipt confirmed by application adapter.')
         elif name == 'QADecision':
             payload = dict(decision='continue', reasoning='One verified application.')
         elif name == 'NextStepsResult':
@@ -172,8 +170,7 @@ async def test_real_pipeline_reviews_uploads_submits_receipt_and_restart_dedupli
     monkeypatch.setattr('backend.browser.tools.appliers.base.emit_agent_event',AsyncMock())
     for module in (intake,career_coach,scoring,cover_letter,application_answers):
         monkeypatch.setattr(module,'build_llm',lambda **kwargs:ProviderModel(calls))
-    for module in (verification,qa):
-        monkeypatch.setattr(module,'_shared_build_llm',lambda **kwargs:ProviderModel(calls))
+    monkeypatch.setattr(qa,'_shared_build_llm',lambda **kwargs:ProviderModel(calls))
     monkeypatch.setattr(reporting,'_build_llm',lambda:ProviderModel(calls))
     monkeypatch.setattr('backend.shared.llm.build_llm',lambda **kwargs:ProviderModel(calls))
     monkeypatch.setattr('backend.moltbook.strategies.get_strategy_manager',lambda:SimpleNamespace(get_state=lambda:SimpleNamespace(board_priorities={},human_review_needed=False)))
