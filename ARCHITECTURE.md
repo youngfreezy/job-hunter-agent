@@ -60,6 +60,21 @@ Browserbase runs the browser; Stagehand performs page actions behind the existin
 cache and spending controls. Model judgment cannot override confirmed receipts,
 unknown delivery, spending reservations, or missing-history holds.
 
+Stagehand owns the next-step judgment, including whether the form is still
+loading. Application code does not classify loading pages from button names.
+A fresh `wait` decision can be reused only when native snapshots before and
+after that decision match, along with the tab, URL, and CAPTCHA generation.
+The snapshot fingerprint ignores ephemeral node IDs but retains labels, values,
+and structure. Any change requires a fresh, uncached Stagehand assessment.
+Unchanged loading screens use native polling instead of repeated model calls.
+
+Recovery remains a bounded application policy: one GET of the same observed
+page, before any submission attempt, with sufficient time for recovery and
+receipt verification. It rechecks the observation before navigating and defers
+to managed verification. Recovery invalidates the uploaded-resume proof, so the
+canonical file and final factual review must be verified again. A loading page,
+a successful SDK command, or a solver-finished event is never a submission receipt.
+
 The experimental direct ATS API path stays disabled by default. If enabled, a
 POST with ambiguous delivery produces an uncertainty hold instead of a second
 submission through the browser. Confirmed receipts and uncertainty holds are

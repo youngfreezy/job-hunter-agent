@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import traceback
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import urlparse
@@ -57,6 +58,15 @@ class NextStep(BaseModel):
     instruction: str = Field(description='One precise natural-language action; no CSS selectors or JavaScript. Empty only when no action is appropriate.')
     kind: Literal['act', 'upload', 'submit', 'done', 'park', 'auth', 'external', 'captcha', 'wait'] = Field(
         description='Classify the FINAL decision above. If the instruction is to click Apply or continue, use act, never park.')
+
+
+@dataclass(frozen=True)
+class NativePageObservation:
+    """Immutable native page state; it does not authorize an action by itself."""
+    page_id: str
+    url: str
+    fingerprint: str
+    captcha_generation: int | None
 
 
 POLICY = """You operate ONE Indeed application for the authorized applicant.
@@ -199,78 +209,59 @@ class IndeedApplier(BaseApplier):
                 await asyncio.sleep(0.25)
 
 
-    @staticmethod
-    def _loading_only_snapshot(text):
-        """Recognize the form's loading shell using native accessibility structure."""
-        if not isinstance(text, str):
-            return False
-        ignored_depth = None
-        form_text = []
-        for line in text.splitlines():
-            match = re.match(r'^(\s*)\[[^]\n]+\]\s+([^:\n]+)(?::\s*(.*))?$', line)
-            if not match:
-                continue
-            indent, role, label = len(match[1]), match[2].strip().lower(), (match[3] or '').strip()
-            if ignored_depth is not None and indent > ignored_depth:
-                continue
-            ignored_depth = None
-            roles = {item.strip() for item in role.split(',')}
-            if roles & {'navigation', 'contentinfo', 'banner'}:
-                ignored_depth = indent
-                continue  # Global navigation and legal CAPTCHA boilerplate are not form controls.
-            form_text.append(label)
-            if roles & {'textbox', 'combobox', 'checkbox', 'radio', 'listbox', 'option',
-                                      'searchbox', 'spinbutton', 'slider', 'switch', 'input', 'textarea', 'select'}:
-                return False
-            if 'button' in roles and label.lower() not in {'save and close', 'close', 'cancel', 'report an issue'}:
-                return False
-            if 'link' in roles and re.search(r'\b(?:apply|continue|next|submit|send|finish)\b', label, re.I):
-                return False
-        content = '\n'.join(form_text)
-        return (bool(re.search(r'\b(?:preparing|loading)\b', content, re.I))
-                and not any(phrase in text.lower() for phrase in RECEIPT_PHRASES)
-                and not re.search(r'captcha|verify you are human|not a robot|security verification', content, re.I))
-
-    async def _recover_loading_shell(self, stage_page, expected_url, expected_page_id):
-        """One explicit GET of this observed page; never reload a POST document."""
-        deadline = getattr(self, '_application_deadline_at', None)
-        if (self.employer_site or self._submission_attempted or self._loading_recovery_used
-                or not isinstance(expected_page_id, str) or not expected_page_id
-                or not is_indeed_url(expected_url)
-                or deadline is None
-                or deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS):
-            return False
+    async def _read_loading_observation(self, stage_page):
+        """Read stable native state; only Stagehand's fresh wait may authorize it."""
+        page_id = getattr(stage_page, 'page_id', None)
+        if not isinstance(page_id, str) or not page_id:
+            return None
         monitor = self._captcha_monitor
         generation = monitor.generation if monitor else None
         if monitor and monitor.active:
-            return False
-        current = await self.stagehand.browser.context.active_page()
-        if current.page_id != expected_page_id or stage_page.page_id != expected_page_id:
-            return False
-        if await stage_page.url() != expected_url:
-            return False
+            return None
+        url = await stage_page.url()
         snapshot = await asyncio.wait_for(stage_page.snapshot(include_iframes=True), timeout=15)
-        if not self._loading_only_snapshot(snapshot.formatted_tree):
-            return False
-        # Recheck after awaited reads. No stale active-page lookup may choose a
-        # different tab, and no solver event may be discarded by re-navigation.
+        text = snapshot.formatted_tree
+        if not isinstance(text, str) or not text.strip():
+            return None
+        # A model wait cannot authorize navigating away from a receipt or a
+        # visible security check. Bare CAPTCHA in legal boilerplate is harmless.
+        if (any(phrase in text.lower() for phrase in RECEIPT_PHRASES)
+                or re.search(r'verify you are human|verifying you are human|confirm you are human|'
+                             r'not a robot|security verification|additional verification required|'
+                             r'checking your browser', text, re.I)):
+            return None
         current = await self.stagehand.browser.context.active_page()
-        if (self._submission_attempted or current.page_id != expected_page_id
-                or await stage_page.url() != expected_url
+        if (getattr(current, 'page_id', None) != page_id or await stage_page.url() != url
                 or (monitor and (monitor.active or monitor.generation != generation))):
+            return None
+        # Normalize only ephemeral node IDs; retain all native snapshot content.
+        content = re.sub(r'(?m)^(\s*)\[[^]\n]+\]\s*', r'\1', text)
+        return NativePageObservation(page_id, url, hashlib.sha256(content.encode()).hexdigest(), generation)
+
+    async def _recover_loading_shell(self, stage_page, observation):
+        """One explicit GET of an unchanged Stagehand-classified loading page."""
+        deadline = getattr(self, '_application_deadline_at', None)
+        if (self.employer_site or self._submission_attempted or self._loading_recovery_used
+                or not isinstance(observation, NativePageObservation)
+                or not isinstance(observation.page_id, str) or not observation.page_id
+                or not isinstance(observation.url, str) or not is_indeed_url(observation.url)
+                or not isinstance(observation.fingerprint, str)
+                or not re.fullmatch(r'[0-9a-f]{64}', observation.fingerprint)
+                or deadline is None
+                or deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS):
             return False
-        if deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS:
+        if await self._read_loading_observation(stage_page) != observation:
+            return False
+        if self._submission_attempted or deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS:
             return False
         self._loading_recovery_used = True  # consumed even on timeout/ambiguous navigation
         await self._emit_step('The form is still loading; reopening this application page once...')
-        current = await self.stagehand.browser.context.active_page()
-        if (self._submission_attempted or current.page_id != expected_page_id
-                or await stage_page.url() != expected_url
-                or deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS
-                or (monitor and (monitor.active or monitor.generation != generation))):
+        if (await self._read_loading_observation(stage_page) != observation
+                or self._submission_attempted
+                or deadline - asyncio.get_running_loop().time() < LOADING_RECOVERY_MIN_REMAINING_SECONDS):
             return False
         async with asyncio.timeout(LOADING_RECOVERY_TIMEOUT_SECONDS):
-            await stage_page.goto(expected_url, wait_until='domcontentloaded',
+            await stage_page.goto(observation.url, wait_until='domcontentloaded',
                                   timeout=LOADING_RECOVERY_TIMEOUT_SECONDS * 1000)
         return True
 
@@ -399,6 +390,7 @@ class IndeedApplier(BaseApplier):
 
         loading_waits = 0
         loading_target = None
+        loading_observation = None
         previous = None
         repetitions = 0
         action_timeout_recoveries = 0
@@ -437,15 +429,19 @@ class IndeedApplier(BaseApplier):
                 await self._emit_step('Attached your uploaded resume to the application.')
                 continue
             step = None
-            if loading_waits and loading_target == (getattr(stage_page, 'page_id', None), active_url):
-                # Once the model identifies a loading shell, poll its native state.
-                # Sending the full applicant context again cannot advance a spinner.
-                snapshot = await asyncio.wait_for(stage_page.snapshot(include_iframes=True), timeout=15)
+            observed = None
+            wait_observation = None
+            if loading_observation is not None:
+                # Replay only the wait decision, never a browser action, while
+                # the exact native state classified by Stagehand is unchanged.
+                observed = await self._read_loading_observation(stage_page)
                 if self._captcha_monitor and self._captcha_monitor.active:
                     step = NextStep(kind='captcha', instruction='', reason='Managed verification remains active.')
-                elif self._loading_only_snapshot(snapshot.formatted_tree):
+                elif observed == loading_observation:
                     step = NextStep(kind='wait', instruction='', reason='The application is still loading.')
+                    wait_observation = observed
             if step is None:
+                before = observed or await self._read_loading_observation(stage_page)
                 decision = await self.stagehand.extract(
                     prompt + f'\nSupplied resume uploaded in this application: {uploaded}. '
                     + f'File inputs available for upload (including hidden inputs): {file_input_count}. '
@@ -459,6 +455,10 @@ class IndeedApplier(BaseApplier):
                 )
                 record_result_cache(self.stagehand, 'extract', decision)
                 step = decision.data
+                if step.kind == 'wait':
+                    after = await self._read_loading_observation(stage_page)
+                    if before is not None and before == after:
+                        wait_observation = after
             if (on_indeed_resume and not uploaded and step.kind == 'act'
                     and re.search(r'\b(continue|next|proceed)\b', step.instruction, re.I)):
                 # Do not let a model equate an old selected filename with the supplied PDF.
@@ -520,12 +520,14 @@ class IndeedApplier(BaseApplier):
                     loading_target = target
                     loading_waits = 0
                 loading_waits += 1
+                loading_observation = wait_observation
                 if loading_waits > 6:
-                    if await self._recover_loading_shell(stage_page, active_url, target[0]):
+                    if await self._recover_loading_shell(stage_page, loading_observation):
                         uploaded = False  # GET may restore an older parsed/saved resume.
                         resume_recovery_attempted = False
                         loading_waits = 0
                         loading_target = None
+                        loading_observation = None
                         previous = None
                         repetitions = 0
                         history.append({'instruction': 'Reopen the observed application URL', 'success': True,
@@ -538,6 +540,7 @@ class IndeedApplier(BaseApplier):
                 continue
             loading_waits = 0
             loading_target = None
+            loading_observation = None
             if step.kind == 'park':
                 if await resolve_parked_answer(step.reason):
                     continue
