@@ -3,10 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CaptchaMonitor:
-    def __init__(self):
+    def __init__(self, *, session_id: str | None = None):
+        self.session_id = session_id
         self._active: set[str] = set()
         self._finished: set[str] = set()
         self.generation = 0
@@ -47,6 +51,12 @@ class CaptchaMonitor:
         else:
             return
         self.generation += 1
+        # Record lifecycle evidence without logging page content, tokens, or
+        # challenge IDs. A finished event does not prove the site accepted it.
+        logger.info(
+            'Browserbase CAPTCHA event session=%s status=%s generation=%d active=%d',
+            self.session_id or 'unknown', status, self.generation, len(self._active),
+        )
 
     async def wait_until_idle(self, timeout: float = 90) -> None:
         await asyncio.wait_for(self._idle.wait(), timeout=timeout)

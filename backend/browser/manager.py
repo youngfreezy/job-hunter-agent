@@ -243,7 +243,7 @@ class BrowserManager:
             raise
         if self.stagehand:
             from backend.browser.captcha_monitor import CaptchaMonitor
-            monitor = CaptchaMonitor()
+            monitor = CaptchaMonitor(session_id=bb_session.id)
             # A context-level read-only event hook covers existing tabs AND popups.
             # Install before application navigation so challenge starts are not lost.
             for browser_context in self._browser.contexts:

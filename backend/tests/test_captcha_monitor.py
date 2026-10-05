@@ -49,3 +49,20 @@ def test_unrelated_console_content_is_ignored():
         monitor.record(message)
     assert not monitor.active
     assert monitor.generation == 0
+
+
+def test_diagnostics_record_transitions_without_page_content_or_challenge_ids(caplog):
+    monitor = CaptchaMonitor(session_id='test-browser-session')
+    caplog.set_level('INFO', logger='backend.browser.captcha_monitor')
+    private_id = 'private-challenge-value'
+    signal(monitor, 'started', private_id)
+    signal(monitor, 'started', private_id)  # duplicate delivery is not a transition
+    signal(monitor, 'finished', 'unrelated')
+    signal(monitor, 'finished', private_id)
+    monitor.record('private-page-content')
+    records = [r for r in caplog.records if r.name == 'backend.browser.captcha_monitor']
+    assert len(records) == 2
+    assert 'session=test-browser-session status=started generation=1 active=1' in records[0].getMessage()
+    assert 'session=test-browser-session status=finished generation=2 active=0' in records[1].getMessage()
+    assert private_id not in caplog.text
+    assert 'private-page-content' not in caplog.text

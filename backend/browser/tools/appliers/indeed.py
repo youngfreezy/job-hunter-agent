@@ -40,6 +40,8 @@ RECEIPT_TIMEOUT_SECONDS = 90
 SUBMISSION_MARGIN_SECONDS = 10
 LOADING_RECOVERY_TIMEOUT_SECONDS = 30
 LOADING_RECOVERY_MIN_REMAINING_SECONDS = 320
+CAPTCHA_RECOVERY_SECONDS = 120
+CAPTCHA_POLL_SECONDS = 10
 RECEIPT_PHRASES = (
     'your application has been submitted', 'your application was submitted',
     'application submitted', 'thank you for applying', 'thanks for applying',
@@ -110,6 +112,7 @@ class IndeedApplier(BaseApplier):
         self.stagehand = stagehand
         self._submission_attempted = False
         self._loading_recovery_used = False
+        self._captcha_deadline_at = None
         self.employer_site = employer_site
         self._captcha_monitor = getattr(stagehand, '_jobhunter_captcha_monitor', None)
         if employer_site:
@@ -280,6 +283,46 @@ class IndeedApplier(BaseApplier):
             'Not enough time remains to submit and verify a receipt; application was not submitted.',
             ApplicationErrorCategory.TIMEOUT)
 
+    async def _wait_for_captcha(self):
+        """Wait without operating the page; the next planner read verifies progress.
+
+        A solver-finished event only ends this wait. Repeated classifications of
+        the same challenge share one deadline, including absent or stale events.
+        Keep the existing action/receipt reserve inside the application deadline.
+        """
+        now = asyncio.get_running_loop().time()
+        application_deadline = getattr(self, '_application_deadline_at', None)
+        if application_deadline is None:
+            return False
+        reserve = ACTION_TIMEOUT_MS / 1000 + RECEIPT_TIMEOUT_SECONDS + SUBMISSION_MARGIN_SECONDS
+        if self._captcha_deadline_at is None:
+            self._captcha_deadline_at = min(now + CAPTCHA_RECOVERY_SECONDS, application_deadline - reserve)
+        remaining = self._captcha_deadline_at - now
+        monitor = self._captcha_monitor
+        if remaining <= 0:
+            logger.info('CAPTCHA wait expired session=%s active=%s generation=%s remaining_seconds=%.2f',
+                        self.session_id, bool(monitor and monitor.active),
+                        monitor.generation if monitor else None, remaining)
+            return False
+        await self._emit_step('Waiting for Browserbase CAPTCHA handling...')
+        remaining = self._captcha_deadline_at - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return False
+        logger.info('CAPTCHA wait session=%s active=%s generation=%s remaining_seconds=%.2f',
+                    self.session_id, bool(monitor and monitor.active),
+                    monitor.generation if monitor else None, remaining)
+        if monitor and monitor.active:
+            try:
+                await monitor.wait_until_idle(timeout=remaining)
+            except TimeoutError:
+                logger.info('CAPTCHA managed wait timed out session=%s active=%s generation=%s remaining_seconds=%.2f',
+                            self.session_id, monitor.active, monitor.generation,
+                            self._captcha_deadline_at - asyncio.get_running_loop().time())
+                # Still re-read the page: a missing finish event is not proof of failure.
+        else:
+            await asyncio.sleep(min(CAPTCHA_POLL_SECONDS, remaining))
+        return True
+
     async def _wait_for_receipt(self):
         """Allow managed solving to settle after submit, without replaying submit."""
         saw_solving = False
@@ -353,7 +396,6 @@ class IndeedApplier(BaseApplier):
             await self._emit_step('Found supporting resume facts; checking the application answer.')
             return True
 
-        captcha_waits = 0
         loading_waits = 0
         loading_target = None
         previous = None
@@ -386,9 +428,11 @@ class IndeedApplier(BaseApplier):
             file_input_count = await stage_page.locator('input[type="file"]').count()
             on_indeed_resume = (not self.employer_site and
                                 'resume-selection' in urlparse(active_url).path)
-            if on_indeed_resume and not uploaded and file_input_count == 1:
+            if (on_indeed_resume and not uploaded and file_input_count == 1
+                    and not (self._captcha_monitor and self._captcha_monitor.active)):
                 await self._upload_original(stage_page)
                 uploaded = True
+                self._captcha_deadline_at = None
                 await self._emit_step('Attached your uploaded resume to the application.')
                 continue
             decision = await self.stagehand.extract(
@@ -407,6 +451,11 @@ class IndeedApplier(BaseApplier):
                 # Do not let a model equate an old selected filename with the supplied PDF.
                 step = NextStep(kind='act', reason='The supplied PDF must replace the saved resume.',
                                 instruction='Click the Resume options button for the selected resume to reveal the replace or upload option.')
+            if (self._captcha_monitor and self._captcha_monitor.active
+                    and step.kind in ('act', 'upload', 'submit', 'external')):
+                # An absent finish event cannot authorize mutations, including
+                # uploads. Read again after waiting, then stop if it stays active.
+                step = NextStep(kind='captcha', instruction='', reason='Managed verification remains active.')
             grounded_action = None
             if step.kind == 'act':
                 try:
@@ -504,11 +553,10 @@ class IndeedApplier(BaseApplier):
                     return routed
                 continue
             if step.kind == 'captcha':
-                captcha_waits += 1
-                if captcha_waits > 3:
-                    return self._fail(str(job.id), 'Browserbase could not clear this challenge; sign in again in Settings.', ApplicationErrorCategory.CAPTCHA)
-                await self._emit_step('Waiting for Browserbase CAPTCHA handling...')
-                await asyncio.sleep(10)
+                if not await self._wait_for_captcha():
+                    return self._fail(str(job.id),
+                        'Verification remained unresolved within the application wait limit; application was not submitted.',
+                        ApplicationErrorCategory.CAPTCHA)
                 continue
             if step.kind == 'done':
                 # No submit was attempted by this run: never count an old receipt as a new application.
@@ -517,6 +565,7 @@ class IndeedApplier(BaseApplier):
             if step.kind == 'upload':
                 await self._upload_original(stage_page)
                 uploaded = True
+                self._captcha_deadline_at = None
                 await self._emit_step('Attached your uploaded resume to the application.')
                 continue
             if step.kind == 'submit' and not uploaded:
@@ -590,6 +639,13 @@ class IndeedApplier(BaseApplier):
             await self._emit_step('Stagehand: submitting the reviewed application...' if step.kind == 'submit'
                                   else f'Stagehand: {step.instruction[:240]}')
             if step.kind == 'submit':
+                if (self._captcha_monitor and (self._captcha_monitor.active
+                        or self._captcha_monitor.generation != captcha_generation)):
+                    # Event delivery yielded after the earlier check. Do not
+                    # commit a stale submit intent if a challenge changed then.
+                    previous = None
+                    repetitions = 0
+                    continue
                 # Audit/event delivery can consume the window after the first check.
                 if not self._has_submission_window():
                     return self._insufficient_submission_time(str(job.id))
@@ -626,6 +682,7 @@ class IndeedApplier(BaseApplier):
                 if routed and not self._submission_attempted:
                     return routed
                 raise
+            self._captcha_deadline_at = None
             routed = self._external_route(str(job.id))
             if routed and not self._submission_attempted:
                 return routed
