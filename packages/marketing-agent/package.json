@@ -9,21 +9,23 @@
     "dev": "tsc --watch",
     "generate-copy": "tsx src/cli.ts generate",
     "review-copy": "tsx src/cli.ts review",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "pretest": "npm run build"
   },
   "dependencies": {
-    "ai": "^4.0.0",
-    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/anthropic": "4.0.71",
     "@hubspot/api-client": "^12.0.0",
-    "zod": "^3.23.0"
+    "ai": "7.0.127",
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "tsx": "^4.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "tsx": "4.23.15",
+    "typescript": "^5.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "type": "module"
 }

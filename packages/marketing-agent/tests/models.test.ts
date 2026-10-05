@@ -24,16 +24,21 @@ test('all marketing operations send the latest Sonnet with supported sampling an
     assert.equal((await agent.reviewCopy('Copy', context)).score, 90);
     assert.deepEqual(await agent.generateVariants('Copy', 2), ['One', 'Two']);
     assert.equal(requests.length, 3);
+    assert.deepEqual(requests.map(request => request.max_tokens), [4096, 4096, 8192]);
     for (const request of requests) {
       assert.equal(request.model, 'claude-sonnet-5-5');
-      assert.equal(request.temperature, 1, 'AI SDK4 defaults to unsupported temperature0 unless explicitly normalized');
+      assert.equal(request.temperature, undefined, 'Claude 5.5 uses provider defaults, never temperature 0');
       assert.equal(request.tool_choice, undefined);
+      assert.equal(request.tools, undefined);
+      assert.equal(request.output_format, undefined);
+      assert.ok(Array.isArray(request.system) && request.system.length > 0, 'System instructions must survive SDK option renames');
       assert.equal(request.top_p, undefined);
       assert.equal(request.top_k, undefined);
     }
-    await new MarketingAgent({ model: 'claude-haiku-4-5-20251001' }).reviewCopy('Copy', context);
+    await new MarketingAgent({ model: 'claude-haiku-4-5-20251001', maxTokens: 512 }).reviewCopy('Copy', context);
     assert.equal(requests[3].model, 'claude-haiku-4-5-20251001');
     assert.equal(requests[3].temperature, 0, 'Preserve legacy model override sampling');
+    assert.equal(requests[3].max_tokens, 512, 'Preserve the public maxTokens option across the SDK rename');
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY;

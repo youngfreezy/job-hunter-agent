@@ -9,15 +9,15 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { MarketingAgent } from '../agent';
-import type { CopyContext } from '../agent';
+import { MarketingAgent } from '../agent.js';
+import type { CopyContext } from '../agent.js';
 
 const pageTypes = ['landing', 'pricing', 'feature', 'email'] as const;
 
 export const copyGeneratorTool = tool({
   description:
     'Generate high-quality marketing copy for a product. Supports landing pages, pricing pages, feature pages, and emails. Uses proven copywriting frameworks (AIDA, PAS) to produce conversion-focused content.',
-  parameters: z.object({
+  inputSchema: z.object({
     product: z
       .string()
       .min(1)

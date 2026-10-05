@@ -9,15 +9,15 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { MarketingAgent } from '../agent';
-import type { CopyContext } from '../agent';
+import { MarketingAgent } from '../agent.js';
+import type { CopyContext } from '../agent.js';
 
 const pageTypes = ['landing', 'pricing', 'feature', 'email'] as const;
 
 export const copyReviewerTool = tool({
   description:
     'Review and score existing marketing copy. Evaluates clarity, persuasiveness, readability, jargon usage, and CTA strength. Returns a detailed score, a list of issues, suggestions, and a full rewrite.',
-  parameters: z.object({
+  inputSchema: z.object({
     copy: z
       .string()
       .min(1)

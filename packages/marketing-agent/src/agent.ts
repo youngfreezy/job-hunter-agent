@@ -9,12 +9,12 @@
 import { generateText } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { z } from 'zod';
-import { copyReviewSchema, generatedCopySchema, parseModelOutput } from './output-schemas';
+import { copyReviewSchema, generatedCopySchema, parseModelOutput } from './output-schemas.js';
 import {
   MARKETING_SYSTEM_PROMPT,
   COPY_REVIEW_PROMPT,
   FRAMEWORKS,
-} from './prompts/marketing';
+} from './prompts/marketing.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,11 +132,11 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences):
 
     const { text } = await generateText({
       model: anthropic(this.model),
-      // AI SDK 4 otherwise injects 0; Claude 5.5 needs default sampling.
-      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? 1 : 0,
-      system: MARKETING_SYSTEM_PROMPT,
+      // Claude 5.5 uses provider-default sampling; SDK 7 no longer injects temperature 0.
+      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? undefined : 0,
+      instructions: MARKETING_SYSTEM_PROMPT,
       prompt,
-      maxTokens: this.maxTokens,
+      maxOutputTokens: this.maxTokens,
     });
 
     return parseModelOutput(text, generatedCopySchema, 'generateCopy');
@@ -182,11 +182,11 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences):
 
     const { text } = await generateText({
       model: anthropic(this.model),
-      // AI SDK 4 otherwise injects 0; Claude 5.5 needs default sampling.
-      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? 1 : 0,
-      system: COPY_REVIEW_PROMPT,
+      // Claude 5.5 uses provider-default sampling; SDK 7 no longer injects temperature 0.
+      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? undefined : 0,
+      instructions: COPY_REVIEW_PROMPT,
       prompt,
-      maxTokens: this.maxTokens,
+      maxOutputTokens: this.maxTokens,
     });
 
     return parseModelOutput(text, copyReviewSchema, 'reviewCopy');
@@ -224,11 +224,11 @@ Respond with ONLY a valid JSON array of strings (no markdown fences):
 
     const { text } = await generateText({
       model: anthropic(this.model),
-      // AI SDK 4 otherwise injects 0; Claude 5.5 needs default sampling.
-      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? 1 : 0,
-      system: MARKETING_SYSTEM_PROMPT,
+      // Claude 5.5 uses provider-default sampling; SDK 7 no longer injects temperature 0.
+      temperature: /^claude-(sonnet|opus)-5-5/.test(this.model) ? undefined : 0,
+      instructions: MARKETING_SYSTEM_PROMPT,
       prompt,
-      maxTokens: this.maxTokens * count,
+      maxOutputTokens: this.maxTokens * count,
     });
 
     return parseModelOutput(text, z.array(z.string()).length(count), 'generateVariants');

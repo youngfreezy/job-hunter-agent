@@ -11,8 +11,8 @@
  *   echo "some copy" | npx tsx src/cli.ts review --product "..." --audience "..."
  */
 
-import { DEFAULT_MODEL, MarketingAgent } from './agent';
-import type { CopyContext } from './agent';
+import { DEFAULT_MODEL, MarketingAgent } from './agent.js';
+import type { CopyContext } from './agent.js';
 import * as fs from 'node:fs';
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,19 @@
 
 Standalone AI marketing agent for generating and optimizing copy. Uses the [Vercel AI SDK](https://sdk.vercel.ai/) with Claude to produce conversion-focused marketing content, with integrations for HubSpot and analytics platforms.
 
+Requires Node.js 22 or later and ESM imports; CI uses Node.js 24. The package pins
+AI SDK 7.0.127 and its Anthropic provider 4.0.71. Use `npm ci` inside this package
+for the reviewed dependency graph. `npm test` builds the package and exercises
+mocked provider requests plus the compiled library and CLI, without paid calls.
+
+The SDK migration uses `instructions`, `maxOutputTokens`, and tool `inputSchema`.
+The public `MarketingAgentOptions.maxTokens` option remains compatible. Sonnet
+5.5 uses provider-default sampling; model overrides retain their existing
+temperature policy. Generated JSON is validated locally with Zod and copy is
+escaped before HTML publication; no forced tool or structured-output mode is
+enabled by this upgrade. See the official [SDK 7 migration guide](https://ai-sdk.dev/docs/migration-guides/migration-guide-7-0)
+and [generateText reference](https://ai-sdk.dev/docs/reference/ai-sdk-core/generate-text).
+
 ## Features
 
 - Generate marketing copy for landing pages, pricing pages, feature pages, and emails
@@ -102,12 +115,12 @@ echo "Buy now! Best tool ever!" | npx tsx src/cli.ts review \
 
 The core agent class.
 
-The default is Claude Sonnet 5.5. These plain-text calls use default sampling (temperature 1) because AI SDK 4 otherwise sends temperature 0, which Sonnet 5.5 rejects. They do not force tool selection. The standalone marketing package is separate from the application pipeline and its model spend ledger.
+The default is Claude Sonnet 5.5. With AI SDK 7 these plain-text calls omit temperature and use provider-default sampling. Legacy model overrides retain explicit temperature 0. These calls do not force tool selection. The standalone marketing package is separate from the application pipeline and its model spend ledger.
 
 ```typescript
 const agent = new MarketingAgent({
   model: 'claude-sonnet-5-5',  // optional, defaults to claude-sonnet-5-5
-  maxTokens: 2048,                    // optional, defaults to 2048
+  maxTokens: 2048,                    // optional, defaults to 4096
 });
 ```
 
@@ -168,7 +181,7 @@ import { anthropic } from '@ai-sdk/anthropic';
 
 const result = await generateText({
   model: anthropic('claude-sonnet-5-5'),
-  temperature: 1, // Sonnet 5.5 requires default sampling.
+  // Omit temperature for Sonnet 5.5 provider-default sampling.
   tools: { generateCopy: copyGeneratorTool, reviewCopy: copyReviewerTool },
   prompt: 'Generate a landing page for our new analytics product...',
 });
