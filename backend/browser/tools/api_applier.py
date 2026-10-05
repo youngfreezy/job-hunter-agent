@@ -2,8 +2,8 @@
 
 """Direct ATS API submission — bypasses browser automation entirely.
 
-Generic dispatcher: try direct API submission first, return None if unsupported
-or blocked (caller falls back to Playwright).
+Generic dispatcher: return None only when unsupported or explicitly rejected
+(caller may fall back to Playwright). Unknown POST delivery is a retry hold.
 
 Experimental and disabled by default. Do not enable this path for unattended
 applications until it shares the browser path's evidence-backed answers,
@@ -42,6 +42,22 @@ from backend.shared.models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# These responses reject the request rather than acknowledge its delivery.
+# A timeout, server error or unrecognized success is never safe to resubmit.
+_REJECTED_POST_STATUSES = frozenset({401, 403, 404, 422, 428, 429})
+
+
+def _uncertain_delivery(job_id: str, ats_type: str, duration_seconds: int) -> ApplicationResult:
+    return ApplicationResult(
+        job_id=job_id,
+        status=ApplicationStatus.FAILED,
+        error_category=ApplicationErrorCategory.SUBMISSION_UNCERTAIN,
+        error_message="API delivery could not be confirmed. Reconcile the application before retrying.",
+        failure_step="submit",
+        ats_type=ats_type,
+        duration_seconds=duration_seconds,
+    )
 
 # ---------------------------------------------------------------------------
 # URL parsing helpers
@@ -370,15 +386,16 @@ async def _apply_greenhouse(
                         ats_type="greenhouse_api",
                         duration_seconds=elapsed,
                     )
-                else:
+                elif status in _REJECTED_POST_STATUSES:
                     logger.warning(
-                        "Greenhouse API: unexpected %d for %s — falling back",
+                        "Greenhouse API: rejected with %d for %s — falling back",
                         status, job.title,
                     )
                     return None
+                return _uncertain_delivery(str(job.id), "greenhouse_api", elapsed)
         except Exception:
-            logger.warning("Greenhouse API submit failed — falling back", exc_info=True)
-            return None
+            logger.warning("Greenhouse API delivery uncertain — automatic retry blocked", exc_info=True)
+            return _uncertain_delivery(str(job.id), "greenhouse_api", int(time.monotonic() - start))
 
 
 # ---------------------------------------------------------------------------
@@ -470,15 +487,16 @@ async def _apply_lever(
                         ats_type="lever_api",
                         duration_seconds=elapsed,
                     )
-                else:
+                elif status in _REJECTED_POST_STATUSES:
                     logger.warning(
-                        "Lever API: %d for %s — falling back: %s",
-                        status, job.title, body[:200],
+                        "Lever API: rejected with %d for %s — falling back",
+                        status, job.title,
                     )
                     return None
+                return _uncertain_delivery(str(job.id), "lever_api", elapsed)
         except Exception:
-            logger.warning("Lever API submit failed — falling back", exc_info=True)
-            return None
+            logger.warning("Lever API delivery uncertain — automatic retry blocked", exc_info=True)
+            return _uncertain_delivery(str(job.id), "lever_api", int(time.monotonic() - start))
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +524,7 @@ async def apply_via_api(
 ) -> Optional[ApplicationResult]:
     """Try direct API submission for supported ATS platforms.
 
-    Returns ApplicationResult on success or definitive failure.
+    Returns ApplicationResult on success, definitive failure or uncertain delivery.
     Returns None if the ATS has no API support or the API is blocked — caller
     should fall back to browser automation (Skyvern).
     """
