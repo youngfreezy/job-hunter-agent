@@ -5,6 +5,10 @@
 Generic dispatcher: try direct API submission first, return None if unsupported
 or blocked (caller falls back to Playwright).
 
+Experimental and disabled by default. Do not enable this path for unattended
+applications until it shares the browser path's evidence-backed answers,
+submission receipts, spending guards, and uncertain-delivery reconciliation.
+
 Supported ATS platforms:
   - Greenhouse: POST multipart form to boards-api.greenhouse.io
   - Lever: POST multipart form to api.lever.co

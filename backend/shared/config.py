@@ -123,7 +123,7 @@ class Settings(BaseSettings):
     SKYVERN_CONCURRENCY: int = 2  # Concurrent Skyvern browser tasks
 
     # --- Smart Apply (direct ATS API submission) ---
-    API_APPLY_ENABLED: bool = True  # Try direct API before Skyvern
+    API_APPLY_ENABLED: bool = False  # Experimental; lacks canonical answer/receipt/uncertain-delivery guards
     API_APPLY_BATCH_SIZE: int = 5  # Max API jobs to process per graph iteration
 
     # --- Paperclip (agent orchestration dashboard) ---
