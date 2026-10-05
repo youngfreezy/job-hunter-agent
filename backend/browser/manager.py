@@ -228,7 +228,9 @@ class BrowserManager:
             self._browser = await self._playwright.chromium.connect_over_cdp(
                 bb_session.connect_url, timeout=45_000,
             )
-        except Exception:
+        except BaseException:
+            # Task cancellation also owns cleanup: _running is not set yet, so
+            # stop() cannot release this newly allocated cloud session for us.
             if self._stagehand_cleanup:
                 try:
                     await self._stagehand_cleanup.aclose()

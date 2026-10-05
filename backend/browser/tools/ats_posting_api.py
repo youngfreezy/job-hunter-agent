@@ -23,6 +23,8 @@ import asyncio
 import html as _html
 import logging
 import re
+import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -185,20 +187,32 @@ async def _hydrate_greenhouse(job: JobListing, ref: PostingRef, client: httpx.As
     return Hydration(job, True, "greenhouse")
 
 
-_ashby_board_cache: Dict[str, Any] = {}
+_ASHBY_CACHE_TTL_SECONDS = 300
+_ASHBY_CACHE_MAX_BOARDS = 128
+_ashby_board_cache: OrderedDict[str, tuple[float, Any]] = OrderedDict()
 
 
 async def _ashby_board(org: str, client: httpx.AsyncClient) -> Any:
     key = org.lower()
-    if key in _ashby_board_cache:
-        return _ashby_board_cache[key]
+    cached = _ashby_board_cache.get(key)
+    if cached is not None:
+        expires_at, data = cached
+        if time.monotonic() < expires_at:
+            _ashby_board_cache.move_to_end(key)
+            return data
+        del _ashby_board_cache[key]
     r = await client.get(ASHBY_BOARD_URL.format(org=org))
     if r.status_code == 404:
-        _ashby_board_cache[key] = None
-        return None
-    r.raise_for_status()
-    data = r.json()
-    _ashby_board_cache[key] = data
+        data = None
+    else:
+        r.raise_for_status()
+        data = r.json()
+        if not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
+            raise ValueError("ashby board has no jobs list")
+    _ashby_board_cache[key] = (time.monotonic() + _ASHBY_CACHE_TTL_SECONDS, data)
+    _ashby_board_cache.move_to_end(key)
+    while len(_ashby_board_cache) > _ASHBY_CACHE_MAX_BOARDS:
+        _ashby_board_cache.popitem(last=False)
     return data
 
 
