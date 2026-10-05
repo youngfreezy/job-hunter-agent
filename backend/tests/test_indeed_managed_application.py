@@ -78,6 +78,56 @@ async def test_indeed_application_uses_managed_default_tab_without_local_stealth
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('solve_state', ['active', 'finished_during_navigation', 'unmanaged'])
+async def test_application_listing_wait_recovers_after_managed_verification(monkeypatch, solve_state):
+    from playwright.async_api import TimeoutError as PageTimeout
+
+    monkeypatch.setattr(settings, 'INDEED_ONLY', True)
+    monkeypatch.setattr(settings, 'BROWSER_MODE', 'browserbase')
+    monkeypatch.setattr(application, '_board_login_available', lambda *_: True)
+    monkeypatch.setattr(application, 'check_already_applied', lambda *a, **kw: None)
+    monkeypatch.setattr(application, 'check_company_rate_limit', lambda *a, **kw: None)
+    monkeypatch.setattr(application, '_db_record_result', MagicMock())
+    monkeypatch.setattr(application, 'emit_agent_event', AsyncMock())
+    monkeypatch.setattr(application, '_has_captcha', AsyncMock(return_value=False))
+    # Reaching this check proves the real listing readiness policy recovered.
+    dead_page = AsyncMock(return_value=True)
+    monkeypatch.setattr(application, '_is_dead_page', dead_page)
+    monkeypatch.setattr(application.asyncio, 'sleep', AsyncMock())
+    monitor = SimpleNamespace(generation=4, active=False, wait_until_idle=AsyncMock())
+
+    async def navigate(*args, **kwargs):
+        if solve_state != 'unmanaged':
+            monitor.generation += 1
+            monitor.active = solve_state == 'active'
+
+    page = SimpleNamespace(
+        goto=AsyncMock(side_effect=navigate),
+        wait_for_function=AsyncMock(side_effect=(
+            [None] if solve_state == 'unmanaged' else [PageTimeout('challenge still rendering'), None]
+        )),
+        url=listing('one').url, is_closed=lambda: False, close=AsyncMock(),
+    )
+    context = SimpleNamespace(pages=[page], new_page=AsyncMock(return_value=page))
+    stagehand = (None if solve_state == 'unmanaged'
+                 else SimpleNamespace(_jobhunter_captcha_monitor=monitor))
+
+    result = await application._apply_to_job(
+        'one', listing('one'), {}, 'session', context=context, stagehand=stagehand,
+    )
+
+    assert result.status == ApplicationStatus.SKIPPED
+    assert result.error_message == 'job_expired'
+    dead_page.assert_awaited_once_with(page)
+    if solve_state == 'unmanaged':
+        monitor.wait_until_idle.assert_not_awaited()
+        assert page.wait_for_function.await_count == 1
+    else:
+        monitor.wait_until_idle.assert_awaited_once_with(timeout=90)
+        assert page.wait_for_function.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_indeed_batch_processes_only_one_job_on_shared_default_tab(monkeypatch):
     monkeypatch.setattr(settings, 'INDEED_ONLY', True)
     monkeypatch.setattr(settings, 'SKYVERN_CONCURRENCY', 3)

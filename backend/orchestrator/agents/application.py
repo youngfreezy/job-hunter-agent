@@ -1159,6 +1159,8 @@ async def _apply_to_job(
             await apply_stealth(page)
 
         try:
+            captcha_monitor = getattr(stagehand, "_jobhunter_captcha_monitor", None)
+            captcha_generation = captcha_monitor.generation if captcha_monitor else None
             # Strip tracking params from LinkedIn URLs (they can cause redirects)
             nav_url = employer_url or job.url
             if "linkedin.com/jobs/view/" in nav_url:
@@ -1175,7 +1177,10 @@ async def _apply_to_job(
                     return await skip_easy_apply(EASY_APPLY_SKIP_REASON)
             if settings.INDEED_ONLY and not employer_url:
                 from backend.browser.indeed_policy import wait_for_indeed_page
-                await wait_for_indeed_page(page)
+                await wait_for_indeed_page(
+                    page, captcha_monitor=captcha_monitor,
+                    since_generation=captcha_generation,
+                )
             logger.info("Final page URL after navigation: %s", page.url)
 
             # Skyvern handles CAPTCHAs natively — no manual intervention needed.
