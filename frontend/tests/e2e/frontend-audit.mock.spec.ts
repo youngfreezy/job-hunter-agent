@@ -150,6 +150,9 @@ test.describe('Mocked frontend recovery and resume identity', () => {
     await expect(page.locator('#resume-upload')).toBeEnabled();
     await page.locator('#resume-upload').setInputFiles({name:'current.txt',mimeType:'text/plain',buffer:Buffer.from('Current Fixture Engineer fixture@example.test. Experience in applied AI software systems. Skills Python and TypeScript. Education BS Computer Science.')});
     await page.getByRole('button',{name:'Next',exact:true}).click();
+    // Select one job explicitly; the normal public app defaults to five.
+    await page.getByRole('slider').first().focus();
+    await page.getByRole('slider').first().press('Home');
     await page.getByRole('button',{name:'Next',exact:true}).click();
     await page.getByRole('button',{name:'Start Job Hunt Session',exact:true}).click();
     await expect.poll(()=>payload).not.toBeNull();
