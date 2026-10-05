@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import json
 import re
+from typing import Callable
 
 from backend.shared.application_rules import ApplicationParked
 from backend.browser.stagehand_cache import record_result_cache, page_cache_options
@@ -9,6 +10,10 @@ from backend.browser.stagehand_cache import record_result_cache, page_cache_opti
 
 class UnresolvedControl(ApplicationParked):
     """Observation found no unique target; no browser action was executed."""
+
+
+class ActionDeferred(Exception):
+    """A guard stopped an inspected action before any browser mutation."""
 
 
 def _control(snapshot, selector: str) -> tuple[str, str]:
@@ -43,7 +48,7 @@ class GroundedAction:
         return json.dumps({'observed_control': self.label, 'method': self.method,
                            'arguments': self.arguments})
 
-    async def execute(self, page) -> None:
+    async def execute(self, page, *, before_mutation: Callable[[], None] | None = None) -> None:
         # Freshly check the exact observed target. Never ask act() to reinterpret
         # an instruction or self-heal to another control after approval/claim.
         snapshot = await page.snapshot(include_iframes=True)
@@ -53,10 +58,13 @@ class GroundedAction:
         if await locator.count() != 1 or not await locator.is_visible():
             raise ApplicationParked('The observed control is no longer unique and visible.')
         if self.method == 'click':
+            if before_mutation: before_mutation()
             await locator.click()
         elif self.method == 'fill':
+            if before_mutation: before_mutation()
             await locator.fill(self.arguments[0])
         elif self.method == 'selectOption':
+            if before_mutation: before_mutation()
             await locator.select_option(list(self.arguments))
         elif self.method in ('check', 'uncheck'):
             role, _ = _control(snapshot, self.selector)
@@ -64,6 +72,7 @@ class GroundedAction:
                 raise ApplicationParked('The observed control is not a supported checkbox or radio button.')
             expected = self.method == 'check'
             if await locator.is_checked() != expected:
+                if before_mutation: before_mutation()
                 await locator.click()
             if await locator.is_checked() != expected:
                 raise ApplicationParked('The checkbox or radio button did not reach its requested state.')

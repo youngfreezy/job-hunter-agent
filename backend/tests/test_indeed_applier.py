@@ -275,12 +275,15 @@ async def test_prefilled_unknown_answer_blocks_final_submit_even_after_upload(mo
 
 
 @pytest.mark.asyncio
-async def test_resume_step_uploads_hidden_input_before_model_can_continue(monkeypatch):
+async def test_resume_step_delegates_upload_decision_to_stagehand(monkeypatch):
     page = _page('https://smartapply.indeed.com/form/resume-selection-module/resume-selection')
-    agent = _stagehand(page, [dict(kind='park', instruction='', reason='Missing field')])
+    agent = _stagehand(page, [dict(kind='upload', instruction='', reason='Use supplied file'),
+                            dict(kind='park', instruction='', reason='Missing field')])
     agent.browser.context.active_page.return_value.file_input.count.return_value = 1
     applier = IndeedApplier(page, 's1', stagehand=agent)
-    upload = AsyncMock()
+    async def upload_after_decision(_):
+        assert agent.extract.await_count == 1
+    upload = AsyncMock(side_effect=upload_after_decision)
     monkeypatch.setattr(applier, '_upload_original', upload)
     await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     upload.assert_awaited_once()
@@ -835,7 +838,7 @@ async def test_active_captcha_finishes_then_requires_fresh_planner_and_final_aud
     from backend.browser.captcha_monitor import CaptchaMonitor
     page = _page('https://smartapply.indeed.com/form/review')
     agent = _stagehand(page, [dict(kind=k, instruction=i, reason='') for k, i in [
-        ('upload', ''), ('submit', 'Submit application'), ('submit', 'Submit application')]])
+        ('upload', ''), ('submit', 'Submit application')]])
     monitor = CaptchaMonitor()
     async def finish(**kwargs):
         indeed_mod.mark_submission_intent.assert_not_called()
@@ -852,7 +855,8 @@ async def test_active_captcha_finishes_then_requires_fresh_planner_and_final_aud
     monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SUBMITTED
-    assert agent.extract.await_count == 3  # discarded stale submit, read page again
+    assert agent.extract.await_count == 2  # No model read while the managed solver is active.
+    assert agent.extract.await_args.kwargs['screenshot'] is True
     audit.assert_awaited_once()
     agent.native_action.assert_awaited_once_with('Submit application')
     indeed_mod.mark_submission_intent.assert_called_once()
@@ -928,8 +932,7 @@ async def test_post_submit_captcha_extends_receipt_wait_without_second_submit(mo
 async def test_solver_finished_does_not_authorize_submit_when_page_still_shows_challenge(monkeypatch):
     from backend.browser.captcha_monitor import CaptchaMonitor
     page = _page('https://smartapply.indeed.com/form/review')
-    steps = [dict(kind='upload', instruction='', reason=''),
-             dict(kind='submit', instruction='Submit application', reason='')]
+    steps = [dict(kind='upload', instruction='', reason='')]
     steps += [dict(kind='captcha', instruction='', reason='Visible challenge remains')] * 4
     agent = _stagehand(page, steps)
     monitor = CaptchaMonitor()
@@ -1116,8 +1119,7 @@ async def test_visible_captcha_waits_for_managed_solver_before_fresh_form_review
     monitor.record('browserbase-solving-started')
     original_extract = agent.extract.side_effect
     async def extract(*args, **kwargs):
-        if monitor.active:
-            return SimpleNamespace(data=indeed_mod.NextStep(kind='captcha', instruction='', reason='Visible challenge'))
+        assert not monitor.active
         return await original_extract(*args, **kwargs)
     agent.extract.side_effect = extract
     async def finish(**kwargs):
@@ -1131,7 +1133,8 @@ async def test_visible_captcha_waits_for_managed_solver_before_fresh_form_review
     monkeypatch.setattr(indeed_mod.asyncio, 'sleep', AsyncMock())
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.status == ApplicationStatus.SUBMITTED
-    assert agent.extract.await_count == 3
+    assert agent.extract.await_count == 2
+    assert agent.extract.await_args_list[0].kwargs['screenshot'] is True
     agent.native_action.assert_awaited_once_with('Submit application')
     indeed_mod.mark_submission_intent.assert_called_once()
 
@@ -1168,7 +1171,7 @@ async def test_unresolved_captcha_has_one_deadline_despite_absent_or_stale_event
     assert result.error_category == ApplicationErrorCategory.CAPTCHA
     assert result.error_message == (
         'Verification remained unresolved within the application wait limit; application was not submitted.')
-    assert agent.extract.await_count == 2  # Re-read once even when the event never finishes.
+    assert agent.extract.await_count == (0 if solver_state == 'stale_active' else 2)
     agent.native_action.assert_not_awaited()
     indeed_mod.mark_submission_intent.assert_not_called()
 
@@ -1222,6 +1225,7 @@ async def test_captcha_start_during_submit_event_delivery_invalidates_submit(mon
     agent = _stagehand(page, [dict(kind=k, instruction=i, reason=r) for k, i, r in [
         ('upload', '', ''), ('submit', 'Submit application', ''), ('park', '', 'Visible challenge needs review')]])
     monitor = CaptchaMonitor()
+    monitor.wait_until_idle = AsyncMock(side_effect=lambda **_: monitor.record('browserbase-solving-finished'))
     agent._jobhunter_captcha_monitor = monitor
     applier = IndeedApplier(page, 's1', stagehand=agent)
     monkeypatch.setattr(applier, '_upload_original', AsyncMock())
@@ -1252,7 +1256,7 @@ async def test_stale_active_solver_cannot_resume_browser_mutations_after_wait_ex
     monkeypatch.setattr(indeed_mod, 'CAPTCHA_RECOVERY_SECONDS', 0.01)
     result = await applier.run(job=_job(), user_profile={}, resume_text='', cover_letter='')
     assert result.error_category == ApplicationErrorCategory.CAPTCHA
-    assert agent.extract.await_count == 2
+    agent.extract.assert_not_awaited()
     upload.assert_not_awaited()
     agent.native_action.assert_not_awaited()
     agent.observe.assert_not_awaited()

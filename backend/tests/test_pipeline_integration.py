@@ -135,7 +135,8 @@ class ProviderBrowser:
         if schema is indeed_hydration.IndeedListing:
             return SimpleNamespace(data=schema(title='AI Engineer',company='Fixture Company',location='San Francisco, CA',
                 description='Build Python LLM applications. $250,000 base.',is_remote=True,can_apply_on_indeed=True,expired=False,blocked=False))
-        steps={'listing':('act','Click Apply now'), 'questions':('act','Fill Python experience with Built production Python LLM applications'), 'review':('submit','Click Submit application')}
+        steps={'listing':('act','Click Apply now'), 'resume':('upload',''),
+               'questions':('act','Fill Python experience with Built production Python LLM applications'), 'review':('submit','Click Submit application')}
         kind,instruction=steps[self.phase]
         return SimpleNamespace(data=NextStep(kind=kind,instruction=instruction,reason='Proceed using supplied facts.'))
     async def advance(self, instruction, **kwargs):

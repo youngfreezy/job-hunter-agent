@@ -78,6 +78,18 @@ The snapshot fingerprint ignores ephemeral node IDs but retains labels, values,
 and structure. Any change requires a fresh, uncached Stagehand assessment.
 Unchanged loading screens use native polling instead of repeated model calls.
 
+While Browserbase reports an active CAPTCHA solve, the application waits for its
+lifecycle events without page mutations or model polling. Solver completion
+triggers a fresh Stagehand assessment; one visual read helps distinguish a
+blocking challenge from hidden widget markup. Completion alone never authorizes
+submission. Visual decisions are not cached using accessibility-tree identity.
+An unchanged CAPTCHA decision based only on the native page can be reused for
+passive waiting, bound to the tab, URL, snapshot, solver generation, and active
+state. A changed observation requires fresh judgment. These waits share the
+existing deadline and retain the time reserved for submission and its receipt.
+This uses Browserbase's [solver lifecycle events](https://docs.browserbase.com/platform/identity/captcha-solving)
+and Stagehand's [visual extraction](https://docs.stagehand.dev/v4/basics/extract#visual-extract).
+
 Recovery remains a bounded application policy: one GET of the same observed
 page, before any submission attempt, with sufficient time for recovery and
 receipt verification. It rechecks the observation before navigating and defers
