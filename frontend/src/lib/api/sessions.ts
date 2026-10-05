@@ -1,7 +1,7 @@
 // Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
 import { API_BASE } from "./config";
-import { apiFetch, authenticatedFetch, throwApiError } from "./transport";
+import { authenticatedFetch, throwApiError } from "./transport";
 import type { CoachOutput } from "./types";
 
 export async function startSession(params: {
@@ -131,7 +131,7 @@ export async function getSession(sessionId: string): Promise<Record<string, unkn
 }
 
 export async function getSkippedJobs(sessionId: string): Promise<{ skipped_jobs: SkippedJob[] }> {
-  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/skipped-jobs`);
+  const res = await authenticatedFetch(`${API_BASE}/api/sessions/${sessionId}/skipped-jobs`);
   if (!res.ok) throw new Error(`Failed to get skipped jobs: ${res.statusText}`);
   return res.json();
 }
@@ -292,7 +292,7 @@ export interface Checkpoint {
 }
 
 export async function listCheckpoints(sessionId: string): Promise<Checkpoint[]> {
-  const res = await apiFetch(`${API_BASE}/api/sessions/${sessionId}/checkpoints`);
+  const res = await authenticatedFetch(`${API_BASE}/api/sessions/${sessionId}/checkpoints`);
   if (!res.ok) throw new Error(`Failed to list checkpoints: ${res.statusText}`);
   const data = await res.json();
   return data.checkpoints;

@@ -87,6 +87,16 @@ describe("public API client contracts", () => {
     expect(await api.listSessions(true)).toEqual([{ id: "old-session", keywords: [], locations: [] }]);
   });
 
+  it("authenticates checkpoint and skipped-job reads, which the backend restricts to the owner", async () => {
+    const request = mockApi({ skipped_jobs: [], checkpoints: [] });
+    const api = await import("./api");
+    await api.getSkippedJobs("owned-session");
+    await api.listCheckpoints("owned-session");
+    for (const [, init] of request.mock.calls.filter(([url]) => url.startsWith("/api/sessions/"))) {
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer contract-token");
+    }
+  });
+
   it("surfaces one rate-limit notice across features while returning the original failure", async () => {
     const request = mockApi({}, 429);
     const api = await import("./api");
