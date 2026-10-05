@@ -204,7 +204,8 @@ export class HubSpotIntegration {
     if (copy.subheadline) {
       parts.push(`<h2>${this.escapeHTML(copy.subheadline)}</h2>`);
     }
-    parts.push(`<div>${copy.body}</div>`);
+    // Generated copy is plain text. Never publish arbitrary model-supplied HTML.
+    parts.push(`<div>${this.escapeHTML(copy.body).replace(/\r?\n/g, '<br>')}</div>`);
     if (copy.cta) {
       parts.push(
         `<a href="#cta" class="cta-button">${this.escapeHTML(copy.cta)}</a>`,

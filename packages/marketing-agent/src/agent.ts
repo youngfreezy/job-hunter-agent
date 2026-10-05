@@ -8,6 +8,8 @@
 
 import { generateText } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
+import { z } from 'zod';
+import { copyReviewSchema, generatedCopySchema, parseModelOutput } from './output-schemas';
 import {
   MARKETING_SYSTEM_PROMPT,
   COPY_REVIEW_PROMPT,
@@ -137,7 +139,7 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences):
       maxTokens: this.maxTokens,
     });
 
-    return this.parseJSON<GeneratedCopy>(text, 'generateCopy');
+    return parseModelOutput(text, generatedCopySchema, 'generateCopy');
   }
 
   // -------------------------------------------------------------------------
@@ -187,7 +189,7 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences):
       maxTokens: this.maxTokens,
     });
 
-    return this.parseJSON<CopyReview>(text, 'reviewCopy');
+    return parseModelOutput(text, copyReviewSchema, 'reviewCopy');
   }
 
   // -------------------------------------------------------------------------
@@ -202,6 +204,9 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences):
    * @returns       An array of variant strings.
    */
   async generateVariants(copy: string, count = 3): Promise<string[]> {
+    if (!Number.isInteger(count) || count < 1 || count > 10) {
+      throw new RangeError('Variant count must be an integer between 1 and 10.');
+    }
     const prompt = `
 You are given the following marketing copy:
 
@@ -226,7 +231,7 @@ Respond with ONLY a valid JSON array of strings (no markdown fences):
       maxTokens: this.maxTokens * count,
     });
 
-    return this.parseJSON<string[]>(text, 'generateVariants');
+    return parseModelOutput(text, z.array(z.string()).length(count), 'generateVariants');
   }
 
   // -------------------------------------------------------------------------
@@ -246,26 +251,4 @@ Respond with ONLY a valid JSON array of strings (no markdown fences):
     return 'AIDA';
   }
 
-  /**
-   * Safely parse a JSON string returned by the model. Strips markdown code
-   * fences if the model included them despite instructions.
-   */
-  private parseJSON<T>(raw: string, method: string): T {
-    let cleaned = raw.trim();
-
-    // Strip markdown code fences
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
-    }
-
-    try {
-      return JSON.parse(cleaned) as T;
-    } catch (error) {
-      throw new Error(
-        `MarketingAgent.${method}: Failed to parse model response as JSON.\n` +
-          `Raw response:\n${raw}\n\n` +
-          `Parse error: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
 }
