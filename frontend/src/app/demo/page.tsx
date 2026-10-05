@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     title: "JobHunter Agent — Product Demo",
     description: "A closer look at the application, its cloud browser, and the controls behind each run.",
     url: "/demo",
-    images: [{ url: "/media/jobhunter-browserbase-demo-v2.webp", width: 1920, height: 1080, alt: "JobHunter Agent product demo" }],
+    images: [{ url: "/media/jobhunter-browserbase-demo-v3.jpg", width: 1920, height: 1080, alt: "JobHunter Agent product demo" }],
   },
 };
 
@@ -31,8 +31,8 @@ export default function DemoPage() {
           <p className="mb-3 text-sm font-medium text-zinc-600 dark:text-zinc-400">Product walkthrough</p>
           <h1 className="text-3xl font-bold tracking-tight md:text-5xl">See JobHunter Agent in action.</h1>
           <p id="demo-description" className="mt-4 text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-            Follow an Indeed application workflow and see how Browserbase, Stagehand,
-            and the app&apos;s checks work together.
+            Follow an Indeed application workflow, open its replay in the Browserbase dashboard,
+            and see how Stagehand and the app&apos;s checks work together.
           </p>
         </header>
         <DemoVideo />
