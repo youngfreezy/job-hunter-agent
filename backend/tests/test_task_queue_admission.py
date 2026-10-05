@@ -85,12 +85,17 @@ def launches(monkeypatch):
         'user_id':'owner', 'keywords':['Engineer'], 'locations':[], 'remote_only':True,
         'salary_min':None, 'resume_text_snippet':'Factual resume', 'status':'completed'})
     monkeypatch.setattr(resume_store, 'get_resume', lambda _: None)
+    monkeypatch.setattr(resume_store, 'get_resume_for_user', lambda *_: (b'encrypted', '.txt'))
     spawned=[]
     def spawn(coro):
         coro.close()  # Even the red regression cannot execute a provider.
         spawned.append(True)
     monkeypatch.setattr(sessions, '_spawn_background', spawn)
-    return sessions, SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(graph=object()))), spawned
+    original_state = {'keywords':['Engineer'], 'locations':[], 'remote_only':True,
+                      'salary_min':None, 'resume_text':'Factual resume',
+                      'session_config':{'max_jobs':1}, 'job_urls':[]}
+    graph = SimpleNamespace(aget_state=AsyncMock(return_value=SimpleNamespace(values=original_state)))
+    return sessions, SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(graph=graph))), spawned
 
 
 @pytest.mark.asyncio
