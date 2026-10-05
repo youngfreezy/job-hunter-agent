@@ -21,10 +21,10 @@
 The `railway add` and `railway service` commands require interactive terminal prompts. They don't work in non-interactive/CI mode for database provisioning. Workaround: use the Railway GraphQL API at `https://backboard.railway.com/graphql/v2` for programmatic service creation (but it's blocked by Cloudflare for CLI session tokens — need a proper API token from the dashboard).
 
 ### 2. `.gitignore` affects Railway uploads
-Railway uses `.gitignore` to filter which files get uploaded via `railway up`. If `package-lock.json` is gitignored, it won't be available during Docker build. Fix: use `npm install` instead of `npm ci` in the Dockerfile, or add a `.railwayignore` that doesn't exclude the lock file.
+Railway uses `.gitignore` to filter files uploaded via `railway up`. Keep the frontend and marketing package lockfiles tracked and included in uploads. Use `npm ci` in builds so dependency versions match the reviewed lockfile; do not replace it with `npm install` to work around a missing lockfile.
 
 ### 3. `NEXT_PUBLIC_*` vars are build-time only
-Next.js inlines `NEXT_PUBLIC_*` env vars into the JS bundle at build time. Railway injects env vars during Docker build only if they're declared as `ARG` in the Dockerfile. All build-time env vars (including `GOOGLE_CLIENT_ID`, `NEXTAUTH_SECRET`, etc. for NextAuth route compilation) must be declared as `ARG` + `ENV` in the builder stage.
+Next.js inlines `NEXT_PUBLIC_*` variables into the JS bundle at build time. Declare these public build inputs as `ARG` + `ENV` in the builder stage. Supply Google OAuth credentials, `NEXTAUTH_SECRET`, and `NEXTAUTH_URL` through the service's runtime environment; the build does not need real authentication secrets. Never pass secrets through Docker `ARG` or persistent build `ENV` ([Docker guidance](https://docs.docker.com/build/building/secrets/)).
 
 ### 4. Railway PORT binding
 Railway assigns a dynamic `PORT` env var. The Docker CMD must use `${PORT:-default}` via shell form (`sh -c "..."`) not exec form (`["python", "-m", ...]`). Without this, the service gets a 502 because Railway's proxy can't reach the app.
@@ -33,19 +33,13 @@ Railway assigns a dynamic `PORT` env var. The Docker CMD must use `${PORT:-defau
 If the Next.js project has no `public/` directory, `COPY --from=builder /app/public ./public` fails. Fix: `RUN mkdir -p public` before `npm run build`.
 
 ### 6. `browser-use` pins strict dependency versions
-`browser-use==0.12.1` pins exact versions of `Pillow`, `google-api-python-client`, `pydantic`, `pypdf`, `python-docx`, etc. If `requirements.txt` pins older versions, pip resolution fails. Fix: use `>=` instead of `==` for all packages that browser-use also depends on, and let browser-use drive the versions.
+The legacy browser-use dependency set pins versions that conflict with patched public upload parsers. Keep it isolated in `backend/requirements-legacy-browser.txt`; do not relax the production parser constraints to satisfy it. The public image uses `backend/requirements.txt` and Browserbase/Stagehand. See the README's production dependency scope.
 
 ### 7. `playwright` vs `patchright` — both needed
 The codebase imports from both `playwright.async_api` (for `TimeoutError`, `Page` types) and `patchright` (for actual browser automation). `patchright` doesn't re-export playwright's types. Both packages must be in `requirements.txt`.
 
 ### 8. LangGraph `AsyncPostgresSaver.setup()` + `CREATE INDEX CONCURRENTLY`
-`AsyncPostgresSaver.setup()` runs `CREATE INDEX CONCURRENTLY` which cannot execute inside a transaction block. Even with `autocommit=True` on the psycopg connection, this can fail on some Postgres configurations. Fix: wrap `setup()` in a try/except, and create the checkpoint tables manually if needed:
-
-```sql
-CREATE TABLE IF NOT EXISTS checkpoints (...);
-CREATE TABLE IF NOT EXISTS checkpoint_blobs (...);
-CREATE TABLE IF NOT EXISTS checkpoint_writes (...);
-```
+`AsyncPostgresSaver.setup()` can issue `CREATE INDEX CONCURRENTLY`, which cannot run inside a transaction block. Use the checkpointer's supported setup connection and migrations. Diagnose setup failures before accepting traffic; do not create guessed checkpoint tables or swallow schema errors.
 
 ### 9. Railway private DNS resolution timing
 `postgres.railway.internal` DNS resolution can fail during early container startup if the database service isn't fully ready. Using the public proxy URL (`switchback.proxy.rlwy.net:PORT`) is more reliable but adds latency. For production, retry logic on the pool opener or using the public URL is recommended.
@@ -77,6 +71,30 @@ Railway's default Postgres image doesn't include pgvector. If vector search is n
 **Result**: Deploys no longer kill active sessions. Skyvern tasks that were mid-poll are automatically recovered on startup, and SSE clients reconnect seamlessly.
 
 ## Remaining Manual Steps
+
+### Trusted proxy configuration
+
+The rate limiter uses the authenticated account identity, or Uvicorn's validated
+`request.client.host` for unauthenticated requests. Application code does not read
+arbitrary `X-Forwarded-For` values. Set `FORWARDED_ALLOW_IPS` to the exact trusted
+immediate ingress peers for your deployment; never trust `*` on a publicly
+reachable listener. Uvicorn reads this environment variable itself.
+
+For this Railway deployment, the verified immediate peers on 2026-10-05 were
+`100.64.0.1`, `100.64.0.2`, and `100.64.0.3`, plus loopback. These are an observed
+deployment configuration, not a universal Railway contract. Recheck peer addresses
+after networking changes and confirm that Railway replaces client-supplied
+forwarding headers. A missing trusted peer conservatively groups visitors under
+that proxy's rate bucket; it must not be fixed by trusting arbitrary headers.
+
+Sensitive auth, submission-start, and verification endpoints return 503 with
+`Retry-After` when the shared rate-limit store is unavailable. General read routes
+retain their existing availability behavior.
+
+Sources: [FastAPI behind a proxy](https://fastapi.tiangolo.com/advanced/behind-a-proxy/),
+[Railway networking limits and headers](https://docs.railway.com/networking/public-networking/specs-and-limits).
+
+### External service setup
 
 1. **Google OAuth**: Add `https://frontend-production-96d4b.up.railway.app/api/auth/callback/google` to authorized redirect URIs in Google Cloud Console
 2. **Stripe Webhook**: Update webhook endpoint to `https://backend-production-1ea9.up.railway.app/api/billing/webhook`

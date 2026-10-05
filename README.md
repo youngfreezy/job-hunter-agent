@@ -155,7 +155,7 @@ Optimization remains disabled whenever the model spend ledger is configured.
 
 ### Prerequisites
 - Python 3.11 or 3.12 (CI runs both; the Docker image uses 3.11)
-- Node.js 20+
+- Node.js 20.19+ (required by the test toolchain)
 - Docker (for Postgres + Redis)
 
 ### Setup
@@ -176,7 +176,7 @@ pip install -r requirements.txt
 
 # Frontend
 cd ../frontend
-npm install
+npm ci
 
 # Start everything (Docker + backend + frontend)
 cd ..
@@ -192,8 +192,25 @@ Open [http://localhost:3000](http://localhost:3000).
 python -m pytest backend/tests -q
 
 # Frontend unit tests, lint, typecheck, production build
-cd frontend && npm test && npx next lint && npx tsc --noEmit && npm run build
+npm --prefix frontend test
+npm --prefix frontend run lint
+npm --prefix frontend run typecheck
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm --prefix frontend run build
+
+# Local launcher ownership checks and the standalone marketing package
+npm test
+npm --prefix packages/marketing-agent ci --ignore-scripts
+npm --prefix packages/marketing-agent test
+npm --prefix packages/marketing-agent run build
 ```
+
+Use a dedicated local test database for backend tests. Mocked suites do not submit
+applications or call paid models. Live Playwright workflows are separate: do not
+run the entire `frontend/tests/e2e` directory against production without selecting
+the intended workflow and setting a budget.
+
+See [the repository quality audit](QUALITY.md) for reviewed boundaries, functional
+design conventions, verification evidence, and tracked limitations.
 
 ### Environment Variables
 
