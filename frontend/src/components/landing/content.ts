@@ -176,4 +176,3 @@ export const jsonLd = {
     indeedEasyApplyOnly ? "Indeed-hosted applications" : "Support for Greenhouse, Lever, Workday, Ashby ATS platforms",
   ],
 };
-

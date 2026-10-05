@@ -52,4 +52,3 @@ export function checkpointLabel(status: string): string {
       return STATUS_LABELS[status] || status;
   }
 }
-

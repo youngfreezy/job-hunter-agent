@@ -80,4 +80,3 @@ export function ROICalculator() {
     </div>
   );
 }
-
