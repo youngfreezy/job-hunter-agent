@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // Signed-in app routes have their own shell and no marketing footer.
 const APP_PREFIXES = [
@@ -58,6 +59,7 @@ export function Footer() {
             >
               Status
             </Link>
+            <ThemeToggle className="-my-1.5" />
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 // Copyright (c) 2026 V2 Software LLC. All rights reserved.
 
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
@@ -35,6 +36,7 @@ export function LandingNavigation() {
           >
             About
           </a>
+          <ThemeToggle />
           <Link href="/try">
             <Button size="sm" data-umami-event="cta-try-free" data-umami-event-location="nav">
               Try Free
