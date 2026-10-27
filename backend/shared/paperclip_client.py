@@ -125,17 +125,25 @@ def create_issue(
     title: str,
     description: str = "",
     priority: str = "medium",
+    status: Optional[str] = None,
+    allow_duplicate: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Create a new issue/ticket in Paperclip."""
+    payload: Dict[str, Any] = {
+        "title": title,
+        "description": description,
+        "priority": priority,
+    }
+    if status:
+        payload["status"] = status
+    if allow_duplicate:
+        payload["allowDuplicate"] = True
+
     try:
         resp = httpx.post(
             f"{_base_url()}/companies/{_company_id()}/issues",
             headers=_headers(agent_name),
-            json={
-                "title": title,
-                "description": description,
-                "priority": priority,
-            },
+            json=payload,
             timeout=10,
         )
         resp.raise_for_status()
@@ -183,9 +191,8 @@ def report_heartbeat(
 ) -> bool:
     """Report agent heartbeat completion to Paperclip via activity log.
 
-    Creates an issue that captures the heartbeat result, then immediately
-    marks it done. This provides a clean audit trail in Paperclip's
-    activity feed.
+    Creates an issue that captures the heartbeat result, already marked
+    done. This provides a clean audit trail in Paperclip's activity feed.
     """
     desc = summary
     if error:
@@ -195,8 +202,15 @@ def report_heartbeat(
 
     title = f"[{agent_name}] {'✓' if status == 'completed' else '✗'} {summary[:80]}"
 
-    issue = create_issue(agent_name, title=title, description=desc, priority="low")
-    if issue:
-        update_issue(agent_name, issue["id"], status="done")
-        return True
-    return False
+    # Create the issue already done. Paperclip rejects agent status updates
+    # made outside one of its own heartbeat runs, so a follow-up PATCH fails.
+    # Heartbeat titles repeat, so skip Paperclip's recent-title dedupe too.
+    issue = create_issue(
+        agent_name,
+        title=title,
+        description=desc,
+        priority="low",
+        status="done",
+        allow_duplicate=True,
+    )
+    return issue is not None
